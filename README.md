@@ -13,7 +13,7 @@ npm run build
 
 Find memory leaks in Google Maps:
 ```
-./memlab run --scenario packages/e2e/src/plugins/scenarios/test-ebay.js
+./memlab run --scenario packages/e2e/src/plugins/scenarios/test-google-maps.js
 ```
 
 Commands:
