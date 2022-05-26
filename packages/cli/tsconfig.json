@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist"
+  },
+  "include": ["./src"],
+  "references": [
+    {"path": "../core"},
+    {"path": "../e2e"},
+    {"path": "../api"},
+    {"path": "../heap-analysis"}
+  ]
+}

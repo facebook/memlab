@@ -1,0 +1,29 @@
+{
+  "name": "@memlab/core",
+  "version": "0.0.0",
+  "description": "memlab core libraries",
+  "keywords": [
+    "core"
+  ],
+  "author": "Liang Gong <lgong@fb.com>",
+  "contributors": [],
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "static"
+  ],
+  "scripts": {
+    "tsc": "tsc",
+    "test": "jest .",
+    "clean": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
+  }
+}

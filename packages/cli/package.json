@@ -1,0 +1,28 @@
+{
+  "name": "@memlab/cli",
+  "version": "0.0.0",
+  "description": "command line interface for memlab",
+  "keywords": [
+    "cli"
+  ],
+  "author": "Liang Gong <lgong@fb.com>",
+  "contributors": [],
+  "license": "MIT",
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "tsc": "tsc",
+    "clean": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@memlab/api": "^0.0.0",
+    "@memlab/core": "^0.0.0",
+    "@memlab/e2e": "^0.0.0",
+    "@memlab/heap-analysis": "^0.0.0"
+  }
+}

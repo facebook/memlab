@@ -1,0 +1,25 @@
+{
+  "name": "@memlab/e2e",
+  "version": "0.0.0",
+  "description": "Browser E2E interaction libraries",
+  "keywords": [
+    "e2e",
+    "browser"
+  ],
+  "author": "Liang Gong <lgong@fb.com>",
+  "contributors": [],
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "static"
+  ],
+  "scripts": {
+    "tsc": "tsc",
+    "clean": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@memlab/core": "^0.0.0"
+  }
+}

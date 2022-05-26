@@ -1,0 +1,27 @@
+{
+  "name": "@memlab/heap-analysis",
+  "version": "0.0.0",
+  "description": "heap analysis plugins for memlab",
+  "keywords": [
+    "heap",
+    "analysis",
+    "plugin"
+  ],
+  "author": "Liang Gong <lgong@fb.com>",
+  "contributors": [],
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "tsc": "tsc",
+    "test": "jest .",
+    "clean": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@memlab/core": "^0.0.0",
+    "@memlab/e2e": "^0.0.0"
+  }
+}

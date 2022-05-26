@@ -1,0 +1,38 @@
+{
+  "name": "memlab",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "",
+  "dependencies": {
+    "ansi": "^0.3.1",
+    "babar": "^0.2.0",
+    "chalk": "^4.0.0",
+    "fs-extra": "^4.0.2",
+    "html-inline": "^1.2.0",
+    "minimist": "^1.2.0",
+    "puppeteer": "^13.5.1",
+    "string-width": "^4.2.0",
+    "util.promisify": "^1.1.1",
+    "xvfb": "^0.4.0"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^9.0.3",
+    "@types/jest": "^27.4.1",
+    "@types/minimist": "^1.2.2",
+    "@types/node": "^12.16.3",
+    "@types/puppeteer": "^5.4.4",
+    "jest": "^27.5.1",
+    "lerna": "^4.0.0",
+    "ts-jest": "^27.1.4",
+    "typescript": "^4.6.3",
+    "typescript-strict-plugin": "^2.0.0-beta.2"
+  },
+  "scripts": {
+    "build": "lerna run clean > /dev/null && lerna run tsc && rm -rf dist && tsc && lerna link",
+    "clean": "lerna run clean && rm -rf dist",
+    "link": "lerna link",
+    "memlab": "node packages/cli/dist/runner.js",
+    "rm-fb-internal": "find . -type d -name fb-internal -prune -exec rm -rf {} \\;",
+    "test": "lerna run test"
+  }
+}
