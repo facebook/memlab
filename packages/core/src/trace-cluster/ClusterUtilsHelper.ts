@@ -11,7 +11,7 @@
 // So please do not add non-type dependency to this file.
 // In this file, please also avoid using class definition, which needs
 // additional babel plugin to transform class syntax.
-import type {AnyValue, MemLabTraceElementType} from '../lib/Types';
+import type {AnyValue, LeakTraceElement, LeakTrace} from '../lib/Types';
 
 function NON_NULLABLE<T>(v: T | null | undefined): T {
   if (v == null) {
@@ -44,8 +44,8 @@ export function debugLog(...args: AnyValue[]): void {
 }
 
 interface DebugElementSimilarityStatsParams {
-  elementA: MemLabTraceElementType;
-  elementB: MemLabTraceElementType;
+  elementA: LeakTraceElement;
+  elementB: LeakTraceElement;
   matchedSum: number;
   totalSum: number;
 }
@@ -75,10 +75,7 @@ const REACT_FIBER_EDGE_PREFIX = '__reactFiber$';
 const WINDOW_NODE_PREFIX = 'Window / ';
 
 type ClusteringUtilReturnType = {
-  isSimilarTrace: (
-    t1: MemLabTraceElementType[],
-    t2: MemLabTraceElementType[],
-  ) => boolean;
+  isSimilarTrace: (t1: LeakTrace, t2: LeakTrace) => boolean;
 };
 
 const initialize = (
@@ -93,7 +90,7 @@ const initialize = (
   } = heuristics;
 
   function _searchForEdge(
-    t: MemLabTraceElementType[],
+    t: LeakTrace,
     name: string | number | RegExp,
   ): number {
     for (let i = 0; i < t.length; ++i) {
@@ -111,10 +108,7 @@ const initialize = (
     return -1;
   }
 
-  function _searchForNode(
-    t: MemLabTraceElementType[],
-    name: string | RegExp,
-  ): number {
+  function _searchForNode(t: LeakTrace, name: string | RegExp): number {
     for (let i = 0; i < t.length; ++i) {
       const traceElement = t[i];
       if (traceElement.kind === 'node' && 'name' in traceElement) {
@@ -131,8 +125,8 @@ const initialize = (
   }
 
   function _searchForMatch(
-    t1: MemLabTraceElementType[],
-    t2: MemLabTraceElementType[],
+    t1: LeakTrace,
+    t2: LeakTrace,
     name: string | RegExp,
   ): [number, number] | null {
     let i1 = _searchForEdge(t1, name);
@@ -152,10 +146,7 @@ const initialize = (
 
   // the trace similarity calculation starts from modulesMap if
   // both traces have the modulesMap heap object
-  function matchTraceStartItem(
-    t1: MemLabTraceElementType[],
-    t2: MemLabTraceElementType[],
-  ): [number, number] {
+  function matchTraceStartItem(t1: LeakTrace, t2: LeakTrace): [number, number] {
     for (const name of startingModuleForTraceMatching) {
       const ret = _searchForMatch(t1, t2, name);
       if (ret) {
@@ -206,9 +197,9 @@ const initialize = (
   }
 
   function getDecendentDecayFactor(
-    elem: MemLabTraceElementType,
+    elem: LeakTraceElement,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _elem2: MemLabTraceElementType,
+    _elem2: LeakTraceElement,
   ): number {
     for (const factors of decendentDecayFactors) {
       if (factors.kind === elem.kind) {
@@ -277,10 +268,7 @@ const initialize = (
     return false;
   }
 
-  function areBothNodes(
-    elem1: MemLabTraceElementType,
-    elem2: MemLabTraceElementType,
-  ) {
+  function areBothNodes(elem1: LeakTraceElement, elem2: LeakTraceElement) {
     if (elem1 == null || elem2 == null) {
       return false;
     }
@@ -294,8 +282,8 @@ const initialize = (
   }
 
   function isSameNode(
-    elem1: MemLabTraceElementType,
-    elem2: MemLabTraceElementType,
+    elem1: LeakTraceElement,
+    elem2: LeakTraceElement,
   ): boolean {
     if (!areBothNodes(elem1, elem2)) {
       return false;
@@ -304,8 +292,8 @@ const initialize = (
   }
 
   function isSimilarNode(
-    elem1: MemLabTraceElementType,
-    elem2: MemLabTraceElementType,
+    elem1: LeakTraceElement,
+    elem2: LeakTraceElement,
   ): boolean {
     if (!areBothNodes(elem1, elem2)) {
       return false;
@@ -314,9 +302,9 @@ const initialize = (
   }
 
   function isSameEdge(
-    trace1: MemLabTraceElementType[],
+    trace1: LeakTrace,
     i1: number,
-    trace2: MemLabTraceElementType[],
+    trace2: LeakTrace,
     i2: number,
   ): boolean {
     const elem1 = trace1[i1];
@@ -348,10 +336,7 @@ const initialize = (
     );
   }
 
-  function areBothEdges(
-    elem1: MemLabTraceElementType,
-    elem2: MemLabTraceElementType,
-  ) {
+  function areBothEdges(elem1: LeakTraceElement, elem2: LeakTraceElement) {
     if (elem1 == null || elem2 == null) {
       return false;
     }
@@ -365,9 +350,9 @@ const initialize = (
   }
 
   function isSimilarEdge(
-    trace1: MemLabTraceElementType[],
+    trace1: LeakTrace,
     i1: number,
-    trace2: MemLabTraceElementType[],
+    trace2: LeakTrace,
     i2: number,
   ): boolean {
     const elem1 = trace1[i1];
@@ -395,9 +380,9 @@ const initialize = (
   }
 
   function isSameOrSimilarElement(
-    trace1: MemLabTraceElementType[],
+    trace1: LeakTrace,
     i1: number,
-    trace2: MemLabTraceElementType[],
+    trace2: LeakTrace,
     i2: number,
   ): boolean {
     const elem1 = trace1[i1];
@@ -421,9 +406,9 @@ const initialize = (
   }
 
   function getDecayFactor(
-    trace1: MemLabTraceElementType[],
+    trace1: LeakTrace,
     i1: number,
-    trace2: MemLabTraceElementType[],
+    trace2: LeakTrace,
     i2: number,
   ): number {
     const elem1 = trace1[i1];
@@ -438,9 +423,9 @@ const initialize = (
   }
 
   function getElementPairWeight(
-    trace1: MemLabTraceElementType[],
+    trace1: LeakTrace,
     i1: number,
-    trace2: MemLabTraceElementType[],
+    trace2: LeakTrace,
     i2: number,
   ): number {
     const elem1 = trace1[i1];
@@ -473,8 +458,8 @@ const initialize = (
   }
 
   function getSimilarityByTraceElementList(
-    t1: MemLabTraceElementType[],
-    t2: MemLabTraceElementType[],
+    t1: LeakTrace,
+    t2: LeakTrace,
   ): number {
     // find first starting item that matches
     let [i1, i2] = matchTraceStartItem(t1, t2);
@@ -533,10 +518,7 @@ const initialize = (
     return matchedSum / (totalSum + 0.0001);
   }
 
-  function isSimilarTrace(
-    t1: MemLabTraceElementType[],
-    t2: MemLabTraceElementType[],
-  ): boolean {
+  function isSimilarTrace(t1: LeakTrace, t2: LeakTrace): boolean {
     const similarity = getSimilarityByTraceElementList(t1, t2);
     debugLog(similarity);
     return similarity >= SIMILAR_TRACE_THRESHOLD;

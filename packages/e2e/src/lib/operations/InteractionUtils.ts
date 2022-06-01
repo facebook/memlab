@@ -60,8 +60,8 @@ async function WaitUntilCallbackReturnsTrue(
 
   if (!isSuccessful) {
     if (!options.mute) {
-      info.warning(
-        `Check timeout: ${url.pathname}; set wait: ${config.delayWhenNoPageLoadCheck}ms`,
+      info.overwrite(
+        `Check timeout '${url.pathname}' set wait: ${config.delayWhenNoPageLoadCheck}ms`,
       );
     }
     failedURLs[url.pathname] = true;

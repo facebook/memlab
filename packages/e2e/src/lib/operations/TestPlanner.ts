@@ -107,8 +107,6 @@ export class TestPlanner {
   private prepareSynthesizer(): IE2EScenarioSynthesizer {
     if (this.config.scenario) {
       this.scenario = this.config.scenario;
-    } else if (this.config.scenarioFile) {
-      this.scenario = utils.loadScenario(this.config.scenarioFile);
     } else {
       // otherwise no action since no scenario definition provided
       // config.targetTab and config.targetApp should be set

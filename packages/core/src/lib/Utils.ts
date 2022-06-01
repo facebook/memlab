@@ -32,6 +32,7 @@ import type {
   IHeapNode,
   IHeapEdge,
   IScenario,
+  ILeakFilter,
   LeakTracePathItem,
   RunMetaInfo,
   RawHeapSnapshot,
@@ -538,11 +539,39 @@ function checkScenarioInstance(s: AnyValue): IScenario {
     typeof s.url !== 'function' ||
     (s.action && typeof s.action !== 'function') ||
     (s.back && typeof s.back !== 'function') ||
-    (s.repeat && typeof s.repeat !== 'function')
+    (s.repeat && typeof s.repeat !== 'function') ||
+    (s.isPageLoaded && typeof s.isPageLoaded !== 'function') ||
+    (s.leakFilter && typeof s.leakFilter !== 'function') ||
+    (s.beforeLeakFilter && typeof s.beforeLeakFilter !== 'function')
   ) {
     throw new Error('Invalid senario');
   }
   return s as IScenario;
+}
+
+function loadLeakFilter(filename: string): ILeakFilter {
+  const filepath = resolveFilePath(filename);
+  if (!filepath || !fs.existsSync(filepath)) {
+    // add a throw to silent the type error
+    throw haltOrThrow(`Leak filter definition file doesn't exist: ${filepath}`);
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    let filter = require(filepath);
+    if (typeof filter === 'function') {
+      return {leakFilter: filter};
+    }
+    filter = filter?.default || filter;
+    if (typeof filter === 'function') {
+      return {leakFilter: filter};
+    }
+    if (typeof filter?.leakFilter === 'function') {
+      return filter;
+    }
+    throw haltOrThrow(`Invalid leak filter in ${filepath}`);
+  } catch (ex) {
+    throw haltOrThrow('Invalid leak filter definition file: ' + filename);
+  }
 }
 
 function loadScenario(filename: string): IScenario {
@@ -553,6 +582,7 @@ function loadScenario(filename: string): IScenario {
   }
   let scenario;
   try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     scenario = require(filepath);
     scenario = checkScenarioInstance(scenario);
     if (scenario.name == null) {
@@ -1747,7 +1777,9 @@ function haltOrThrow(
       if (config.verbose) {
         info.lowLevel(err.stack ?? '');
       } else {
-        info.topLevel('Rerun with --verbose to get error stack trace');
+        info.topLevel(
+          'Use `memlab help` or `memlab <COMMAND> -h` to get helper text',
+        );
       }
       if (options.primaryMessageToPrint) {
         info.error(options.primaryMessageToPrint);
@@ -1809,7 +1841,9 @@ function convertToError(maybeError: unknown): Error {
   }
 
   try {
-    return new Error(JSON.stringify(maybeError));
+    const msg =
+      typeof maybeError === 'string' ? maybeError : JSON.stringify(maybeError);
+    return new Error(msg);
   } catch {
     // fallback in case there's an error stringifying the maybeError
     // like with circular references for example.
@@ -1915,6 +1949,7 @@ export default {
   iterateChildFiberNodes,
   iterateDescendantFiberNodes,
   loadRunMetaInfo,
+  loadLeakFilter,
   loadScenario,
   loadTabsOrder,
   loadTargetInfoFromRunMeta,

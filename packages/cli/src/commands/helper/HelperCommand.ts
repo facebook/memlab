@@ -228,7 +228,7 @@ export default class HelperCommand extends BaseCommand {
     }
     if (!command) {
       throw utils.haltOrThrow(
-        `Could not find command: memlab ${args._.slice(1).join(' ')}`,
+        `Could not find command: memlab ${args._.join(' ')}`,
       );
     }
 

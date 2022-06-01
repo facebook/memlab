@@ -45,7 +45,7 @@ class LeakClusterLogger {
       const traceRecord = meta.trace_record;
       return {
         id: info.cluster_id,
-        path: NormalizedTrace.convertToPath(traceRecord),
+        path: NormalizedTrace.traceToPath(traceRecord),
         clusterMetaInfo: info,
       };
     });
@@ -208,7 +208,7 @@ class LeakClusterLogger {
       meta_data: JSON.stringify({
         browser_info: browserInfo,
         visit_plan: tabsOrder,
-        trace_record: NormalizedTrace.getCompleteSerializablePath(cluster.path),
+        trace_record: NormalizedTrace.pathToTrace(cluster.path),
       }),
     };
     fs.writeFileSync(file, JSON.stringify(info, null, 2), 'UTF-8');
@@ -242,7 +242,7 @@ class LeakClusterLogger {
       meta_data: JSON.stringify({
         browser_info: browserInfo,
         visit_plan: tabsOrder,
-        trace_record: NormalizedTrace.getCompleteSerializablePath(cluster.path),
+        trace_record: NormalizedTrace.pathToTrace(cluster.path),
       }),
     };
     fs.writeFileSync(file, JSON.stringify(info, null, 2), 'UTF-8');

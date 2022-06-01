@@ -18,6 +18,12 @@ import DebugOption from './options/DebugOption';
 import SilentOption from './options/SilentOption';
 import HelperOption from './options/HelperOption';
 
+type RunCommandOptions = {
+  isPrerequisite?: boolean;
+  commandIndex?: number;
+  configFromOptions: AnyRecord;
+};
+
 const universalOptions = [
   new HelperOption(),
   new VerboseOption(),
@@ -52,7 +58,6 @@ class CommandDispatcher {
     const command = args._[0];
     // invalid command, e.g., `memlab xyz`
     if (!this.modules.has(command)) {
-      info.error(`\n  Invalid command: \`memlab ${command}\``);
       await this.helper(args);
       return;
     }
@@ -89,10 +94,10 @@ class CommandDispatcher {
     return configFromOptions;
   }
 
-  async runCommand(
+  private async runCommand(
     command: BaseCommand,
     args: ParsedArgs,
-    configFromOptions: AnyRecord = {},
+    runCmdOpt: RunCommandOptions = {configFromOptions: {}},
   ): Promise<void> {
     const commandName = command.getCommandName();
 
@@ -113,20 +118,23 @@ class CommandDispatcher {
       }
       await this.runCommand(prereq, args, {
         isPrerequisite: true,
-        configFromOptions,
+        ...runCmdOpt,
       });
     }
 
     // parse command line options
     const c = await this.parseOptions(command, config, args);
-    Object.assign(configFromOptions, c);
+    Object.assign(runCmdOpt.configFromOptions, c);
 
+    const {configFromOptions} = runCmdOpt;
     // execute command
     await command.run({cliArgs: args, configFromOptions});
 
-    if (configFromOptions.isPrerequisite !== true) {
+    if (runCmdOpt.isPrerequisite !== true) {
       // execute subcommands
-      await this.runSubCommandIfAny(command, args, configFromOptions);
+      const commandIndex = (runCmdOpt.commandIndex ?? 0) + 1;
+      const runSubCmdOpt = {...runCmdOpt, commandIndex};
+      await this.runSubCommandIfAny(command, args, runSubCmdOpt);
     }
 
     this.executingCommandStack.pop();
@@ -136,26 +144,24 @@ class CommandDispatcher {
   async runSubCommandIfAny(
     command: BaseCommand,
     args: ParsedArgs,
-    configFromOptions: AnyRecord,
+    runCmdOpt: RunCommandOptions,
   ): Promise<void> {
-    const subCommands = command.getSubCommands();
-    const subArgs = {...args};
-    subArgs._ = [...args._];
-    subArgs._.shift();
-    if (subArgs._.length === 0) {
+    const subCommandIndex = runCmdOpt.commandIndex ?? 0;
+    if (args._.length <= subCommandIndex) {
       return;
     }
 
+    const subCommands = command.getSubCommands();
     for (const subCommand of subCommands) {
-      if (subCommand.getCommandName() === subArgs._[0]) {
-        this.runCommand(subCommand, subArgs, configFromOptions);
+      if (subCommand.getCommandName() === args._[subCommandIndex]) {
+        this.runCommand(subCommand, args, runCmdOpt);
         return;
       }
     }
 
     info.error(
       `Invalid sub-command \`${
-        subArgs._[0]
+        args._[subCommandIndex]
       }\` of \`${command.getCommandName()}\`\n`,
     );
 

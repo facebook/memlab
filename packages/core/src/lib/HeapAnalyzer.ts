@@ -504,7 +504,21 @@ class MemoryAnalyst {
     leakedNodeIds: HeapNodeIdSet,
     snapshot: IHeapSnapshot,
   ) {
+    // call init leak filter hook if exists
+    if (config.externalLeakFilter?.beforeLeakFilter) {
+      config.externalLeakFilter.beforeLeakFilter(snapshot, leakedNodeIds);
+    }
+
+    // start filtering memory leaks
     utils.filterNodesInPlace(leakedNodeIds, snapshot, node => {
+      // use external leak filter if exists
+      if (config.externalLeakFilter) {
+        return config.externalLeakFilter.leakFilter(
+          node,
+          snapshot,
+          leakedNodeIds,
+        );
+      }
       if (this.isTrivialNode(node)) {
         return false;
       }

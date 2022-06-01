@@ -81,10 +81,10 @@ export default class E2EInteractionManager {
     if (config.verbose) {
       info.lowLevel(`loading: ${url}`);
     }
-    info.overwrite('Connecting to Sandbox, which could be slow after a rebase');
+    info.overwrite('Connecting to web server...');
     await page.goto(url, {
       timeout: config.initialPageLoadTimeout,
-      waitUntil: 'domcontentloaded',
+      waitUntil: 'load',
     });
     // wait extra 10s in continuous test env for the initial page load
     if (config.isContinuousTest) {
@@ -267,7 +267,7 @@ export default class E2EInteractionManager {
     // collect metrics
     await this.collectMetrics(tabInfo);
 
-    // take screen shot
+    // take screenshot
     const screenShotIdx = tabInfo.screenshot ? tabInfo.idx : 0;
     if (config.runningMode.shouldTakeScreenShot(tabInfo) && screenShotIdx > 0) {
       await interactUtils.screenshot(this.page, screenShotIdx);

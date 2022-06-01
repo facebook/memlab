@@ -23,10 +23,10 @@ export default class ScenarioFileOption extends BaseOption {
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
     if (args.scenario) {
-      config.scenarioFile = args.scenario as string;
+      const scenarioFile = args.scenario as string;
       // load scenario file and get target app name
-      const scenario = utils.loadScenario(config.scenarioFile);
-      config.targetApp = E2EUtils.getScenarioAppName(scenario);
+      config.scenario = utils.loadScenario(scenarioFile);
+      config.targetApp = E2EUtils.getScenarioAppName(config.scenario);
     }
   }
 }

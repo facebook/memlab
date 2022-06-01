@@ -16,11 +16,13 @@ import type {LaunchOptions, Permission} from 'puppeteer';
 import type {
   AnyFunction,
   AnyValue,
+  IClusterStrategy,
   IRunningMode,
   IScenario,
   Nullable,
   Optional,
   QuickExperiment,
+  ILeakFilter,
 } from './Types';
 import {setInternalValue} from './InternalValueSetter';
 
@@ -205,12 +207,13 @@ export class MemLabConfig {
   oversizeObjectAsLeak: boolean;
   oversizeThreshold: number;
   _isFullRun: boolean;
-  scenarioFile: Nullable<string>;
-  scenario?: Nullable<IScenario>;
+  _scenario: Optional<IScenario>;
+  externalLeakFilter?: Optional<ILeakFilter>;
   monoRepoDir: string;
   muteConsole: boolean;
   logUnclassifiedClusters: boolean;
   errorHandling: ErrorHandling;
+  clusterStrategy: Optional<IClusterStrategy>;
 
   constructor(options: ConfigOption = {}) {
     // init properties, they can be configured manually
@@ -235,7 +238,6 @@ export class MemLabConfig {
     // by default we want to use Xvfb if the Env supports it
     this.useXVFB = true;
     this.specifiedEngine = false;
-    this.scenarioFile = null;
 
     // set puppeteer configuration
     this.puppeteerConfig = {
@@ -498,6 +500,29 @@ export class MemLabConfig {
   setTarget(app: string, tab: string): void {
     this.targetApp = app;
     this.targetTab = tab;
+  }
+
+  set scenario(scenario: Optional<IScenario>) {
+    this._scenario = scenario;
+    if (scenario == null) {
+      return;
+    }
+
+    // set leak filter
+    const {leakFilter, beforeLeakFilter} = scenario;
+    if (typeof leakFilter !== 'function') {
+      return;
+    }
+    this.externalLeakFilter = {leakFilter};
+
+    // set leak filter init callback
+    if (typeof beforeLeakFilter === 'function') {
+      this.externalLeakFilter.beforeLeakFilter = beforeLeakFilter;
+    }
+  }
+
+  get scenario(): Optional<IScenario> {
+    return this._scenario;
   }
 
   set isFullRun(isFull: boolean) {

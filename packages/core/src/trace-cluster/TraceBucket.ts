@@ -4,26 +4,27 @@
  * @format
  */
 
-'use strict';
 import type {
-  EdgeIterationCallback,
-  IHeapEdge,
-  IHeapLocation,
   IHeapNode,
   IHeapSnapshot,
+  LeakTrace,
   LeakTracePathItem,
-  MemLabTraceElementTypeWithID,
-  Nullable,
+  TraceDiff,
+  Optional,
   TraceCluster,
   TraceClusterDiff,
+  IClusterStrategy,
 } from '../lib/Types';
+import type {NormalizedTraceElement} from './TraceElement';
 
+import fs from 'fs';
 import config from '../lib/Config';
 import info from '../lib/Console';
 import serializer from '../lib/Serializer';
 import utils from '../lib/Utils';
-import ClusterUtils from './ClusterUtils';
-import fs from 'fs';
+import {EdgeRecord, NodeRecord} from './TraceElement';
+import TraceSimilarityStrategy from './strategies/TraceSimilarityStrategy';
+import TraceAsClusterStrategy from './strategies/TraceAsClusterStrategy';
 
 type AggregateNodeCb = (
   ids: Set<number>,
@@ -33,146 +34,10 @@ type AggregateNodeCb = (
 ) => number;
 
 // sync up with html/intern/js/webspeed/memlab/lib/LeakCluster.js
-export class NodeRecord implements IHeapNode {
-  kind: string;
-  name: string;
-  type: string;
-  id: number;
-  is_detached: boolean;
-  detachState: number;
-  attributes: number;
-  self_size: number;
-  edge_count: number;
-  trace_node_id: number;
-  nodeIndex: number;
-  retainedSize: number;
-  highlight?: boolean;
-
-  markAsDetached(): void {
-    throw new Error('NodeRecord.markAsDetached not callable.');
-  }
-  set snapshot(s: IHeapSnapshot) {
-    throw new Error('NodeRecord.snapshot cannot be assigned.');
-  }
-  get snapshot(): IHeapSnapshot {
-    throw new Error('NodeRecord.snapshot cannot be read.');
-  }
-  set references(r: IHeapEdge[]) {
-    throw new Error('NodeRecord.references cannot be assigned');
-  }
-  get references(): IHeapEdge[] {
-    throw new Error('NodeRecord.references cannot be read');
-  }
-  forEachReference(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _callback: EdgeIterationCallback,
-  ): void {
-    throw new Error('NodeRecord.forEachReference is not implemented');
-  }
-  set referrers(r: IHeapEdge[]) {
-    throw new Error('NodeRecord.referrers cannot be assigned');
-  }
-  get referrers(): IHeapEdge[] {
-    throw new Error('NodeRecord.referrers cannot be read');
-  }
-  forEachReferrer(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _callback: EdgeIterationCallback,
-  ): void {
-    throw new Error('NodeRecord.forEachReferrer is not implemented');
-  }
-  findReference(): Nullable<IHeapEdge> {
-    throw new Error('NodeRecord.findReference is not implemented');
-  }
-  findReferrer(): Nullable<IHeapEdge> {
-    throw new Error('NodeRecord.findReferrer is not implemented');
-  }
-  set pathEdge(r: IHeapEdge) {
-    throw new Error('NodeRecord.pathEdge cannot be assigned');
-  }
-  get pathEdge(): IHeapEdge {
-    throw new Error('NodeRecord.pathEdge cannot be read');
-  }
-  set dominatorNode(r: IHeapNode) {
-    throw new Error('NodeRecord.pathEdge cannot be assigned');
-  }
-  get dominatorNode(): IHeapNode {
-    throw new Error('NodeRecord.pathEdge cannot be read');
-  }
-  set location(r: IHeapLocation) {
-    throw new Error('NodeRecord.location cannot be assigned');
-  }
-  get location(): IHeapLocation {
-    throw new Error('NodeRecord.location cannot be read');
-  }
-
-  constructor(node: IHeapNode) {
-    this.kind = 'node';
-    this.name = this.extraceNodeName(node);
-    this.type = node.type;
-    this.id = node.id;
-    this.is_detached = node.is_detached;
-    this.detachState = node.detachState;
-    this.attributes = node.attributes;
-    this.self_size = node.self_size;
-    this.edge_count = node.edge_count;
-    this.trace_node_id = node.trace_node_id;
-    this.nodeIndex = node.nodeIndex;
-    this.retainedSize = node.retainedSize;
-    this.highlight = node.highlight;
-  }
-
-  private extraceNodeName(node: IHeapNode): string {
-    // deserialized node may not have snapshot info
-    if (!node.snapshot || !utils.isFiberNode(node)) {
-      return node.name;
-    }
-    return utils.extractFiberNodeInfo(node);
-  }
-}
-
-export class EdgeRecord implements IHeapEdge {
-  kind: string;
-  name_or_index: string | number;
-  type: string;
-  edgeIndex: number;
-  is_index: boolean;
-  to_node: number;
-
-  constructor(edge: IHeapEdge) {
-    this.kind = 'edge';
-    this.name_or_index = edge.name_or_index;
-    this.type = edge.type;
-    this.edgeIndex = edge.edgeIndex;
-    this.is_index = edge.is_index;
-    this.to_node = edge.to_node;
-  }
-
-  set snapshot(s: IHeapSnapshot) {
-    throw new Error('EdgeRecord.snapshot cannot be assigned.');
-  }
-  get snapshot(): IHeapSnapshot {
-    throw new Error('EdgeRecord.snapshot cannot be read.');
-  }
-  set toNode(s: IHeapNode) {
-    throw new Error('EdgeRecord.toNode cannot be assigned.');
-  }
-  get toNode(): IHeapNode {
-    throw new Error('EdgeRecord.toNode cannot be read.');
-  }
-  set fromNode(s: IHeapNode) {
-    throw new Error('EdgeRecord.fromNode cannot be assigned.');
-  }
-  get fromNode(): IHeapNode {
-    throw new Error('EdgeRecord.fromNode cannot be read.');
-  }
-}
-
-export type NormalizedTraceElement = NodeRecord | EdgeRecord;
 
 export default class NormalizedTrace {
-  trace: NormalizedTraceElement[];
-  traceSummary: string;
+  private trace: NormalizedTraceElement[];
+  private traceSummary: string;
   constructor(
     p: LeakTracePathItem | null = null,
     snapshot: IHeapSnapshot | null = null,
@@ -181,28 +46,41 @@ export default class NormalizedTrace {
       this.trace = [];
       this.traceSummary = '';
     } else {
-      this.trace = this.normalizeTrace(p);
+      this.trace = NormalizedTrace.pathToTrace(p, {
+        untilFirstDetachedDOMElem: true,
+      });
       this.traceSummary = snapshot
         ? serializer.summarizePath(p, new Set(), snapshot)
         : '';
     }
   }
 
-  getSerializablePath(): NormalizedTraceElement[] {
-    return this.trace;
-  }
-
-  static getCompleteSerializablePath(
+  // convert path to leak trace
+  static pathToTrace(
     p: LeakTracePathItem,
+    options: {
+      untilFirstDetachedDOMElem?: boolean;
+    } = {},
   ): NormalizedTraceElement[] {
+    const skipRest = !!options.untilFirstDetachedDOMElem;
+    const shouldSkip = (node: IHeapNode) => {
+      // only consider the trace from GC root to the first detached element
+      // NOTE: do not use utils.isDetachedDOMNode, which relies on
+      //       the fact that p.node is a HeapNode
+      return (
+        skipRest &&
+        node.name.startsWith('Detached ') &&
+        node.name !== 'Detached InternalNode'
+      );
+    };
     const trace = [];
-    if (!p) {
-      return [];
-    }
-    let curItem: LeakTracePathItem | undefined = p;
+    let curItem: Optional<LeakTracePathItem> = p;
     while (curItem) {
       if (curItem.node) {
         trace.push(new NodeRecord(curItem.node));
+        if (shouldSkip(curItem.node)) {
+          break;
+        }
       }
       if (curItem.edge) {
         trace.push(new EdgeRecord(curItem.edge));
@@ -212,10 +90,8 @@ export default class NormalizedTrace {
     return trace;
   }
 
-  // reverse process of getCompleteSerializablePath
-  static convertToPath(
-    trace: NormalizedTraceElement[] | null,
-  ): LeakTracePathItem {
+  // convert leak trace to path
+  static traceToPath(trace: Optional<LeakTrace>): LeakTracePathItem {
     if (!trace) {
       return {};
     }
@@ -237,7 +113,7 @@ export default class NormalizedTrace {
     return this.traceSummary;
   }
 
-  static aggregateRetainedSize(
+  static addLeakedNodeToCluster(
     cluster: TraceCluster,
     path: LeakTracePathItem,
   ): void {
@@ -266,56 +142,6 @@ export default class NormalizedTrace {
     ));
   }
 
-  static diffClusters(
-    newClusters: TraceCluster[],
-    existingClusters: TraceCluster[],
-  ): TraceClusterDiff {
-    info.overwrite('Diffing clusters');
-
-    // duplicated cluster to remove
-    const staleClusters: TraceCluster[] = [];
-    // new cluster to save
-    const clustersToAdd: TraceCluster[] = [];
-    // all clusters, with duplicated cluters in the same sub-array
-    const clusters: TraceCluster[][] = [];
-
-    // consolidating existing clusters
-    if (existingClusters.length > 0) {
-      clusters.push([existingClusters[0]]);
-      outer: for (let i = 1; i < existingClusters.length; ++i) {
-        const clusterToCheck = existingClusters[i];
-        const path = clusterToCheck.path;
-        for (let j = 0; j < clusters.length; ++j) {
-          const cluster = clusters[j][0];
-          const repPath = cluster.path;
-          if (NormalizedTrace.isSimilarPaths(repPath, path)) {
-            staleClusters.push(clusterToCheck);
-            clusters[j].push(clusterToCheck);
-            continue outer;
-          }
-        }
-        clusters.push([clusterToCheck]);
-      }
-    }
-
-    // checking new clusters
-    outer: for (let i = 0; i < newClusters.length; ++i) {
-      const clusterToCheck = newClusters[i];
-      const path = clusterToCheck.path;
-      for (let j = 0; j < clusters.length; ++j) {
-        const cluster = clusters[j][0];
-        const repPath = cluster.path;
-        if (NormalizedTrace.isSimilarPaths(repPath, path)) {
-          clusters[j].push(clusterToCheck);
-          continue outer;
-        }
-      }
-      clustersToAdd.push(clusterToCheck);
-    }
-
-    return {staleClusters, clustersToAdd, allClusters: clusters};
-  }
-
   static samplePaths(paths: LeakTracePathItem[]): LeakTracePathItem[] {
     const maxCount = 5000;
     const sampleRatio = Math.min(1, maxCount / paths.length);
@@ -335,29 +161,73 @@ export default class NormalizedTrace {
     return ret;
   }
 
-  static clusterLeakTraces(
-    leakTraces: MemLabTraceElementTypeWithID[][],
-  ): Record<string, string> {
-    const buckets = [[leakTraces[0]]];
-    outer: for (let i = 1; i < leakTraces.length; i++) {
-      for (const bucket of buckets) {
-        const trace = bucket[0];
-        if (ClusterUtils.isSimilarTrace(trace, leakTraces[i])) {
-          bucket.push(leakTraces[i]);
-          continue outer;
-        }
-      }
-      buckets.push([leakTraces[i]]);
+  private static diffTraces(
+    newTraces: LeakTrace[],
+    existingTraces: LeakTrace[], // existing representative traces
+    option: {strategy?: IClusterStrategy} = {},
+  ): TraceDiff {
+    const strategy =
+      option.strategy ??
+      config.clusterStrategy ??
+      new TraceSimilarityStrategy();
+    return strategy.diffTraces(newTraces, existingTraces);
+  }
+
+  static diffClusters(
+    newClusters: TraceCluster[],
+    existingClusters: TraceCluster[],
+  ): TraceClusterDiff {
+    info.overwrite('Diffing clusters');
+
+    // build trace to cluster map
+    const traceToClusterMap = new Map();
+    const newTraces: LeakTrace[] = [];
+    const convertOption = {untilFirstDetachedDOMElem: true};
+    for (const cluster of newClusters) {
+      const trace = NormalizedTrace.pathToTrace(cluster.path, convertOption);
+      newTraces.push(trace);
+      traceToClusterMap.set(trace, cluster);
+    }
+    const existingTraces: LeakTrace[] = [];
+    for (const cluster of existingClusters) {
+      const trace = NormalizedTrace.pathToTrace(cluster.path, convertOption);
+      existingTraces.push(trace);
+      traceToClusterMap.set(trace, cluster);
     }
 
-    const lastNodeFromTrace = (trace: MemLabTraceElementTypeWithID[]) =>
-      trace[trace.length - 1];
+    // differing representative traces in existing clusters vs new traces
+    // and calculate which representative traces are stale
+    // and which new traces should form new clusters
+    const traceDiff = NormalizedTrace.diffTraces(newTraces, existingTraces);
+    const {staleClusters, clustersToAdd, allClusters} = traceDiff;
 
-    const labaledLeakTraces = buckets.reduce<Record<string, string>>(
+    // map trace to cluster
+    const traceToCluster = (trace: LeakTrace) => {
+      if (!traceToClusterMap.has(trace)) {
+        throw utils.haltOrThrow('trace to cluster mapping failed');
+      }
+      return traceToClusterMap.get(trace);
+    };
+
+    return {
+      staleClusters: staleClusters.map(traceToCluster),
+      clustersToAdd: clustersToAdd.map(traceToCluster),
+      allClusters: allClusters.map(cluster => cluster.map(traceToCluster)),
+    };
+  }
+
+  static clusterLeakTraces(leakTraces: LeakTrace[]): Record<string, string> {
+    const {allClusters} = NormalizedTrace.diffTraces(leakTraces, []);
+    const lastNodeFromTrace = (trace: LeakTrace) => trace[trace.length - 1];
+
+    const labaledLeakTraces = allClusters.reduce<Record<string, string>>(
       (acc, bucket) => {
-        const lastNodeFromFirstTheTrace = lastNodeFromTrace(bucket[0]);
-        bucket.map(lastNodeFromTrace).forEach(lastNodeInTheTrace => {
-          acc[lastNodeInTheTrace.id] = String(lastNodeFromFirstTheTrace.id);
+        const lastNodeFromFirstTrace = lastNodeFromTrace(bucket[0]);
+        bucket.map(lastNodeFromTrace).forEach(lastNodeInTrace => {
+          if (lastNodeInTrace.id == null || lastNodeFromFirstTrace.id == null) {
+            throw new Error('node id not found in last node of the leak trace');
+          }
+          acc[lastNodeInTrace.id] = String(lastNodeFromFirstTrace.id);
         });
         return acc;
       },
@@ -370,59 +240,52 @@ export default class NormalizedTrace {
     paths: LeakTracePathItem[],
     snapshot: IHeapSnapshot,
     aggregateDominatorMetrics: AggregateNodeCb,
+    option: {strategy?: IClusterStrategy} = {},
   ): TraceCluster[] {
     info.overwrite('Clustering leak traces');
-    const clusters: TraceCluster[] = [];
     if (paths.length === 0) {
       info.midLevel('No leaks found');
-      return clusters;
+      return [];
     }
-
-    // cluster the current instances
-    const newCluster: TraceCluster = {
-      path: paths[0],
-      count: 1,
-      snapshot,
-    };
-    this.aggregateRetainedSize(newCluster, paths[0]);
-    clusters.push(newCluster);
-
+    // sample paths if there are too many
     paths = this.samplePaths(paths);
 
-    outer: for (let i = 1; i < paths.length; ++i) {
-      info.overwrite(`clustering ${i}-th trace...`);
-      const path = paths[i];
-      for (const cluster of clusters) {
-        cluster.count = cluster.count ?? 0;
-        const repPath = cluster.path;
-        if (NormalizedTrace.isSimilarPaths(repPath, path)) {
-          cluster.count++;
-          this.aggregateRetainedSize(cluster, path);
-          continue outer;
-        }
-      }
-      const newCluster = {path, count: 1, snapshot};
-      this.aggregateRetainedSize(newCluster, path);
-      clusters.push(newCluster);
+    // build trace to path map
+    const traceToPathMap = new Map();
+    const traces = [];
+    for (const p of paths) {
+      const trace = NormalizedTrace.pathToTrace(p, {
+        untilFirstDetachedDOMElem: true,
+      });
+      traceToPathMap.set(trace, p);
+      traces.push(trace);
     }
-
-    for (const cluster of clusters) {
+    // cluster traces
+    const {allClusters} = NormalizedTrace.diffTraces(traces, [], option);
+    // construct TraceCluster from clustering result
+    const clusters = allClusters.map((traces: LeakTrace[]) => {
+      const cluster = {
+        path: traceToPathMap.get(traces[0]),
+        count: traces.length,
+        snapshot,
+        retainedSize: 0,
+      };
+      traces.forEach((trace: LeakTrace) => {
+        NormalizedTrace.addLeakedNodeToCluster(
+          cluster,
+          traceToPathMap.get(trace),
+        );
+      });
       this.calculateClusterRetainedSize(
         cluster,
         snapshot,
         aggregateDominatorMetrics,
       );
-    }
-
+      return cluster;
+    });
     clusters.sort((c1, c2) => (c2.retainedSize ?? 0) - (c1.retainedSize ?? 0));
 
-    // add to the persisttent storage if there is a new trace cluster
-    const status = this.updateCluster(paths, snapshot);
-    let msg = `MemLab found ${clusters.length} leak(s)`;
-    if (config.verbose) {
-      msg += `, ${status.newCluster} of which are new.`;
-    }
-    info.midLevel(msg);
+    info.midLevel(`MemLab found ${clusters.length} leak(s)`);
     return clusters;
   }
 
@@ -431,91 +294,22 @@ export default class NormalizedTrace {
     snapshot: IHeapSnapshot,
     aggregateDominatorMetrics: AggregateNodeCb,
   ): TraceCluster[] {
-    info.overwrite('Clustering leak traces (unclassified)');
-    const clusters: TraceCluster[] = [];
-    if (paths.length === 0) {
-      info.midLevel('No leaks found');
-      return clusters;
-    }
-
-    // cluster the current instances
-    const newCluster: TraceCluster = {
-      path: paths[0],
-      count: 1,
-      snapshot,
-    };
-    this.aggregateRetainedSize(newCluster, paths[0]);
-    clusters.push(newCluster);
-
-    paths = this.samplePaths(paths);
-
-    for (let i = 1; i < paths.length; ++i) {
-      info.overwrite(`clustering trace [${i + 1}/${paths.length}]`);
-      const path = paths[i];
-      const newCluster = {path, count: 1, snapshot};
-      this.aggregateRetainedSize(newCluster, path);
-      clusters.push(newCluster);
-    }
-
-    for (const cluster of clusters) {
-      this.calculateClusterRetainedSize(
-        cluster,
-        snapshot,
-        aggregateDominatorMetrics,
-      );
-    }
-    clusters.sort((c1, c2) => (c2.retainedSize ?? 0) - (c1.retainedSize ?? 0));
-    return clusters;
-  }
-
-  static updateCluster(
-    paths: LeakTracePathItem[],
-    snapshot: IHeapSnapshot,
-  ): {newCluster: number} {
-    if (paths.length === 0) {
-      return {newCluster: 0};
-    }
-    const persistCluster = NormalizedTrace.loadCluster();
-    let newCluster = 0;
-    if (persistCluster.length <= 0) {
-      persistCluster.push(new NormalizedTrace(paths[0], snapshot));
-      ++newCluster;
-    }
-    outer: for (const p of paths) {
-      const trace = new NormalizedTrace(p);
-      for (const repTrace of persistCluster) {
-        if (NormalizedTrace.isSimilarNormalizedTrace(repTrace, trace)) {
-          continue outer;
-        }
-      }
-      persistCluster.push(new NormalizedTrace(p, snapshot));
-      ++newCluster;
-    }
-    NormalizedTrace.saveCluster(persistCluster);
-    return {newCluster};
-  }
-
-  static isSimilarNormalizedTrace(
-    t1: NormalizedTrace,
-    t2: NormalizedTrace,
-  ): boolean {
-    return ClusterUtils.isSimilarTrace(t1.trace, t2.trace);
-  }
-
-  static isSimilarPaths(p1: LeakTracePathItem, p2: LeakTracePathItem): boolean {
-    const t1 = new NormalizedTrace(p1);
-    const t2 = new NormalizedTrace(p2);
-    return ClusterUtils.isSimilarTrace(t1.trace, t2.trace);
+    return this.clusterPaths(paths, snapshot, aggregateDominatorMetrics, {
+      strategy: new TraceAsClusterStrategy(),
+    });
   }
 
   static loadCluster(): NormalizedTrace[] {
+    let ret = [] as NormalizedTrace[];
     const file = config.traceClusterFile;
-    let ret = [];
+    if (!fs.existsSync(file)) {
+      return ret;
+    }
     try {
       const content = fs.readFileSync(file, 'UTF-8');
       ret = JSON.parse(content);
-    } catch {
-      // nothing
+    } catch (ex) {
+      throw utils.haltOrThrow(utils.getError(ex));
     }
     return ret;
   }
@@ -524,29 +318,5 @@ export default class NormalizedTrace {
     const file = config.traceClusterFile;
     const content = JSON.stringify(clusters, null, 2);
     fs.writeFileSync(file, content, 'UTF-8');
-  }
-
-  private normalizeTrace(p: LeakTracePathItem): NormalizedTraceElement[] {
-    const trace = [];
-    let curItem: LeakTracePathItem | undefined = p;
-    while (curItem) {
-      if (curItem.node) {
-        trace.push(new NodeRecord(curItem.node));
-        // only consider the trace from GC root to the first detached element
-        // NOTE: do not use utils.isDetachedDOMNode, which relies on
-        //       the fact that p.node is a HeapNode
-        if (
-          curItem.node.name.startsWith('Detached ') &&
-          curItem.node.name !== 'Detached InternalNode'
-        ) {
-          break;
-        }
-      }
-      if (curItem.edge) {
-        trace.push(new EdgeRecord(curItem.edge));
-      }
-      curItem = curItem.next;
-    }
-    return trace;
   }
 }

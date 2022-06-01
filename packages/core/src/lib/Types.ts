@@ -150,6 +150,22 @@ export type QuickExperiment = {
   group: string;
 };
 
+export interface ILeakFilter {
+  beforeLeakFilter?: InitLeakFilterCallback;
+  leakFilter: LeakFilterCallback;
+}
+
+export type InitLeakFilterCallback = (
+  snapshot: IHeapSnapshot,
+  leakedNodeIds: HeapNodeIdSet,
+) => void;
+
+export type LeakFilterCallback = (
+  node: IHeapNode,
+  snapshot: IHeapSnapshot,
+  leakedNodeIds: HeapNodeIdSet,
+) => boolean;
+
 export type InteractionsCallback = (
   page: Page,
   args?: OperationArgs,
@@ -164,6 +180,8 @@ export interface IScenario {
   back?: InteractionsCallback;
   repeat?: () => number;
   isPageLoaded?: CheckPageLoadCallback;
+  beforeLeakFilter?: InitLeakFilterCallback;
+  leakFilter?: LeakFilterCallback;
 }
 
 export type LeakTracePathItem = {
@@ -188,6 +206,22 @@ export type TraceClusterDiff = {
   staleClusters: TraceCluster[];
   clustersToAdd: TraceCluster[];
   allClusters: TraceCluster[][];
+};
+
+export type LeakTraceElement = {
+  kind: string; // element kind
+  id?: number; // node id if exists
+  name?: string;
+  name_or_index?: string | number;
+  type: string; // object or reference type from JS engine
+};
+
+export type LeakTrace = LeakTraceElement[];
+
+export type TraceDiff = {
+  staleClusters: LeakTrace[];
+  clustersToAdd: LeakTrace[];
+  allClusters: LeakTrace[][];
 };
 
 export type TraceClusterMetaInfo = {
@@ -454,15 +488,13 @@ export interface IMemoryAnalystHeapNodeReferrenceStat {
   edge: IHeapEdge;
 }
 
-export type MemLabTraceElementType = {
-  kind: string; // element kind
-  name?: string;
-  name_or_index?: string | number;
-  type: string; // object or reference type from JS engine
-};
-
-export type MemLabTraceElementTypeWithID = MemLabTraceElementType & {
-  id: number;
-};
+export interface IClusterStrategy {
+  diffTraces: (
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    newLeakTraces: LeakTrace[],
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    existingLeakTraces: LeakTrace[],
+  ) => TraceDiff;
+}
 
 export type ErrorWithMessage = Pick<Error, 'message'>;
