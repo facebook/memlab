@@ -31,7 +31,6 @@ export default class MemLabRunCommand extends BaseCommand {
   getPrerequisites(): BaseCommand[] {
     return [
       new InitDirectoryCommand(),
-      new WarmupAppCommand(),
       new TakeSnapshotCommand(),
       new CheckLeakCommand(),
     ];

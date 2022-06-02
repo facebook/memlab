@@ -36,11 +36,7 @@ export default class RunMeasureCommand extends BaseCommand {
   }
 
   getPrerequisites(): BaseCommand[] {
-    return [
-      new CleanRunDataCommand(),
-      new InitDirectoryCommand(),
-      new WarmupAppCommand(),
-    ];
+    return [new CleanRunDataCommand(), new InitDirectoryCommand()];
   }
 
   getOptions(): BaseOption[] {
