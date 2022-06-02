@@ -12,6 +12,9 @@
   "files": [
     "dist"
   ],
+  "bin": {
+    "memlab": "bin/memlab"
+  },
   "publishConfig": {
     "access": "public"
   },

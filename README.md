@@ -2,23 +2,23 @@
 
 A memory leak detector for V8 and Hermes
 
-### Build
-
-```
-npm install
-npm run build
-```
-
 ### CLI Usage
 
-Find memory leaks in Google Maps:
+Install the CLI
+
 ```
-./memlab run --scenario packages/e2e/src/plugins/scenarios/test-google-maps.js
+npm install -g @memlab/cli
+```
+
+Find memory leaks in Google Maps:
+
+```
+memlab run --scenario packages/e2e/src/plugins/scenarios/test-google-maps.js
 ```
 
 Commands:
 ```
-$ ./memlab help
+$ memlab help
 
   memlab: memory leak detector for front-end JS
 
@@ -60,3 +60,23 @@ $ ./memlab help
 ```
 npm run test
 ```
+
+### Development
+
+First build the project as follows
+
+```
+npm install
+npm run build
+```
+
+Then keep this helper script running to ensure that local changes are picked up 
+and compiled automatically during development
+
+```
+npm run dev
+```
+
+NOTE: To run the memlab cli locally, make sure to prefix the memlab command with
+npx from within the memlab repo e.g. `npx memlab`
+
