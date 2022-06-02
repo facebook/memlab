@@ -60,3 +60,6 @@ $ ./memlab help
 ```
 npm run test
 ```
+
+## License
+memlab is MIT licensed, as found in the [LICENSE](LICENSE) file.
