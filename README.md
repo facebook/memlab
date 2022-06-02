@@ -80,3 +80,5 @@ npm run dev
 NOTE: To run the memlab cli locally, make sure to prefix the memlab command with
 npx from within the memlab repo e.g. `npx memlab`
 
+## License
+memlab is MIT licensed, as found in the [LICENSE](LICENSE) file.
