@@ -16,7 +16,7 @@
     "dist"
   ],
   "scripts": {
-    "tsc": "tsc",
+    "build": "tsc",
     "test": "jest .",
     "clean": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
   },
