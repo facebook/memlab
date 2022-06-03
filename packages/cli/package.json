@@ -12,11 +12,14 @@
   "files": [
     "dist"
   ],
+  "bin": {
+    "memlab": "bin/memlab"
+  },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "tsc": "tsc",
+    "build": "tsc",
     "clean": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
   },
   "dependencies": {

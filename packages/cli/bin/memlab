@@ -1,0 +1,2 @@
+#!/usr/bin/env -S node --expose-gc --max-old-space-size=4096
+require("../dist/runner.js");

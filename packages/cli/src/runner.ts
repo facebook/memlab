@@ -13,6 +13,4 @@ async function run(): Promise<void> {
 }
 
 // called from command line
-if (require.main === module) {
-  utils.callAsync(run);
-}
+utils.callAsync(run);

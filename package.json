@@ -22,17 +22,22 @@
     "@types/node": "^12.16.3",
     "@types/puppeteer": "^5.4.4",
     "jest": "^27.5.1",
-    "lerna": "^4.0.0",
     "ts-jest": "^27.1.4",
-    "typescript": "^4.6.3",
-    "typescript-strict-plugin": "^2.0.0-beta.2"
+    "typescript": "^4.6.3"
   },
   "scripts": {
-    "build": "lerna run clean > /dev/null && lerna run tsc && rm -rf dist && tsc && lerna link",
-    "clean": "lerna run clean && rm -rf dist",
-    "link": "lerna link",
+    "dev": "tsc -b -w",
+    "build": "npm run clean --workspaces > /dev/null && npm run build --workspaces",
+    "clean": "npm run clean --workspaces",
     "memlab": "node packages/cli/dist/runner.js",
     "rm-fb-internal": "find . -type d -name fb-internal -prune -exec rm -rf {} \\;",
-    "test": "lerna run test"
-  }
+    "test": "npm run test --workspaces --if-present"
+  },
+  "workspaces": [
+    "./packages/core",
+    "./packages/e2e",
+    "./packages/heap-analysis",
+    "./packages/api",
+    "./packages/cli"
+  ]
 }
