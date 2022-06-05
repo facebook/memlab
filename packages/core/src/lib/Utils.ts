@@ -10,6 +10,7 @@ import type {HaltOrThrowOptions} from './Types';
 
 import fs from 'fs';
 import path from 'path';
+import process from 'process';
 import config, {ErrorHandling} from './Config';
 import info from './Console';
 import constant from './Constant';
@@ -1871,6 +1872,11 @@ function isNodeDominatedByDeletionsArray(node: IHeapNode): boolean {
   });
 }
 
+let uindex = 1;
+function getUniqueID(): string {
+  return `${process.pid}-${Date.now()}-${uindex++}`;
+}
+
 export default {
   applyToNodes,
   callAsync,
@@ -1910,6 +1916,7 @@ export default {
   getSnapshotFilePathWithTabType,
   getStringNodeValue,
   getToNodeByEdge,
+  getUniqueID,
   getWeakMapEdgeKeyId,
   haltOrThrow,
   hasHostRoot,

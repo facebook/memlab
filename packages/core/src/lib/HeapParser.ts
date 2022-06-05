@@ -541,6 +541,47 @@ class HeapSnapshot implements IHeapSnapshot {
     };
   }
 
+  hasObjectWithClassName(
+    className: string,
+  ): boolean {
+    let detected = false;
+    this.nodes.forEach((node: IHeapNode) => {
+      if (node.name === className && node.type === 'object') {
+        detected = true;
+        return false;
+      }
+    });
+    return detected;
+  }
+
+  hasObjectWithPropertyName(nameOrIndex: string | number): boolean {
+    let detected = false;
+    this.edges.forEach((edge: IHeapEdge) => {
+      if (edge.name_or_index === nameOrIndex && edge.type === 'property') {
+        detected = true;
+        return false;
+      }
+    });
+    return detected;
+  }
+
+  hasObjectWithTag(tag: string): boolean {
+    let detected = false;
+    this.edges.forEach((edge: IHeapEdge) => {
+      if (edge.name_or_index !== '__memlab_tag' || edge.type !== 'property') {
+        return;  
+      }
+      const toNode = edge.toNode;
+      // TODO: consider sliced string and concatenated string
+      if (toNode.type !== 'string' || toNode.name !== tag) {
+        return;
+      }
+      detected = true;
+      return false;
+    });
+    return detected;
+  }
+
   getNodeById(id: number): Nullable<HeapNode> {
     if (!(id in this._nodeId2NodeIdx)) {
       return null;
