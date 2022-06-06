@@ -7,13 +7,31 @@
  * @format
  */
 
-import type { IHeapSnapshot } from './Types';
+import type { AnyValue, IHeapSnapshot } from './Types';
 
 import fs from 'fs-extra';
 import path from 'path';
 import v8 from 'v8';
 import fileManager from './FileManager';
 import utils from './Utils';
+
+type AnyObject = Record<AnyValue, AnyValue>;
+
+class MemLabTaggedStore {
+  public taggedObjects: Record<string, WeakSet<AnyObject>>;
+  constructor() {
+    this.taggedObjects = Object.create(null);
+  }
+}
+const store = new MemLabTaggedStore();
+
+export function tagObject(o: AnyObject, tag: string): AnyObject {
+  if (!store.taggedObjects[tag]) {
+    store.taggedObjects[tag] = new WeakSet();
+  }
+  store.taggedObjects[tag].add(o);
+  return o;
+}
 
 export function dumpNodeHeapSnapshot(): string {
   const file = path.join(fileManager.generateTmpHeapDir(), `nodejs.heapsnapshot`);

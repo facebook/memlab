@@ -566,20 +566,52 @@ class HeapSnapshot implements IHeapSnapshot {
   }
 
   hasObjectWithTag(tag: string): boolean {
-    let detected = false;
-    this.edges.forEach((edge: IHeapEdge) => {
-      if (edge.name_or_index !== '__memlab_tag' || edge.type !== 'property') {
-        return;  
+    // get tagStore
+    let tagStore: Nullable<IHeapNode> = null;
+    this.nodes.forEach((node: IHeapNode) => {
+      if (node.name === 'MemLabTaggedStore' && node.type === 'object') {
+        tagStore = node;
+        return false;
       }
-      const toNode = edge.toNode;
-      // TODO: consider sliced string and concatenated string
-      if (toNode.type !== 'string' || toNode.name !== tag) {
-        return;
-      }
-      detected = true;
-      return false;
     });
-    return detected;
+
+    if (tagStore == null) {
+      return false;
+    }
+    const store = tagStore as IHeapNode;
+
+    // get tagStore.taggedObjects
+    let ref = store.findReference((edge: IHeapEdge) => {
+      return edge.name_or_index === 'taggedObjects' && edge.type === 'property';
+    });
+    if (ref == null) {
+      return false;
+    }
+
+    // get taggedObjects[tag]
+    const taggedObjects = ref.toNode;
+    ref = taggedObjects.findReference((edge: IHeapEdge) => {
+      return edge.name_or_index === tag && edge.type === 'property';
+    });
+    if (ref == null) {
+      return false;
+    }
+
+    // get weakSet.table
+    const weakSet = ref.toNode;
+    ref = weakSet.findReference((edge: IHeapEdge) => {
+      return edge.name_or_index === 'table';
+    });
+    if (ref == null) {
+      return false;
+    }
+
+    // check if the table has any weak reference to any object
+    const table = ref.toNode;
+    ref = table.findReference((edge: IHeapEdge) => {
+      return edge.type === 'weak' && edge.toNode.name !== 'system / Oddball';
+    });
+    return ref != null;
   }
 
   getNodeById(id: number): Nullable<HeapNode> {

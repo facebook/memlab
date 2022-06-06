@@ -5,7 +5,7 @@
  */
 import type { AnyValue, Nullable } from '../../lib/Types';
 import config from '../../lib/Config';
-import { getCurrentNodeHeap } from '../../lib/NodeHeap';
+import { getCurrentNodeHeap, tagObject } from '../../lib/NodeHeap';
 
 beforeEach(() => {
   config.isTest = true;
@@ -98,8 +98,8 @@ test(
   async () => {
     const o1: AnyValue = {};
     let o2: AnyValue = {};
-    o1.__memlab_tag = 'memlab-mark-1';
-    o2.__memlab_tag = 'memlab-mark-2';
+    tagObject(o1, 'memlab-mark-1');
+    tagObject(o2, 'memlab-mark-2');
     o2 = null;
     const heap = await getCurrentNodeHeap();
     expect(heap.hasObjectWithTag('memlab-mark-1')).toBe(true);
