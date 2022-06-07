@@ -9,22 +9,22 @@
 
 // initial page load's url
 function url() {
-  return 'https://www.youtube.com';
+  return 'https://databricks.com/';
 }
 
 // action where we want to detect memory leaks
 async function action(page) {
-  await page.click('[id="video-title-link"]');
+  await page.hover('a[href="/product/data-lakehouse"]');
 }
 
 // action where we want to go back to the step before
 async function back(page) {
-  await page.click('[id="logo-icon"]');
+  await page.hover('a[href="/solutions"]');
 }
 
 // specify the number of repeat for the action
 function repeat() {
-  return 5;
+  return 15;
 }
 
 module.exports = {action, back, repeat, url};
