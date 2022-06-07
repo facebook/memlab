@@ -1,0 +1,17 @@
+**.js.map
+**.ts.map
+**/tsconfig.tsbuildinfo
+.DS_Store
+.yarnrc
+/chrome
+/data
+/dist/
+/dist/packages
+/tmp
+lerna-debug.log
+node_modules
+package-lock.json
+package-oss.json
+packages/**/dist
+yarn-error.log
+yarn.lock

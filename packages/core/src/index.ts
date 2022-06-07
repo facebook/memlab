@@ -21,3 +21,4 @@ export {default as ProcessManager} from './lib/ProcessManager';
 export {default as leakClusterLogger} from './logger/LeakClusterLogger';
 export {default as NormalizedTrace} from './trace-cluster/TraceBucket';
 export {default as EvaluationMetric} from './trace-cluster/EvalutationMetric';
+export * from './lib/NodeHeap';

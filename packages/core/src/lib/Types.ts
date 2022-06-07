@@ -335,6 +335,10 @@ export interface IHeapSnapshot {
   edges: IHeapEdges;
   getNodeById(id: number): Nullable<IHeapNode>;
   clearShortestPathInfo(): void;
+  // heap query APIs
+  hasObjectWithClassName(className: string): boolean;
+  hasObjectWithPropertyName(nameOrIndex: string | number): boolean;
+  hasObjectWithTag(tag: string): boolean;
 }
 
 export interface IHeapLocation {

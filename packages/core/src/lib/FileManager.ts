@@ -44,6 +44,12 @@ export class FileManager {
     return path.join(this.getTmpDir(), 'memlab');
   }
 
+  public generateTmpHeapDir(): string {
+    const dirPath = path.join(this.getTmpDir(), utils.getUniqueID());
+    fs.mkdirSync(dirPath);
+    return dirPath;
+  }
+
   private static transcientInstanceIdx = 0;
 
   public getWorkDir(options: FileOption = {}): string {
