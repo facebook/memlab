@@ -194,7 +194,7 @@ class HeapNode implements IHeapNode {
     return found;
   }
 
-  findReferrer(predicate: Predicator<IHeapEdge>): Nullable<IHeapEdge> {
+  findAnyReferrer(predicate: Predicator<IHeapEdge>): Nullable<IHeapEdge> {
     let found: Nullable<IHeapEdge> = null;
     this.forEachReferrer((edge: IHeapEdge) => {
       if (predicate(edge)) {
@@ -203,6 +203,17 @@ class HeapNode implements IHeapNode {
       }
     });
     return found;
+  }
+
+  findReferrers(predicate: Predicator<IHeapEdge>): IHeapEdge[] {
+    const ret: IHeapEdge[] = [];
+    this.forEachReferrer((edge: IHeapEdge) => {
+      if (predicate(edge)) {
+        ret.push(edge);
+      }
+      return null;
+    });
+    return ret;
   }
 
   get referrers(): HeapEdge[] {
@@ -314,6 +325,97 @@ class HeapNode implements IHeapNode {
       return null;
     }
     return new HeapLocation(heapSnapshot, locationIdx);
+  }
+
+  // search reference by edge name and edge type
+  getReference(
+    edgeName: string | number,
+    edgeType?: string,
+  ): Nullable<IHeapEdge> {
+    let ret: Nullable<IHeapEdge> = null;
+    this.forEachReference((edge: IHeapEdge) => {
+      if (edge.name_or_index !== edgeName) {
+        return;
+      }
+      if (edgeType != null && edge.type !== edgeType) {
+        return;
+      }
+      ret = edge;
+      return {stop: true};
+    });
+    return ret;
+  }
+
+  // search referenced node by edge name and edge type
+  getReferenceNode(
+    edgeName: string | number,
+    edgeType?: string,
+  ): Nullable<IHeapNode> {
+    const edge = this.getReference(edgeName, edgeType);
+    return edge && edge.toNode;
+  }
+
+  // search any referrer edge by edge name and edge type
+  getAnyReferrer(
+    edgeName: string | number,
+    edgeType?: string,
+  ): Nullable<IHeapEdge> {
+    let ret: Nullable<IHeapEdge> = null;
+    this.forEachReferrer((edge: IHeapEdge) => {
+      if (edge.name_or_index !== edgeName) {
+        return;
+      }
+      if (edgeType != null && edge.type !== edgeType) {
+        return;
+      }
+      ret = edge;
+      return {stop: true};
+    });
+    return ret;
+  }
+
+  // search all referrer edges by edge name and edge type
+  getReferrers(edgeName: string | number, edgeType?: string): IHeapEdge[] {
+    return this.findReferrers((edge: IHeapEdge) => {
+      if (edge.name_or_index !== edgeName) {
+        return false;
+      }
+      if (edgeType != null && edge.type !== edgeType) {
+        return false;
+      }
+      return true;
+    });
+  }
+
+  // search any referrer node by edge name and edge type
+  getAnyReferrerNode(
+    edgeName: string | number,
+    edgeType?: string,
+  ): Nullable<IHeapNode> {
+    const edge = this.getAnyReferrer(edgeName, edgeType);
+    return edge && edge.fromNode;
+  }
+
+  // search all referrer nodes by edge name and edge type
+  getReferrerNodes(edgeName: string | number, edgeType?: string): IHeapNode[] {
+    const ret: IHeapNode[] = [];
+    const idSet = new Set();
+    this.forEachReferrer((edge: IHeapEdge) => {
+      if (edge.name_or_index !== edgeName) {
+        return;
+      }
+      if (edgeType != null && edge.type !== edgeType) {
+        return;
+      }
+      const fromNode = edge.fromNode;
+      if (idSet.has(fromNode.id)) {
+        return;
+      }
+      idSet.add(fromNode.id);
+      ret.push(fromNode);
+      return null;
+    });
+    return ret;
   }
 }
 

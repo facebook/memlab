@@ -384,11 +384,33 @@ export interface IHeapNode extends IHeapNodeBasic {
   edge_count: number;
   trace_node_id: number;
   references: IHeapEdge[];
-  forEachReference(callback: EdgeIterationCallback): void;
   referrers: IHeapEdge[];
+  forEachReference(callback: EdgeIterationCallback): void;
   forEachReferrer(callback: EdgeIterationCallback): void;
   findReference: (predicate: Predicator<IHeapEdge>) => Nullable<IHeapEdge>;
-  findReferrer: (predicate: Predicator<IHeapEdge>) => Nullable<IHeapEdge>;
+  findAnyReferrer: (predicate: Predicator<IHeapEdge>) => Nullable<IHeapEdge>;
+  findReferrers: (predicate: Predicator<IHeapEdge>) => IHeapEdge[];
+  getReference: (
+    edgeName: string | number,
+    edgeType?: string,
+  ) => Nullable<IHeapEdge>;
+  getReferenceNode: (
+    edgeName: string | number,
+    edgeType?: string,
+  ) => Nullable<IHeapNode>;
+  getAnyReferrer: (
+    edgeName: string | number,
+    edgeType?: string,
+  ) => Nullable<IHeapEdge>;
+  getAnyReferrerNode: (
+    edgeName: string | number,
+    edgeType?: string,
+  ) => Nullable<IHeapNode>;
+  getReferrers: (edgeName: string | number, edgeType?: string) => IHeapEdge[];
+  getReferrerNodes: (
+    edgeName: string | number,
+    edgeType?: string,
+  ) => IHeapNode[];
   pathEdge: IHeapEdge | null;
   nodeIndex: number;
   retainedSize: number;

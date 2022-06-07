@@ -66,8 +66,11 @@ export class NodeRecord implements IHeapNode {
   findReference(): Nullable<IHeapEdge> {
     throw new Error('NodeRecord.findReference is not implemented');
   }
-  findReferrer(): Nullable<IHeapEdge> {
-    throw new Error('NodeRecord.findReferrer is not implemented');
+  findAnyReferrer(): Nullable<IHeapEdge> {
+    throw new Error('NodeRecord.findAnyReferrer is not implemented');
+  }
+  findReferrers(): IHeapEdge[] {
+    throw new Error('NodeRecord.findReferrers is not implemented');
   }
   set pathEdge(r: IHeapEdge) {
     throw new Error('NodeRecord.pathEdge cannot be assigned');
@@ -86,6 +89,60 @@ export class NodeRecord implements IHeapNode {
   }
   get location(): IHeapLocation {
     throw new Error('NodeRecord.location cannot be read');
+  }
+
+  getReference(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _edgeName: string | number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _edgeType?: string,
+  ): Nullable<IHeapEdge> {
+    throw new Error('NodeRecord.getReference is not implemented');
+  }
+
+  getReferenceNode(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _edgeName: string | number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _edgeType?: string,
+  ): Nullable<IHeapNode> {
+    throw new Error('NodeRecord.getReferenceNode is not implemented');
+  }
+
+  getAnyReferrer(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _edgeName: string | number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _edgeType?: string,
+  ): Nullable<IHeapEdge> {
+    throw new Error('NodeRecord.getReferrer is not implemented');
+  }
+
+  getAnyReferrerNode(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _edgeName: string | number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _edgeType?: string,
+  ): Nullable<IHeapNode> {
+    throw new Error('NodeRecord.getReferrerNode is not implemented');
+  }
+
+  getReferrers(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _edgeName: string | number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _edgeType?: string,
+  ): IHeapEdge[] {
+    throw new Error('NodeRecord.getReferrers is not implemented');
+  }
+
+  getReferrerNodes(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _edgeName: string | number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _edgeType?: string,
+  ): IHeapNode[] {
+    throw new Error('NodeRecord.getReferrerNodes is not implemented');
   }
 
   constructor(node: IHeapNode) {

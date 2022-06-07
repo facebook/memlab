@@ -920,7 +920,7 @@ function extractHTMLElementNodeInfo(node: IHeapNode): string {
 }
 
 function hasOnlyWeakReferrers(node: IHeapNode): boolean {
-  const referrer = node.findReferrer(
+  const referrer = node.findAnyReferrer(
     (edge: IHeapEdge) => edge.type !== 'weak' && edge.type !== 'shortcut',
   );
   return !!referrer;
