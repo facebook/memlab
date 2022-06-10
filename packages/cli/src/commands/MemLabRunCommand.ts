@@ -1,8 +1,13 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * @emails oncall+ws_labs
  * @format
  */
+
 import type {BaseOption, CLIOptions, Optional} from '@memlab/core';
 
 import fs from 'fs';
@@ -12,7 +17,6 @@ import BaseCommand from '../BaseCommand';
 import CheckLeakCommand from './heap/CheckLeakCommand';
 import InitDirectoryCommand from './InitDirectoryCommand';
 import TakeSnapshotCommand from './snapshot/TakeSnapshotCommand';
-import WarmupAppCommand from './WarmupAppCommand';
 import SetWorkingDirectoryOption from '../options/SetWorkingDirectoryOption';
 
 export default class MemLabRunCommand extends BaseCommand {

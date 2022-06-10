@@ -1,11 +1,13 @@
 /**
- * (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * TODO: Briefly summarize this module's role and responsibility
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @emails oncall+webspeed
+ * @emails oncall+ws_labs
  * @format
  */
+
 import type {HeapAnalysisOptions} from '../PluginUtils';
 
 import chalk from 'chalk';

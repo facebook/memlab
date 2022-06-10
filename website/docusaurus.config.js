@@ -1,10 +1,14 @@
-/* Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
+ * @emails oncall+ws_labs
  * @nolint
+ * @format
  */
+
 // @ts-check
 // Note: type annotations allow type checking and IDEs autocompletion
 
@@ -38,31 +42,29 @@ const config = {
     [
       'classic',
       /** @type {import('@docusaurus/preset-classic').Options} */
-      ({
+      {
         docs: {
           sidebarPath: require.resolve('./sidebars.js'),
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
-          editUrl:
-            'https://github.com/facebookincubator/memlab/website/docs',
+          editUrl: 'https://github.com/facebookincubator/memlab/website/docs',
         },
         blog: {
           showReadingTime: true,
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
-          editUrl:
-            'https://github.com/facebookincubator/memlab/website/blog',
+          editUrl: 'https://github.com/facebookincubator/memlab/website/blog',
         },
         theme: {
           customCss: require.resolve('./src/css/custom.css'),
         },
-      }),
+      },
     ],
   ],
 
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
-    ({
+    {
       navbar: {
         title: 'memlab',
         logo: {
@@ -160,7 +162,7 @@ const config = {
         theme: lightCodeTheme,
         darkTheme: darkCodeTheme,
       },
-    }),
+    },
 };
 
 module.exports = config;
