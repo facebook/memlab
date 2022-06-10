@@ -27,11 +27,14 @@
   },
   "scripts": {
     "dev": "tsc -b -w",
-    "build": "npm run clean --workspaces > /dev/null && npm run build --workspaces",
-    "clean": "npm run clean --workspaces",
+    "build": "npm run clean > /dev/null && npm run build-pkg --workspaces",
+    "clean": "npm run clean-pkg --workspaces",
     "memlab": "node packages/cli/dist/runner.js",
-    "rm-fb-internal": "find . -type d -name fb-internal -prune -exec rm -rf {} \\;",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test-pkg --workspaces --if-present",
+    "build-pkg": "npm run error",
+    "clean-pkg": "npm run error",
+    "test-pkg": "npm run error",
+    "error": "echo 'upgrade node.js to version 16.0.0 or above. Consider using nvm.'; exit 1"
   },
   "workspaces": [
     "./packages/core",

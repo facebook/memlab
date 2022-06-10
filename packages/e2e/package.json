@@ -16,8 +16,8 @@
     "static"
   ],
   "scripts": {
-    "build": "tsc",
-    "clean": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
+    "build-pkg": "tsc",
+    "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
   },
   "dependencies": {
     "@memlab/core": "^0.0.0"

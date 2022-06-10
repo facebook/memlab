@@ -16,9 +16,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
-    "test": "jest .",
-    "clean": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
+    "build-pkg": "tsc",
+    "test-pkg": "jest .",
+    "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
   },
   "dependencies": {
     "@memlab/core": "^0.0.0",
