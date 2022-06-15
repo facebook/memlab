@@ -8,13 +8,12 @@
  * @format
  */
 
-import config from '../../../lib/Config';
-import info from '../../../lib/Console';
-import utils from '../../../lib/Utils';
+import type {IHeapSnapshot} from '@memlab/core';
+import type {Page} from 'puppeteer';
+
 import fs from 'fs';
 import path from 'path';
-import {IHeapSnapshot} from '../../../lib/Types';
-import {Page} from 'puppeteer';
+import {config, info, utils} from '@memlab/core';
 const puppeteer = config.isFB
   ? require('puppeteer-core')
   : require('puppeteer');

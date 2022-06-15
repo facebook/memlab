@@ -8,10 +8,9 @@
  * @format
  */
 
-import type {AnyValue, IHeapNode, IHeapSnapshot} from '../../lib/Types';
+import type {AnyValue, Nullable} from '../../lib/Types';
 import config from '../../lib/Config';
-import utils from '../../lib/Utils';
-import {isExpectedSnapshot} from './utils/HeapParserTestUtils';
+import {getCurrentNodeHeap} from '../../lib/NodeHeap';
 
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 
@@ -30,25 +29,14 @@ const timeout = 5 * 60 * 1000;
 test(
   'Capture inserted object',
   async () => {
-    const leakInjector = () => {
-      class TestObject {
-        public arr1 = [1, 2, 3];
-        public arr2 = ['1', '2', '3'];
-      }
-      window.injected = new TestObject();
-    };
-
-    const checker = (snapshot: IHeapSnapshot) => {
-      let detected = false;
-      snapshot.nodes.forEach((node: IHeapNode) => {
-        if (node.name === 'TestObject' && node.type === 'object') {
-          detected = true;
-        }
-      });
-      return detected;
-    };
-
-    await isExpectedSnapshot(leakInjector, checker);
+    class TestObject {
+      public arr1 = [1, 2, 3];
+      public arr2 = ['1', '2', '3'];
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const injected = new TestObject();
+    const heap = await getCurrentNodeHeap();
+    expect(heap.hasObjectWithClassName('TestObject')).toBe(true);
   },
   timeout,
 );
@@ -56,64 +44,16 @@ test(
 test(
   'Does not capture transcient object',
   async () => {
-    const leakInjector = () => {
-      class TestObject {
-        public arr1 = [1, 2, 3];
-        public arr2 = ['1', '2', '3'];
-      }
-      window.injected = new TestObject();
-      window.injected = null;
-    };
+    class TestObject {
+      public arr1 = [1, 2, 3];
+      public arr2 = ['1', '2', '3'];
+    }
+    let injected: Nullable<TestObject> = new TestObject();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    injected = null;
 
-    const checker = (snapshot: IHeapSnapshot) => {
-      let detected = false;
-      snapshot.nodes.forEach((node: IHeapNode) => {
-        if (node.name === 'TestObject' && node.type === 'object') {
-          detected = true;
-        }
-      });
-      return !detected;
-    };
-
-    await isExpectedSnapshot(leakInjector, checker);
-  },
-  timeout,
-);
-
-test(
-  'Capture numeric value',
-  async () => {
-    const leakInjector = () => {
-      class TestObject {
-        public numProp = 0.1;
-      }
-      window.injected = new TestObject();
-    };
-
-    const checker = (snapshot: IHeapSnapshot) => {
-      let detected = false;
-      snapshot.nodes.forEach((node: IHeapNode) => {
-        if (node.name !== 'TestObject' || node.type !== 'object') {
-          return;
-        }
-        const refs = node.references;
-        for (const ref of refs) {
-          if (ref.name_or_index === 'numProp') {
-            const node = ref.toNode;
-            if (
-              node.type === 'number' &&
-              utils.getNumberNodeValue(node) === 0.1
-            ) {
-              detected = true;
-            }
-            break;
-          }
-        }
-      });
-      return detected;
-    };
-
-    await isExpectedSnapshot(leakInjector, checker);
+    const heap = await getCurrentNodeHeap();
+    expect(heap.hasObjectWithClassName('TestObject')).toBe(false);
   },
   timeout,
 );

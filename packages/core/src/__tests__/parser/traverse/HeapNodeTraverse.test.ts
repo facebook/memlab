@@ -10,9 +10,7 @@
 
 import type {AnyValue, IHeapNode, IHeapSnapshot} from '../../../lib/Types';
 import config from '../../../lib/Config';
-import {isExpectedSnapshot} from '../utils/HeapParserTestUtils';
-
-/* eslint-disable @typescript-eslint/ban-ts-comment */
+import {getCurrentNodeHeap} from '../../../lib/NodeHeap';
 
 declare global {
   interface Window {
@@ -29,12 +27,11 @@ const timeout = 5 * 60 * 1000;
 test(
   'Check getReference and getReferenceNode',
   async () => {
-    const leakInjector = () => {
-      class TestObject {
-        public property1 = {property2: 'test'};
-      }
-      window.injected = new TestObject();
-    };
+    class TestObject {
+      public property1 = {property2: 'test'};
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const injected = new TestObject();
 
     const checker = (heap: IHeapSnapshot) => {
       let detected = false;
@@ -83,7 +80,8 @@ test(
       return detected;
     };
 
-    await isExpectedSnapshot(leakInjector, checker);
+    const heap = await getCurrentNodeHeap();
+    expect(checker(heap)).toBe(true);
   },
   timeout,
 );
@@ -97,8 +95,11 @@ test(
         public prop = obj;
         private _p = obj;
       }
-      window.injected = [new TestObject(), new TestObject()];
+      return [new TestObject(), new TestObject()];
     };
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const injected = leakInjector();
 
     const checker = (heap: IHeapSnapshot) => {
       const testObjects: IHeapNode[] = [];
@@ -161,7 +162,8 @@ test(
       return true;
     };
 
-    await isExpectedSnapshot(leakInjector, checker);
+    const heap = await getCurrentNodeHeap();
+    expect(checker(heap)).toBe(true);
   },
   timeout,
 );

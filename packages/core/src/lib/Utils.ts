@@ -19,11 +19,6 @@ import constant from './Constant';
 import parser from './HeapParser';
 import browserInfo from './BrowserInfo';
 
-const puppeteer = constant.isFRL
-  ? {}
-  : constant.isFB
-  ? require('puppeteer-core')
-  : require('puppeteer');
 const memCache: Record<string, AnyValue> = Object.create(null);
 
 import type {Browser, Page} from 'puppeteer';
@@ -1232,29 +1227,6 @@ function checkUninstalledLibrary(ex: Error): void {
   }
 }
 
-async function getBrowser(
-  options: {config?: MemLabConfig; warmup?: boolean} = {},
-): Promise<Browser> {
-  const runConfig = options.config ?? config;
-  let browser: Browser;
-  if (runConfig.isLocalPuppeteer && !options.warmup) {
-    try {
-      browser = await puppeteer.connect({
-        browserURL: `http://localhost:${runConfig.localBrowserPort}`,
-        ...runConfig.puppeteerConfig,
-      });
-    } catch (e) {
-      throw haltOrThrow(getError(e), {
-        primaryMessageToPrint:
-          'Failed to connect to local browser. Ensure that the local-puppeteer script is running.',
-      });
-    }
-  } else {
-    browser = await puppeteer.launch(runConfig.puppeteerConfig);
-  }
-  return browser;
-}
-
 async function closePuppeteer(
   browser: Browser,
   pages: Page[],
@@ -1894,7 +1866,6 @@ export default {
   extractHTMLElementNodeInfo,
   filterNodesInPlace,
   getAllDominators,
-  getBrowser,
   getConditionalDominatorIds,
   getError,
   getEdgeByNameAndType,

@@ -10,7 +10,7 @@
 
 import type {Page, Browser} from 'puppeteer';
 import type {ParsedArgs} from 'minimist';
-import {
+import type {
   AnyFunction,
   E2EStepInfo,
   IScenario,
@@ -33,6 +33,7 @@ import {
   E2EInteractionManager,
 } from '@memlab/e2e';
 import {BaseAnalysis} from '@memlab/heap-analysis';
+import APIUtils from './lib/APIUtils';
 
 type APIOptions = {
   // NOTE: cannot pass in a different config instance
@@ -114,7 +115,7 @@ export async function warmup(options: APIOptions = {}): Promise<void> {
     if (config.skipWarmup) {
       return;
     }
-    const browser = await utils.getBrowser({warmup: true});
+    const browser = await APIUtils.getBrowser({warmup: true});
 
     const visitPlan = testPlanner.getVisitPlan();
     config.setDevice(visitPlan.device);
@@ -204,7 +205,7 @@ export async function testInBrowser(options: APIOptions = {}): Promise<void> {
   let xvfb: XvfbType | null = null;
   try {
     xvfb = Xvfb.startIfEnabled();
-    const browser = await utils.getBrowser();
+    const browser = await APIUtils.getBrowser();
     const pages = await browser.pages();
     const page = pages.length > 0 ? pages[0] : await browser.newPage();
     interactionManager = new E2EInteractionManager(page);
