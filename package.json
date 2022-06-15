@@ -8,7 +8,6 @@
     "babar": "^0.2.0",
     "chalk": "^4.0.0",
     "fs-extra": "^4.0.2",
-    "html-inline": "^1.2.0",
     "minimist": "^1.2.0",
     "puppeteer": "^13.5.1",
     "string-width": "^4.2.0",
