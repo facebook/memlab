@@ -39,7 +39,6 @@ import type {
   Nullable,
   Optional,
 } from './Types';
-import type {MemLabConfig} from './Config';
 import fileManager from './FileManager';
 import {utils} from '..';
 
@@ -627,7 +626,7 @@ async function getSnapshotNodeIdsFromFile(
   info.overwrite('lightweight parsing ' + filename + ' ...');
   let ret: Set<number> = new Set();
   try {
-    ret = await parser.getNodeIds(filename, options);
+    ret = await parser.getNodeIdsFromFile(filename, options);
   } catch (e) {
     handleSnapshotError(getError(e));
   }
