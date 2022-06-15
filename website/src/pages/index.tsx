@@ -75,7 +75,7 @@ export default function Home(): React.ReactElement {
   return (
     <Layout
       title={`${siteConfig.title}`}
-      description="MemLab is an integrated E2E testing + memory leak detection + debugging framework for dealing with memory leaks in front-end JavaScript.">
+      description="memlab is an integrated E2E testing + memory leak detection + debugging framework for dealing with memory leaks in front-end JavaScript.">
       <header className={clsx('hero hero--primary', styles.heroBanner)}>
         <div className="container">
           <h1 className="hero__title">{siteConfig.title}</h1>
@@ -87,7 +87,7 @@ export default function Home(): React.ReactElement {
                 styles.getStarted,
               )}
               to={useBaseUrl('docs/intro')}>
-              Get Started
+              Learn more
             </Link>
           </div>
         </div>

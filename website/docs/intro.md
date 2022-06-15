@@ -2,29 +2,24 @@
 sidebar_position: 1
 ---
 
-# Getting Started
+# Introduction
 
-Let's walk through the steps about how you can start using MemLab
+## Why we built memlab?
 
-### What you'll need
+One of the challenges in building a single page application (SPA) like Facebook.com is to monitor & detect memory leaks at scale. Specially considering amount of changes that go live continuously, we built memlab that automates memory leak detection.
 
-- [Node.js](https://nodejs.org/en/download/) version 14 or above:
-  - When installing Node.js, you are recommended to check all checkboxes related to dependencies.
-- [Yarn](https://yarnpkg.com/getting-started/install)
+## What is memlab?
+`memlab` is a tool that lets you define your test `scenario` and help you detect a memory leak in your SPA.
+The way `memlab` works is that it uses headless browser using the [scenario file](docs/api/scenario) to take a heap snapshot `baseline`,
+do some interactions like navigating away or clicking buttons, and take another snapshot `target`.
+Then, it compares the baseline against the target. This process repeats few more times.
+If there is any memory leak in your SPA, then `memlab` will output and store them to your console and your local machine.
 
-## Installation
+## What else memlab can do?
+- Detecting memory leaks of heap snapshots taken from Node.js, Electron.js, and Hermes
+- Built-in toolbox and APIs for finding memory optimization opportunities  - not necessarily memory leaks
+- Advanced memory assertions
 
-```bash
-git clone https://github.com/facebook/our-repo-url-goes-here.git # clones the repo
-cd our-repo-url-goes-here && memlab build-core
-```
-> `memlab build-core` installs all the dependencies and builds packages. No need to run `yarn`.
-
-## Create E2E test scenario 🚧
-Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged.
-
-
-## Run MemLab
-From the repo's root directory, you can now run following:
-
-`memlab run --app=app-name --interaction=your-interaction-name`
+If you feel curious to test it out on your own,
+- Head over to [Getting Started](/docs/getting-started) section for getting started.
+- Want to learn more about [API](/docs/)?
