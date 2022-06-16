@@ -341,6 +341,7 @@ export interface IHeapSnapshot {
   clearShortestPathInfo(): void;
   // heap query APIs
   hasObjectWithClassName(className: string): boolean;
+  getAnyObjectWithClassName(className: string): Nullable<IHeapNode>;
   hasObjectWithPropertyName(nameOrIndex: string | number): boolean;
   hasObjectWithTag(tag: string): boolean;
 }
@@ -393,6 +394,14 @@ export interface IHeapNode extends IHeapNodeBasic {
   trace_node_id: number;
   references: IHeapEdge[];
   referrers: IHeapEdge[];
+  pathEdge: IHeapEdge | null;
+  nodeIndex: number;
+  retainedSize: number;
+  dominatorNode: IHeapNode | null;
+  location: IHeapLocation | null;
+  highlight?: boolean;
+  isString: boolean;
+  toStringNode(): Nullable<IHeapStringNode>;
   forEachReference(callback: EdgeIterationCallback): void;
   forEachReferrer(callback: EdgeIterationCallback): void;
   findReference: (predicate: Predicator<IHeapEdge>) => Nullable<IHeapEdge>;
@@ -419,12 +428,10 @@ export interface IHeapNode extends IHeapNodeBasic {
     edgeName: string | number,
     edgeType?: string,
   ) => IHeapNode[];
-  pathEdge: IHeapEdge | null;
-  nodeIndex: number;
-  retainedSize: number;
-  dominatorNode: IHeapNode | null;
-  location: IHeapLocation | null;
-  highlight?: boolean;
+}
+
+export interface IHeapStringNode extends IHeapNode {
+  stringValue: string;
 }
 
 export interface IHeapNodes {

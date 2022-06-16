@@ -157,6 +157,17 @@ export default class HeapSnapshot implements IHeapSnapshot {
     return detected;
   }
 
+  getAnyObjectWithClassName(className: string): Nullable<IHeapNode> {
+    let ret = null;
+    this.nodes.forEach((node: IHeapNode) => {
+      if (node.name === className && node.type === 'object') {
+        ret = node;
+        return false;
+      }
+    });
+    return ret;
+  }
+
   hasObjectWithPropertyName(nameOrIndex: string | number): boolean {
     let detected = false;
     this.edges.forEach((edge: IHeapEdge) => {

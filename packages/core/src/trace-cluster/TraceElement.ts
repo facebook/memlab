@@ -14,6 +14,7 @@ import type {
   IHeapLocation,
   IHeapNode,
   IHeapSnapshot,
+  IHeapStringNode,
   Nullable,
 } from '../lib/Types';
 
@@ -36,6 +37,12 @@ export class NodeRecord implements IHeapNode {
 
   markAsDetached(): void {
     throw new Error('NodeRecord.markAsDetached not callable.');
+  }
+  get isString(): boolean {
+    return utils.isStringNode(this);
+  }
+  set isString(b: boolean) {
+    throw new Error('NodeRecord.string cannot be assigned');
   }
   set snapshot(s: IHeapSnapshot) {
     throw new Error('NodeRecord.snapshot cannot be assigned.');
@@ -60,6 +67,9 @@ export class NodeRecord implements IHeapNode {
   }
   get referrers(): IHeapEdge[] {
     throw new Error('NodeRecord.referrers cannot be read');
+  }
+  toStringNode(): IHeapStringNode {
+    throw new Error('NodeRecord.toStringNode is not implemented');
   }
   forEachReferrer(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars

@@ -17,12 +17,17 @@ import type {
   Nullable,
   EdgeIterationCallback,
   Predicator,
+  IHeapStringNode,
 } from '../Types';
 import type HeapSnapshot from './HeapSnapshot';
 
 import {NodeDetachState, throwError} from './HeapUtils';
 import HeapEdge from './HeapEdge';
 import HeapLocation from './HeapLocation';
+
+export function isHeapStringType(type: string): boolean {
+  return ['string', 'sliced string', 'concatenated string'].includes(type);
+}
 
 export default class HeapNode implements IHeapNode {
   constructor(private heapSnapshot: HeapSnapshot, private idx: number) {}
@@ -403,4 +408,18 @@ export default class HeapNode implements IHeapNode {
     });
     return ret;
   }
+
+  get isString(): boolean {
+    return isHeapStringType(this.type);
+  }
+
+  toStringNode(): Nullable<IHeapStringNode> {
+    return this.isString
+      ? new HeapStringNode(this.heapSnapshot, this.idx)
+      : null;
+  }
 }
+
+// HeapStringNode has to be imported after exporting HeapNode
+// since HeapStringNode imports and extends HeapNode
+import HeapStringNode from './HeapStringNode';

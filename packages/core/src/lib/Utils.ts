@@ -41,6 +41,7 @@ import type {
 } from './Types';
 import fileManager from './FileManager';
 import {utils} from '..';
+import {isHeapStringType} from './heap-data/HeapNode';
 
 // For more details see ReactWorkTags.js of React
 const reactWorkTag = {
@@ -685,11 +686,7 @@ function getEdgeStartsWithName(
 }
 
 function isStringNode(node: IHeapNode): boolean {
-  return (
-    node.type === 'string' ||
-    node.type === 'sliced string' ||
-    node.type === 'concatenated string'
-  );
+  return isHeapStringType(node.type);
 }
 
 function isSlicedStringNode(node: IHeapNode): boolean {

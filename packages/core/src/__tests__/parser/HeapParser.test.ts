@@ -8,17 +8,9 @@
  * @format
  */
 
-import type {AnyValue, Nullable} from '../../lib/Types';
+import type {Nullable} from '../../lib/Types';
 import config from '../../lib/Config';
 import {getCurrentNodeHeap} from '../../lib/NodeHeap';
-
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-
-declare global {
-  interface Window {
-    injected: AnyValue;
-  }
-}
 
 beforeEach(() => {
   config.isTest = true;
