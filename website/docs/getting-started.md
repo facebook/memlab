@@ -7,7 +7,7 @@ In this section, you will learn how to use `memlab` to detect a memory leak. Ple
 
 
 ## Define scenario file
-Scenario file is a `js` file that exports functions to provide details about how to navigate to and interact with your page. Now let's copy the following example and save it as `~/memlab/scenraio.js` file in somehwere we can find later.
+A scenario file is a `js` file that exports functions to provide details about how to navigate to and interact with your page. Now let's copy the following example and save it as `~/memlab/scenraio.js` file somewhere we can find later.
 :::note
 Feel free to save the scenario file anywhere. We will be using this file in `memlab` shortly.
 :::
@@ -56,4 +56,4 @@ A breakdown of each step in the breadcrumb:
 - **action-on-page(target)** - after performing the action - in our case, it is clicking the link with id `"video-title-link"` - we see how much memory was allocated
 - **revert(final)** - this is when we perform the back/reverse action. In this example, it is going back to the home page.
 
-If you would like to learn about how `memlab` detects memory leak, please head over to [How memlab works](/how-`memlab`-works) section.
+If you would like to learn about how `memlab` detects memory leak, please head over to [How memlab works](/how-memlab-works) section.
