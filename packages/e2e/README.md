@@ -1,11 +1,7 @@
-# `@memlab/e2e`
+## memlab E2E
 
-> TODO: description
+This is the memlab E2E testing framework for headless/headful Chromium. It is mainly responsible
+for controling/interacting with browser, recording heap snapshots, and logging other execution meta data.
 
-## Usage
-
-```
-const e2e = require('e2e');
-
-// TODO: DEMONSTRATE API
-```
+## Full documentation
+https://facebookincubator.github.io/memlab

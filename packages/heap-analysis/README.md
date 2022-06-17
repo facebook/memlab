@@ -1,11 +1,7 @@
-# `@memlab/heap-analysis`
+## memlab Heap Analysis
 
-> TODO: description
+This is the memlab heap analysis library. It contains all memlab built-in heap analysis and
+provides a plugin interface for adding new heap analysis that can be easily added to memlab API and memlab CLI.
 
-## Usage
-
-```
-const heapAnalysis = require('heap-analysis');
-
-// TODO: DEMONSTRATE API
-```
+## Full documentation
+https://facebookincubator.github.io/memlab

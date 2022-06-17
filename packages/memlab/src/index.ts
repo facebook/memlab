@@ -1,5 +1,3 @@
-#!/usr/bin/env -S node --expose-gc --max-old-space-size=4096
-
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -10,5 +8,4 @@
  * @format
  */
 
-var cli = require("@memlab/cli");
-cli.run();
+export * from '@memlab/api';

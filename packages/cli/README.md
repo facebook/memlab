@@ -1,11 +1,7 @@
-# `@memlab/cli`
+## memlab CLI
 
-> TODO: description
+This is the memlab CLI library. It contains all memlab commands, command-line options, and command-line interfaces.
+The library supports adding new commands.
 
-## Usage
-
-```
-const cli = require('@memlab/cli');
-
-// TODO: DEMONSTRATE API
-```
+## Full documentation
+https://facebookincubator.github.io/memlab

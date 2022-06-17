@@ -1,8 +1,8 @@
 {
-  "name": "memlab",
-  "version": "1.0.0",
+  "name": "@memlab/monorepo",
+  "private": true,
+  "version": "0.0.0",
   "license": "MIT",
-  "description": "",
   "dependencies": {
     "ansi": "^0.3.1",
     "babar": "^0.2.0",
@@ -35,11 +35,16 @@
     "test-pkg": "npm run error",
     "error": "echo 'upgrade node.js to version 16.0.0 or above. Consider using nvm.'; exit 1"
   },
+  "devEngines": {
+    "node": "12.x || 13.x || 14.x || 15.x || 16.x",
+    "npm": "7.x"
+  },
   "workspaces": [
     "./packages/core",
     "./packages/e2e",
     "./packages/heap-analysis",
     "./packages/api",
-    "./packages/cli"
+    "./packages/cli",
+    "./packages/memlab"
   ]
 }

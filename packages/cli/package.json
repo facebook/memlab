@@ -1,13 +1,18 @@
 {
   "name": "@memlab/cli",
-  "version": "0.0.0",
+  "version": "1.0.1",
+  "license": "MIT",
   "description": "command line interface for memlab",
-  "keywords": [
-    "cli"
-  ],
   "author": "Liang Gong <lgong@fb.com>",
   "contributors": [],
-  "license": "MIT",
+  "keywords": [
+    "cli",
+    "memlab",
+    "memory",
+    "leak",
+    "heap",
+    "snapshot"
+  ],
   "main": "dist/index.js",
   "files": [
     "dist"
@@ -19,10 +24,10 @@
     "access": "public"
   },
   "dependencies": {
-    "@memlab/api": "^0.0.0",
-    "@memlab/core": "^0.0.0",
-    "@memlab/e2e": "^0.0.0",
-    "@memlab/heap-analysis": "^0.0.0",
+    "@memlab/api": "^1.0.0",
+    "@memlab/core": "^1.0.0",
+    "@memlab/e2e": "^1.0.0",
+    "@memlab/heap-analysis": "^1.0.0",
     "ansi": "^0.3.1",
     "babar": "^0.2.0",
     "chalk": "^4.0.0",
@@ -43,8 +48,17 @@
     "ts-jest": "^27.1.4",
     "typescript": "^4.6.3"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/facebookincubator/memlab.git",
+    "directory": "packages/cli"
+  },
   "scripts": {
     "build-pkg": "tsc",
     "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
-  }
+  },
+  "bugs": {
+    "url": "https://github.com/facebookincubator/memlab/issues"
+  },
+  "homepage": "https://github.com/facebookincubator/memlab#readme"
 }

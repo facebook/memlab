@@ -12,10 +12,12 @@ import minimist, {ParsedArgs} from 'minimist';
 import {utils} from '@memlab/core';
 import commandDispatcher from './Dispatcher';
 
-async function run(): Promise<void> {
+export async function run(): Promise<void> {
   const argv: ParsedArgs = minimist(process.argv.slice(2));
   commandDispatcher.dispatch(argv);
 }
 
-// called from command line
-utils.callAsync(run);
+if (require.main === module) {
+  // called from command line
+  utils.callAsync(run);
+}

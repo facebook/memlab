@@ -1,11 +1,6 @@
-# `@memlab/core`
+## memlab Core Library
 
-> TODO: description
+This is the memlab core library. It contains V8/Hermes heap snapshot parser, core algorithms, leak trace clustering, utilities, and config.
 
-## Usage
-
-```
-const core = require('core');
-
-// TODO: DEMONSTRATE API
-```
+## Full documentation
+https://facebookincubator.github.io/memlab

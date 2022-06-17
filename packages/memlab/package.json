@@ -1,31 +1,31 @@
 {
-  "name": "@memlab/api",
-  "version": "1.0.1",
+  "name": "memlab",
+  "version": "1.0.7-alpha",
   "license": "MIT",
-  "description": "memlab API",
-  "author": "Liang Gong <lgong@fb.com>",
-  "contributors": [],
-  "keywords": [
-    "memlab",
-    "memory",
-    "leak",
-    "api",
-    "e2e",
-    "browser",
-    "heap",
-    "snapshot",
-    "analysis",
-    "plugin"
-  ],
+  "description": "memlab is a framework that analyzes memory and finds memory leaks in JavaScript applications.",
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
   "files": [
     "dist"
   ],
+  "bin": {
+    "memlab": "bin/memlab"
+  },
   "publishConfig": {
     "access": "public"
   },
+  "keywords": [
+    "facebook",
+    "memlab",
+    "javascript",
+    "memory",
+    "leak",
+    "detector",
+    "heap",
+    "snapshot"
+  ],
   "dependencies": {
+    "@memlab/cli": "^1.0.0",
+    "@memlab/api": "^1.0.0",
     "@memlab/core": "^1.0.0",
     "@memlab/e2e": "^1.0.0",
     "@memlab/heap-analysis": "^1.0.0",
@@ -49,15 +49,24 @@
     "ts-jest": "^27.1.4",
     "typescript": "^4.6.3"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/facebookincubator/memlab.git",
-    "directory": "packages/api"
-  },
   "scripts": {
     "build-pkg": "tsc",
-    "test-pkg": "jest .",
     "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
+  },
+  "devEngines": {
+    "node": "12.x || 13.x || 14.x || 15.x || 16.x",
+    "npm": "7.x"
+  },
+  "workspaces": [
+    "./packages/core",
+    "./packages/e2e",
+    "./packages/heap-analysis",
+    "./packages/api",
+    "./packages/cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/facebookincubator/memlab.git"
   },
   "bugs": {
     "url": "https://github.com/facebookincubator/memlab/issues"

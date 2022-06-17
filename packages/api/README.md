@@ -1,11 +1,7 @@
-# `@memlab/api`
+## memlab API
 
-> TODO: description
+This is the memlab API library. Add this dependency to your project
+if you want to integrate memlab with your continuous testing system.
 
-## Usage
-
-```
-const api = require('@memlab/api');
-
-// TODO: DEMONSTRATE API
-```
+## Full documentation
+https://facebookincubator.github.io/memlab

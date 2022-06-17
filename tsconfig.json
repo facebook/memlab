@@ -5,6 +5,7 @@
     { "path": "./packages/e2e" },
     { "path": "./packages/heap-analysis" },
     { "path": "./packages/api" },
-    { "path": "./packages/cli" }
+    { "path": "./packages/cli" },
+    { "path": "./packages/memlab" }
   ]
 }
