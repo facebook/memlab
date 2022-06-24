@@ -1,0 +1,50 @@
+{
+  "name": "@memlab/monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "license": "MIT",
+  "dependencies": {
+    "ansi": "^0.3.1",
+    "babar": "^0.2.0",
+    "chalk": "^4.0.0",
+    "fs-extra": "^4.0.2",
+    "minimist": "^1.2.0",
+    "puppeteer": "^13.5.1",
+    "string-width": "^4.2.0",
+    "util.promisify": "^1.1.1",
+    "xvfb": "^0.4.0"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^9.0.3",
+    "@types/jest": "^27.4.1",
+    "@types/minimist": "^1.2.2",
+    "@types/node": "^12.16.3",
+    "@types/puppeteer": "^5.4.4",
+    "jest": "^27.5.1",
+    "ts-jest": "^27.1.4",
+    "typescript": "^4.6.3"
+  },
+  "scripts": {
+    "dev": "tsc -b -w",
+    "build": "npm run clean > /dev/null && npm run build-pkg --workspaces",
+    "clean": "npm run clean-pkg --workspaces && rm -rf ./website/build",
+    "memlab": "node packages/cli/dist/runner.js",
+    "test": "npm run test-pkg --workspaces --if-present",
+    "build-pkg": "npm run error",
+    "clean-pkg": "npm run error",
+    "test-pkg": "npm run error",
+    "error": "echo 'upgrade node.js to version 16.0.0 or above. Consider using nvm.'; exit 1"
+  },
+  "devEngines": {
+    "node": "12.x || 13.x || 14.x || 15.x || 16.x",
+    "npm": "7.x"
+  },
+  "workspaces": [
+    "./packages/core",
+    "./packages/e2e",
+    "./packages/heap-analysis",
+    "./packages/api",
+    "./packages/cli",
+    "./packages/memlab"
+  ]
+}

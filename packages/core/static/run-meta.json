@@ -1,0 +1,10 @@
+{
+  "app": "external",
+  "interaction": "manual",
+  "type": "standard",
+  "browserInfo": {
+    "_browserVersion": "Hermes/<version>",
+    "_puppeteerConfig": {},
+    "_consoleMessages": []
+  }
+}
