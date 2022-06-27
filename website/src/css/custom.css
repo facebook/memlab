@@ -16,7 +16,7 @@
 
 /* You can override the default Infima variables here. */
 :root {
-  --ifm-code-font-size: 95%;
+  --ifm-code-font-size: 90%;
   --ifm-color-primary: #32accd;
   --ifm-color-primary-dark: #2d9bb9;
   --ifm-color-primary-darker: #2a92ae;
@@ -24,6 +24,7 @@
   --ifm-color-primary-light: #47b4d2;
   --ifm-color-primary-lighter: #51b8d4;
   --ifm-color-primary-lightest: #70c5dc;
+  --ifm-container-width: 1140px;
 }
 
 /* For readability concerns, you should choose a lighter palette in dark mode. */
@@ -35,4 +36,26 @@
   --ifm-color-primary-light: #47b4d2;
   --ifm-color-primary-lighter: #51b8d4;
   --ifm-color-primary-lightest: #70c5dc;
+}
+
+article {
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 780px;
+}
+
+article h1 {
+  font-size: 2.5rem !important;
+}
+
+article h2 {
+  font-size: 2rem !important;
+}
+
+article h3 {
+  font-size: 1.5rem !important;
+}
+
+.navbar .navbar__items {
+  flex: auto;
 }

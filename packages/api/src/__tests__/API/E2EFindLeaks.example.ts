@@ -33,7 +33,7 @@ function inject() {
     // @ts-ignore
     window._path_1 = {x: {y: document.createElement('div')}};
     // @ts-ignore
-    window._path_2 = [document.createElement('div')];
+    window._path_2 = new Set([document.createElement('div')]);
   };
 }
 

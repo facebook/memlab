@@ -7,13 +7,13 @@
 - [Npm](https://docs.npmjs.com/)
 
 ## Install
-```
-npm install -g @memlab/cli
+```bash
+npm install -g memlab
 ```
 
 ## Commands:
 To check if the installation complete, run `memlab help` in your console, you should see helper text as follows:
-```
+```bash
 $ memlab help
 
   memlab: memory leak detector for front-end JS

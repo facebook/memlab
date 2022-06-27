@@ -10,9 +10,6 @@
 // @ts-check
 // Note: type annotations allow type checking and IDEs autocompletion
 
-const darkCodeTheme = require('prism-react-renderer/themes/dracula');
-const lightCodeTheme = require('prism-react-renderer/themes/github');
-
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'memlab',
@@ -20,23 +17,15 @@ const config = {
     'memlab is a tool that analyzes memory and finds memory leaks in JavaScript applications.',
   url: 'https://urban-spork-90ea3c5e.pages.github.io/',
   baseUrl: '/',
+  organizationName: 'facebookincubator',
+  projectName: 'memlab',
   onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',
   favicon: 'img/favicon.ico',
-
-  // GitHub pages deployment config.
-  // If you aren't using GitHub pages, you don't need these.
-  organizationName: 'facebook', // Usually your GitHub org/user name.
-  projectName: 'memlab', // Usually your repo name.
-
-  // Even if you don't use internalization, you can use this field to set useful
-  // metadata like html lang. For example, if your site is Chinese, you may want
-  // to replace "en" with "zh-Hans".
   i18n: {
     defaultLocale: 'en',
     locales: ['en'],
   },
-
   plugins: [
     [
       'docusaurus-plugin-typedoc',
@@ -59,23 +48,18 @@ const config = {
       },
     ],
   ],
-
   presets: [
     [
-      'classic',
+      '@docusaurus/preset-classic',
       /** @type {import('@docusaurus/preset-classic').Options} */
       {
         docs: {
           sidebarPath: require.resolve('./sidebars.js'),
-          // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
           editUrl:
             'https://github.com/facebookincubator/memlab/blob/main/website',
         },
         blog: {
           showReadingTime: true,
-          // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
           editUrl: 'https://github.com/facebookincubator/memlab/website/blog',
         },
         theme: {
@@ -84,7 +68,6 @@ const config = {
       },
     ],
   ],
-
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     {
@@ -118,7 +101,6 @@ const config = {
                 label: 'Getting Started',
                 to: 'docs/intro',
               },
-              // Uncomment the following once we are ready to publish
               {
                 label: 'How it works',
                 to: '/docs/how-memlab-works',
@@ -180,10 +162,6 @@ const config = {
         // Please do not remove the credits, help to publicize Docusaurus :)
         copyright: `Copyright © ${new Date().getFullYear()}
           Facebook, Inc. Built with Docusaurus.`,
-      },
-      prism: {
-        theme: lightCodeTheme,
-        darkTheme: darkCodeTheme,
       },
     },
 };
