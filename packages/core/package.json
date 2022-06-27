@@ -27,7 +27,7 @@
     "static"
   ],
   "engines": {
-    "node": ">= 12.06.0"
+    "node": ">= 12.6.0"
   },
   "dependencies": {
     "ansi": "^0.3.1",
