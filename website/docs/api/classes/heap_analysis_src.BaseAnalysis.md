@@ -35,124 +35,58 @@ custom_edit_url: null
 
 ## Constructors
 
-### constructor
-
-• **new BaseAnalysis**()
-
-#### Inherited from
-
-Analysis.constructor
+### <a id="new baseanalysis"></a>**new BaseAnalysis**()
 
 ## Methods
 
-### analyzeSnapshotFromFile
+### <a id="analyzesnapshotfromfile"></a>**analyzeSnapshotFromFile**(`file`)
 
-▸ **analyzeSnapshotFromFile**(`file`): `Promise`<`any`\>
-
-#### Parameters
-
-| Name | Type |
-| :------ | :------ |
-| `file` | `string` |
-
-#### Returns
-
-`Promise`<`any`\>
-
-#### Inherited from
-
-Analysis.analyzeSnapshotFromFile
-
-#### Defined in
-
-heap-analysis/src/BaseAnalysis.ts:52
+ * **Parameters**:
+    * `file`: `string`
+ * **Returns**: `Promise`<`any`\>
+ * **Source**:
+    * `heap-analysis/src/BaseAnalysis.ts:52`
 
 ___
 
-### analyzeSnapshotsInDirectory
+### <a id="analyzesnapshotsindirectory"></a>**analyzeSnapshotsInDirectory**(`directory`)
 
-▸ **analyzeSnapshotsInDirectory**(`directory`): `Promise`<`any`\>
-
-#### Parameters
-
-| Name | Type |
-| :------ | :------ |
-| `directory` | `string` |
-
-#### Returns
-
-`Promise`<`any`\>
-
-#### Inherited from
-
-Analysis.analyzeSnapshotsInDirectory
-
-#### Defined in
-
-heap-analysis/src/BaseAnalysis.ts:62
+ * **Parameters**:
+    * `directory`: `string`
+ * **Returns**: `Promise`<`any`\>
+ * **Source**:
+    * `heap-analysis/src/BaseAnalysis.ts:62`
 
 ___
 
-### getCommandName
+### <a id="getcommandname"></a>**getCommandName**()
 
-▸ **getCommandName**(): `string`
-
-#### Returns
-
-`string`
-
-#### Defined in
-
-heap-analysis/src/BaseAnalysis.ts:78
+ * **Returns**: `string`
+ * **Source**:
+    * `heap-analysis/src/BaseAnalysis.ts:78`
 
 ___
 
-### getDescription
+### <a id="getdescription"></a>**getDescription**()
 
-▸ **getDescription**(): `string`
-
-#### Returns
-
-`string`
-
-#### Defined in
-
-heap-analysis/src/BaseAnalysis.ts:85
+ * **Returns**: `string`
+ * **Source**:
+    * `heap-analysis/src/BaseAnalysis.ts:85`
 
 ___
 
-### getOptions
+### <a id="getoptions"></a>**getOptions**()
 
-▸ **getOptions**(): `default`[]
-
-#### Returns
-
-`default`[]
-
-#### Defined in
-
-heap-analysis/src/BaseAnalysis.ts:104
+ * **Returns**: `default`[]
+ * **Source**:
+    * `heap-analysis/src/BaseAnalysis.ts:104`
 
 ___
 
-### run
+### <a id="run"></a>**run**(`options?`)
 
-▸ **run**(`options?`): `Promise`<`any`\>
-
-#### Parameters
-
-| Name | Type | Default value |
-| :------ | :------ | :------ |
-| `options` | `HeapAnalysisOptions` | `pluginUtils.defaultAnalysisArgs` |
-
-#### Returns
-
-`Promise`<`any`\>
-
-#### Inherited from
-
-Analysis.run
-
-#### Defined in
-
-heap-analysis/src/BaseAnalysis.ts:45
+ * **Parameters**:
+    * `options`: `HeapAnalysisOptions` | `pluginUtils.defaultAnalysisArgs`
+ * **Returns**: `Promise`<`any`\>
+ * **Source**:
+    * `heap-analysis/src/BaseAnalysis.ts:45`

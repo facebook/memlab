@@ -15,200 +15,88 @@ custom_edit_url: null
 
 ## Constructors
 
-### constructor
-
-• **new ShapeUnboundGrowthAnalysis**()
-
-#### Inherited from
-
-[BaseAnalysis](heap_analysis_src.BaseAnalysis.md).[constructor](heap_analysis_src.BaseAnalysis.md#constructor)
+### <a id="new shapeunboundgrowthanalysis"></a>**new ShapeUnboundGrowthAnalysis**()
 
 ## Methods
 
-### analyzeSnapshotFromFile
+### <a id="analyzesnapshotfromfile"></a>**analyzeSnapshotFromFile**(`file`)
 
-▸ **analyzeSnapshotFromFile**(`file`): `Promise`<`any`\>
-
-#### Parameters
-
-| Name | Type |
-| :------ | :------ |
-| `file` | `string` |
-
-#### Returns
-
-`Promise`<`any`\>
-
-#### Inherited from
-
-[BaseAnalysis](heap_analysis_src.BaseAnalysis.md).[analyzeSnapshotFromFile](heap_analysis_src.BaseAnalysis.md#analyzesnapshotfromfile)
-
-#### Defined in
-
-heap-analysis/src/BaseAnalysis.ts:52
+ * **Parameters**:
+    * `file`: `string`
+ * **Returns**: `Promise`<`any`\>
+ * **Source**:
+    * `heap-analysis/src/BaseAnalysis.ts:52`
 
 ___
 
-### analyzeSnapshotsInDirectory
+### <a id="analyzesnapshotsindirectory"></a>**analyzeSnapshotsInDirectory**(`directory`)
 
-▸ **analyzeSnapshotsInDirectory**(`directory`): `Promise`<`any`\>
-
-#### Parameters
-
-| Name | Type |
-| :------ | :------ |
-| `directory` | `string` |
-
-#### Returns
-
-`Promise`<`any`\>
-
-#### Inherited from
-
-[BaseAnalysis](heap_analysis_src.BaseAnalysis.md).[analyzeSnapshotsInDirectory](heap_analysis_src.BaseAnalysis.md#analyzesnapshotsindirectory)
-
-#### Defined in
-
-heap-analysis/src/BaseAnalysis.ts:62
+ * **Parameters**:
+    * `directory`: `string`
+ * **Returns**: `Promise`<`any`\>
+ * **Source**:
+    * `heap-analysis/src/BaseAnalysis.ts:62`
 
 ___
 
-### getCommandName
+### <a id="getcommandname"></a>**getCommandName**()
 
-▸ **getCommandName**(): `string`
-
-#### Returns
-
-`string`
-
-#### Overrides
-
-[BaseAnalysis](heap_analysis_src.BaseAnalysis.md).[getCommandName](heap_analysis_src.BaseAnalysis.md#getcommandname)
-
-#### Defined in
-
-heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:40
+ * **Returns**: `string`
+ * **Source**:
+    * `heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:40`
 
 ___
 
-### getDescription
+### <a id="getdescription"></a>**getDescription**()
 
-▸ **getDescription**(): `string`
-
-#### Returns
-
-`string`
-
-#### Overrides
-
-[BaseAnalysis](heap_analysis_src.BaseAnalysis.md).[getDescription](heap_analysis_src.BaseAnalysis.md#getdescription)
-
-#### Defined in
-
-heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:44
+ * **Returns**: `string`
+ * **Source**:
+    * `heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:44`
 
 ___
 
-### getOptions
+### <a id="getoptions"></a>**getOptions**()
 
-▸ **getOptions**(): `default`[]
-
-#### Returns
-
-`default`[]
-
-#### Overrides
-
-[BaseAnalysis](heap_analysis_src.BaseAnalysis.md).[getOptions](heap_analysis_src.BaseAnalysis.md#getoptions)
-
-#### Defined in
-
-heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:48
+ * **Returns**: `default`[]
+ * **Source**:
+    * `heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:48`
 
 ___
 
-### getShapesInfo
+### <a id="getshapesinfo"></a>**getShapesInfo**(`snapshot`)
 
-▸ **getShapesInfo**(`snapshot`): `ShapesInfo`
-
-#### Parameters
-
-| Name | Type |
-| :------ | :------ |
-| `snapshot` | `IHeapSnapshot` |
-
-#### Returns
-
-`ShapesInfo`
-
-#### Defined in
-
-heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:81
+ * **Parameters**:
+    * `snapshot`: `IHeapSnapshot`
+ * **Returns**: `ShapesInfo`
+ * **Source**:
+    * `heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:81`
 
 ___
 
-### getSummary
+### <a id="getsummary"></a>**getSummary**(`ShapesInfoList`)
 
-▸ **getSummary**(`ShapesInfoList`): `ShapeSummary`[]
-
-#### Parameters
-
-| Name | Type |
-| :------ | :------ |
-| `ShapesInfoList` | `ShapesInfo`[] |
-
-#### Returns
-
-`ShapeSummary`[]
-
-#### Defined in
-
-heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:133
+ * **Parameters**:
+    * `ShapesInfoList`: `ShapesInfo`[]
+ * **Returns**: `ShapeSummary`[]
+ * **Source**:
+    * `heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:133`
 
 ___
 
-### process
+### <a id="process"></a>**process**(`options`)
 
-▸ **process**(`options`): `Promise`<`ShapeSummary`[]\>
-
-#### Parameters
-
-| Name | Type |
-| :------ | :------ |
-| `options` | `HeapAnalysisOptions` |
-
-#### Returns
-
-`Promise`<`ShapeSummary`[]\>
-
-#### Overrides
-
-BaseAnalysis.process
-
-#### Defined in
-
-heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:54
+ * **Parameters**:
+    * `options`: `HeapAnalysisOptions`
+ * **Returns**: `Promise`<`ShapeSummary`[]\>
+ * **Source**:
+    * `heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:54`
 
 ___
 
-### run
+### <a id="run"></a>**run**(`options?`)
 
-▸ **run**(`options?`): `Promise`<`any`\>
-
-#### Parameters
-
-| Name | Type | Default value |
-| :------ | :------ | :------ |
-| `options` | `HeapAnalysisOptions` | `pluginUtils.defaultAnalysisArgs` |
-
-#### Returns
-
-`Promise`<`any`\>
-
-#### Inherited from
-
-[BaseAnalysis](heap_analysis_src.BaseAnalysis.md).[run](heap_analysis_src.BaseAnalysis.md#run)
-
-#### Defined in
-
-heap-analysis/src/BaseAnalysis.ts:45
+ * **Parameters**:
+    * `options`: `HeapAnalysisOptions` | `pluginUtils.defaultAnalysisArgs`
+ * **Returns**: `Promise`<`any`\>
+ * **Source**:
+    * `heap-analysis/src/BaseAnalysis.ts:45`

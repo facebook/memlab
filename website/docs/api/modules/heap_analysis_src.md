@@ -22,9 +22,7 @@ custom_edit_url: null
 
 ## Variables
 
-### PluginUtils
-
-• **PluginUtils**: `Object`
+### <a id="pluginutils" name="pluginutils"></a> **PluginUtils**: `Object`
 
 #### Type declaration
 
@@ -44,15 +42,12 @@ custom_edit_url: null
 | `printReferencesInTerminal` | (`edgeList`: `IHeapEdge`[], `options`: `AnyOptions` & `PrintNodeOption`) => `void` |
 | `snapshotMapReduce` | <T1, T2\>(`mapCallback`: (`snapshot`: `IHeapSnapshot`, `i`: `number`, `file`: `string`) => `T1`, `reduceCallback`: (`results`: `T1`[]) => `T2`, `options`: `HeapAnalysisOptions`) => `Promise`<`T2`\> |
 
-#### Defined in
-
-heap-analysis/src/PluginUtils.ts:345
+ * **Source**:
+    * `heap-analysis/src/PluginUtils.ts:345`
 
 ___
 
-### heapAnalysisLoader
-
-• **heapAnalysisLoader**: `HeapAnalysisLoader`
+### <a id="heapanalysisloader" name="heapanalysisloader"></a> **heapAnalysisLoader**: `HeapAnalysisLoader`
 
 Copyright (c) Meta Platforms, Inc. and affiliates.
 
@@ -63,6 +58,5 @@ LICENSE file in the root directory of this source tree.
 
 **`format`**
 
-#### Defined in
-
-heap-analysis/src/HeapAnalysisLoader.ts:63
+ * **Source**:
+    * `heap-analysis/src/HeapAnalysisLoader.ts:63`

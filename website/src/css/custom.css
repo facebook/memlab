@@ -25,6 +25,8 @@
   --ifm-color-primary-lighter: #51b8d4;
   --ifm-color-primary-lightest: #70c5dc;
   --ifm-container-width: 1140px;
+  --ifm-table-cell-padding: 0.35rem;
+  --ifm-paragraph-margin: 0rem;
 }
 
 /* For readability concerns, you should choose a lighter palette in dark mode. */
@@ -45,17 +47,36 @@ article {
 }
 
 article h1 {
-  font-size: 2.5rem !important;
+  font-size: 2.3rem !important;
+}
+
+article h1 code {
+  font-size: 2.3rem !important;
 }
 
 article h2 {
-  font-size: 2rem !important;
+  font-size: 1.8rem !important;
+}
+
+article h2 code {
+  font-size: 1.8rem !important;
 }
 
 article h3 {
-  font-size: 1.5rem !important;
+  font-size: 1.3rem !important;
+}
+
+article h3 code {
+  font-size: 1.3rem !important;
 }
 
 .navbar .navbar__items {
   flex: auto;
+}
+
+code {
+  background-color: transparent;
+  border: none;
+  font-family: monospace, 'Courier New', Courier;
+  font-size: 0.95rem;
 }

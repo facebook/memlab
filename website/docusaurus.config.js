@@ -28,7 +28,7 @@ const config = {
   },
   plugins: [
     [
-      'docusaurus-plugin-typedoc',
+      '@memlab/memlab-docusaurus-plugin-typedoc',
       {
         entryPoints: [
           '../packages/api/src/index.ts',
@@ -43,9 +43,6 @@ const config = {
         tsconfig: '../tsconfig.json',
         out: 'api',
         readme: 'none',
-        sidebar: {
-          indexLabel: 'APIs',
-        },
       },
     ],
   ],
@@ -55,6 +52,7 @@ const config = {
       /** @type {import('@docusaurus/preset-classic').Options} */
       {
         docs: {
+          breadcrumbs: false,
           sidebarPath: require.resolve('./sidebars.js'),
           editUrl:
             'https://github.com/facebookincubator/memlab/blob/main/website',

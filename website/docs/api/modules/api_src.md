@@ -12,9 +12,7 @@ custom_edit_url: null
 
 ## Type Aliases
 
-### RunOptions
-
-Ƭ **RunOptions**: `Object`
+### <a id="runoptions" name="runoptions"></a> **RunOptions**: `Object`
 
 Options for configuring browser interaction run
 
@@ -27,136 +25,82 @@ Options for configuring browser interaction run
 | `scenario?` | `IScenario` | test scenario definition |
 | `snapshotForEachStep?` | `boolean` | if true, take heap snapshot for each interaction step, by default this is false, which means memlab will decide which steps it will take heap snapshots |
 
-#### Defined in
-
-api/src/API.ts:44
+ * **Source**:
+    * `api/src/API.ts:44`
 
 ## Functions
 
-### analyze
-
-▸ **analyze**(`runResult`, `heapAnalyzer`, `args?`): `Promise`<`AnyValue`\>
+### <a id="analyze"></a>**analyze**(`runResult`, `heapAnalyzer`, `args?`)
 
 This API analyzes heap snapshot(s) with a specified heap analysis.
 This is equivalent to `memlab analyze` in CLI.
 
-#### Parameters
+ * **Parameters**:
+    * `runResult`: [`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md) | return value of a browser interaction run
+    * `heapAnalyzer`: `BaseAnalysis` | instance of a heap analysis
+    * `args`: `ParsedArgs` | other CLI arguments that needs to be passed to the heap analysis
+ * **Returns**: `Promise`<`AnyValue`\> | 
 
-| Name | Type | Description |
-| :------ | :------ | :------ |
-| `runResult` | [`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md) | return value of a browser interaction run |
-| `heapAnalyzer` | `BaseAnalysis` | instance of a heap analysis |
-| `args` | `ParsedArgs` | other CLI arguments that needs to be passed to the heap analysis |
-
-#### Returns
-
-`Promise`<`AnyValue`\>
-
-#### Defined in
-
-api/src/API.ts:165
+ * **Source**:
+    * `api/src/API.ts:165`
 
 ___
 
-### findLeaks
-
-▸ **findLeaks**(`runResult`): `Promise`<`ISerializedInfo`[]\>
+### <a id="findleaks"></a>**findLeaks**(`runResult`)
 
 This API finds memory leaks by analyzing heap snapshot(s)
 This is equivalent to `memlab find-leaks` in CLI.
 
-#### Parameters
-
-| Name | Type | Description |
-| :------ | :------ | :------ |
-| `runResult` | [`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md) | return value of a browser interaction run |
-
-#### Returns
-
-`Promise`<`ISerializedInfo`[]\>
-
-an array of leak traces detected and clustered from the
+ * **Parameters**:
+    * `runResult`: [`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md) | return value of a browser interaction run
+ * **Returns**: `Promise`<`ISerializedInfo`[]\> | an array of leak traces detected and clustered from the
 browser interaction
 
-#### Defined in
-
-api/src/API.ts:147
+ * **Source**:
+    * `api/src/API.ts:147`
 
 ___
 
-### run
-
-▸ **run**(`options?`): `Promise`<`ISerializedInfo`[]\>
+### <a id="run"></a>**run**(`options?`)
 
 This API runs browser interaction and find memory leaks triggered in browser
 This is equivalent to run `memlab run` in CLI.
-This is also equivalent to call {@link warmup}, [takeSnapshots](api_src.md#takesnapshots),
+This is also equivalent to warm up, and call [takeSnapshots](api_src.md#takesnapshots)
 and [findLeaks](api_src.md#findleaks).
 
-#### Parameters
-
-| Name | Type | Description |
-| :------ | :------ | :------ |
-| `options` | [`RunOptions`](api_src.md#runoptions) | configure browser interaction run |
-
-#### Returns
-
-`Promise`<`ISerializedInfo`[]\>
-
-an array of leak traces detected and clustered from the
+ * **Parameters**:
+    * `options`: [`RunOptions`](api_src.md#runoptions) | configure browser interaction run
+ * **Returns**: `Promise`<`ISerializedInfo`[]\> | an array of leak traces detected and clustered from the
 browser interaction
 
-#### Defined in
-
-api/src/API.ts:104
+ * **Source**:
+    * `api/src/API.ts:104`
 
 ___
 
-### takeSnapshots
-
-▸ **takeSnapshots**(`options?`): `Promise`<[`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md)\>
+### <a id="takesnapshots"></a>**takeSnapshots**(`options?`)
 
 This API runs E2E interaction and takes heap snapshots.
 This is equivalent to run `memlab snapshot` in CLI.
 
-#### Parameters
+ * **Parameters**:
+    * `options`: [`RunOptions`](api_src.md#runoptions) | configure browser interaction run
+ * **Returns**: `Promise`<[`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md)\> | browser interaction results
 
-| Name | Type | Description |
-| :------ | :------ | :------ |
-| `options` | [`RunOptions`](api_src.md#runoptions) | configure browser interaction run |
-
-#### Returns
-
-`Promise`<[`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md)\>
-
-browser interaction results
-
-#### Defined in
-
-api/src/API.ts:126
+ * **Source**:
+    * `api/src/API.ts:126`
 
 ___
 
-### warmupAndTakeSnapshots
-
-▸ **warmupAndTakeSnapshots**(`options?`): `Promise`<[`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md)\>
+### <a id="warmupandtakesnapshots"></a>**warmupAndTakeSnapshots**(`options?`)
 
 This API warms up web server, runs E2E interaction, and takes heap snapshots.
 This is equivalent to run `memlab warmup-and-snapshot` in CLI.
-This is also equivalent to call {@link warmup} and [takeSnapshots](api_src.md#takesnapshots).
+This is also equivalent to warm up and call [takeSnapshots](api_src.md#takesnapshots).
 
-#### Parameters
+ * **Parameters**:
+    * `options`: [`RunOptions`](api_src.md#runoptions) | configure browser interaction run
+ * **Returns**: `Promise`<[`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md)\> | browser interaction results
 
-| Name | Type | Description |
-| :------ | :------ | :------ |
-| `options` | [`RunOptions`](api_src.md#runoptions) | configure browser interaction run |
-
-#### Returns
-
-`Promise`<[`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md)\>
-
-browser interaction results
-
-#### Defined in
-
-api/src/API.ts:80
+ * **Source**:
+    * `api/src/API.ts:80`

@@ -18,145 +18,68 @@ and rank them based on the duplicated string size and count.
 
 ## Constructors
 
-### constructor
-
-• **new StringAnalysis**()
-
-#### Inherited from
-
-[BaseAnalysis](heap_analysis_src.BaseAnalysis.md).[constructor](heap_analysis_src.BaseAnalysis.md#constructor)
+### <a id="new stringanalysis"></a>**new StringAnalysis**()
 
 ## Methods
 
-### analyzeSnapshotFromFile
+### <a id="analyzesnapshotfromfile"></a>**analyzeSnapshotFromFile**(`file`)
 
-▸ **analyzeSnapshotFromFile**(`file`): `Promise`<`any`\>
-
-#### Parameters
-
-| Name | Type |
-| :------ | :------ |
-| `file` | `string` |
-
-#### Returns
-
-`Promise`<`any`\>
-
-#### Inherited from
-
-[BaseAnalysis](heap_analysis_src.BaseAnalysis.md).[analyzeSnapshotFromFile](heap_analysis_src.BaseAnalysis.md#analyzesnapshotfromfile)
-
-#### Defined in
-
-heap-analysis/src/BaseAnalysis.ts:52
+ * **Parameters**:
+    * `file`: `string`
+ * **Returns**: `Promise`<`any`\>
+ * **Source**:
+    * `heap-analysis/src/BaseAnalysis.ts:52`
 
 ___
 
-### analyzeSnapshotsInDirectory
+### <a id="analyzesnapshotsindirectory"></a>**analyzeSnapshotsInDirectory**(`directory`)
 
-▸ **analyzeSnapshotsInDirectory**(`directory`): `Promise`<`any`\>
-
-#### Parameters
-
-| Name | Type |
-| :------ | :------ |
-| `directory` | `string` |
-
-#### Returns
-
-`Promise`<`any`\>
-
-#### Inherited from
-
-[BaseAnalysis](heap_analysis_src.BaseAnalysis.md).[analyzeSnapshotsInDirectory](heap_analysis_src.BaseAnalysis.md#analyzesnapshotsindirectory)
-
-#### Defined in
-
-heap-analysis/src/BaseAnalysis.ts:62
+ * **Parameters**:
+    * `directory`: `string`
+ * **Returns**: `Promise`<`any`\>
+ * **Source**:
+    * `heap-analysis/src/BaseAnalysis.ts:62`
 
 ___
 
-### getCommandName
-
-▸ **getCommandName**(): `string`
+### <a id="getcommandname"></a>**getCommandName**()
 
 get CLI command name for this memory analysis;
 use it with `memlab analyze <ANALYSIS_NAME>` in CLI
 
-#### Returns
+ * **Returns**: `string` | command name
 
-`string`
-
-command name
-
-#### Overrides
-
-[BaseAnalysis](heap_analysis_src.BaseAnalysis.md).[getCommandName](heap_analysis_src.BaseAnalysis.md#getcommandname)
-
-#### Defined in
-
-heap-analysis/src/plugins/StringAnalysis.ts:124
+ * **Source**:
+    * `heap-analysis/src/plugins/StringAnalysis.ts:124`
 
 ___
 
-### getDescription
-
-▸ **getDescription**(): `string`
+### <a id="getdescription"></a>**getDescription**()
 
 get a textual description of the memory analysis
 
-#### Returns
+ * **Returns**: `string` | textual description
 
-`string`
-
-textual description
-
-#### Overrides
-
-[BaseAnalysis](heap_analysis_src.BaseAnalysis.md).[getDescription](heap_analysis_src.BaseAnalysis.md#getdescription)
-
-#### Defined in
-
-heap-analysis/src/plugins/StringAnalysis.ts:132
+ * **Source**:
+    * `heap-analysis/src/plugins/StringAnalysis.ts:132`
 
 ___
 
-### getTopDuplicatedStringsInCount
-
-▸ **getTopDuplicatedStringsInCount**(): `StringRecord`[]
+### <a id="gettopduplicatedstringsincount"></a>**getTopDuplicatedStringsInCount**()
 
 get the top duplicated string in terms of duplicated string count
 
-#### Returns
+ * **Returns**: `StringRecord`[] | an array of the top-duplicated strings' information
 
-`StringRecord`[]
-
-an array of the top-duplicated strings' information
-
-#### Defined in
-
-heap-analysis/src/plugins/StringAnalysis.ts:73
+ * **Source**:
+    * `heap-analysis/src/plugins/StringAnalysis.ts:73`
 
 ___
 
-### run
+### <a id="run"></a>**run**(`options?`)
 
-▸ **run**(`options?`): `Promise`<`any`\>
-
-#### Parameters
-
-| Name | Type | Default value |
-| :------ | :------ | :------ |
-| `options` | `HeapAnalysisOptions` | `pluginUtils.defaultAnalysisArgs` |
-
-#### Returns
-
-`Promise`<`any`\>
-
-#### Inherited from
-
-[BaseAnalysis](heap_analysis_src.BaseAnalysis.md).[run](heap_analysis_src.BaseAnalysis.md#run)
-
-#### Defined in
-
-heap-analysis/src/BaseAnalysis.ts:45
+ * **Parameters**:
+    * `options`: `HeapAnalysisOptions` | `pluginUtils.defaultAnalysisArgs`
+ * **Returns**: `Promise`<`any`\>
+ * **Source**:
+    * `heap-analysis/src/BaseAnalysis.ts:45`

@@ -19,143 +19,79 @@ last browser interaction run
 
 ## Methods
 
-### cleanup
-
-▸ **cleanup**(): `void`
+### <a id="cleanup"></a>**cleanup**()
 
 clean up data/files generated from the memlab run
 
-#### Returns
-
-`void`
-
-#### Inherited from
-
-BaseResultReader.cleanup
-
-#### Defined in
-
-api/src/result-reader/BaseResultReader.ts:72
+ * **Returns**: `void`
+ * **Source**:
+    * `api/src/result-reader/BaseResultReader.ts:72`
 
 ___
 
-### getInteractionSteps
-
-▸ **getInteractionSteps**(): `E2EStepInfo`[]
+### <a id="getinteractionsteps"></a>**getInteractionSteps**()
 
 browser interaction step sequence
 
-#### Returns
+ * **Returns**: `E2EStepInfo`[] | an array of browser interaction step info
 
-`E2EStepInfo`[]
-
-an array of browser interaction step info
-
-#### Defined in
-
-api/src/result-reader/BrowserInteractionResultReader.ts:60
+ * **Source**:
+    * `api/src/result-reader/BrowserInteractionResultReader.ts:60`
 
 ___
 
-### getRootDirectory
-
-▸ **getRootDirectory**(): `string`
+### <a id="getrootdirectory"></a>**getRootDirectory**()
 
 get the directory where the data and generated files of
 the memlab run were stored
 
-#### Returns
+ * **Returns**: `string` | absolute path of the directory
 
-`string`
-
-absolute path of the directory
-
-#### Inherited from
-
-BaseResultReader.getRootDirectory
-
-#### Defined in
-
-api/src/result-reader/BaseResultReader.ts:64
+ * **Source**:
+    * `api/src/result-reader/BaseResultReader.ts:64`
 
 ___
 
-### getRunMetaInfo
-
-▸ **getRunMetaInfo**(): `RunMetaInfo`
+### <a id="getrunmetainfo"></a>**getRunMetaInfo**()
 
 general meta data of the browser interaction run
 
-#### Returns
+ * **Returns**: `RunMetaInfo` | meta data about the entire browser interaction
 
-`RunMetaInfo`
-
-meta data about the entire browser interaction
-
-#### Defined in
-
-api/src/result-reader/BrowserInteractionResultReader.ts:72
+ * **Source**:
+    * `api/src/result-reader/BrowserInteractionResultReader.ts:72`
 
 ___
 
-### getSnapshotFileDir
-
-▸ **getSnapshotFileDir**(): `string`
+### <a id="getsnapshotfiledir"></a>**getSnapshotFileDir**()
 
 get the directory holding all snapshot files
 
-#### Returns
+ * **Returns**: `string` | the absolute path of the directory
 
-`string`
-
-the absolute path of the directory
-
-#### Defined in
-
-api/src/result-reader/BrowserInteractionResultReader.ts:51
+ * **Source**:
+    * `api/src/result-reader/BrowserInteractionResultReader.ts:51`
 
 ___
 
-### getSnapshotFiles
-
-▸ **getSnapshotFiles**(): `string`[]
+### <a id="getsnapshotfiles"></a>**getSnapshotFiles**()
 
 get all snapshot files
 
-#### Returns
+ * **Returns**: `string`[] | an array of snapshot file's absolute path
 
-`string`[]
-
-an array of snapshot file's absolute path
-
-#### Defined in
-
-api/src/result-reader/BrowserInteractionResultReader.ts:38
+ * **Source**:
+    * `api/src/result-reader/BrowserInteractionResultReader.ts:38`
 
 ___
 
-### from
-
-▸ `Static` **from**(`workDir?`): [`BrowserInteractionResultReader`](api_src.BrowserInteractionResultReader.md)
+### <a id="from"></a>`Static` **from**(`workDir?`)
 
 build a result reader
 
-#### Parameters
+ * **Parameters**:
+    * `workDir`: `string` | `''` | absolute path of the directory where the data and generated files of the browser interaction run were stored
+ * **Returns**: [`BrowserInteractionResultReader`](api_src.BrowserInteractionResultReader.md) | the ResultReader instance
 
-| Name | Type | Default value | Description |
-| :------ | :------ | :------ | :------ |
-| `workDir` | `string` | `''` | absolute path of the directory where the data and generated files of the browser interaction run were stored |
-
-#### Returns
-
-[`BrowserInteractionResultReader`](api_src.BrowserInteractionResultReader.md)
-
-the ResultReader instance
-
-#### Overrides
-
-BaseResultReader.from
-
-#### Defined in
-
-api/src/result-reader/BrowserInteractionResultReader.ts:30
+ * **Source**:
+    * `api/src/result-reader/BrowserInteractionResultReader.ts:30`

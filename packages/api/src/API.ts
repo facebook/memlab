@@ -72,7 +72,7 @@ export type APIOptions = {
 /**
  * This API warms up web server, runs E2E interaction, and takes heap snapshots.
  * This is equivalent to run `memlab warmup-and-snapshot` in CLI.
- * This is also equivalent to call {@link warmup} and {@link takeSnapshots}.
+ * This is also equivalent to warm up and call {@link takeSnapshots}.
  *
  * @param options configure browser interaction run
  * @returns browser interaction results
@@ -94,7 +94,7 @@ export async function warmupAndTakeSnapshots(
 /**
  * This API runs browser interaction and find memory leaks triggered in browser
  * This is equivalent to run `memlab run` in CLI.
- * This is also equivalent to call {@link warmup}, {@link takeSnapshots},
+ * This is also equivalent to warm up, and call {@link takeSnapshots}
  * and {@link findLeaks}.
  *
  * @param options configure browser interaction run
