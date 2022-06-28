@@ -76,6 +76,17 @@ export type APIOptions = {
  *
  * @param options configure browser interaction run
  * @returns browser interaction results
+ * * **Examples**:
+ * ```javascript
+ * const {warmupAndTakeSnapshots} = require('@memlab/api');
+ *
+ * (async function () {
+ *   const scenario = {
+ *     url: () => 'https://www.facebook.com',
+ *   };
+ *   const result = await warmupAndTakeSnapshots({scenario});
+ * })();
+ * ```
  */
 export async function warmupAndTakeSnapshots(
   options: RunOptions = {},
@@ -97,19 +108,29 @@ export async function warmupAndTakeSnapshots(
  * This is also equivalent to warm up, and call {@link takeSnapshots}
  * and {@link findLeaks}.
  *
- * @param options configure browser interaction run
- * @returns an array of leak traces detected and clustered from the
- * browser interaction
+ * @param runOptions configure browser interaction run
+ * @returns leak traces detected and clustered from the browser interaction
+ * * **Examples**:
+ * ```javascript
+ * const {run} = require('@memlab/api');
+ *
+ * (async function () {
+ *   const scenario = {
+ *     url: () => 'https://www.facebook.com',
+ *   };
+ *   const leaks = await run({scenario});
+ * })();
+ * ```
  */
 export async function run(
-  options: RunOptions = {},
+  runOptions: RunOptions = {},
 ): Promise<ISerializedInfo[]> {
   const config = MemLabConfig.resetConfigWithTranscientDir();
-  setConfigByRunOptions(config, options);
-  config.externalCookiesFile = options.cookiesFile;
-  config.scenario = options.scenario;
+  setConfigByRunOptions(config, runOptions);
+  config.externalCookiesFile = runOptions.cookiesFile;
+  config.scenario = runOptions.scenario;
   const testPlanner = new TestPlanner({config});
-  const {evalInBrowserAfterInitLoad} = options;
+  const {evalInBrowserAfterInitLoad} = runOptions;
   await warmup({testPlanner, config, evalInBrowserAfterInitLoad});
   await testInBrowser({testPlanner, config, evalInBrowserAfterInitLoad});
   const runResult = BrowserInteractionResultReader.from(config.workDir);
@@ -122,6 +143,17 @@ export async function run(
  *
  * @param options configure browser interaction run
  * @returns browser interaction results
+ * * **Examples**:
+ * ```javascript
+ * const {takeSnapshots} = require('@memlab/api');
+ *
+ * (async function () {
+ *   const scenario = {
+ *     url: () => 'https://www.facebook.com',
+ *   };
+ *   const result = await takeSnapshots({scenario});
+ * })();
+ * ```
  */
 export async function takeSnapshots(
   options: RunOptions = {},
@@ -141,8 +173,19 @@ export async function takeSnapshots(
  * This is equivalent to `memlab find-leaks` in CLI.
  *
  * @param runResult return value of a browser interaction run
- * @returns an array of leak traces detected and clustered from the
- * browser interaction
+ * @returns leak traces detected and clustered from the browser interaction
+ * * **Examples**:
+ * ```javascript
+ * const {findLeaks, takeSnapshots} = require('@memlab/api');
+ *
+ * (async function () {
+ *   const scenario = {
+ *     url: () => 'https://www.facebook.com',
+ *   };
+ *   const result = await takeSnapshots({scenario});
+ *   const leaks = findLeaks(result);
+ * })();
+ * ```
  */
 export async function findLeaks(
   runResult: BrowserInteractionResultReader,
@@ -160,7 +203,20 @@ export async function findLeaks(
  * @param runResult return value of a browser interaction run
  * @param heapAnalyzer instance of a heap analysis
  * @param args other CLI arguments that needs to be passed to the heap analysis
- * @returns
+ * @returns each analysis may have a different return type
+ * * **Examples**:
+ * ```javascript
+ * const {takeSnapshots, StringAnalysis} = require('@memlab/api');
+ *
+ * (async function () {
+ *   const scenario = {
+ *     url: () => 'https://www.facebook.com',
+ *   };
+ *   const result = await takeSnapshots({scenario});
+ *   const analysis = new StringAnalysis();
+ *   await analyze(result, analysis);
+ * })();
+ * ```
  */
 export async function analyze(
   runResult: BrowserInteractionResultReader,

@@ -39,10 +39,23 @@ This is equivalent to `memlab analyze` in CLI.
     * `runResult`: [`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md) | return value of a browser interaction run
     * `heapAnalyzer`: `BaseAnalysis` | instance of a heap analysis
     * `args`: `ParsedArgs` | other CLI arguments that needs to be passed to the heap analysis
- * **Returns**: `Promise`<`AnyValue`\> | 
+ * **Returns**: `Promise`<`AnyValue`\> | each analysis may have a different return type
+* **Examples**:
+```javascript
+const {takeSnapshots, StringAnalysis} = require('@memlab/api');
+
+(async function () {
+  const scenario = {
+    url: () => 'https://www.facebook.com',
+  };
+  const result = await takeSnapshots({scenario});
+  const analysis = new StringAnalysis();
+  await analyze(result, analysis);
+})();
+```
 
  * **Source**:
-    * `api/src/API.ts:165`
+    * `api/src/API.ts:221`
 
 ___
 
@@ -53,15 +66,26 @@ This is equivalent to `memlab find-leaks` in CLI.
 
  * **Parameters**:
     * `runResult`: [`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md) | return value of a browser interaction run
- * **Returns**: `Promise`<`ISerializedInfo`[]\> | an array of leak traces detected and clustered from the
-browser interaction
+ * **Returns**: `Promise`<`ISerializedInfo`[]\> | leak traces detected and clustered from the browser interaction
+* **Examples**:
+```javascript
+const {findLeaks, takeSnapshots} = require('@memlab/api');
+
+(async function () {
+  const scenario = {
+    url: () => 'https://www.facebook.com',
+  };
+  const result = await takeSnapshots({scenario});
+  const leaks = findLeaks(result);
+})();
+```
 
  * **Source**:
-    * `api/src/API.ts:147`
+    * `api/src/API.ts:190`
 
 ___
 
-### <a id="run"></a>**run**(`options?`)
+### <a id="run"></a>**run**(`runOptions?`)
 
 This API runs browser interaction and find memory leaks triggered in browser
 This is equivalent to run `memlab run` in CLI.
@@ -69,12 +93,22 @@ This is also equivalent to warm up, and call [takeSnapshots](api_src.md#takesnap
 and [findLeaks](api_src.md#findleaks).
 
  * **Parameters**:
-    * `options`: [`RunOptions`](api_src.md#runoptions) | configure browser interaction run
- * **Returns**: `Promise`<`ISerializedInfo`[]\> | an array of leak traces detected and clustered from the
-browser interaction
+    * `runOptions`: [`RunOptions`](api_src.md#runoptions) | configure browser interaction run
+ * **Returns**: `Promise`<`ISerializedInfo`[]\> | leak traces detected and clustered from the browser interaction
+* **Examples**:
+```javascript
+const {run} = require('@memlab/api');
+
+(async function () {
+  const scenario = {
+    url: () => 'https://www.facebook.com',
+  };
+  const leaks = await run({scenario});
+})();
+```
 
  * **Source**:
-    * `api/src/API.ts:104`
+    * `api/src/API.ts:125`
 
 ___
 
@@ -86,9 +120,20 @@ This is equivalent to run `memlab snapshot` in CLI.
  * **Parameters**:
     * `options`: [`RunOptions`](api_src.md#runoptions) | configure browser interaction run
  * **Returns**: `Promise`<[`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md)\> | browser interaction results
+* **Examples**:
+```javascript
+const {takeSnapshots} = require('@memlab/api');
+
+(async function () {
+  const scenario = {
+    url: () => 'https://www.facebook.com',
+  };
+  const result = await takeSnapshots({scenario});
+})();
+```
 
  * **Source**:
-    * `api/src/API.ts:126`
+    * `api/src/API.ts:158`
 
 ___
 
@@ -101,6 +146,17 @@ This is also equivalent to warm up and call [takeSnapshots](api_src.md#takesnaps
  * **Parameters**:
     * `options`: [`RunOptions`](api_src.md#runoptions) | configure browser interaction run
  * **Returns**: `Promise`<[`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md)\> | browser interaction results
+* **Examples**:
+```javascript
+const {warmupAndTakeSnapshots} = require('@memlab/api');
+
+(async function () {
+  const scenario = {
+    url: () => 'https://www.facebook.com',
+  };
+  const result = await warmupAndTakeSnapshots({scenario});
+})();
+```
 
  * **Source**:
-    * `api/src/API.ts:80`
+    * `api/src/API.ts:91`
