@@ -209,6 +209,7 @@ export class MemLabConfig {
   nodeIgnoreSetInShape: Set<string>;
   oversizeObjectAsLeak: boolean;
   oversizeThreshold: number;
+  clusterRetainedSizeThreshold: number;
   _isFullRun: boolean;
   _scenario: Optional<IScenario>;
   externalLeakFilter?: Optional<ILeakFilter>;
@@ -452,7 +453,9 @@ export class MemLabConfig {
     this.oversizeObjectAsLeak = false;
     // if larger than this threshold, consider as memory leak
     this.oversizeThreshold = 0;
-
+    // only report leak clusters with aggregated retained size
+    // bigger than this threshold
+    this.clusterRetainedSizeThreshold = 0;
     // initialize file and directory paths
     fileManager.initDirs(this, options);
   }
@@ -638,8 +641,8 @@ export class MemLabConfig {
   }
 }
 
-/** @ignore */
+/** @internal */
 const config = MemLabConfig.getInstance();
 setInternalValue(config, __filename, constant.internalDir);
-/** @ignore */
+/** @internal */
 export default config;

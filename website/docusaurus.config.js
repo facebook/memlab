@@ -39,6 +39,7 @@ const config = {
         exclude: '**/*.d.ts',
         excludePrivate: true,
         excludeProtected: true,
+        excludeInternal: true,
         tsconfig: '../tsconfig.json',
         out: 'api',
         readme: 'none',

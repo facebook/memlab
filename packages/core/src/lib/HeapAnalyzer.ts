@@ -40,6 +40,7 @@ import config from './Config';
 import info from './Console';
 import serializer from './Serializer';
 import utils from './Utils';
+import {LeakObjectFilter} from './leak-filters/LeakObjectFilter';
 
 class MemoryAnalyst {
   async checkLeak(): Promise<ISerializedInfo[]> {
@@ -486,25 +487,6 @@ class MemoryAnalyst {
     info.table(list);
   }
 
-  private checkDetachedFiberNode(node: IHeapNode): boolean {
-    if (
-      !config.detectFiberNodeLeak ||
-      !utils.isFiberNode(node) ||
-      utils.hasHostRoot(node)
-    ) {
-      return false;
-    }
-    return !utils.isNodeDominatedByDeletionsArray(node);
-  }
-
-  private isTrivialNode(node: IHeapNode): boolean {
-    return (
-      node.type === 'number' ||
-      utils.isStringNode(node) ||
-      node.type === 'hidden'
-    );
-  }
-
   private filterLeakedObjects(
     leakedNodeIds: HeapNodeIdSet,
     snapshot: IHeapSnapshot,
@@ -514,38 +496,11 @@ class MemoryAnalyst {
       config.externalLeakFilter.beforeLeakFilter(snapshot, leakedNodeIds);
     }
 
+    const leakFilter = new LeakObjectFilter();
     // start filtering memory leaks
-    utils.filterNodesInPlace(leakedNodeIds, snapshot, node => {
-      // use external leak filter if exists
-      if (config.externalLeakFilter) {
-        return config.externalLeakFilter.leakFilter(
-          node,
-          snapshot,
-          leakedNodeIds,
-        );
-      }
-      if (this.isTrivialNode(node)) {
-        return false;
-      }
-      // when analyzing hermes heap snapshots, filter Hermes internal objects
-      if (config.jsEngine === 'hermes' && utils.isHermesInternalObject(node)) {
-        return false;
-      }
-      if (config.oversizeObjectAsLeak) {
-        return node.retainedSize > config.oversizeThreshold;
-      }
-      // check FiberNodes without a Fiber Root
-      if (this.checkDetachedFiberNode(node)) {
-        return true;
-      }
-      const isDetached = utils.isDetachedDOMNode(node, {
-        ignoreInternalNode: true,
-      });
-      if (isDetached && config.targetApp === 'ads-manager') {
-        return utils.hasReactEdges(node);
-      }
-      return isDetached || utils.isStackTraceFrame(node);
-    });
+    utils.filterNodesInPlace(leakedNodeIds, snapshot, node =>
+      leakFilter.filter(config, node, snapshot, leakedNodeIds),
+    );
     if (config.verbose) {
       info.midLevel(`${leakedNodeIds.size} Fiber nodes and Detached elements`);
     }
@@ -789,6 +744,36 @@ class MemoryAnalyst {
     return referrerInfo;
   }
 
+  private printHeapAndLeakInfo(
+    leakedNodeIds: HeapNodeIdSet,
+    snapshot: IHeapSnapshot,
+  ) {
+    // write page interaction summary to the leaks text file
+    this.dumpPageInteractionSummary();
+
+    // dump leak summry to console
+    this.dumpLeakSummaryToConsole(leakedNodeIds, snapshot);
+
+    // get aggregated leak info
+    const heapInfo = this.getOverallHeapInfo(snapshot);
+    if (heapInfo) {
+      this.printHeapInfo(heapInfo);
+    }
+  }
+
+  private logLeakTraceSummary(
+    trace: LeakTracePathItem,
+    nodeIdInPaths: HeapNodeIdSet,
+    snapshot: IHeapSnapshot,
+  ) {
+    if (!config.isFullRun) {
+      return;
+    }
+    // convert the path to a string
+    const pathStr = serializer.summarizePath(trace, nodeIdInPaths, snapshot);
+    fs.appendFileSync(config.exploreResultFile, `\n\n${pathStr}\n\n`, 'UTF-8');
+  }
+
   // find unique paths of leaked nodes
   async searchLeakedTraces(
     leakedNodeIds: HeapNodeIdSet,
@@ -796,32 +781,20 @@ class MemoryAnalyst {
   ) {
     const finder = this.preparePathFinder(snapshot);
 
-    // write page interaction summary to the leaks text file
-    this.dumpPageInteractionSummary();
-
-    // dump leak summry to console
-    this.dumpLeakSummaryToConsole(leakedNodeIds, snapshot);
+    this.printHeapAndLeakInfo(leakedNodeIds, snapshot);
 
     // get all leaked objects
     this.filterLeakedObjects(leakedNodeIds, snapshot);
-
-    // get aggregated leak info
-    const leakInfo = this.getOverallHeapInfo(snapshot);
-    if (leakInfo) {
-      this.printHeapInfo(leakInfo);
-    }
 
     if (config.verbose) {
       // show a breakdown of different object structures
       this.breakDownSnapshotByShapes(snapshot);
     }
 
+    const nodeIdInPaths: HeapNodeIdSet = new Set();
+    const paths: LeakTracePathItem[] = [];
     let numOfLeakedObjects = 0;
     let i = 0;
-
-    const nodeIdInPaths: HeapNodeIdSet = new Set();
-
-    const paths: LeakTracePathItem[] = [];
 
     // analysis for each node
     utils.applyToNodes(
@@ -833,26 +806,14 @@ class MemoryAnalyst {
         }
         // BFS search for path from the leaked node to GC roots
         const p = finder.getPathToGCRoots(snapshot, node);
-        if (!p) {
-          return;
-        }
-
-        if (!utils.isInterestingPath(p)) {
+        if (!p || !utils.isInterestingPath(p)) {
           return;
         }
 
         ++numOfLeakedObjects;
         paths.push(p);
 
-        // convert the path to a string
-        if (config.isFullRun) {
-          const pathStr = serializer.summarizePath(p, nodeIdInPaths, snapshot);
-          fs.appendFileSync(
-            config.exploreResultFile,
-            `\n\n${pathStr}\n\n`,
-            'UTF-8',
-          );
-        }
+        this.logLeakTraceSummary(p, nodeIdInPaths, snapshot);
       },
       {reverse: true},
     );

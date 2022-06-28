@@ -12,16 +12,13 @@ import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
 
-export default class OversizeThresholdOption extends BaseOption {
+export default class LeakClusterSizeThresholdOption extends BaseOption {
   getOptionName(): string {
-    return 'trace-object-size-above';
+    return 'ignore-leak-cluster-size-below';
   }
 
   getDescription(): string {
-    return (
-      'objects with retained size (bytes) ' +
-      'bigger than the threshold will be considered as leaks'
-    );
+    return 'ignore memory leaks with aggregated retained size smaller than the threshold';
   }
 
   getExampleValues(): string[] {
@@ -32,8 +29,7 @@ export default class OversizeThresholdOption extends BaseOption {
     if (args[this.getOptionName()]) {
       const sizeThreshold = parseInt(args[this.getOptionName()], 10);
       if (!isNaN(sizeThreshold)) {
-        config.oversizeObjectAsLeak = true;
-        config.oversizeThreshold = sizeThreshold;
+        config.clusterRetainedSizeThreshold = sizeThreshold;
       }
     }
   }

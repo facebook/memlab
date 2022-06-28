@@ -57,8 +57,8 @@ export type RunOptions = {
 };
 
 /**
- * @ignore
  * Options for memlab inter-package API calls
+ * @internal
  */
 export type APIOptions = {
   // NOTE: cannot pass in a different config instance
@@ -173,9 +173,9 @@ export async function analyze(
 }
 
 /**
- * @ignore
  * This warms up web server by sending web requests to the web sever.
  * This is equivalent to run `memlab warmup` in CLI.
+ * @internal
  *
  * @param options configure browser interaction run
  */
@@ -273,7 +273,8 @@ async function initBrowserInfoInConfig(
 }
 
 /**
- * @ignore
+ * Browser interaction API used by MemLab API and MemLab CLI
+ * @internal
  */
 export async function testInBrowser(options: APIOptions = {}): Promise<void> {
   const config = options.config ?? defaultConfig;

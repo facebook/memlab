@@ -22,6 +22,7 @@ import TraceAllObjectsOption from '../../options/heap/TraceAllObjectsOption';
 import LogTraceAsClusterOption from '../../options/heap/LogTraceAsClusterOption';
 import CleanLoggerDataCommand from '../CleanLoggerDataCommand';
 import LeakFilterFileOption from '../../options/heap/leak-filter/LeakFilterFileOption';
+import LeakClusterSizeThresholdOption from '../../options/heap/LeakClusterSizeThresholdOption';
 
 export default class CheckLeakCommand extends BaseCommand {
   getCommandName(): string {
@@ -49,6 +50,7 @@ export default class CheckLeakCommand extends BaseCommand {
       new JSEngineOption(),
       new LeakFilterFileOption(),
       new OversizeThresholdOption(),
+      new LeakClusterSizeThresholdOption(),
       new TraceAllObjectsOption(),
       new LogTraceAsClusterOption(),
     ];

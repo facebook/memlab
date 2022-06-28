@@ -240,6 +240,17 @@ export default class NormalizedTrace {
     return labaledLeakTraces;
   }
 
+  static filterClusters(clusters: TraceCluster[]): TraceCluster[] {
+    if (config.clusterRetainedSizeThreshold <= 0) {
+      return clusters;
+    }
+    return clusters.filter(
+      cluster =>
+        (cluster.retainedSize ?? Infinity) >
+        config.clusterRetainedSizeThreshold,
+    );
+  }
+
   static clusterPaths(
     paths: LeakTracePathItem[],
     snapshot: IHeapSnapshot,
@@ -267,7 +278,7 @@ export default class NormalizedTrace {
     // cluster traces
     const {allClusters} = NormalizedTrace.diffTraces(traces, [], option);
     // construct TraceCluster from clustering result
-    const clusters = allClusters.map((traces: LeakTrace[]) => {
+    let clusters: TraceCluster[] = allClusters.map((traces: LeakTrace[]) => {
       const cluster = {
         path: traceToPathMap.get(traces[0]),
         count: traces.length,
@@ -287,6 +298,7 @@ export default class NormalizedTrace {
       );
       return cluster;
     });
+    clusters = NormalizedTrace.filterClusters(clusters);
     clusters.sort((c1, c2) => (c2.retainedSize ?? 0) - (c1.retainedSize ?? 0));
 
     info.midLevel(`MemLab found ${clusters.length} leak(s)`);
