@@ -423,6 +423,7 @@ export class MemLabConfig {
     this.nodeNameGreyList = new Set([
       'InternalNode',
       'Pending activities',
+      'StyleEngine',
       ...constant.V8SyntheticRoots,
     ]);
     // edge names less preferable in trace finding

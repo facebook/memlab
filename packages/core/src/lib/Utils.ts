@@ -987,6 +987,10 @@ function isInterestingPath(p: LeakTracePathItem): boolean {
   if (config.hideBrowserLeak && shadowRootRetainsDetachedElement(p)) {
     return false;
   }
+  // if the path has pattern: StyleEngine -> InternalNode -> DetachedElement
+  if (config.hideBrowserLeak && styleEngineRetainsDetachedElement(p)) {
+    return false;
+  }
   return true;
 }
 
@@ -1049,6 +1053,26 @@ function shadowRootRetainsDetachedElement(path: LeakTracePathItem): boolean {
   }
   p = p.next;
   // check if the node is a detached element
+  return !!p && isDetachedDOMNode(p.node);
+}
+
+// check if the path has pattern: StyleEngine -> InternalNode -> DetachedElement
+function styleEngineRetainsDetachedElement(path: LeakTracePathItem): boolean {
+  let p: Optional<LeakTracePathItem> = path;
+  // find the StyleEngine
+  while (p && p.node && p.node.name !== 'StyleEngine') {
+    p = p.next;
+    if (!p) {
+      return false;
+    }
+  }
+  p = p.next;
+  // StyleEngine is not poining to InternalNode
+  if (!p || !p.node || p.node.name !== 'InternalNode') {
+    return false;
+  }
+  p = p.next;
+  // check if the InternalNode is pointing to a detached element
   return !!p && isDetachedDOMNode(p.node);
 }
 
