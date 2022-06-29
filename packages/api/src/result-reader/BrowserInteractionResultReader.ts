@@ -22,18 +22,39 @@ import BaseResultReader from './BaseResultReader';
  */
 export default class BrowserInteractionResultReader extends BaseResultReader {
   /**
-   * build a result reader
-   * @param workDir absolute path of the directory where the data
-   * and generated files of the browser interaction run were stored
+   * build a result reader from a data directory where the data
+   * and generated files of a memlab run were stored
+   * @param workDir absolute path of the data directory
    * @returns the ResultReader instance
+   *
+   * * **Examples**:
+   * ```javascript
+   * const {BrowserInteractionResultReader} = require('@memlab/api');
+   *
+   * const dataDir = '/tmp/memlab'; // where the last memlab run stores results
+   * const reader = BrowserInteractionResultReader.from(dataDir);
+   * reader.cleanup(); // clean up the results
+   * ```
    */
   static from(workDir = ''): BrowserInteractionResultReader {
     return new BrowserInteractionResultReader(workDir);
   }
 
   /**
-   * get all snapshot files
+   * get all snapshot files generated from last memlab browser interaction
    * @returns an array of snapshot file's absolute path
+   * * **Examples**:
+   * ```javascript
+   * const {takeSnapshots} = require('@memlab/api');
+   *
+   * (async function () {
+   *   const scenario = { url: () => 'https://www.npmjs.com'};
+   *   const result = await takeSnapshots({scenario});
+   *
+   *   // get absolute paths of all snapshot files
+   *   const files = result.getSnapshotFiles();
+   * })();
+   * ```
    */
   public getSnapshotFiles(): string[] {
     this.check();
@@ -47,6 +68,18 @@ export default class BrowserInteractionResultReader extends BaseResultReader {
   /**
    * get the directory holding all snapshot files
    * @returns the absolute path of the directory
+   * * **Examples**:
+   * ```javascript
+   * const {takeSnapshots} = require('@memlab/api');
+   *
+   * (async function () {
+   *   const scenario = { url: () => 'https://www.npmjs.com'};
+   *   const result = await takeSnapshots({scenario});
+   *
+   *   // get the absolute path the directory holding all snapshot files
+   *   const files = result.getSnapshotFileDir();
+   * })();
+   * ```
    */
   public getSnapshotFileDir(): string {
     this.check();
@@ -55,7 +88,20 @@ export default class BrowserInteractionResultReader extends BaseResultReader {
 
   /**
    * browser interaction step sequence
-   * @returns an array of browser interaction step info
+   * @returns an array of browser interaction step information
+   * * **Examples**:
+   * ```javascript
+   * const {takeSnapshots} = require('@memlab/api');
+   *
+   * (async function () {
+   *   const scenario = { url: () => 'https://www.npmjs.com'};
+   *   const result = await takeSnapshots({scenario});
+   *
+   *   const steps = result.getInteractionSteps();
+   *   // print each browser interaction's name and JavaScript heap size (in bytes)
+   *   steps.forEach(step => console.log(step.name, step.JSHeapUsedSize))
+   * })();
+   * ```
    */
   public getInteractionSteps(): E2EStepInfo[] {
     this.check();
@@ -68,6 +114,19 @@ export default class BrowserInteractionResultReader extends BaseResultReader {
   /**
    * general meta data of the browser interaction run
    * @returns meta data about the entire browser interaction
+   * * **Examples**:
+   * ```javascript
+   * const {takeSnapshots} = require('@memlab/api');
+   *
+   * (async function () {
+   *   const scenario = { url: () => 'https://www.npmjs.com'};
+   *   const result = await takeSnapshots({scenario});
+   *
+   *   const metaInfo = result.getRunMetaInfo();
+   *   // print all browser web console output
+   *   console.log(metaInfo.browserInfo._consoleMessages.join('\n'));
+   * })();
+   * ```
    */
   public getRunMetaInfo(): RunMetaInfo {
     this.check();
