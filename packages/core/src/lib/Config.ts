@@ -248,6 +248,8 @@ export class MemLabConfig {
       devtools: this.openDevtoolsConsole,
       // IMPORTANT: test ContinuousTest before change this config
       ignoreHTTPSErrors: true,
+      // Support running on Windows
+      ignoreDefaultArgs: ['--disable-extensions'],
       userDataDir: this.userDataDir,
       // Chromium in ContinuousTest needs this args
       args: [
