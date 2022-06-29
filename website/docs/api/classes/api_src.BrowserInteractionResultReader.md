@@ -25,7 +25,7 @@ clean up data/files generated from the memlab run
 
  * **Returns**: `void`
  * **Source**:
-    * `api/src/result-reader/BaseResultReader.ts:72`
+    * api/src/result-reader/BaseResultReader.ts:72
 
 ___
 
@@ -36,7 +36,7 @@ browser interaction step sequence
  * **Returns**: `E2EStepInfo`[] | an array of browser interaction step info
 
  * **Source**:
-    * `api/src/result-reader/BrowserInteractionResultReader.ts:60`
+    * api/src/result-reader/BrowserInteractionResultReader.ts:60
 
 ___
 
@@ -48,7 +48,7 @@ the memlab run were stored
  * **Returns**: `string` | absolute path of the directory
 
  * **Source**:
-    * `api/src/result-reader/BaseResultReader.ts:64`
+    * api/src/result-reader/BaseResultReader.ts:64
 
 ___
 
@@ -59,7 +59,7 @@ general meta data of the browser interaction run
  * **Returns**: `RunMetaInfo` | meta data about the entire browser interaction
 
  * **Source**:
-    * `api/src/result-reader/BrowserInteractionResultReader.ts:72`
+    * api/src/result-reader/BrowserInteractionResultReader.ts:72
 
 ___
 
@@ -70,7 +70,7 @@ get the directory holding all snapshot files
  * **Returns**: `string` | the absolute path of the directory
 
  * **Source**:
-    * `api/src/result-reader/BrowserInteractionResultReader.ts:51`
+    * api/src/result-reader/BrowserInteractionResultReader.ts:51
 
 ___
 
@@ -81,7 +81,7 @@ get all snapshot files
  * **Returns**: `string`[] | an array of snapshot file's absolute path
 
  * **Source**:
-    * `api/src/result-reader/BrowserInteractionResultReader.ts:38`
+    * api/src/result-reader/BrowserInteractionResultReader.ts:38
 
 ___
 
@@ -94,4 +94,4 @@ build a result reader
  * **Returns**: [`BrowserInteractionResultReader`](api_src.BrowserInteractionResultReader.md) | the ResultReader instance
 
  * **Source**:
-    * `api/src/result-reader/BrowserInteractionResultReader.ts:30`
+    * api/src/result-reader/BrowserInteractionResultReader.ts:30

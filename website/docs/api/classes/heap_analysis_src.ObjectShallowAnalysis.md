@@ -25,7 +25,7 @@ custom_edit_url: null
     * `file`: `string`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:52`
+    * heap-analysis/src/BaseAnalysis.ts:52
 
 ___
 
@@ -35,7 +35,7 @@ ___
     * `directory`: `string`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:62`
+    * heap-analysis/src/BaseAnalysis.ts:62
 
 ___
 
@@ -47,7 +47,7 @@ use it with `memlab analyze <ANALYSIS_NAME>` in CLI
  * **Returns**: `string` | command name
 
  * **Source**:
-    * `heap-analysis/src/plugins/ObjectShallowAnalysis.ts:65`
+    * heap-analysis/src/plugins/ObjectShallowAnalysis.ts:65
 
 ___
 
@@ -58,7 +58,7 @@ get a textual description of the memory analysis
  * **Returns**: `string` | textual description
 
  * **Source**:
-    * `heap-analysis/src/plugins/ObjectShallowAnalysis.ts:73`
+    * heap-analysis/src/plugins/ObjectShallowAnalysis.ts:73
 
 ___
 
@@ -69,7 +69,7 @@ get the top duplicated object in terms of duplicated object count
  * **Returns**: `ObjectRecord`[] | an array of the top-duplicated objects' information
 
  * **Source**:
-    * `heap-analysis/src/plugins/ObjectShallowAnalysis.ts:96`
+    * heap-analysis/src/plugins/ObjectShallowAnalysis.ts:96
 
 ___
 
@@ -79,4 +79,4 @@ ___
     * `options`: `HeapAnalysisOptions` | `pluginUtils.defaultAnalysisArgs`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:45`
+    * heap-analysis/src/BaseAnalysis.ts:45

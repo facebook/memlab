@@ -9,7 +9,7 @@ for analyzing heap snapshots taken from Chrome/Chromium, Node.js, Hermes, and El
 Install the CLI
 
 ```bash
-npm install -g @memlab
+npm install -g memlab
 ```
 
 ### Find Memory Leaks
@@ -47,7 +47,7 @@ If you want to use a self-defined leak detector, add a `filterLeak` callback
 in the scenario file. `filterLeak` will be called for every unreleased heap
 object (`node`) allocated by the target interaction.
 
-```
+```javascript
 function filterLeak(node, heap) {
   // ... your leak detector logic
   // return true to mark the node as a memory leak

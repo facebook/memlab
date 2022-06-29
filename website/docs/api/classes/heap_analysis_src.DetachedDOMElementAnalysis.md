@@ -25,7 +25,7 @@ custom_edit_url: null
     * `file`: `string`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:52`
+    * heap-analysis/src/BaseAnalysis.ts:52
 
 ___
 
@@ -35,7 +35,7 @@ ___
     * `directory`: `string`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:62`
+    * heap-analysis/src/BaseAnalysis.ts:62
 
 ___
 
@@ -43,7 +43,7 @@ ___
 
  * **Returns**: `string`
  * **Source**:
-    * `heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:20`
+    * heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:20
 
 ___
 
@@ -51,7 +51,7 @@ ___
 
  * **Returns**: `string`
  * **Source**:
-    * `heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:24`
+    * heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:24
 
 ___
 
@@ -59,7 +59,7 @@ ___
 
  * **Returns**: `IHeapNode`[]
  * **Source**:
-    * `heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:34`
+    * heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:34
 
 ___
 
@@ -67,7 +67,7 @@ ___
 
  * **Returns**: `default`[]
  * **Source**:
-    * `heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:28`
+    * heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:28
 
 ___
 
@@ -77,7 +77,7 @@ ___
     * `options`: `HeapAnalysisOptions`
  * **Returns**: `Promise`<`void`\>
  * **Source**:
-    * `heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:38`
+    * heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:38
 
 ___
 
@@ -87,4 +87,4 @@ ___
     * `options`: `HeapAnalysisOptions` | `pluginUtils.defaultAnalysisArgs`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:45`
+    * heap-analysis/src/BaseAnalysis.ts:45

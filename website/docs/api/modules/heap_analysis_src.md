@@ -43,7 +43,7 @@ custom_edit_url: null
 | `snapshotMapReduce` | <T1, T2\>(`mapCallback`: (`snapshot`: `IHeapSnapshot`, `i`: `number`, `file`: `string`) => `T1`, `reduceCallback`: (`results`: `T1`[]) => `T2`, `options`: `HeapAnalysisOptions`) => `Promise`<`T2`\> |
 
  * **Source**:
-    * `heap-analysis/src/PluginUtils.ts:345`
+    * heap-analysis/src/PluginUtils.ts:345
 
 ___
 
@@ -59,4 +59,4 @@ LICENSE file in the root directory of this source tree.
 **`format`**
 
  * **Source**:
-    * `heap-analysis/src/HeapAnalysisLoader.ts:63`
+    * heap-analysis/src/HeapAnalysisLoader.ts:63

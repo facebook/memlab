@@ -26,7 +26,7 @@ Options for configuring browser interaction run
 | `snapshotForEachStep?` | `boolean` | if true, take heap snapshot for each interaction step, by default this is false, which means memlab will decide which steps it will take heap snapshots |
 
  * **Source**:
-    * `api/src/API.ts:44`
+    * api/src/API.ts:44
 
 ## Functions
 
@@ -55,7 +55,7 @@ const {takeSnapshots, StringAnalysis} = require('@memlab/api');
 ```
 
  * **Source**:
-    * `api/src/API.ts:221`
+    * api/src/API.ts:221
 
 ___
 
@@ -81,7 +81,7 @@ const {findLeaks, takeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * `api/src/API.ts:190`
+    * api/src/API.ts:190
 
 ___
 
@@ -108,7 +108,7 @@ const {run} = require('@memlab/api');
 ```
 
  * **Source**:
-    * `api/src/API.ts:125`
+    * api/src/API.ts:125
 
 ___
 
@@ -133,7 +133,7 @@ const {takeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * `api/src/API.ts:158`
+    * api/src/API.ts:158
 
 ___
 
@@ -159,4 +159,4 @@ const {warmupAndTakeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * `api/src/API.ts:91`
+    * api/src/API.ts:91

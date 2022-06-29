@@ -12,44 +12,81 @@ import React, {ReactNode} from 'react';
 import clsx from 'clsx';
 import Layout from '@theme/Layout';
 import Link from '@docusaurus/Link';
+import CodeBlock from '../components/CodeBlock';
+import Terminal from '../components/Terminal';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import useBaseUrl from '@docusaurus/useBaseUrl';
 import styles from './styles.module.css';
 
 interface FeatureItem {
   title: string;
-  imageUrl: string;
+  imageUrl?: string;
   description: ReactNode;
 }
 
 const features: FeatureItem[] = [
   {
     title: 'Define Your Test',
-    imageUrl: 'img/undraw_split_testing.svg',
     description: (
       <>
-        Define your custom E2E tests scenarios that will be used for detecting
-        memory leaks.
+        Define custom E2E test scenarios on target browser interaction:
+        <CodeBlock
+          language="typescript"
+          code={`// test.js
+function url() {
+  return 'https://www.google.com/maps/';
+}
+async function action(page) {
+  await page.click('button[aria-label="Hotels"]');
+}
+async function back(page) {
+  await page.click('[aria-label="Clear search"]');
+}
+
+module.exports = {action, back, url};`}
+        />
       </>
     ),
   },
   {
-    title: 'Run memlab',
-    imageUrl: 'img/undraw_online_test.svg',
+    title: 'Run memlab in CLI',
     description: (
       <>
-        Run memlab's <code>cli</code> tool with your your test scenarios. CLI
-        will output the memory leaks if there is any.
+        Find memory leaks with the custom E2E test scenario:
+        <Terminal language="bash" code={`$ memlab run --scenario test.js`} />
+        Support memory analyses for the previous browser test:
+        <Terminal
+          language="bash"
+          code={`# Analyze duplicated string in heap
+$ memlab analyze string
+# Check unbound object growth
+$ memlab analyze unbound-object
+# Get shapes with unbound growth
+$ memlab analyze unbound-shape
+# discover more memory analyses
+$ memlab analyze -h`}
+        />
       </>
     ),
   },
   {
-    title: 'Analzye the Leaks',
-    imageUrl: 'img/undraw_analyze.svg',
+    title: 'Programming API',
     description: (
       <>
-        If there is a leak, it will output the leak traces. Each trace will be a
-        list of chain of object references from Root to leaked object
+        Support different memory analyses for the previous browser test:
+        <CodeBlock
+          language="typescript"
+          code={`const {findLeaks, takeSnapshots} = require('@memlab/api');
+
+async function test() {
+  const scenario = {
+    url: () => 'https://www.facebook.com',
+  };
+  const result = await takeSnapshots({scenario});
+  const leaks = findLeaks(result);
+  // ...
+}`}
+        />
       </>
     ),
   },
@@ -76,7 +113,7 @@ export default function Home(): React.ReactElement {
   return (
     <Layout
       title={`${siteConfig.title}`}
-      description="memlab is an integrated E2E testing + memory leak detection + debugging framework for dealing with memory leaks in front-end JavaScript.">
+      description="memlab is an E2E testing, memory leak detection, and heap analysis framework for front-end JavaScript.">
       <header className={clsx('hero hero--primary', styles.heroBanner)}>
         <div className="container">
           <h1 className="hero__title">{siteConfig.title}</h1>

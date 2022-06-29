@@ -45,7 +45,7 @@ custom_edit_url: null
     * `file`: `string`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:52`
+    * heap-analysis/src/BaseAnalysis.ts:52
 
 ___
 
@@ -55,7 +55,7 @@ ___
     * `directory`: `string`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:62`
+    * heap-analysis/src/BaseAnalysis.ts:62
 
 ___
 
@@ -63,7 +63,7 @@ ___
 
  * **Returns**: `string`
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:78`
+    * heap-analysis/src/BaseAnalysis.ts:78
 
 ___
 
@@ -71,7 +71,7 @@ ___
 
  * **Returns**: `string`
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:85`
+    * heap-analysis/src/BaseAnalysis.ts:85
 
 ___
 
@@ -79,7 +79,7 @@ ___
 
  * **Returns**: `default`[]
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:104`
+    * heap-analysis/src/BaseAnalysis.ts:104
 
 ___
 
@@ -89,4 +89,4 @@ ___
     * `options`: `HeapAnalysisOptions` | `pluginUtils.defaultAnalysisArgs`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:45`
+    * heap-analysis/src/BaseAnalysis.ts:45

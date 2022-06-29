@@ -25,7 +25,7 @@ custom_edit_url: null
     * `file`: `string`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:52`
+    * heap-analysis/src/BaseAnalysis.ts:52
 
 ___
 
@@ -35,7 +35,7 @@ ___
     * `directory`: `string`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:62`
+    * heap-analysis/src/BaseAnalysis.ts:62
 
 ___
 
@@ -43,7 +43,7 @@ ___
 
  * **Returns**: `string`
  * **Source**:
-    * `heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:40`
+    * heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:40
 
 ___
 
@@ -51,7 +51,7 @@ ___
 
  * **Returns**: `string`
  * **Source**:
-    * `heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:44`
+    * heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:44
 
 ___
 
@@ -59,7 +59,7 @@ ___
 
  * **Returns**: `default`[]
  * **Source**:
-    * `heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:48`
+    * heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:48
 
 ___
 
@@ -69,7 +69,7 @@ ___
     * `snapshot`: `IHeapSnapshot`
  * **Returns**: `ShapesInfo`
  * **Source**:
-    * `heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:81`
+    * heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:81
 
 ___
 
@@ -79,7 +79,7 @@ ___
     * `ShapesInfoList`: `ShapesInfo`[]
  * **Returns**: `ShapeSummary`[]
  * **Source**:
-    * `heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:133`
+    * heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:133
 
 ___
 
@@ -89,7 +89,7 @@ ___
     * `options`: `HeapAnalysisOptions`
  * **Returns**: `Promise`<`ShapeSummary`[]\>
  * **Source**:
-    * `heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:54`
+    * heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:54
 
 ___
 
@@ -99,4 +99,4 @@ ___
     * `options`: `HeapAnalysisOptions` | `pluginUtils.defaultAnalysisArgs`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:45`
+    * heap-analysis/src/BaseAnalysis.ts:45

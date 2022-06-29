@@ -28,7 +28,7 @@ and rank them based on the duplicated string size and count.
     * `file`: `string`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:52`
+    * heap-analysis/src/BaseAnalysis.ts:52
 
 ___
 
@@ -38,7 +38,7 @@ ___
     * `directory`: `string`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:62`
+    * heap-analysis/src/BaseAnalysis.ts:62
 
 ___
 
@@ -50,7 +50,7 @@ use it with `memlab analyze <ANALYSIS_NAME>` in CLI
  * **Returns**: `string` | command name
 
  * **Source**:
-    * `heap-analysis/src/plugins/StringAnalysis.ts:124`
+    * heap-analysis/src/plugins/StringAnalysis.ts:124
 
 ___
 
@@ -61,7 +61,7 @@ get a textual description of the memory analysis
  * **Returns**: `string` | textual description
 
  * **Source**:
-    * `heap-analysis/src/plugins/StringAnalysis.ts:132`
+    * heap-analysis/src/plugins/StringAnalysis.ts:132
 
 ___
 
@@ -72,7 +72,7 @@ get the top duplicated string in terms of duplicated string count
  * **Returns**: `StringRecord`[] | an array of the top-duplicated strings' information
 
  * **Source**:
-    * `heap-analysis/src/plugins/StringAnalysis.ts:73`
+    * heap-analysis/src/plugins/StringAnalysis.ts:73
 
 ___
 
@@ -82,4 +82,4 @@ ___
     * `options`: `HeapAnalysisOptions` | `pluginUtils.defaultAnalysisArgs`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:45`
+    * heap-analysis/src/BaseAnalysis.ts:45

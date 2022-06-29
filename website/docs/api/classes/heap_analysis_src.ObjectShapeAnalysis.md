@@ -25,7 +25,7 @@ custom_edit_url: null
     * `file`: `string`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:52`
+    * heap-analysis/src/BaseAnalysis.ts:52
 
 ___
 
@@ -35,7 +35,7 @@ ___
     * `directory`: `string`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:62`
+    * heap-analysis/src/BaseAnalysis.ts:62
 
 ___
 
@@ -43,7 +43,7 @@ ___
 
  * **Returns**: `string`
  * **Source**:
-    * `heap-analysis/src/plugins/ObjectShapeAnalysis.ts:19`
+    * heap-analysis/src/plugins/ObjectShapeAnalysis.ts:19
 
 ___
 
@@ -51,7 +51,7 @@ ___
 
  * **Returns**: `string`
  * **Source**:
-    * `heap-analysis/src/plugins/ObjectShapeAnalysis.ts:23`
+    * heap-analysis/src/plugins/ObjectShapeAnalysis.ts:23
 
 ___
 
@@ -59,7 +59,7 @@ ___
 
  * **Returns**: `default`[]
  * **Source**:
-    * `heap-analysis/src/plugins/ObjectShapeAnalysis.ts:27`
+    * heap-analysis/src/plugins/ObjectShapeAnalysis.ts:27
 
 ___
 
@@ -69,7 +69,7 @@ ___
     * `options`: `HeapAnalysisOptions`
  * **Returns**: `Promise`<`void`\>
  * **Source**:
-    * `heap-analysis/src/plugins/ObjectShapeAnalysis.ts:31`
+    * heap-analysis/src/plugins/ObjectShapeAnalysis.ts:31
 
 ___
 
@@ -79,4 +79,4 @@ ___
     * `options`: `HeapAnalysisOptions` | `pluginUtils.defaultAnalysisArgs`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * `heap-analysis/src/BaseAnalysis.ts:45`
+    * heap-analysis/src/BaseAnalysis.ts:45
