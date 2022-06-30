@@ -59,9 +59,13 @@ function isNodeWorthInspecting(node: IHeapNode): boolean {
   return true;
 }
 
-// filter out dominators that have a similar size
-// for example if input is [A, B] and A is the dominator of B
-// then this function throw away A if the size of A is close to the size of B
+/**
+ * filter out dominators that have a similar size, for example if
+ * input is [A, B] and A is the dominator of B, then this function
+ * throw away A if the size of A is close to the size of B
+ * @param nodeList an array of heap nodes
+ * @returns an array of heap nodes with dominators that have similar size removed
+ */
 function filterOutDominators(nodeList: IHeapNode[]): IHeapNode[] {
   const candidateIdSet = new Set(nodeList.map(node => node.id));
   const childrenSizeInList = new Map();
@@ -228,6 +232,46 @@ function getObjectOutgoingEdgeCount(node: IHeapNode): number {
   return node.edge_count;
 }
 
+/**
+ * Get the heap snapshot file's absolute path passed to the hosting heap
+ * analysis via `HeapAnalysisOptions`.
+ *
+ * This API is supposed to be used within the overridden `process` method
+ * of an `BaseAnalysis` instance.
+ *
+ * @param options this is the auto-generated input passed to all the `BaseAnalysis` instances
+ * @returns the absolute path of the heap snapshot file
+ * * **Examples:**
+ * ```typescript
+ * import type {IHeapSnapshot} from '@memlab/core';
+ * import type {HeapAnalysisOptions} from '@memlab/heap-analysis';
+ * import {getSnapshotFileForAnalysis, BaseAnalysis} from '@memlab/heap-analysis';
+ *
+ * class ExampleAnalysis extends BaseAnalysis {
+ *   public getCommandName(): string {
+ *     return 'example-analysis';
+ *   }
+ *
+ *   public getDescription(): string {
+ *     return 'an example analysis for demo';
+ *   }
+ *
+ *   async process(options: HeapAnalysisOptions): Promise<void> {
+ *     const file = getSnapshotFileForAnalysis(options);
+ *   }
+ * }
+ * ```
+ *
+ * Use the following code to invoke the heap analysis:
+ * ```typescript
+ * const analysis = new ExampleAnalysis();
+ * // any .heapsnapshot file recorded by memlab or saved manually from Chrome
+ * await analysis.analyzeSnapshotFromFile(snapshotFile);
+ * ```
+ * The new heap analysis can also be used with {@link analyze}, in that case
+ * `getSnapshotFileForAnalysis` will use the last heap snapshot in alphanumerically
+ * ascending order from {@link BrowserInteractionResultReader}.
+ */
 function getSnapshotFileForAnalysis(options: HeapAnalysisOptions): string {
   const args = options.args;
   if (args.snapshot) {
@@ -241,6 +285,47 @@ function getSnapshotFileForAnalysis(options: HeapAnalysisOptions): string {
   return utils.getSingleSnapshotFileForAnalysis();
 }
 
+/**
+ * Get the absolute path of the directory holding all the heap snapshot files
+ * passed to the hosting heap analysis via `HeapAnalysisOptions`.
+ *
+ * This API is supposed to be used within the overridden `process` method
+ * of an `BaseAnalysis` instance.
+ *
+ * @param options this is the auto-generated input passed
+ * to all the `BaseAnalysis` instances
+ * @returns the absolute path of the directory
+ * * **Examples:**
+ * ```typescript
+ * import type {IHeapSnapshot} from '@memlab/core';
+ * import type {HeapAnalysisOptions} from '@memlab/heap-analysis';
+ * import {getSnapshotFileForAnalysis, BaseAnalysis} from '@memlab/heap-analysis';
+ *
+ * class ExampleAnalysis extends BaseAnalysis {
+ *   public getCommandName(): string {
+ *     return 'example-analysis';
+ *   }
+ *
+ *   public getDescription(): string {
+ *     return 'an example analysis for demo';
+ *   }
+ *
+ *   async process(options: HeapAnalysisOptions): Promise<void> {
+ *     const directory = getSnapshotDirForAnalysis(options);
+ *   }
+ * }
+ * ```
+ *
+ * Use the following code to invoke the heap analysis:
+ * ```typescript
+ * const analysis = new ExampleAnalysis();
+ * // any .heapsnapshot file recorded by memlab or saved manually from Chrome
+ * await analysis.analyzeSnapshotFromFile(snapshotFile);
+ * ```
+ * The new heap analysis can also be used with {@link analyze}, in that case
+ * `getSnapshotDirForAnalysis` use the snapshot directory from
+ * {@link BrowserInteractionResultReader}.
+ */
 function getSnapshotDirForAnalysis(
   options: HeapAnalysisOptions,
 ): Nullable<string> {
@@ -254,6 +339,47 @@ function getSnapshotDirForAnalysis(
   return null;
 }
 
+/**
+ * Load the heap graph based on the single JavaScript heap snapshot
+ * passed to the hosting heap analysis via `HeapAnalysisOptions`.
+ *
+ * This API is supposed to be used within the `process` implementation
+ * of an `BaseAnalysis` instance.
+ *
+ * @param options this is the auto-generated input passed to all the `BaseAnalysis` instances
+ * @returns the graph representation of the heap
+ * * **Examples:**
+ * ```typescript
+ * import type {IHeapSnapshot} from '@memlab/core';
+ * import type {HeapAnalysisOptions} from '@memlab/heap-analysis';
+ * import {loadHeapSnapshot, BaseAnalysis} from '@memlab/heap-analysis';
+ *
+ * class ExampleAnalysis extends BaseAnalysis {
+ *   public getCommandName(): string {
+ *     return 'example-analysis';
+ *   }
+ *
+ *   public getDescription(): string {
+ *     return 'an example analysis for demo';
+ *   }
+ *
+ *   async process(options: HeapAnalysisOptions): Promise<void> {
+ *     const heap = await loadHeapSnapshot(options);
+ *     // doing heap analysis
+ *   }
+ * }
+ * ```
+ *
+ * Use the following code to invoke the heap analysis:
+ * ```typescript
+ * const analysis = new ExampleAnalysis();
+ * // any .heapsnapshot file recorded by memlab or saved manually from Chrome
+ * await analysis.analyzeSnapshotFromFile(snapshotFile);
+ * ```
+ * The new heap analysis can also be used with {@link analyze}, in that case
+ * `loadHeapSnapshot` will use the last heap snapshot in alphanumerically
+ * ascending order from {@link BrowserInteractionResultReader}.
+ */
 async function loadHeapSnapshot(
   options: HeapAnalysisOptions,
 ): Promise<IHeapSnapshot> {
@@ -271,6 +397,68 @@ async function loadProcessedSnapshot(
   return snapshot;
 }
 
+/**
+ * When a heap analysis is taking multiple heap snapshots as input for memory
+ * analysis (e.g., finding which object keeps growing in size in a series of
+ * heap snapshots), this API could be used to do
+ * [MapRedue](https://en.wikipedia.org/wiki/MapReduce) on all heap snapshots.
+ *
+ * This API is supposed to be used within the `process` implementation
+ * of an `BaseAnalysis` instance that is designed to analyze multiple heap
+ * snapshots (as an example, finding which object keeps growing overtime)
+ *
+ * @param mapCallback the map function in MapReduce, the function will be applied
+ * to each heap snapshot
+ * @param reduceCallback the reduce function in MapReduce, the function will take
+ * as input all intermediate results from all map function calls
+ * @typeParam T1 - the type of the intermediate result from each map function call
+ * @typeParam T2 - the type of the final result of the reduce function call
+ * @param options this is the auto-generated input passed to all the `BaseAnalysis` instances
+ * @returns the return value of your reduce function
+ * * **Examples:**
+ * ```typescript
+ * import type {IHeapSnapshot} from '@memlab/core';
+ * import type {HeapAnalysisOptions} from '@memlab/heap-analysis';
+ * import {snapshotMapReduce, BaseAnalysis} from '@memlab/heap-analysis';
+ *
+ * class ExampleAnalysis extends BaseAnalysis {
+ *   public getCommandName(): string {
+ *     return 'example-analysis';
+ *   }
+ *
+ *   public getDescription(): string {
+ *     return 'an example analysis for demo';
+ *   }
+ *
+ *   async process(options: HeapAnalysisOptions): Promise<void> {
+ *     // check if the number of heap objects keeps growing overtime
+ *     const isMonotonicIncreasing = await snapshotMapReduce<number, boolean>(
+ *       (heap) => heap.nodes.length,
+ *       (nodeCounts) =>
+ *         nodeCounts[0] < nodeCounts[nodeCounts.length - 1] &&
+ *         nodeCounts.every((count, i) => i === 0 || count >= nodeCounts[i - 1]),
+ *       options,
+ *     );
+ *   }
+ * }
+ * ```
+ *
+ * Use the following code to invoke the heap analysis:
+ * ```typescript
+ * const analysis = new ExampleAnalysis();
+ * // snapshotDir includes a series of .heapsnapshot files recorded by
+ * // memlab or saved manually from Chrome, those files will be loaded
+ * // in alphanumerically asceneding order
+ * await analysis.analyzeSnapshotsInDirectory(snapshotDir);
+ * ```
+ * The new heap analysis can also be used with {@link analyze}, in that case
+ * `snapshotMapReduce` will use all the heap snapshot in alphanumerically
+ * ascending order from {@link BrowserInteractionResultReader}.
+ *
+ * **Why not passing in all heap snapshots as an array of {@link IHeapSnapshot}s?**
+ * Each heap snapshot could be non-trivial in size, loading them all at once
+ * may not be possible.
+ */
 async function snapshotMapReduce<T1, T2>(
   mapCallback: (snapshot: IHeapSnapshot, i: number, file: string) => T1,
   reduceCallback: (results: T1[]) => T2,

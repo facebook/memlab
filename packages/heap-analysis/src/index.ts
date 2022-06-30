@@ -8,7 +8,16 @@
  * @format
  */
 
-export {default as heapAnalysisLoader} from './HeapAnalysisLoader';
+import PluginUtils from './PluginUtils';
+export const {
+  aggregateDominatorMetrics,
+  loadHeapSnapshot,
+  getSnapshotFileForAnalysis,
+  getSnapshotDirForAnalysis,
+  snapshotMapReduce,
+} = PluginUtils;
+
+export type {HeapAnalysisOptions} from './PluginUtils';
 export {default as BaseAnalysis} from './BaseAnalysis';
 export {default as DetachedDOMElementAnalysis} from './plugins/DetachedDOMElementAnalysis';
 export {default as GlobalVariableAnalysis} from './plugins/GlobalVariableAnalysis/GlobalVariableAnalysis';
@@ -20,4 +29,7 @@ export {default as ObjectFanoutAnalysis} from './plugins/ObjectFanoutAnalysis';
 export {default as ObjectShapeAnalysis} from './plugins/ObjectShapeAnalysis';
 export {default as ObjectUnboundGrowthAnalysis} from './plugins/ObjectUnboundGrowthAnalysis';
 export {default as StringAnalysis} from './plugins/StringAnalysis';
+/** @internal */
 export {default as PluginUtils} from './PluginUtils';
+/** @internal */
+export {default as heapAnalysisLoader} from './HeapAnalysisLoader';

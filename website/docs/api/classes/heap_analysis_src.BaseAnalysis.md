@@ -86,7 +86,7 @@ ___
 ### <a id="run"></a>**run**(`options?`)
 
  * **Parameters**:
-    * `options`: `HeapAnalysisOptions` | `pluginUtils.defaultAnalysisArgs`
+    * `options`: [`HeapAnalysisOptions`](../modules/heap_analysis_src.md#heapanalysisoptions) | `pluginUtils.defaultAnalysisArgs`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
     * heap-analysis/src/BaseAnalysis.ts:45

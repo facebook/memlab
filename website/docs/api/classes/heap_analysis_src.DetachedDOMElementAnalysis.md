@@ -74,7 +74,7 @@ ___
 ### <a id="process"></a>**process**(`options`)
 
  * **Parameters**:
-    * `options`: `HeapAnalysisOptions`
+    * `options`: [`HeapAnalysisOptions`](../modules/heap_analysis_src.md#heapanalysisoptions)
  * **Returns**: `Promise`<`void`\>
  * **Source**:
     * heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:38
@@ -84,7 +84,7 @@ ___
 ### <a id="run"></a>**run**(`options?`)
 
  * **Parameters**:
-    * `options`: `HeapAnalysisOptions` | `pluginUtils.defaultAnalysisArgs`
+    * `options`: [`HeapAnalysisOptions`](../modules/heap_analysis_src.md#heapanalysisoptions) | `pluginUtils.defaultAnalysisArgs`
  * **Returns**: `Promise`<`any`\>
  * **Source**:
     * heap-analysis/src/BaseAnalysis.ts:45

@@ -228,6 +228,7 @@ export class MemLabConfig {
 
   private initInternalConfigs() {
     // DO NOT SET PARAMETER HERE
+    this._isFullRun = false;
     this._reportLeaksInTimers = false;
     this._deviceManualOverridden = false;
     this._timerNodes = ['Pending activities'];
