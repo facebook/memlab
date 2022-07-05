@@ -1,6 +1,6 @@
 ---
 id: "heap_analysis_src"
-title: "Module: heap-analysis/src"
+title: "Package: @memlab/heap-analysis"
 sidebar_label: "heap-analysis/src"
 sidebar_position: 0
 custom_edit_url: null
@@ -262,8 +262,12 @@ of an `BaseAnalysis` instance that is designed to analyze multiple heap
 snapshots (as an example, finding which object keeps growing overtime)
 
 #### Type parameters
- 	* `T1` | the type of the intermediate result from each map function call
- 	* `T2` | the type of the final result of the reduce function call
+
+| Name | Description |
+| :------ | :------ |
+| `T1` | the type of the intermediate result from each map function call |
+| `T2` | the type of the final result of the reduce function call |
+
  * **Parameters**:
     * `mapCallback`: (`snapshot`: `IHeapSnapshot`, `i`: `number`, `file`: `string`) => `T1` | the map function in MapReduce, the function will be applied to each heap snapshot
     * `reduceCallback`: (`results`: `T1`[]) => `T2` | the reduce function in MapReduce, the function will take as input all intermediate results from all map function calls
@@ -309,7 +313,7 @@ The new heap analysis can also be used with [analyze](api_src.md#analyze), in th
 `snapshotMapReduce` will use all the heap snapshot in alphanumerically
 ascending order from [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md).
 
-**Why not passing in all heap snapshots as an array of {@link IHeapSnapshot}s?**
+**Why not passing in all heap snapshots as an array of [IHeapSnapshot](../interfaces/core_src.IHeapSnapshot.md)s?**
 Each heap snapshot could be non-trivial in size, loading them all at once
 may not be possible.
 

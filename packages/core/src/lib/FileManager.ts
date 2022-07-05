@@ -35,12 +35,14 @@ function joinAndProcessDir(options: FileOption, ...args: AnyValue[]): string {
   return filepath;
 }
 
+/** @internal */
 export type FileOption = {
   workDir?: Optional<string>;
   clear?: boolean;
   transcient?: boolean;
 };
 
+/** @internal */
 export class FileManager {
   public getDefaultWorkDir(): string {
     return path.join(this.getTmpDir(), 'memlab');

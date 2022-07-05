@@ -14,6 +14,8 @@ import type {ErrorHandling, MemLabConfig} from './Config';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyValue = any;
+
+/** @internal */
 export type RecordValue =
   | string
   | number
@@ -22,19 +24,28 @@ export type RecordValue =
   | RecordValue[]
   | {[key: string]: RecordValue};
 
+/** @internal */
 export type Nullable<T> = T | null;
+/** @internal */
 export type Optional<T> = Nullable<T> | undefined;
-
+/** @internal */
 export type AnyRecord = Record<string, RecordValue>;
+/** @internal */
 export type AnyAyncFunction = (...args: AnyValue[]) => Promise<AnyValue>;
+/** @internal */
 export type AnyFunction = (...args: AnyValue[]) => AnyValue;
+/** @internal */
 export type AnyOptions = Record<string, unknown>;
+/** @internal */
 export type UnusedOptions = Record<string, never>;
+/** @internal */
 export type Command = [string, string[], AnyOptions];
 
 export type Predicator<T> = (node: T) => boolean;
-export type HeapNodeIdSet = Set<IHeapNode['id']>;
+/** @internal */
+export type HeapNodeIdSet = Set<number>;
 
+/** @internal */
 export type HaltOrThrowOptions = {
   printErrorBeforeHalting?: boolean;
   errorHandling?: ErrorHandling;
@@ -43,11 +54,13 @@ export type HaltOrThrowOptions = {
   printCallback?: () => void;
 };
 
+/** @internal */
 export type CLIOptions = {
   cliArgs: ParsedArgs;
   configFromOptions?: AnyRecord;
 };
 
+/** @internal */
 export type XvfbType = {
   start: (callback: (error: Error) => AnyValue | null) => void;
   stop: (callback: (error: Error) => AnyValue | null) => void;
@@ -56,6 +69,7 @@ export type XvfbType = {
   display: () => string;
 };
 
+/** @internal */
 export type CLIArgs = {
   verbose: boolean;
   app: string;
@@ -86,12 +100,12 @@ export type CLIArgs = {
   'snapshot-dir': string;
 };
 
-type CookieItem = {
+export type Cookies = Array<{
   name: string;
   value: string;
-};
-export type Cookies = Array<CookieItem>;
+}>;
 
+/** @internal */
 export interface IE2EScenarioSynthesizer {
   getAppName(): string;
   getOrigin(): Nullable<string>;
@@ -123,10 +137,12 @@ export interface IE2EScenarioSynthesizer {
   ): IE2EScenarioVisitPlan;
 }
 
+/** @internal */
 export interface E2EScenarioSynthesizerConstructor {
   new (config: Config): IE2EScenarioSynthesizer;
 }
 
+/** @internal */
 export interface IRunningMode {
   setConfig(config: Config): void;
   beforeRunning(visitPlan: IE2EScenarioVisitPlan): void;
@@ -146,8 +162,10 @@ export interface IRunningMode {
   postProcessData(visitPlan: IE2EScenarioVisitPlan): void;
 }
 
+/** @internal */
 export type Config = MemLabConfig;
 
+/** @internal */
 export type QuickExperiment = {
   universe: string;
   experiment: string;
@@ -178,7 +196,7 @@ export type InteractionsCallback = (
 export interface IScenario {
   name?: () => string;
   app?: () => string;
-  cookies?: () => CookieItem[];
+  cookies?: () => Cookies;
   url: () => string;
   action?: InteractionsCallback;
   back?: InteractionsCallback;
@@ -188,6 +206,7 @@ export interface IScenario {
   leakFilter?: LeakFilterCallback;
 }
 
+/** @internal */
 export type LeakTracePathItem = {
   node?: IHeapNode;
   edge?: IHeapEdge;
@@ -195,6 +214,7 @@ export type LeakTracePathItem = {
   edgeRetainSize?: number;
 };
 
+/** @internal */
 export type TraceCluster = {
   // id is assigned when saving unique trace clusters to Ent in PHP
   id?: number;
@@ -206,12 +226,14 @@ export type TraceCluster = {
   clusterMetaInfo?: TraceClusterMetaInfo;
 };
 
+/** @internal */
 export type TraceClusterDiff = {
   staleClusters: TraceCluster[];
   clustersToAdd: TraceCluster[];
   allClusters: TraceCluster[][];
 };
 
+/** @internal */
 export type LeakTraceElement = {
   kind: string; // element kind
   id?: number; // node id if exists
@@ -220,14 +242,17 @@ export type LeakTraceElement = {
   type: string; // object or reference type from JS engine
 };
 
+/** @internal */
 export type LeakTrace = LeakTraceElement[];
 
+/** @internal */
 export type TraceDiff = {
   staleClusters: LeakTrace[];
   clustersToAdd: LeakTrace[];
   allClusters: LeakTrace[][];
 };
 
+/** @internal */
 export type TraceClusterMetaInfo = {
   cluster_id: number;
   creation_time: number;
@@ -243,16 +268,19 @@ export type TraceClusterMetaInfo = {
   meta_data: string;
 };
 
+/** @internal */
 export interface E2EInteraction {
   kind: string;
   timeout?: number;
 }
 
+/** @internal */
 export type E2EOperation = E2EInteraction & {
   selector: string;
   act(page: Page, opArgs?: OperationArgs): Promise<void>;
 };
 
+/** @internal */
 export type E2ESynthesizerOptions = {
   name?: string;
   type?: string;
@@ -269,13 +297,16 @@ export type E2ESynthesizerOptions = {
   gk_disable?: string[];
 };
 
+/** @internal */
 export interface IDataBuilder {
   className: string;
   state: Record<string, AnyValue>;
 }
 
+/** @internal */
 export type CheckPageLoadCallback = (page: Page) => Promise<boolean>;
 
+/** @internal */
 export interface IE2EScenarioVisitPlan {
   name: string;
   appName: string;
@@ -290,6 +321,7 @@ export interface IE2EScenarioVisitPlan {
   isPageLoaded?: CheckPageLoadCallback;
 }
 
+/** @internal */
 export type OperationArgs = {
   isPageLoaded?: CheckPageLoadCallback;
   showProgress?: boolean;
@@ -301,6 +333,7 @@ export type OperationArgs = {
   noWaitAfterPageLoad?: boolean;
 };
 
+/** @internal */
 export interface IE2EStepBasic {
   name: string;
   url: string;
@@ -311,6 +344,7 @@ export interface IE2EStepBasic {
   postInteractions?: E2EOperation | Array<E2EOperation | InteractionsCallback>;
 }
 
+/** @internal */
 export type E2EStepInfo = IE2EStepBasic & {
   snapshot: boolean;
   screenshot: boolean;
@@ -320,6 +354,7 @@ export type E2EStepInfo = IE2EStepBasic & {
   metrics: Record<string, number>;
 };
 
+/** @internal */
 export interface IBrowserInfo {
   _browserVersion: string;
   _puppeteerConfig: LaunchOptions;
@@ -443,17 +478,28 @@ export interface IHeapNodes {
   ): void;
 }
 
+/** @internal */
 export type HeapNodeFields = string[];
+/** @internal */
 export type HeapNodeTypes = string[];
+/** @internal */
 export type RawHeapNodeTypes = Array<HeapNodeTypes | string>;
+/** @internal */
 export type HeapEdgeFields = string[];
+/** @internal */
 export type HeapEdgeTypes = string[] | string;
+/** @internal */
 export type RawHeapEdgeTypes = Array<HeapEdgeTypes | string>;
+/** @internal */
 export type HeapTraceFunctionInfoFields = string[];
+/** @internal */
 export type HeapTraceNodeFields = string[];
+/** @internal */
 export type HeapSampleFields = string[];
+/** @internal */
 export type HeapLocationFields = string[];
 
+/** @internal */
 export type HeapSnapshotMeta = {
   node_fields: HeapNodeFields;
   node_types: RawHeapNodeTypes;
@@ -465,6 +511,7 @@ export type HeapSnapshotMeta = {
   location_fields: HeapLocationFields;
 };
 
+/** @internal */
 export type HeapSnapshotInfo = {
   meta: HeapSnapshotMeta;
   node_count: number;
@@ -472,6 +519,7 @@ export type HeapSnapshotInfo = {
   trace_function_count: number;
 };
 
+/** @internal */
 export type RawHeapSnapshot = {
   snapshot: HeapSnapshotInfo;
   nodes: number[];
@@ -483,12 +531,15 @@ export type RawHeapSnapshot = {
   strings: string[];
 };
 
+/** @internal */
 export interface ISerializedInfo {
   [key: string]: string | number | boolean | ISerializedInfo;
 }
 
+/** @internal */
 export type NumericDictionary = {[index: number]: number};
 
+/** @internal */
 export interface IOveralHeapInfo {
   fiberNodeSize: number;
   regularFiberNodeSize: number;
@@ -497,34 +548,40 @@ export interface IOveralHeapInfo {
   error: number;
 }
 
+/** @internal */
 export interface IOveralLeakInfo extends Partial<IOveralHeapInfo> {
   leakedSize: number;
   leakedFiberNodeSize: number;
   leakedAlternateFiberNodeSize: number;
 }
 
+/** @internal */
 export interface IMemoryAnalystOptions {
   snapshotDir?: string;
   minSnapshots?: number;
 }
 
+/** @internal */
 export interface IMemoryAnalystSnapshotDiff {
   leakedHeapNodeIdSet: HeapNodeIdSet;
   snapshot: IHeapSnapshot;
   listOfLeakedHeapNodeIdSet: Array<HeapNodeIdSet>;
 }
 
+/** @internal */
 export interface IMemoryAnalystHeapNodeLeakSummary
   extends Pick<IHeapNode, 'name' | 'type' | 'retainedSize'> {
   count: number;
 }
 
+/** @internal */
 export interface IMemoryAnalystHeapNodeReferrenceStat {
   numberOfEdgesToNode: number;
   source: IHeapNode;
   edge: IHeapEdge;
 }
 
+/** @internal */
 export interface IClusterStrategy {
   diffTraces: (
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -534,4 +591,5 @@ export interface IClusterStrategy {
   ) => TraceDiff;
 }
 
+/** @internal */
 export type ErrorWithMessage = Pick<Error, 'message'>;

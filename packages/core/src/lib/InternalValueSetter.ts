@@ -11,6 +11,7 @@
 import fs from 'fs';
 import path from 'path';
 
+/** @internal */
 export abstract class InternalValueSetter<T> {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   fillIn(_module: T): T {
@@ -18,6 +19,7 @@ export abstract class InternalValueSetter<T> {
   }
 }
 
+/** @internal */
 export function setInternalValue<T>(
   value: T,
   callerFilePath: string,

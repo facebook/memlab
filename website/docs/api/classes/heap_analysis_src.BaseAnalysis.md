@@ -5,8 +5,6 @@ sidebar_label: "BaseAnalysis"
 custom_edit_url: null
 ---
 
-[heap-analysis/src](../modules/heap_analysis_src.md).BaseAnalysis
-
 ## Hierarchy
 
 - `Analysis`

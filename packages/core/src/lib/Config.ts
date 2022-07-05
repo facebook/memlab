@@ -76,11 +76,13 @@ const defaultViewport = {
   deviceScaleFactor: 1,
 };
 
+/** @internal */
 export enum ErrorHandling {
   Halt = 1,
   Throw = 2,
 }
 
+/** @internal */
 export class MemLabConfig {
   snapshotHasDetachedness: boolean;
   specifiedEngine: boolean;

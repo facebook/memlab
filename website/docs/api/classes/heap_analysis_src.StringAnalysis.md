@@ -5,8 +5,6 @@ sidebar_label: "StringAnalysis"
 custom_edit_url: null
 ---
 
-[heap-analysis/src](../modules/heap_analysis_src.md).StringAnalysis
-
 This analysis finds duplicated string instance in JavaScript heap
 and rank them based on the duplicated string size and count.
 

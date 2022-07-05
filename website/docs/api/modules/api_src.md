@@ -1,6 +1,6 @@
 ---
 id: "api_src"
-title: "Module: api/src"
+title: "Package: @memlab/api"
 sidebar_label: "api/src"
 sidebar_position: 0
 custom_edit_url: null

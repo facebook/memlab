@@ -5,8 +5,6 @@ sidebar_label: "ObjectShallowAnalysis"
 custom_edit_url: null
 ---
 
-[heap-analysis/src](../modules/heap_analysis_src.md).ObjectShallowAnalysis
-
 ## Hierarchy
 
 - [`BaseAnalysis`](heap_analysis_src.BaseAnalysis.md)

@@ -5,8 +5,6 @@ sidebar_label: "BrowserInteractionResultReader"
 custom_edit_url: null
 ---
 
-[api/src](../modules/api_src.md).BrowserInteractionResultReader
-
 A utility entity to read all generated files from
 the directory holding the data and results from the
 last browser interaction run

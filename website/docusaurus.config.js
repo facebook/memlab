@@ -34,6 +34,7 @@ const config = {
         entryPoints: [
           '../packages/api/src/index.ts',
           '../packages/heap-analysis/src/index.ts',
+          '../packages/core/src/index.ts',
         ],
         categorizeByGroup: false,
         cleanOutputDir: true,
