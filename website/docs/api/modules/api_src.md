@@ -14,13 +14,13 @@ custom_edit_url: null
 
 ### <a id="runoptions" name="runoptions"></a> **RunOptions**: `Object`
 
-Options for configuring browser interaction run
+Options for configuring browser interaction run, all fields are optional
 
 #### Type declaration
 
 | Name | Type | Description |
 | :------ | :------ | :------ |
-| `cookiesFile?` | `string` | cookies file |
+| `cookiesFile?` | `string` | the absolute path of cookies file |
 | `evalInBrowserAfterInitLoad?` | `AnyFunction` | function to be evaluated in browser context after the web page initial load |
 | `scenario?` | `IScenario` | test scenario definition |
 | `snapshotForEachStep?` | `boolean` | if true, take heap snapshot for each interaction step, by default this is false, which means memlab will decide which steps it will take heap snapshots |

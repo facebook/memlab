@@ -39,12 +39,12 @@ import APIUtils from './lib/APIUtils';
 import BrowserInteractionResultReader from './result-reader/BrowserInteractionResultReader';
 
 /**
- * Options for configuring browser interaction run
+ * Options for configuring browser interaction run, all fields are optional
  */
 export type RunOptions = {
   /** test scenario definition */
   scenario?: IScenario;
-  /** cookies file */
+  /** the absolute path of cookies file */
   cookiesFile?: string;
   /** function to be evaluated in browser context after the web page initial load */
   evalInBrowserAfterInitLoad?: AnyFunction;
