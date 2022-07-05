@@ -10,5 +10,6 @@
 
 export * from './API';
 export * from '@memlab/heap-analysis';
-export {config} from '@memlab/core';
 export {default as BrowserInteractionResultReader} from './result-reader/BrowserInteractionResultReader';
+/** @internal */
+export {config} from '@memlab/core';

@@ -25,11 +25,13 @@ function url() {
 
 // action where we want to detect memory leaks: click the Hotels button
 async function action(page) {
+  // puppeteer page API
   await page.click('button[aria-label="Hotels"]');
 }
 
 // action where we want to go back to the step before: click clear search
 async function back(page) {
+  // puppeteer page API
   await page.click('[aria-label="Clear search"]');
 }
 
@@ -55,6 +57,7 @@ function filterLeak(node, heap) {
 ```
 
 `heap` is the graph representation of the final JavaScript heap snapshot.
+For more details, view the [doc site](https://facebookincubator.github.io/memlab).
 
 ### Heap Analysis and Investigation
 
@@ -73,7 +76,7 @@ Use `memlab analyze` to view all built-in memory analyses. For extension, view t
 
 View retainer trace of a particular object:
 ```bash
-memlab report --node-id <HEAP_OBJECT_ID>
+memlab trace --node-id <HEAP_OBJECT_ID>
 ```
 
 Use `memlab help` to view all CLI commands.
