@@ -1,0 +1,8 @@
+{
+  "extends": "next/core-web-vitals",
+  "overrides": [
+    {
+      "excludedFiles": ["leak-filters/**", "scenarios/**"]
+    }
+  ]
+}
