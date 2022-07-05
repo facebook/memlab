@@ -23,11 +23,6 @@ import {
 import chalk from 'chalk';
 import {info, analysis, serializer, utils} from '@memlab/core';
 
-export type HeapAnalysisOptions = {
-  args: ParsedArgs;
-  config?: MemLabConfig;
-};
-
 const nodeNameBlockList = new Set([
   '(Startup object cache)',
   '(Global handles)',
@@ -58,6 +53,22 @@ function isNodeWorthInspecting(node: IHeapNode): boolean {
   }
   return true;
 }
+
+/**
+ * This is the auto-generated arguments passed to all the `process` method
+ * that your self-defined heap analysis should implement.
+ * You are not supposed to construct instances of this class.
+ *
+ * For code examples on how this options could be used, see
+ * {@link getSnapshotFileForAnalysis}, {@link loadHeapSnapshot},
+ * or {@link snapshotMapReduce}.
+ */
+export type HeapAnalysisOptions = {
+  /** @internal */
+  args: ParsedArgs;
+  /** @internal */
+  config?: MemLabConfig;
+};
 
 /**
  * filter out dominators that have a similar size, for example if
@@ -387,6 +398,27 @@ async function loadHeapSnapshot(
   return loadProcessedSnapshot({file});
 }
 
+/**
+ * Load and parse a `.heapsnapshot` file and calculate meta data like
+ * dominator nodes and retained sizes.
+ * @param file the absolute path of the `.heapsnapshot` file
+ * @returns the heap graph representation instance that supports querying
+ * the heap
+ * * **Examples**:
+ * ```typescript
+ * import {dumpNodeHeapSnapshot} from '@memlab/core';
+ * import {getHeapFromFile} from '@memlab/heap-analysis';
+ *
+ * (async function (){
+ *   const heapFile = dumpNodeHeapSnapshot();
+ *   const heap = await getHeapFromFile(heapFile);
+ * })();
+ * ```
+ */
+async function getHeapFromFile(file: string): Promise<IHeapSnapshot> {
+  return await loadProcessedSnapshot({file});
+}
+
 async function loadProcessedSnapshot(
   options: AnyOptions & {file?: Optional<string>} = {},
 ): Promise<IHeapSnapshot> {
@@ -486,6 +518,18 @@ async function snapshotMapReduce<T1, T2>(
   return reduceCallback(intermediateResults);
 }
 
+/**
+ * This API aggregates metrics from the
+ * [dominator nodes](https://firefox-source-docs.mozilla.org/devtools-user/memory/dominators/index.html)
+ * of the set of input heap objects.
+ *
+ * @param ids Set of ids of heap objects (or nodes)
+ * @param snapshot heap graph loaded from a heap snapshot
+ * @param checkNodeCb filter callback to exclude some heap object/nodes
+ * before calculating the dominator nodes
+ * @param nodeMetricsCb callback to calculate metrics from each dominator node
+ * @returns the aggregated metrics
+ */
 function aggregateDominatorMetrics(
   ids: Set<number>,
   snapshot: IHeapSnapshot,
@@ -502,6 +546,51 @@ function aggregateDominatorMetrics(
     ret += nodeMetricsCb(node);
   });
   return ret;
+}
+
+/**
+ * This API calculate the set of
+ * [dominator nodes](https://firefox-source-docs.mozilla.org/devtools-user/memory/dominators/index.html)
+ * of the set of input heap objects.
+ * @param ids Set of ids of heap objects (or nodes)
+ * @param snapshot heap loaded from a heap snapshot
+ * @returns the set of dominator nodes/objects
+ * * * **Examples**:
+ * ```typescript
+ * import {dumpNodeHeapSnapshot} from '@memlab/core';
+ * import {getHeapFromFile, getDominatorNodes} from '@memlab/heap-analysis';
+ *
+ * class TestObject {}
+ *
+ * (async function () {
+ *   const t1 = new TestObject();
+ *   const t2 = new TestObject();
+ *
+ *   // dump the heap of this running JavaScript program
+ *   const heapFile = dumpNodeHeapSnapshot();
+ *   const heap = await getHeapFromFile(heapFile);
+ *
+ *   // find the heap node for TestObject
+ *   let nodes = [];
+ *   heap.nodes.forEach(node => {
+ *     if (node.name === 'TestObject' && node.type === 'object') {
+ *       nodes.push(node);
+ *     }
+ *   });
+ *
+ *   // get the dominator nodes
+ *   const dominatorIds = getDominatorNodes(
+ *     new Set(nodes.map(node => node.id)),
+ *     heap,
+ *   );
+ * })();
+ * ```
+ */
+function getDominatorNodes(
+  ids: Set<number>,
+  snapshot: IHeapSnapshot,
+): Set<number> {
+  return utils.getConditionalDominatorIds(ids, snapshot, () => true);
 }
 
 function filterOutLargestObjects(
@@ -534,11 +623,13 @@ export default {
   aggregateDominatorMetrics,
   defaultAnalysisArgs,
   filterOutLargestObjects,
+  getDominatorNodes,
   getObjectOutgoingEdgeCount,
   getSnapshotDirForAnalysis,
   getSnapshotFileForAnalysis,
   isNodeWorthInspecting,
   loadHeapSnapshot,
+  getHeapFromFile,
   printNodeListInTerminal,
   printReferencesInTerminal,
   snapshotMapReduce,

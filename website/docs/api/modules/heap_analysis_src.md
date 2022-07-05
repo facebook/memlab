@@ -24,28 +24,87 @@ custom_edit_url: null
 
 ### <a id="heapanalysisoptions" name="heapanalysisoptions"></a> **HeapAnalysisOptions**: `Object`
 
-#### Type declaration
+This is the auto-generated arguments passed to all the `process` method
+that your self-defined heap analysis should implement.
+You are not supposed to construct instances of this class.
 
-| Name | Type |
-| :------ | :------ |
-| `args` | `ParsedArgs` |
-| `config?` | `MemLabConfig` |
+For code examples on how this options could be used, see
+[getSnapshotFileForAnalysis](heap_analysis_src.md#getsnapshotfileforanalysis), [loadHeapSnapshot](heap_analysis_src.md#loadheapsnapshot),
+or [snapshotMapReduce](heap_analysis_src.md#snapshotmapreduce).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:26
+    * heap-analysis/src/PluginUtils.ts:66
 
 ## Functions
 
-### <a id="aggregatedominatormetrics"></a>**aggregateDominatorMetrics**(`ids`, `snapshot`, `checkNodeCb`, `nodeMetricsCb`)
+### <a id="getdominatornodes"></a>**getDominatorNodes**(`ids`, `snapshot`)
+
+This API calculate the set of
+[dominator nodes](https://firefox-source-docs.mozilla.org/devtools-user/memory/dominators/index.html)
+of the set of input heap objects.
 
  * **Parameters**:
-    * `ids`: `Set`<`number`\>
-    * `snapshot`: `IHeapSnapshot`
-    * `checkNodeCb`: (`node`: `IHeapNode`) => `boolean`
-    * `nodeMetricsCb`: (`node`: `IHeapNode`) => `number`
- * **Returns**: `number`
+    * `ids`: `Set`<`number`\> | Set of ids of heap objects (or nodes)
+    * `snapshot`: `IHeapSnapshot` | heap loaded from a heap snapshot
+ * **Returns**: `Set`<`number`\> | the set of dominator nodes/objects
+* * **Examples**:
+```typescript
+import {dumpNodeHeapSnapshot} from '@memlab/core';
+import {getHeapFromFile, getDominatorNodes} from '@memlab/heap-analysis';
+
+class TestObject {}
+
+(async function () {
+  const t1 = new TestObject();
+  const t2 = new TestObject();
+
+  // dump the heap of this running JavaScript program
+  const heapFile = dumpNodeHeapSnapshot();
+  const heap = await getHeapFromFile(heapFile);
+
+  // find the heap node for TestObject
+  let nodes = [];
+  heap.nodes.forEach(node => {
+    if (node.name === 'TestObject' && node.type === 'object') {
+      nodes.push(node);
+    }
+  });
+
+  // get the dominator nodes
+  const dominatorIds = getDominatorNodes(
+    new Set(nodes.map(node => node.id)),
+    heap,
+  );
+})();
+```
+
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:489
+    * heap-analysis/src/PluginUtils.ts:589
+
+___
+
+### <a id="getheapfromfile"></a>**getHeapFromFile**(`file`)
+
+Load and parse a `.heapsnapshot` file and calculate meta data like
+dominator nodes and retained sizes.
+
+ * **Parameters**:
+    * `file`: `string` | the absolute path of the `.heapsnapshot` file
+ * **Returns**: `Promise`<`IHeapSnapshot`\> | the heap graph representation instance that supports querying
+the heap
+* **Examples**:
+```typescript
+import {dumpNodeHeapSnapshot} from '@memlab/core';
+import {getHeapFromFile} from '@memlab/heap-analysis';
+
+(async function (){
+  const heapFile = dumpNodeHeapSnapshot();
+  const heap = await getHeapFromFile(heapFile);
+})();
+```
+
+ * **Source**:
+    * heap-analysis/src/PluginUtils.ts:418
 
 ___
 
@@ -92,7 +151,7 @@ The new heap analysis can also be used with [analyze](api_src.md#analyze), in th
 [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:329
+    * heap-analysis/src/PluginUtils.ts:340
 
 ___
 
@@ -139,7 +198,7 @@ The new heap analysis can also be used with [analyze](api_src.md#analyze), in th
 ascending order from [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:275
+    * heap-analysis/src/PluginUtils.ts:286
 
 ___
 
@@ -187,7 +246,7 @@ The new heap analysis can also be used with [analyze](api_src.md#analyze), in th
 ascending order from [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:383
+    * heap-analysis/src/PluginUtils.ts:394
 
 ___
 
@@ -255,4 +314,4 @@ Each heap snapshot could be non-trivial in size, loading them all at once
 may not be possible.
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:462
+    * heap-analysis/src/PluginUtils.ts:494

@@ -395,7 +395,7 @@ function getNodesIdSet(snapshot: IHeapSnapshot): Set<number> {
 }
 
 // given a set of nodes S, return a subset S' where
-// no nodes are dominaeted by nodes in S
+// no nodes are dominated by nodes in S
 function getConditionalDominatorIds(
   ids: Set<number>,
   snapshot: IHeapSnapshot,

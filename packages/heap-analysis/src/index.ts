@@ -10,10 +10,11 @@
 
 import PluginUtils from './PluginUtils';
 export const {
-  aggregateDominatorMetrics,
-  loadHeapSnapshot,
-  getSnapshotFileForAnalysis,
+  getDominatorNodes,
+  getHeapFromFile,
   getSnapshotDirForAnalysis,
+  getSnapshotFileForAnalysis,
+  loadHeapSnapshot,
   snapshotMapReduce,
 } = PluginUtils;
 

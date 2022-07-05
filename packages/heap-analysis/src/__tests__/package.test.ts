@@ -7,7 +7,7 @@
  * @emails oncall+ws_labs
  * @format
  */
-
+import type {IHeapNode} from '@memlab/core';
 import type {HeapAnalysisOptions} from '../index';
 
 import {config, dumpNodeHeapSnapshot} from '@memlab/core';
@@ -15,6 +15,8 @@ import {
   getSnapshotFileForAnalysis,
   loadHeapSnapshot,
   BaseAnalysis,
+  getHeapFromFile,
+  getDominatorNodes,
 } from '../index';
 
 beforeEach(() => {
@@ -66,4 +68,37 @@ test('analyzeSnapshotFromFile works as expected', async () => {
   const analysis = new ExampleAnalysis();
   await analysis.analyzeSnapshotFromFile(heapFile);
   expect(called).toBe(true);
+});
+
+test('getHeapFromFile works as expected', async () => {
+  const heapFile = dumpNodeHeapSnapshot();
+  const heap = await getHeapFromFile(heapFile);
+  expect(heap.nodes.length > 0).toBe(true);
+});
+
+test('getDominatorNodes works as expected', async () => {
+  class TestObject {}
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const t1 = new TestObject();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const t2 = new TestObject();
+
+  // dump the heap of this running JavaScript program
+  const heapFile = dumpNodeHeapSnapshot();
+  const heap = await getHeapFromFile(heapFile);
+
+  // find the heap node for TestObject
+  const nodes: IHeapNode[] = [];
+  heap.nodes.forEach(node => {
+    if (node.name === 'TestObject' && node.type === 'object') {
+      nodes.push(node);
+    }
+  });
+
+  // get the dominator nodes
+  const dominatorIds = getDominatorNodes(
+    new Set(nodes.map(node => node.id)),
+    heap,
+  );
+  expect(dominatorIds.size).toBeGreaterThan(0);
 });
