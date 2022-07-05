@@ -1,0 +1,54 @@
+---
+id: 'guides-detect-unbound-object'
+---
+
+import CodeBlock from '@theme/CodeBlock';
+import DetachedDomScenario from '!!raw-loader!../../../packages/e2e/static/example/scenarios/unbound-object.js';
+import DetachedDomPage from '!!raw-loader!../../../packages/e2e/static/example/pages/examples/detached-dom.jsx';
+
+# Detect Unbound Object
+
+Before you start, it is highly recommended that you would want to complete the [Detached DOM](guides-detached-dom) guidance if you haven't already. The guide will walk you through the initial steps to set up your local machine.
+
+## Example App under Test
+This is file is located at `packages/e2e/static/example/pages/examples/unbound-object.jsx`
+<CodeBlock showLineNumbers language="jsx">{DetachedDomPage}</CodeBlock>
+
+## 1. Define a Scenario File
+<CodeBlock language="jsx" showLineNumbers>{DetachedDomScenario}</CodeBlock>
+
+Let's save this file at `~/memlab/scenarios/unbound-object.js`.
+
+## 2. Run memlab
+This will take about a few minutes.
+```bash
+memlab run --scenario ~/memlab/scenarios/unbound-object.js
+```
+The result will say that `memlab` didn't find any memory leak. The reason is that currently `memlab` is unable to distinguish between the actual memory leak vs objects that happen to be kept in memory for various reasons (caching etc...).
+
+However, if you want to discover certain objects that are still in memory and meet the specified search criteria that you have, say, all objects whose sizes are greater than `2MB`.
+
+`memlab` supports this need by allowing you to define your leak filtering logic.
+
+To have custom leak filtering logic, we'll need to uncomment lines 18-20 in our scenario file and export `leakFilter` function. Now let's run `memlab` with `--leak-filter` option set.
+`leakFilter` function will be called for every unreleased heap object (`node`) allocated by the target interaction.
+
+```bash
+memlab run --scenario ~/memlab/scenarios/unbound-object.js
+```
+
+The result will look like this.
+![memlab run result](./unbound-object.png)
+
+As you can see, `memlab` filtered the leak traces accordingly showing the traces whose `retainedSize`s are greater than `2MB`.
+
+Another alternetive to have custom leak filtering is to define `leak-filter.js` and pass it to `memlab`.
+
+To do that, extract out the `leakFilter` function and save it in a file, say, `~/memlab/leak-filters/leak-filter-by-retained-size.js`
+
+Now you can pass it to `memlab` like following:
+```bash
+memlab run --scenario ~/memlab/scenarios/unbound-object.js --leak-filter ~/memlab/leak-filters/leak-filter-by-retained-size.js
+```
+
+If you need more advanced filtering logic, there are [some examples](https://github.com/facebookincubator/memlab/tree/main/packages/cli/src/options/heap/leak-filter/examples/) you may find useful.

@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import React, {useEffect} from 'react';
 
-export default function EventListener() {
+export default function UnboundObject() {
   const bigArray = Array(1024 * 1024 * 2).fill(0);
 
   const eventHandler = () => {

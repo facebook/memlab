@@ -1,13 +1,13 @@
 // @nolint
 
-// memlab/packages/e2e/static/example/scenario/event-listener.js
+// memlab/packages/e2e/static/example/scenario/unbound-object.js
 function url() {
   return "http://localhost:3000/";
 }
 
 // action where you suspect the memory leak might be happening
 async function action(page) {
-  await page.click('a[href="/examples/event-listener"]');
+  await page.click('a[href="/examples/unbound-object"]');
 }
 
 // how to go back to the state before actionw
@@ -19,4 +19,4 @@ async function back(page) {
 //   return node.retainedSize > 1000 * 1000;
 // };
 
-module.exports = { action, back, url, leakFilter };
+module.exports = { action, back, url };

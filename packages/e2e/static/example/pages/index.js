@@ -24,7 +24,7 @@ export default function Home() {
           <p>Detached DOM element</p>
         </div>
         <div className="col-md-3">
-          <Link href="/examples/event-listener">
+          <Link href="/examples/unbound-object">
             <a>
               <h2>Example 2 &rarr;</h2>
             </a>
