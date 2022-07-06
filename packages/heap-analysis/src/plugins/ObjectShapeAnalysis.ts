@@ -10,7 +10,7 @@
 
 import type {HeapAnalysisOptions} from '../PluginUtils';
 
-import {analysis, BaseOption} from '@memlab/core';
+import {analysis, BaseOption, utils} from '@memlab/core';
 import BaseAnalysis from '../BaseAnalysis';
 import pluginUtils from '../PluginUtils';
 import SnapshotFileOption from '../options/HeapAnalysisSnapshotFileOption';
@@ -20,14 +20,26 @@ class ObjectShapeAnalysis extends BaseAnalysis {
     return 'shape';
   }
 
+  /** @internal */
   getDescription(): string {
     return 'List the shapes that retained most memory';
   }
 
+  /** @internal */
   getOptions(): BaseOption[] {
     return [new SnapshotFileOption()];
   }
 
+  /** @internal */
+  public async analyzeSnapshotsInDirectory(directory: string): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const d = directory;
+    throw utils.haltOrThrow(
+      `${this.constructor.name} does not support analyzeSnapshotsInDirectory`,
+    );
+  }
+
+  /** @internal */
   async process(options: HeapAnalysisOptions): Promise<void> {
     const snapshotPath = pluginUtils.getSnapshotFileForAnalysis(options);
     await analysis.breakDownMemoryByShapes({file: snapshotPath});

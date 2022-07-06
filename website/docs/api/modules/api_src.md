@@ -39,7 +39,9 @@ This is equivalent to `memlab analyze` in CLI.
     * `runResult`: [`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md) | return value of a browser interaction run
     * `heapAnalyzer`: `BaseAnalysis` | instance of a heap analysis
     * `args`: `ParsedArgs` | other CLI arguments that needs to be passed to the heap analysis
- * **Returns**: `Promise`<`AnyValue`\> | each analysis may have a different return type
+ * **Returns**: `Promise`<`void`\> | each analysis may have a different return type, please check out
+the type definition or the documentation for the `process` method of the
+analysis class you are using for `heapAnalyzer`.
 * **Examples**:
 ```javascript
 const {takeSnapshots, StringAnalysis} = require('@memlab/api');
@@ -55,7 +57,7 @@ const {takeSnapshots, StringAnalysis} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:221
+    * api/src/API.ts:223
 
 ___
 

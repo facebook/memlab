@@ -47,7 +47,8 @@ test(
     });
     // test analysis from auto loading
     let analysis = new ShapeUnboundGrowthAnalysis();
-    let shapeSummary = await analysis.run();
+    await analysis.run();
+    let shapeSummary = analysis.getShapesWithUnboundGrowth();
     expect(
       shapeSummary.reduce(
         (acc: boolean, summary: ShapeSummary) =>
@@ -59,7 +60,8 @@ test(
     // test analysis from file
     const snapshotDir = result.getSnapshotFileDir();
     analysis = new ShapeUnboundGrowthAnalysis();
-    shapeSummary = await analysis.analyzeSnapshotsInDirectory(snapshotDir);
+    await analysis.analyzeSnapshotsInDirectory(snapshotDir);
+    shapeSummary = analysis.getShapesWithUnboundGrowth();
     expect(
       shapeSummary.some((summary: ShapeSummary) =>
         summary.shape.includes('LeakObject'),

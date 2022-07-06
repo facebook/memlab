@@ -464,7 +464,7 @@ async function loadProcessedSnapshot(
  *
  *   async process(options: HeapAnalysisOptions): Promise<void> {
  *     // check if the number of heap objects keeps growing overtime
- *     const isMonotonicIncreasing = await snapshotMapReduce<number, boolean>(
+ *     const isMonotonicIncreasing = await snapshotMapReduce(
  *       (heap) => heap.nodes.length,
  *       (nodeCounts) =>
  *         nodeCounts[0] < nodeCounts[nodeCounts.length - 1] &&

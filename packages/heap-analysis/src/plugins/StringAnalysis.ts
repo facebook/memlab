@@ -55,15 +55,10 @@ export type StringRecord = {
  * and rank them based on the duplicated string size and count.
  */
 export default class StringAnalysis extends BaseAnalysis {
-  /** @ignore */
   private topDupStrInCnt: StringRecord[] = [];
-  /** @ignore */
   private topDupStrInCntListSize = 10;
-  /** @ignore */
   private topDupStrInSize: StringRecord[] = [];
-  /** @ignore */
   private topDupStrInSizeListSize = 10;
-  /** @ignore */
   private stringPatternsStat: StringPatternStat = {};
 
   /**
@@ -77,7 +72,6 @@ export default class StringAnalysis extends BaseAnalysis {
   /**
    * collect statistics for specified string patterns
    * pattern name -> string pattern checker
-   * @ignore
    */
   private static stringPatternsToObserve: StringPatterns = {
     // all strings (excluding sliced strings)
@@ -128,17 +122,26 @@ export default class StringAnalysis extends BaseAnalysis {
   /**
    * get a textual description of the memory analysis
    * @returns textual description
+   * @internal
    */
   public getDescription(): string {
     return 'Analyze string in heap';
   }
 
-  /** @ignore */
+  /** @internal */
   getOptions(): BaseOption[] {
     return [new SnapshotFileOption()];
   }
 
-  /** @ignore */
+  /** @internal */
+  public async analyzeSnapshotsInDirectory(directory: string): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const d = directory;
+    throw utils.haltOrThrow(
+      `${this.constructor.name} does not support analyzeSnapshotsInDirectory`,
+    );
+  }
+
   private static shouldIgnoreNode(node: IHeapNode): boolean {
     if (!utils.isStringNode(node) || utils.isSlicedStringNode(node)) {
       return true;
@@ -153,7 +156,7 @@ export default class StringAnalysis extends BaseAnalysis {
     return !hasCodeDominator;
   }
 
-  /** @ignore */
+  /** @internal */
   async process(options: HeapAnalysisOptions): Promise<void> {
     const snapshot = await pluginUtils.loadHeapSnapshot(options);
     const stringMap = this.getPreprocessedStringMap(snapshot);
@@ -163,7 +166,6 @@ export default class StringAnalysis extends BaseAnalysis {
     this.print();
   }
 
-  /** @ignore */
   private getPreprocessedStringMap(snapshot: IHeapSnapshot): StringMap {
     info.overwrite('building string map...');
     const stringMap = Object.create(null);
@@ -188,7 +190,6 @@ export default class StringAnalysis extends BaseAnalysis {
     return stringMap;
   }
 
-  /** @ignore */
   private rankRecords(
     stringMap: StringMap,
     compare: (a: StringRecord, b: StringRecord) => number,
@@ -215,7 +216,6 @@ export default class StringAnalysis extends BaseAnalysis {
     return rank;
   }
 
-  /** @ignore */
   private calculateTopDuplicatedStringsInCount(stringMap: StringMap): void {
     info.overwrite('calculating top duplicated strings in count...');
     this.topDupStrInCnt = this.rankRecords(
@@ -225,7 +225,6 @@ export default class StringAnalysis extends BaseAnalysis {
     );
   }
 
-  /** @ignore */
   private calculateTopDuplicatedStringsInSize(stringMap: StringMap): void {
     info.overwrite('calculating top duplicated strings in size...');
     this.topDupStrInSize = this.rankRecords(
@@ -235,7 +234,6 @@ export default class StringAnalysis extends BaseAnalysis {
     );
   }
 
-  /** @ignore */
   private calculateStringPatternsStatistics(stringMap: StringMap): void {
     info.overwrite('calculating statistics for specified string patterns...');
 
@@ -265,7 +263,6 @@ export default class StringAnalysis extends BaseAnalysis {
     this.stringPatternsStat = strPatternStat;
   }
 
-  /** @ignore */
   private print(): void {
     const sep = chalk.grey(', ');
     const colon = chalk.grey(': ');

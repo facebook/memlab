@@ -65,12 +65,23 @@ export default class CollectionsHoldingStaleAnalysis extends BaseAnalysis {
     return 'collections-with-stale';
   }
 
+  /** @internal */
   public getDescription(): string {
     return 'Analyze collections holding stale objects';
   }
 
+  /** @internal */
   getOptions(): BaseOption[] {
     return [new SnapshotFileOption()];
+  }
+
+  /** @internal */
+  public async analyzeSnapshotsInDirectory(directory: string): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const d = directory;
+    throw utils.haltOrThrow(
+      `${this.constructor.name} does not support analyzeSnapshotsInDirectory`,
+    );
   }
 
   private staleCollectionMapper: Map<
@@ -82,6 +93,7 @@ export default class CollectionsHoldingStaleAnalysis extends BaseAnalysis {
     ['Array', processCollectionChildren],
   ]);
 
+  /** @internal */
   async process(options: HeapAnalysisOptions): Promise<void> {
     const snapshot = await pluginUtils.loadHeapSnapshot(options);
     const collectionsStat = this.getCollectionsWithStaleValues(snapshot);

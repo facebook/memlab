@@ -22,21 +22,22 @@ and rank them based on the duplicated string size and count.
 
 ### <a id="analyzesnapshotfromfile"></a>**analyzeSnapshotFromFile**(`file`)
 
- * **Parameters**:
-    * `file`: `string`
- * **Returns**: `Promise`<`any`\>
- * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:52
-
-___
-
-### <a id="analyzesnapshotsindirectory"></a>**analyzeSnapshotsInDirectory**(`directory`)
+Run heap analysis for a single heap snapshot file
 
  * **Parameters**:
-    * `directory`: `string`
- * **Returns**: `Promise`<`any`\>
+    * `file`: `string` | the absolute path of a `.heapsnapshot` file.
+ * **Returns**: `Promise`<`void`\> | this API returns void. To get the analysis results,
+check out the documentation of the hosting heap analysis class and
+call the analysis-specific API to get results after calling this method.
+* **Example**:
+```typescript
+const analysis = new StringAnalysis();
+await anaysis.analyzeSnapshotFromFile(snapshotFile);
+const stringPatterns = analysis.getTopDuplicatedStringsInCount();
+```
+
  * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:62
+    * heap-analysis/src/BaseAnalysis.ts:75
 
 ___
 
@@ -48,18 +49,7 @@ use it with `memlab analyze <ANALYSIS_NAME>` in CLI
  * **Returns**: `string` | command name
 
  * **Source**:
-    * heap-analysis/src/plugins/StringAnalysis.ts:124
-
-___
-
-### <a id="getdescription"></a>**getDescription**()
-
-get a textual description of the memory analysis
-
- * **Returns**: `string` | textual description
-
- * **Source**:
-    * heap-analysis/src/plugins/StringAnalysis.ts:132
+    * heap-analysis/src/plugins/StringAnalysis.ts:118
 
 ___
 
@@ -70,14 +60,4 @@ get the top duplicated string in terms of duplicated string count
  * **Returns**: `StringRecord`[] | an array of the top-duplicated strings' information
 
  * **Source**:
-    * heap-analysis/src/plugins/StringAnalysis.ts:73
-
-___
-
-### <a id="run"></a>**run**(`options?`)
-
- * **Parameters**:
-    * `options`: [`HeapAnalysisOptions`](../modules/heap_analysis_src.md#heapanalysisoptions) | `pluginUtils.defaultAnalysisArgs`
- * **Returns**: `Promise`<`any`\>
- * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:45
+    * heap-analysis/src/plugins/StringAnalysis.ts:68

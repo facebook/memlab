@@ -203,7 +203,9 @@ export async function findLeaks(
  * @param runResult return value of a browser interaction run
  * @param heapAnalyzer instance of a heap analysis
  * @param args other CLI arguments that needs to be passed to the heap analysis
- * @returns each analysis may have a different return type
+ * @returns each analysis may have a different return type, please check out
+ * the type definition or the documentation for the `process` method of the
+ * analysis class you are using for `heapAnalyzer`.
  * * **Examples**:
  * ```javascript
  * const {takeSnapshots, StringAnalysis} = require('@memlab/api');
@@ -222,7 +224,7 @@ export async function analyze(
   runResult: BrowserInteractionResultReader,
   heapAnalyzer: BaseAnalysis,
   args: ParsedArgs = {_: []},
-): Promise<AnyValue> {
+): Promise<void> {
   const workDir = runResult.getRootDirectory();
   fileManager.initDirs(defaultConfig, {workDir});
   return await heapAnalyzer.run({args});

@@ -51,7 +51,7 @@ class ExampleAnalysis extends BaseAnalysis {
 
   async process(options: HeapAnalysisOptions): Promise<void> {
     // check if the number of TestObject keeps growing overtime
-    this.isMonotonicIncreasing = await snapshotMapReduce<number, boolean>(
+    this.isMonotonicIncreasing = await snapshotMapReduce(
       heap => {
         let cnt = 0;
         heap.nodes.forEach(node => {

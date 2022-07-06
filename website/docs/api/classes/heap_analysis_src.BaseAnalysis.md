@@ -39,52 +39,100 @@ custom_edit_url: null
 
 ### <a id="analyzesnapshotfromfile"></a>**analyzeSnapshotFromFile**(`file`)
 
+Run heap analysis for a single heap snapshot file
+
  * **Parameters**:
-    * `file`: `string`
- * **Returns**: `Promise`<`any`\>
+    * `file`: `string` | the absolute path of a `.heapsnapshot` file.
+ * **Returns**: `Promise`<`void`\> | this API returns void. To get the analysis results,
+check out the documentation of the hosting heap analysis class and
+call the analysis-specific API to get results after calling this method.
+* **Example**:
+```typescript
+const analysis = new StringAnalysis();
+await anaysis.analyzeSnapshotFromFile(snapshotFile);
+const stringPatterns = analysis.getTopDuplicatedStringsInCount();
+```
+
  * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:52
+    * heap-analysis/src/BaseAnalysis.ts:75
 
 ___
 
 ### <a id="analyzesnapshotsindirectory"></a>**analyzeSnapshotsInDirectory**(`directory`)
 
+Run heap analysis for a series of heap snapshot files
+
  * **Parameters**:
-    * `directory`: `string`
- * **Returns**: `Promise`<`any`\>
+    * `directory`: `string` | the absolute path of the directory holding a series of `.heapsnapshot` files, all snapshot files will be loaded and analyzed in the alphanumerically ascending order of those snapshot file names.
+ * **Returns**: `Promise`<`void`\> | this API returns void. To get the analysis results,
+check out the documentation of the hosting heap analysis class and
+call the analysis-specific API to get results after calling this method.
+* **Example**:
+```typescript
+const analysis = new ShapeUnboundGrowthAnalysis();
+await anaysis.analyzeSnapshotsInDirectory(snapshotDirectory);
+const shapes = analysis.getShapesWithUnboundGrowth();
+```
+
  * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:62
+    * heap-analysis/src/BaseAnalysis.ts:100
 
 ___
 
 ### <a id="getcommandname"></a>**getCommandName**()
 
- * **Returns**: `string`
+Get the name of the heap analysis, which is also used to reference
+the analysis in memlab command-line tool.
+
+The following terminal command will initiate with this analysis:
+`memlab analyze <ANALYSIS_NAME>`
+
+ * **Returns**: `string` | the name of the analysis
+* **Examples**:
+```typescript
+const analysis = new YourAnalysis();
+const name = analysis.getCommandName();
+```
+
  * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:78
+    * heap-analysis/src/BaseAnalysis.ts:129
 
 ___
 
 ### <a id="getdescription"></a>**getDescription**()
 
- * **Returns**: `string`
+Get the textual description of the heap analysis.
+The description of this analysis will be printed by:
+`memlab analyze list`
+
+ * **Returns**: `string` | the description
+
  * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:85
+    * heap-analysis/src/BaseAnalysis.ts:141
 
 ___
 
 ### <a id="getoptions"></a>**getOptions**()
 
- * **Returns**: `default`[]
+override this method if you would like CLI to print the option info
+
+ * **Returns**: `default`[] | an array of command line options
+
  * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:104
+    * heap-analysis/src/BaseAnalysis.ts:168
 
 ___
 
-### <a id="run"></a>**run**(`options?`)
+### <a id="process"></a>**process**(`options`)
+
+Callback for `memlab analyze <command-name>`.
+Do the memory analysis and print results in this callback
+The analysis should support:
+ 1) printing results on screen
+ 2) returning results via the return value
 
  * **Parameters**:
-    * `options`: [`HeapAnalysisOptions`](../modules/heap_analysis_src.md#heapanalysisoptions) | `pluginUtils.defaultAnalysisArgs`
+    * `options`: [`HeapAnalysisOptions`](../modules/heap_analysis_src.md#heapanalysisoptions) | This is the auto-generated arguments passed to all the `process` method that your self-defined heap analysis should implement. You are not supposed to construct instances of this class.
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:45
+    * heap-analysis/src/BaseAnalysis.ts:156

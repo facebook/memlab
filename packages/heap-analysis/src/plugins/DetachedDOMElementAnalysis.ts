@@ -21,12 +21,23 @@ export default class DetachedDOMElementAnalysis extends BaseAnalysis {
     return 'detached-DOM';
   }
 
+  /** @internal */
   getDescription(): string {
     return 'Get detached DOM elements';
   }
 
+  /** @internal */
   getOptions(): BaseOption[] {
     return [new SnapshotFileOption()];
+  }
+
+  /** @internal */
+  public async analyzeSnapshotsInDirectory(directory: string): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const d = directory;
+    throw utils.haltOrThrow(
+      `${this.constructor.name} does not support analyzeSnapshotsInDirectory`,
+    );
   }
 
   private detachedElements: IHeapNode[] = [];
@@ -35,6 +46,7 @@ export default class DetachedDOMElementAnalysis extends BaseAnalysis {
     return this.detachedElements;
   }
 
+  /** @internal */
   async process(options: HeapAnalysisOptions): Promise<void> {
     const snapshot = await pluginUtils.loadHeapSnapshot(options);
     this.detachedElements = pluginUtils.filterOutLargestObjects(

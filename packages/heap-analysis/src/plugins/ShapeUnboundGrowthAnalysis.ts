@@ -37,21 +37,38 @@ type ShapeSummary = {
 };
 
 export default class ShapeUnboundGrowthAnalysis extends BaseAnalysis {
+  private shapesOfInterest: Nullable<Set<string>> = null;
+  private shapesWithUnboundGrowth: ShapeSummary[] = [];
+
   public getCommandName(): string {
     return 'unbound-shape';
   }
 
+  /** @internal */
   public getDescription(): string {
     return 'Get shapes with unbound growth';
   }
 
+  /** @internal */
   getOptions(): BaseOption[] {
     return [new SnapshotDirectoryOption()];
   }
 
-  private shapesOfInterest: Nullable<Set<string>> = null;
+  /** @internal */
+  public async analyzeSnapshotFromFile(file: string): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const f = file;
+    throw utils.haltOrThrow(
+      `${this.constructor.name} does not support analyzeSnapshotFromFile`,
+    );
+  }
 
-  public async process(options: HeapAnalysisOptions): Promise<ShapeSummary[]> {
+  public getShapesWithUnboundGrowth(): ShapeSummary[] {
+    return this.shapesWithUnboundGrowth;
+  }
+
+  /** @internal */
+  public async process(options: HeapAnalysisOptions): Promise<void> {
     let list: ShapeSummary[] = await pluginUtils.snapshotMapReduce(
       this.getShapesInfo.bind(this),
       this.getSummary,
@@ -66,9 +83,8 @@ export default class ShapeUnboundGrowthAnalysis extends BaseAnalysis {
       options,
     );
     this.shapesOfInterest = null;
-
+    this.shapesWithUnboundGrowth = list;
     this.print(list);
-    return list;
   }
 
   private retrieveShapesOfInterest(list: ShapeSummary[]): void {
@@ -78,7 +94,7 @@ export default class ShapeUnboundGrowthAnalysis extends BaseAnalysis {
     }
   }
 
-  getShapesInfo(snapshot: IHeapSnapshot): ShapesInfo {
+  private getShapesInfo(snapshot: IHeapSnapshot): ShapesInfo {
     const population: ShapesInfo = Object.create(null);
     const shapes = this.shapesOfInterest;
 
@@ -130,7 +146,7 @@ export default class ShapeUnboundGrowthAnalysis extends BaseAnalysis {
     return population;
   }
 
-  getSummary(ShapesInfoList: ShapesInfo[]): ShapeSummary[] {
+  private getSummary(ShapesInfoList: ShapesInfo[]): ShapeSummary[] {
     const shapes = Object.create(null);
     for (const population of ShapesInfoList) {
       for (const key in population) {

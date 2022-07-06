@@ -12,7 +12,7 @@ import type {HeapAnalysisOptions} from '../PluginUtils';
 import type {IHeapSnapshot, IHeapNode} from '@memlab/core';
 
 import {ParsedArgs} from 'minimist';
-import {BaseOption} from '@memlab/core';
+import {BaseOption, utils} from '@memlab/core';
 import BaseAnalysis from '../BaseAnalysis';
 import pluginUtils from '../PluginUtils';
 import SnapshotFileOption from '../options/HeapAnalysisSnapshotFileOption';
@@ -22,14 +22,26 @@ class ObjectFanoutAnalysis extends BaseAnalysis {
     return 'object-fanout';
   }
 
+  /** @internal */
   getDescription(): string {
     return 'Get objects with the most out-going references in heap';
   }
 
+  /** @internal */
   getOptions(): BaseOption[] {
     return [new SnapshotFileOption()];
   }
 
+  /** @internal */
+  public async analyzeSnapshotsInDirectory(directory: string): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const d = directory;
+    throw utils.haltOrThrow(
+      `${this.constructor.name} does not support analyzeSnapshotsInDirectory`,
+    );
+  }
+
+  /** @internal */
   async process(options: HeapAnalysisOptions): Promise<void> {
     const snapshot = await pluginUtils.loadHeapSnapshot(options);
     const list = this.getObjectsWithHighFanout(snapshot, options.args);

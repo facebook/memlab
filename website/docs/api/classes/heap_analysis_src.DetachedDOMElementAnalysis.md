@@ -19,37 +19,42 @@ custom_edit_url: null
 
 ### <a id="analyzesnapshotfromfile"></a>**analyzeSnapshotFromFile**(`file`)
 
- * **Parameters**:
-    * `file`: `string`
- * **Returns**: `Promise`<`any`\>
- * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:52
-
-___
-
-### <a id="analyzesnapshotsindirectory"></a>**analyzeSnapshotsInDirectory**(`directory`)
+Run heap analysis for a single heap snapshot file
 
  * **Parameters**:
-    * `directory`: `string`
- * **Returns**: `Promise`<`any`\>
+    * `file`: `string` | the absolute path of a `.heapsnapshot` file.
+ * **Returns**: `Promise`<`void`\> | this API returns void. To get the analysis results,
+check out the documentation of the hosting heap analysis class and
+call the analysis-specific API to get results after calling this method.
+* **Example**:
+```typescript
+const analysis = new StringAnalysis();
+await anaysis.analyzeSnapshotFromFile(snapshotFile);
+const stringPatterns = analysis.getTopDuplicatedStringsInCount();
+```
+
  * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:62
+    * heap-analysis/src/BaseAnalysis.ts:75
 
 ___
 
 ### <a id="getcommandname"></a>**getCommandName**()
 
- * **Returns**: `string`
+Get the name of the heap analysis, which is also used to reference
+the analysis in memlab command-line tool.
+
+The following terminal command will initiate with this analysis:
+`memlab analyze <ANALYSIS_NAME>`
+
+ * **Returns**: `string` | the name of the analysis
+* **Examples**:
+```typescript
+const analysis = new YourAnalysis();
+const name = analysis.getCommandName();
+```
+
  * **Source**:
     * heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:20
-
-___
-
-### <a id="getdescription"></a>**getDescription**()
-
- * **Returns**: `string`
- * **Source**:
-    * heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:24
 
 ___
 
@@ -57,32 +62,4 @@ ___
 
  * **Returns**: `IHeapNode`[]
  * **Source**:
-    * heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:34
-
-___
-
-### <a id="getoptions"></a>**getOptions**()
-
- * **Returns**: `default`[]
- * **Source**:
-    * heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:28
-
-___
-
-### <a id="process"></a>**process**(`options`)
-
- * **Parameters**:
-    * `options`: [`HeapAnalysisOptions`](../modules/heap_analysis_src.md#heapanalysisoptions)
- * **Returns**: `Promise`<`void`\>
- * **Source**:
-    * heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:38
-
-___
-
-### <a id="run"></a>**run**(`options?`)
-
- * **Parameters**:
-    * `options`: [`HeapAnalysisOptions`](../modules/heap_analysis_src.md#heapanalysisoptions) | `pluginUtils.defaultAnalysisArgs`
- * **Returns**: `Promise`<`any`\>
- * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:45
+    * heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:45

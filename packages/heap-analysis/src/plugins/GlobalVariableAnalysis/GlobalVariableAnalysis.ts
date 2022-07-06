@@ -8,7 +8,7 @@
  * @format
  */
 
-import type {IHeapEdge, IHeapNode, IHeapSnapshot} from '@memlab/core';
+import {IHeapEdge, IHeapNode, IHeapSnapshot, utils} from '@memlab/core';
 import type {HeapAnalysisOptions} from '../../PluginUtils';
 
 import {BaseOption} from '@memlab/core';
@@ -22,18 +22,30 @@ class GlobalVariableAnalysis extends BaseAnalysis {
     return 'global-variable';
   }
 
+  /** @internal */
   getDescription(): string {
     return 'Get global variables in heap';
   }
 
+  /** @internal */
   getOptions(): BaseOption[] {
     return [new SnapshotFileOption()];
   }
 
+  /** @internal */
   async process(options: HeapAnalysisOptions): Promise<void> {
     const snapshot = await pluginUtils.loadHeapSnapshot(options);
     const list = this.getGlobalVariables(snapshot);
     pluginUtils.printReferencesInTerminal(list);
+  }
+
+  /** @internal */
+  public async analyzeSnapshotsInDirectory(directory: string): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const d = directory;
+    throw utils.haltOrThrow(
+      `${this.constructor.name} does not support analyzeSnapshotsInDirectory`,
+    );
   }
 
   private shouldFilterOutEdge(edge: IHeapEdge): boolean {
@@ -54,6 +66,7 @@ class GlobalVariableAnalysis extends BaseAnalysis {
     return false;
   }
 
+  /** @internal */
   private getGlobalVariables(snapshot: IHeapSnapshot): IHeapEdge[] {
     // rank heap objects based on fanout
     const ret: IHeapEdge[] = [];

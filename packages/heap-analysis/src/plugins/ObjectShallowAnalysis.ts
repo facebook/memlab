@@ -69,17 +69,27 @@ class ObjectShallowAnalysis extends BaseAnalysis {
   /**
    * get a textual description of the memory analysis
    * @returns textual description
+   * @internal
    */
   getDescription(): string {
     return 'Get objects by key and value, without recursing into sub-objects';
   }
 
-  /** @ignore */
+  /** @internal */
   getOptions(): BaseOption[] {
     return [new SnapshotFileOption()];
   }
 
-  /** @ignore */
+  /** @internal */
+  public async analyzeSnapshotsInDirectory(directory: string): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const d = directory;
+    throw utils.haltOrThrow(
+      `${this.constructor.name} does not support analyzeSnapshotsInDirectory`,
+    );
+  }
+
+  /** @internal */
   async process(options: HeapAnalysisOptions): Promise<void> {
     const snapshot = await pluginUtils.loadHeapSnapshot(options);
     const objectMap = this.getPreprocessedObjectMap(snapshot);
@@ -123,7 +133,6 @@ class ObjectShallowAnalysis extends BaseAnalysis {
     return objectMap;
   }
 
-  /** @ignore */
   private nodeToObject(node: IHeapNode): unknown {
     type AlphaNumeric = string | number;
     const result: Record<
@@ -150,13 +159,11 @@ class ObjectShallowAnalysis extends BaseAnalysis {
     return {class: node.name, object: result};
   }
 
-  /** @ignore */
   private static objectPatternsToObserve: ObjectPatterns = {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     'All objects': (_: string) => true,
   };
 
-  /** @ignore */
   private shouldIgnoreNode(node: IHeapNode): boolean {
     let hasAHiddenReferrer = false;
     node.forEachReferrer((edge: IHeapEdge) => {
@@ -178,7 +185,6 @@ class ObjectShallowAnalysis extends BaseAnalysis {
     );
   }
 
-  /** @ignore */
   private textEllipsis(
     str: string,
     maxLength: number,
@@ -196,7 +202,6 @@ class ObjectShallowAnalysis extends BaseAnalysis {
     return str;
   }
 
-  /** @ignore */
   private rankRecords(
     objectMap: ObjectMap,
     compare: (a: ObjectRecord, b: ObjectRecord) => number,
@@ -223,7 +228,6 @@ class ObjectShallowAnalysis extends BaseAnalysis {
     return rank;
   }
 
-  /** @ignore */
   private calculateTopDuplicatedObjectsInCount(objectMap: ObjectMap): void {
     info.overwrite('calculating top duplicated objects in count...');
     this.topDupObjInCnt = this.rankRecords(
@@ -233,7 +237,6 @@ class ObjectShallowAnalysis extends BaseAnalysis {
     );
   }
 
-  /** @ignore */
   private calculateTopDuplicatedObjectsInSize(objectMap: ObjectMap): void {
     info.overwrite('calculating top duplicated objects in size...');
     this.topDupObjInSize = this.rankRecords(
@@ -243,7 +246,6 @@ class ObjectShallowAnalysis extends BaseAnalysis {
     );
   }
 
-  /** @ignore */
   private calculateobjectPatternsStatistics(objectMap: ObjectMap): void {
     info.overwrite('calculating statistics for specified object patterns...');
 
@@ -273,7 +275,6 @@ class ObjectShallowAnalysis extends BaseAnalysis {
     this.objectPatternsStat = objectPatternStat;
   }
 
-  /** @ignore */
   private print(): void {
     const sep = chalk.grey(', ');
     const colon = chalk.grey(': ');
