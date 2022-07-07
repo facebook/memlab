@@ -2,14 +2,17 @@
 import Link from 'next/link';
 import React, {useEffect} from 'react';
 
-export default function UnboundObject() {
+export default function OversizedObject() {
   const bigArray = Array(1024 * 1024 * 2).fill(0);
 
   const eventHandler = () => {
-    console.log('Does something with with hugeObject', bigArray);
+    // the eventHandler closure keeps a reference
+    // to the bigArray in the outter scope
+    console.log('Using hugeObject', bigArray);
   };
 
   useEffect(() => {
+    // eventHandler is never unregistered
     window.addEventListener('custom-click', eventHandler);
   }, []);
 
@@ -18,7 +21,7 @@ export default function UnboundObject() {
       <div className="row">
         <Link href="/">Go back</Link>
       </div>
-      <br />
+      <br/>
       <div className="row">
         Object<code>bigArray</code>is leaked. Please check <code>Memory</code>{' '}
         tab in devtools
