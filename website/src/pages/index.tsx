@@ -8,15 +8,19 @@
  * @format
  */
 
-import React, {ReactNode} from 'react';
+import React, {ReactNode, useEffect} from 'react';
 import clsx from 'clsx';
 import Layout from '@theme/Layout';
 import Link from '@docusaurus/Link';
 import CodeBlock from '../components/CodeBlock';
-import Terminal from '../components/Terminal';
+import TerminalStatic from '../components/TerminalStatic';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import useBaseUrl from '@docusaurus/useBaseUrl';
 import styles from './styles.module.css';
+import TerminalReplay from '../components/TerminalReplay';
+import startAnimation from '../lib/ContainerAnimation';
+import nomralizeTypeSpeed from '../lib/TypeSpeedNormalization';
+import homePageStdouts from '../data/HomePageMainTerminal';
 
 interface FeatureItem {
   title: string;
@@ -53,9 +57,12 @@ module.exports = {action, back, url};`}
     description: (
       <>
         Find memory leaks with the custom E2E test scenario:
-        <Terminal language="bash" code={`$ memlab run --scenario test.js`} />
+        <TerminalStatic
+          language="bash"
+          code={`$ memlab run --scenario test.js`}
+        />
         Support memory analyses for the previous browser test:
-        <Terminal
+        <TerminalStatic
           language="bash"
           code={`# Analyze duplicated string in heap
 $ memlab analyze string
@@ -107,14 +114,23 @@ function Feature({imageUrl, title, description}) {
   );
 }
 
+const stdouts = nomralizeTypeSpeed(homePageStdouts);
+
 export default function Home(): React.ReactElement {
   const {siteConfig} = useDocusaurusContext();
+  const headerContainerID = 'css-animated-bg-container';
+
+  useEffect(() => {
+    startAnimation(headerContainerID);
+  }, []);
 
   return (
     <Layout
       title={`${siteConfig.title}`}
       description="memlab is an E2E testing, memory leak detection, and heap analysis framework for front-end JavaScript.">
-      <header className={clsx('hero hero--primary', styles.heroBanner)}>
+      <header
+        id={headerContainerID}
+        className={clsx('hero hero--primary', styles.heroBanner)}>
         <div className="container">
           <h1 className="hero__title">{siteConfig.title}</h1>
           <p className="hero__subtitle">{siteConfig.tagline}</p>
@@ -128,8 +144,11 @@ export default function Home(): React.ReactElement {
               Learn more
             </Link>
           </div>
+          <TerminalReplay stdouts={stdouts} />
+          {/* <TerminalReplay stdouts={homePageStdouts.slice(20)} /> */}
         </div>
       </header>
+
       <main>
         {features && features.length > 0 && (
           <section className={styles.features}>

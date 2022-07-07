@@ -4,16 +4,16 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @oncall ws_labs
  * @emails oncall+ws_labs
  * @format
+ * @oncall ws_labs
  */
 
 import Highlight, {defaultProps} from 'prism-react-renderer';
 import theme from 'prism-react-renderer/themes/palenight';
 import React from 'react';
 
-const Terminal = ({code, language}) => (
+const TerminalStatic = ({code, language}) => (
   <Highlight {...defaultProps} code={code} language={language} theme={theme}>
     {({className, getLineProps, getTokenProps, style, tokens}) => (
       <pre className={className} style={{...style, textAlign: 'left'}}>
@@ -29,4 +29,4 @@ const Terminal = ({code, language}) => (
   </Highlight>
 );
 
-export default Terminal;
+export default TerminalStatic;
