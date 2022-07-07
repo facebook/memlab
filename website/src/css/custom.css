@@ -91,6 +91,7 @@ code {
   position: absolute;
   width: 100%;
   height: 100%;
+  top: 0;
   z-index: -1;
 }
 
@@ -98,4 +99,28 @@ code {
   #css-animated-bg-container {
     padding: 1rem 0rem;
   }
+}
+
+#title, #sub-title {
+  text-shadow: 1px 1px 4px rgb(122 117 117);
+}
+
+#header-container {
+  display: flex;
+}
+
+#left-header-section {
+  flex: 2;
+}
+
+
+#left-header-section {
+  margin-top: 8%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+#css-animated-bg-container {
+  padding-top: 16px;
+  padding-bottom: 0px;
 }

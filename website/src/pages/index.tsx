@@ -131,21 +131,28 @@ export default function Home(): React.ReactElement {
       <header
         id={headerContainerID}
         className={clsx('hero hero--primary', styles.heroBanner)}>
-        <div className="container">
-          <h1 className="hero__title">{siteConfig.title}</h1>
-          <p className="hero__subtitle">{siteConfig.tagline}</p>
-          <div className={styles.buttons}>
-            <Link
-              className={clsx(
-                'button button--outline button--secondary button--lg',
-                styles.getStarted,
-              )}
-              to={useBaseUrl('docs/intro')}>
-              Learn more
-            </Link>
+        <div id="header-container" className="container">
+          <div id="left-header-section" className="container-section">
+            <h1 id="title" className="hero__title">
+              {siteConfig.title}
+            </h1>
+            <p id="sub-title" className="hero__subtitle">
+              {siteConfig.tagline}
+            </p>
+            <div className={styles.buttons}>
+              <Link
+                className={clsx(
+                  'button button--outline button--secondary button--lg',
+                  styles.getStarted,
+                )}
+                to={useBaseUrl('docs/intro')}>
+                Learn more
+              </Link>
+            </div>
           </div>
-          <TerminalReplay stdouts={stdouts} />
-          {/* <TerminalReplay stdouts={homePageStdouts.slice(20)} /> */}
+          <div className="container-section">
+            <TerminalReplay stdouts={stdouts} />
+          </div>
         </div>
       </header>
 

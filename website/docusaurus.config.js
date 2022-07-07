@@ -15,7 +15,7 @@
 const config = {
   title: 'memlab',
   tagline:
-    'memlab is a tool that analyzes memory and finds memory leaks in JavaScript applications.',
+    'Analyzes JavaScript heap and finds memory leaks in browser and node.js',
   url: 'https://urban-spork-90ea3c5e.pages.github.io/',
   baseUrl: '/',
   organizationName: 'facebookincubator',
