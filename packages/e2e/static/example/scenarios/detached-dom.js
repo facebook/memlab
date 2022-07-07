@@ -11,28 +11,30 @@ function url() {
  * Specify how memlab should perform action that you want
  * to test whether the action is causing memory leak.
  *
- * @param page - Puppeteer's [page object](https://pptr.dev/api/puppeteer.page/).
+ * @param page - Puppeteer's page object:
+ * https://pptr.dev/api/puppeteer.page/
  */
 async function action(page) {
-  const [button] = await page.$x(
+  const elements = await page.$x(
     "//button[contains(., 'Create detached DOMs')]"
   );
+  const [button] = elements;
   if (button) {
     await button.click();
   }
+  // clean up external references from memlab
+  await Promise.all(elements.map(e => e.dispose()));
 }
 
 /**
  * Specify how memlab should perform action that would
  * reset the action you performed above.
  *
- * @param page - Puppeteer's [page object](https://pptr.dev/api/puppeteer.page/).
+ * @param page - Puppeteer's page object:
+ * https://pptr.dev/api/puppeteer.page/
  */
 async function back(page) {
-  const [button] = await page.$x('a[href="/"]');
-  if (button) {
-    await button.click();
-  }
+  await page.click('a[href="/"]');
 }
 
 module.exports = { action, back, url };

@@ -6,51 +6,85 @@ import CodeBlock from '@theme/CodeBlock';
 import DetachedDomScenario from '!!raw-loader!../../../packages/e2e/static/example/scenarios/detached-dom.js';
 import DetachedDomPage from '!!raw-loader!../../../packages/e2e/static/example/pages/examples/detached-dom.jsx';
 
-# Detached DOM
+# Detect Leaks in a Demo App
 
-We will be running the `memlab` against the following sample page which creates detached DOM elements when you click button "Create detached DOMs".
-Every click we will create `1024` detached DOM elements and keep the reference in the window object.
-## Example Web App under Test
-This is file is located at `packages/e2e/static/example/pages/examples/detached-dom.jsx`
+We will be running the `memlab` against an example web page that
+leaks detached DOM elements.
+
+## Example Web App Under Test
+
+The demo app leaks detached DOM elements when you click the
+"Create detached DOMs" button.
+Each click creates 1024 detached DOM elements, which are referenced
+by the `window` object.
+
+![memlab run result](./example-app-1.png)
+
 <CodeBlock showLineNumbers language="jsx">{DetachedDomPage}</CodeBlock>
+
+Source file: [`packages/e2e/static/example/pages/examples/detached-dom.jsx`](../../../packages/e2e/static/example/pages/examples/detached-dom.jsx)
 
 ## 1. Clone Repo
 
-Let's make sure the example app is running on your local machine. If you haven't cloned the project, please go ahead and clone the repo at [memlab repo](https://github.com/facebookincubator/memlab).
-
-## 2. Run the Example App
-Once you have a repo in your local machine, run the following:
-
+To run the demo web app on you local machine, clone the
+[`memlab` github repo](https://github.com/facebookincubator/memlab):
 ```bash
-# from the root directory of memlab project
-yarn build
-cd packages/e2e/static/example
-yarn && yarn dev
+git clone git@github.com:facebookincubator/memlab.git
 ```
 
-This will spin up the example Nextjs app. Let's make sure it is running by hitting it from the browser [http://localhost:3000](http://localhost:3000).
+## 2. Run the Example App
+Once you have a repo in your local machine, run the following commands
+from the root directory of memlab project:
+
+```bash
+npm install && npm run build
+cd packages/e2e/static/example
+npm install && npm run dev
+```
+
+This will spin up an example Nextjs app. Let's make sure it is
+running by visiting from your browser [http://localhost:3000](http://localhost:3000):
+
 :::note
 The port number `:3000` may be different in your case.
 :::
 ## 3. Define a Scenario File
+
 <CodeBlock language="jsx">{DetachedDomScenario}</CodeBlock>
 
 Let's save this file at `~/memlab/scenarios/detached-dom.js`.
 
 ## 4. Run memlab
-This will take about a few minutes.
+
+This may take about a few minutes:
+
 ```bash
 memlab run --scenario ~/memlab/scenarios/detached-dom.js
 ```
 
-The result will look like this.
+The result will look like this:
+
 ![memlab run result](./memlab-result.png)
-Let's break down the result from the top to down.
-- Red rectangle shows that actions (navigations) `memlab` took as specified in our scenario file.
-    - **page-load\[6.2MB\]\(baseline\)[s1]** - the heap size was `6.2MB` on initial load. After clicking the *Create detached DOMs* button, the heap was increased to `6.3MB` and it stayed the same after navigating away.
+
+Let's break down the result from the top to bottom.
+- The red rectangle shows the browser interactions (navigations) `memlab` performed as specified in our scenario file.
+    - **`page-load[6.2MB](baseline)[s1]`** - the JavaScript heap size was
+    `6.2MB` on initial page load. The `baseline` heap snapshot will be saved as
+    `s1.heapsnapshot` on disk.
+    After clicking the *Create detached DOMs* button,
+    the heap size increased to `6.3MB` and it stayed the same after navigating away.
 - Overall summary of the leak trace.
-    - **1024 leaks** - it shows that there were 1024 leaks. You can see at line `12` that we are creating **1024** detached DOM objects in for loop.
-    - **Retained size** - the total size of leaked objects is `143.3KB`.
-- **leakedObjects** - this shows that leakedObjects were a property of `Window` object with size `148.5KB` pointing to an `Array` object. Since it is not possible to show all 1024 leak traces in the result, `memlab` only shows one represantative leak trace.
+    - **`1024 leaks`** - it shows that there were 1024 leaked objects.
+    (Line `12` of the [example app](docs/guides/guides-detached-dom#example-web-app-under-test)
+    created **1024** detached DOM objects in the `for` loop)
+    - **`Retained size`** - the aggregated retained sizes of the leaked objects
+    cluster is `143.3KB` (memory leaks are grouped together based on the similarity of retainer traces).
+- **`leakedObjects`** - this shows that `leakedObjects` was a property of
+`Window` object with size `148.5KB` pointing to an `Array` object.
+Since it is overwhelming to show all 1024 leak traces,
+`memlab` only prints one represantative leak trace.
 In short, the leak trace path from `window` object to leaked object is:
-> ```[window](object) -> leakedObjects(property) -> [Array](object) -> 0(element) -> [Detached HTMLDIVElement](native)```
+```
+[window](object) -> leakedObjects(property) -> [Array](object)
+  -> 0(element) -> [Detached HTMLDIVElement](native)
+```
