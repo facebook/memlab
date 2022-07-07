@@ -16,11 +16,11 @@ custom_edit_url: null
 ### <a id="name\_or\_index" name="name\_or\_index"></a> **name\_or\_index**: `string` \| `number`
 
  * **Source**:
-    * core/src/lib/Types.ts:392
+    * core/src/lib/Types.ts:531
 
 ___
 
 ### <a id="type" name="type"></a> **type**: `string`
 
  * **Source**:
-    * core/src/lib/Types.ts:393
+    * core/src/lib/Types.ts:532

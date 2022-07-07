@@ -22,17 +22,27 @@ custom_edit_url: null
 
 ## Type Aliases
 
-### <a id="anyvalue" name="anyvalue"></a> **AnyValue**: `any`
+### <a id="checkpageloadcallback" name="checkpageloadcallback"></a> **CheckPageLoadCallback**: (`page`: `Page`) => `Promise`<`boolean`\>
+
+#### Type declaration
+
+### <a id="__type"></a>(`page`)
+
+Callback function to provide if the page is loaded.
+
+ * **Parameters**:
+    * `page`: `Page` | puppeteer's [Page](https://pptr.dev/api/puppeteer.page/) object.
+ * **Returns**: `Promise`<`boolean`\>
 
  * **Source**:
-    * core/src/lib/Types.ts:16
+    * core/src/lib/Types.ts:446
 
 ___
 
 ### <a id="cookies" name="cookies"></a> **Cookies**: { `name`: `string` ; `value`: `string`  }[]
 
  * **Source**:
-    * core/src/lib/Types.ts:103
+    * core/src/lib/Types.ts:104
 
 ___
 
@@ -47,7 +57,7 @@ ___
  * **Returns**: `Optional`<{ `stop`: `boolean`  }\>
 
  * **Source**:
-    * core/src/lib/Types.ts:417
+    * core/src/lib/Types.ts:556
 
 ___
 
@@ -57,13 +67,16 @@ ___
 
 ### <a id="__type"></a>(`snapshot`, `leakedNodeIds`)
 
+Lifecycle function callback that is invoked initially once before calling any
+leak filter function.
+
  * **Parameters**:
     * `snapshot`: [`IHeapSnapshot`](../interfaces/core_src.IHeapSnapshot.md)
-    * `leakedNodeIds`: `HeapNodeIdSet`
+    * `leakedNodeIds`: `HeapNodeIdSet` | the set of leaked object (node) ids.
  * **Returns**: `void`
 
  * **Source**:
-    * core/src/lib/Types.ts:180
+    * core/src/lib/Types.ts:210
 
 ___
 
@@ -73,13 +86,15 @@ ___
 
 ### <a id="__type"></a>(`page`, `args?`)
 
+This callback is used to define interactions about how `memlab` should interact with your app.
+
  * **Parameters**:
     * `page`: `Page`
     * `args?`: `OperationArgs`
  * **Returns**: `Promise`<`void`\>
 
  * **Source**:
-    * core/src/lib/Types.ts:191
+    * core/src/lib/Types.ts:244
 
 ___
 
@@ -89,14 +104,27 @@ ___
 
 ### <a id="__type"></a>(`node`, `snapshot`, `leakedNodeIds`)
 
+Callback that can be used to define a logic to filter the
+leaked objects. The callback is only called for every node
+allocated but not released from the target interaction
+in the heap snapshot.
+
  * **Parameters**:
-    * `node`: [`IHeapNode`](../interfaces/core_src.IHeapNode.md)
-    * `snapshot`: [`IHeapSnapshot`](../interfaces/core_src.IHeapSnapshot.md)
-    * `leakedNodeIds`: `HeapNodeIdSet`
- * **Returns**: `boolean`
+    * `node`: [`IHeapNode`](../interfaces/core_src.IHeapNode.md) | the node that is kept alive in the memory in the heap snapshot
+    * `snapshot`: [`IHeapSnapshot`](../interfaces/core_src.IHeapSnapshot.md) | the snapshot of target interaction
+    * `leakedNodeIds`: `HeapNodeIdSet` | the set of leaked node ids
+ * **Returns**: `boolean` | the value indicating whether the given node in the snapshot
+should be considered as leaked.
+* **Examples**:
+```javascript
+// any node in the heap snapshot that is greater than 1MB
+function leakFilter(node, _snapshot, _leakedNodeIds) {
+ return node.retainedSize > 1000000;
+};
+```
 
  * **Source**:
-    * core/src/lib/Types.ts:185
+    * core/src/lib/Types.ts:235
 
 ___
 
@@ -117,7 +145,7 @@ ___
  * **Returns**: `boolean`
 
  * **Source**:
-    * core/src/lib/Types.ts:44
+    * core/src/lib/Types.ts:45
 
 ___
 
@@ -133,7 +161,7 @@ ___
 | `type` | `string` |
 
  * **Source**:
-    * core/src/lib/Types.ts:364
+    * core/src/lib/Types.ts:503
 
 ## Functions
 

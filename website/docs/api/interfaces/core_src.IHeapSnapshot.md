@@ -10,21 +10,21 @@ custom_edit_url: null
 ### <a id="edges" name="edges"></a> **edges**: [`IHeapEdges`](core_src.IHeapEdges.md)
 
  * **Source**:
-    * core/src/lib/Types.ts:374
+    * core/src/lib/Types.ts:513
 
 ___
 
 ### <a id="nodes" name="nodes"></a> **nodes**: [`IHeapNodes`](core_src.IHeapNodes.md)
 
  * **Source**:
-    * core/src/lib/Types.ts:373
+    * core/src/lib/Types.ts:512
 
 ___
 
 ### <a id="snapshot" name="snapshot"></a> **snapshot**: `RawHeapSnapshot`
 
  * **Source**:
-    * core/src/lib/Types.ts:372
+    * core/src/lib/Types.ts:511
 
 ## Methods
 
@@ -32,7 +32,7 @@ ___
 
  * **Returns**: `void`
  * **Source**:
-    * core/src/lib/Types.ts:376
+    * core/src/lib/Types.ts:515
 
 ___
 
@@ -42,7 +42,7 @@ ___
     * `className`: `string`
  * **Returns**: `Nullable`<[`IHeapNode`](core_src.IHeapNode.md)\>
  * **Source**:
-    * core/src/lib/Types.ts:379
+    * core/src/lib/Types.ts:518
 
 ___
 
@@ -52,7 +52,7 @@ ___
     * `id`: `number`
  * **Returns**: `Nullable`<[`IHeapNode`](core_src.IHeapNode.md)\>
  * **Source**:
-    * core/src/lib/Types.ts:375
+    * core/src/lib/Types.ts:514
 
 ___
 
@@ -62,7 +62,7 @@ ___
     * `className`: `string`
  * **Returns**: `boolean`
  * **Source**:
-    * core/src/lib/Types.ts:378
+    * core/src/lib/Types.ts:517
 
 ___
 
@@ -72,7 +72,7 @@ ___
     * `nameOrIndex`: `string` \| `number`
  * **Returns**: `boolean`
  * **Source**:
-    * core/src/lib/Types.ts:380
+    * core/src/lib/Types.ts:519
 
 ___
 
@@ -82,4 +82,4 @@ ___
     * `tag`: `string`
  * **Returns**: `boolean`
  * **Source**:
-    * core/src/lib/Types.ts:381
+    * core/src/lib/Types.ts:520

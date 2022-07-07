@@ -18,133 +18,133 @@ custom_edit_url: null
 ### <a id="attributes" name="attributes"></a> **attributes**: `number`
 
  * **Source**:
-    * core/src/lib/Types.ts:426
+    * core/src/lib/Types.ts:565
 
 ___
 
 ### <a id="detachstate" name="detachstate"></a> **detachState**: `number`
 
  * **Source**:
-    * core/src/lib/Types.ts:424
+    * core/src/lib/Types.ts:563
 
 ___
 
 ### <a id="dominatornode" name="dominatornode"></a> **dominatorNode**: ``null`` \| [`IHeapNode`](core_src.IHeapNode.md)
 
  * **Source**:
-    * core/src/lib/Types.ts:435
+    * core/src/lib/Types.ts:574
 
 ___
 
 ### <a id="edge\_count" name="edge\_count"></a> **edge\_count**: `number`
 
  * **Source**:
-    * core/src/lib/Types.ts:428
+    * core/src/lib/Types.ts:567
 
 ___
 
 ### <a id="highlight" name="highlight"></a> `Optional` **highlight**: `boolean`
 
  * **Source**:
-    * core/src/lib/Types.ts:437
+    * core/src/lib/Types.ts:576
 
 ___
 
 ### <a id="id" name="id"></a> **id**: `number`
 
  * **Source**:
-    * core/src/lib/Types.ts:414
+    * core/src/lib/Types.ts:553
 
 ___
 
 ### <a id="isstring" name="isstring"></a> **isString**: `boolean`
 
  * **Source**:
-    * core/src/lib/Types.ts:438
+    * core/src/lib/Types.ts:577
 
 ___
 
 ### <a id="is\_detached" name="is\_detached"></a> **is\_detached**: `boolean`
 
  * **Source**:
-    * core/src/lib/Types.ts:423
+    * core/src/lib/Types.ts:562
 
 ___
 
 ### <a id="location" name="location"></a> **location**: ``null`` \| [`IHeapLocation`](core_src.IHeapLocation.md)
 
  * **Source**:
-    * core/src/lib/Types.ts:436
+    * core/src/lib/Types.ts:575
 
 ___
 
 ### <a id="name" name="name"></a> **name**: `string`
 
  * **Source**:
-    * core/src/lib/Types.ts:413
+    * core/src/lib/Types.ts:552
 
 ___
 
 ### <a id="nodeindex" name="nodeindex"></a> **nodeIndex**: `number`
 
  * **Source**:
-    * core/src/lib/Types.ts:433
+    * core/src/lib/Types.ts:572
 
 ___
 
 ### <a id="pathedge" name="pathedge"></a> **pathEdge**: ``null`` \| [`IHeapEdge`](core_src.IHeapEdge.md)
 
  * **Source**:
-    * core/src/lib/Types.ts:432
+    * core/src/lib/Types.ts:571
 
 ___
 
 ### <a id="references" name="references"></a> **references**: [`IHeapEdge`](core_src.IHeapEdge.md)[]
 
  * **Source**:
-    * core/src/lib/Types.ts:430
+    * core/src/lib/Types.ts:569
 
 ___
 
 ### <a id="referrers" name="referrers"></a> **referrers**: [`IHeapEdge`](core_src.IHeapEdge.md)[]
 
  * **Source**:
-    * core/src/lib/Types.ts:431
+    * core/src/lib/Types.ts:570
 
 ___
 
 ### <a id="retainedsize" name="retainedsize"></a> **retainedSize**: `number`
 
  * **Source**:
-    * core/src/lib/Types.ts:434
+    * core/src/lib/Types.ts:573
 
 ___
 
 ### <a id="self\_size" name="self\_size"></a> **self\_size**: `number`
 
  * **Source**:
-    * core/src/lib/Types.ts:427
+    * core/src/lib/Types.ts:566
 
 ___
 
 ### <a id="snapshot" name="snapshot"></a> **snapshot**: [`IHeapSnapshot`](core_src.IHeapSnapshot.md)
 
  * **Source**:
-    * core/src/lib/Types.ts:422
+    * core/src/lib/Types.ts:561
 
 ___
 
 ### <a id="trace\_node\_id" name="trace\_node\_id"></a> **trace\_node\_id**: `number`
 
  * **Source**:
-    * core/src/lib/Types.ts:429
+    * core/src/lib/Types.ts:568
 
 ___
 
 ### <a id="type" name="type"></a> **type**: `string`
 
  * **Source**:
-    * core/src/lib/Types.ts:412
+    * core/src/lib/Types.ts:551
 
 ## Methods
 
@@ -154,7 +154,7 @@ ___
     * `predicate`: [`Predicator`](../modules/core_src.md#predicator)<[`IHeapEdge`](core_src.IHeapEdge.md)\>
  * **Returns**: `Nullable`<[`IHeapEdge`](core_src.IHeapEdge.md)\>
  * **Source**:
-    * core/src/lib/Types.ts:443
+    * core/src/lib/Types.ts:582
 
 ___
 
@@ -164,7 +164,7 @@ ___
     * `predicate`: [`Predicator`](../modules/core_src.md#predicator)<[`IHeapEdge`](core_src.IHeapEdge.md)\>
  * **Returns**: `Nullable`<[`IHeapEdge`](core_src.IHeapEdge.md)\>
  * **Source**:
-    * core/src/lib/Types.ts:442
+    * core/src/lib/Types.ts:581
 
 ___
 
@@ -174,7 +174,7 @@ ___
     * `predicate`: [`Predicator`](../modules/core_src.md#predicator)<[`IHeapEdge`](core_src.IHeapEdge.md)\>
  * **Returns**: [`IHeapEdge`](core_src.IHeapEdge.md)[]
  * **Source**:
-    * core/src/lib/Types.ts:444
+    * core/src/lib/Types.ts:583
 
 ___
 
@@ -184,7 +184,7 @@ ___
     * `callback`: [`EdgeIterationCallback`](../modules/core_src.md#edgeiterationcallback)
  * **Returns**: `void`
  * **Source**:
-    * core/src/lib/Types.ts:440
+    * core/src/lib/Types.ts:579
 
 ___
 
@@ -194,7 +194,7 @@ ___
     * `callback`: [`EdgeIterationCallback`](../modules/core_src.md#edgeiterationcallback)
  * **Returns**: `void`
  * **Source**:
-    * core/src/lib/Types.ts:441
+    * core/src/lib/Types.ts:580
 
 ___
 
@@ -205,7 +205,7 @@ ___
     * `edgeType?`: `string`
  * **Returns**: `Nullable`<[`IHeapEdge`](core_src.IHeapEdge.md)\>
  * **Source**:
-    * core/src/lib/Types.ts:453
+    * core/src/lib/Types.ts:592
 
 ___
 
@@ -216,7 +216,7 @@ ___
     * `edgeType?`: `string`
  * **Returns**: `Nullable`<[`IHeapNode`](core_src.IHeapNode.md)\>
  * **Source**:
-    * core/src/lib/Types.ts:457
+    * core/src/lib/Types.ts:596
 
 ___
 
@@ -227,7 +227,7 @@ ___
     * `edgeType?`: `string`
  * **Returns**: `Nullable`<[`IHeapEdge`](core_src.IHeapEdge.md)\>
  * **Source**:
-    * core/src/lib/Types.ts:445
+    * core/src/lib/Types.ts:584
 
 ___
 
@@ -238,7 +238,7 @@ ___
     * `edgeType?`: `string`
  * **Returns**: `Nullable`<[`IHeapNode`](core_src.IHeapNode.md)\>
  * **Source**:
-    * core/src/lib/Types.ts:449
+    * core/src/lib/Types.ts:588
 
 ___
 
@@ -249,7 +249,7 @@ ___
     * `edgeType?`: `string`
  * **Returns**: [`IHeapNode`](core_src.IHeapNode.md)[]
  * **Source**:
-    * core/src/lib/Types.ts:462
+    * core/src/lib/Types.ts:601
 
 ___
 
@@ -260,7 +260,7 @@ ___
     * `edgeType?`: `string`
  * **Returns**: [`IHeapEdge`](core_src.IHeapEdge.md)[]
  * **Source**:
-    * core/src/lib/Types.ts:461
+    * core/src/lib/Types.ts:600
 
 ___
 
@@ -268,7 +268,7 @@ ___
 
  * **Returns**: `void`
  * **Source**:
-    * core/src/lib/Types.ts:425
+    * core/src/lib/Types.ts:564
 
 ___
 
@@ -276,4 +276,4 @@ ___
 
  * **Returns**: `Nullable`<[`IHeapStringNode`](core_src.IHeapStringNode.md)\>
  * **Source**:
-    * core/src/lib/Types.ts:439
+    * core/src/lib/Types.ts:578

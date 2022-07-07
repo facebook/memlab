@@ -31,7 +31,7 @@ async function back(page) {
 module.exports = { action, back, url };
 ```
 
-For more to learn, head over to [scenario](/under-construction).
+For more to learn, head over to see API definition of [scenario](/docs/api/interfaces/core_src.IScenario).
 
 ### Running memlab
 Run `memlab` in your console to make sure it is installed. You should see the help instructions in console.

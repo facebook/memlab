@@ -13,6 +13,7 @@ import type {LaunchOptions, Page} from 'puppeteer';
 import type {ErrorHandling, MemLabConfig} from './Config';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+/** @internal */
 export type AnyValue = any;
 
 /** @internal */
@@ -172,37 +173,172 @@ export type QuickExperiment = {
   group: string;
 };
 
+/**
+ * The type for defining custom leak-filtering logic.
+ * * **Examples**:
+ * ```typescript
+ *
+ * let map = Object.create(null);
+ * const beforeLeakFilter = (snapshot: IHeapSnapshot, _leakedNodeIds: HeapNodeIdSet): void => {
+ *   map = initializeMapUsingSnapshot(snapshot);
+ * };
+ *
+ * // duplicated string with size > 1KB as memory leak
+ * const leakFilter = (node: IHeapNode): boolean => {
+ *   if (node.type !== 'string' || node.retainedSize < 1000) {
+ *     return false;
+ *   }
+ *   const str = utils.getStringNodeValue(node);
+ *   return map[str] > 1;
+ * };
+ *
+ * export default {beforeLeakFilter, leakFilter};
+ * ```
+ */
 export interface ILeakFilter {
   beforeLeakFilter?: InitLeakFilterCallback;
   leakFilter: LeakFilterCallback;
 }
 
+/**
+ * Lifecycle function callback that is invoked initially once before calling any
+ * leak filter function.
+ *
+ * @param snaphost - heap snapshot see {@link IHeapSnapshot}
+ * @param leakedNodeIds - the set of leaked object (node) ids.
+ */
 export type InitLeakFilterCallback = (
   snapshot: IHeapSnapshot,
   leakedNodeIds: HeapNodeIdSet,
 ) => void;
 
+/**
+ * Callback that can be used to define a logic to filter the
+ * leaked objects. The callback is only called for every node
+ * allocated but not released from the target interaction
+ * in the heap snapshot.
+ *
+ * @param node - the node that is kept alive in the memory in the heap snapshot
+ * @param snapshot - the snapshot of target interaction
+ * @param leakedNodeIds - the set of leaked node ids
+ *
+ * @returns the value indicating whether the given node in the snapshot
+ * should be considered as leaked.
+ * * **Examples**:
+ * ```javascript
+ * // any node in the heap snapshot that is greater than 1MB
+ * function leakFilter(node, _snapshot, _leakedNodeIds) {
+ *  return node.retainedSize > 1000000;
+ * };
+ * ```
+ */
 export type LeakFilterCallback = (
   node: IHeapNode,
   snapshot: IHeapSnapshot,
   leakedNodeIds: HeapNodeIdSet,
 ) => boolean;
 
+/**
+ * This callback is used to define interactions about how `memlab` should interact with your app.
+ */
 export type InteractionsCallback = (
   page: Page,
   args?: OperationArgs,
 ) => Promise<void>;
 
+/**
+ * This is the type definition for the test scenario file that you pass in to
+ * the `memlab run --scenario` command. The test scenario instance can also be
+ * passed to the [`run` API](docs/api/modules/api_src#run) exported by `@memlab/api`.
+ */
 export interface IScenario {
+  /** @internal */
   name?: () => string;
+  /** @internal */
   app?: () => string;
+  /**
+   * If the page you are running memlab against requires authentication or
+   * specific cookie(s) to be set, you can pass them as
+   * a list of <name, value> pairs.
+   */
   cookies?: () => Cookies;
+  /**
+   * String value of the initial url of the page.
+   *
+   * * **Examples**:
+   * ```typescript
+   * const scenario = {
+   *   url: () => 'https://www.youtube.com',
+   *   // ...
+   * }
+   * ```
+   */
   url: () => string;
+  /**
+   * `action` is callback function to define how the interactions should take place.
+   * `memlab` will interact with the page following what's described in the body
+   * of this function right before taking a heap snapshot for the target page.
+   *
+   * * **Examples**:
+   * ```typescript
+   * async function action(page) {
+   *   const [button] = await page.$x("//button[contains(., 'Create detached DOMs')]");
+   *   if (button) {
+   *     await button.click();
+   *   }
+   * }
+   ```
+   */
   action?: InteractionsCallback;
+  /**
+   * `back` is callback function to define how memlab should back/revert the action
+   * performed before. Think of it as undo action.
+   *
+   * Example:
+   * ```typescript
+   * async function back(page) {
+   *   await page.click('a[href="/"]')
+   * }
+   ```
+   */
   back?: InteractionsCallback;
+  /**
+   * Specifies how many times `memlab` should repeat the `action` and `back`.
+   */
   repeat?: () => number;
+  /**
+   * Callback function to provide if the page is loaded.
+   * @param page - puppeteer's [Page](https://pptr.dev/api/puppeteer.page/) object.
+   */
   isPageLoaded?: CheckPageLoadCallback;
+  /**
+   * Lifecycle function callback that is invoked initially once before calling any
+   * leak filter function.
+   *
+   * @param snaphost - heap snapshot see {@link IHeapSnapshot}
+   * @param leakedNodeIds - the set of leaked object (node) ids.
+   */
   beforeLeakFilter?: InitLeakFilterCallback;
+  /**
+   * Callback that can be used to define a logic to filter the
+   * leaked objects. The callback is only called for every node
+   * allocated but not released from the target interaction
+   * in the heap snapshot.
+   *
+   * @param node - the node that is kept alive in the memory in the heap snapshot
+   * @param snapshot - the snapshot of target interaction
+   * @param leakedNodeIds - the set of leaked node ids
+   *
+   * @returns the value indicating whether the given node in the snapshot
+   * should be considered as leaked.
+   * * **Examples**:
+   * ```javascript
+   * // any node in the heap snapshot that is greater than 1MB
+   * function leakFilter(node, _snapshot, _leakedNodeIds) {
+   *  return node.retainedSize > 1000000;
+   * };
+   * ```
+   */
   leakFilter?: LeakFilterCallback;
 }
 
@@ -303,7 +439,10 @@ export interface IDataBuilder {
   state: Record<string, AnyValue>;
 }
 
-/** @internal */
+/**
+ * Callback function to provide if the page is loaded.
+ * @param page - puppeteer's [Page](https://pptr.dev/api/puppeteer.page/) object.
+ */
 export type CheckPageLoadCallback = (page: Page) => Promise<boolean>;
 
 /** @internal */
