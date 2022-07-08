@@ -56,7 +56,10 @@ export default class DefaultScenarioSynthesizer extends BaseSynthesizer {
   getPageLoadChecker(): CheckPageLoadCallback {
     return async (page: Page) => {
       await interactUtils.waitFor(500);
-      await page.waitForNavigation({waitUntil: 'networkidle0'});
+      await page.waitForNavigation({
+        waitUntil: 'networkidle0',
+        timeout: this.config.waitForNetworkInDefaultScenario,
+      });
       return true;
     };
   }

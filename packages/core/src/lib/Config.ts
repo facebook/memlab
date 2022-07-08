@@ -183,6 +183,7 @@ export class MemLabConfig {
   waitAfterOperation: number;
   waitAfterScrolling: number;
   waitAfterTyping: number;
+  waitForNetworkInDefaultScenario: number;
   stressTestRepeat: number;
   avoidLeakWithoutDetachedElements: boolean;
   hideBrowserLeak: boolean;
@@ -377,6 +378,8 @@ export class MemLabConfig {
     this.waitAfterScrolling = 5000;
     // extra delay after typing
     this.waitAfterTyping = 1000;
+    // page load checker: default wait for network idle in scenario test
+    this.waitForNetworkInDefaultScenario = 10000;
     // default repeat for stress testing
     this.stressTestRepeat = 5;
 
