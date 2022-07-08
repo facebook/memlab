@@ -12,7 +12,6 @@ import type {Page, Browser} from 'puppeteer';
 import type {ParsedArgs} from 'minimist';
 import type {
   AnyFunction,
-  AnyValue,
   ISerializedInfo,
   IScenario,
   XvfbType,

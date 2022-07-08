@@ -8,6 +8,9 @@ custom_edit_url: null
 The type for defining custom leak-filtering logic.
 * **Examples**:
 ```typescript
+const scenario = {
+
+};
 
 let map = Object.create(null);
 const beforeLeakFilter = (snapshot: IHeapSnapshot, _leakedNodeIds: HeapNodeIdSet): void => {
@@ -31,11 +34,11 @@ export default {beforeLeakFilter, leakFilter};
 ### <a id="beforeleakfilter" name="beforeleakfilter"></a> `Optional` **beforeLeakFilter**: [`InitLeakFilterCallback`](../modules/core_src.md#initleakfiltercallback)
 
  * **Source**:
-    * core/src/lib/Types.ts:199
+    * core/src/lib/Types.ts:202
 
 ___
 
 ### <a id="leakfilter" name="leakfilter"></a> **leakFilter**: [`LeakFilterCallback`](../modules/core_src.md#leakfiltercallback)
 
  * **Source**:
-    * core/src/lib/Types.ts:200
+    * core/src/lib/Types.ts:203

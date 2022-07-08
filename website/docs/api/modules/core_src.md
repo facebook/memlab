@@ -35,7 +35,7 @@ Callback function to provide if the page is loaded.
  * **Returns**: `Promise`<`boolean`\>
 
  * **Source**:
-    * core/src/lib/Types.ts:446
+    * core/src/lib/Types.ts:607
 
 ___
 
@@ -57,7 +57,7 @@ ___
  * **Returns**: `Optional`<{ `stop`: `boolean`  }\>
 
  * **Source**:
-    * core/src/lib/Types.ts:556
+    * core/src/lib/Types.ts:717
 
 ___
 
@@ -76,7 +76,7 @@ leak filter function.
  * **Returns**: `void`
 
  * **Source**:
-    * core/src/lib/Types.ts:210
+    * core/src/lib/Types.ts:213
 
 ___
 
@@ -86,7 +86,8 @@ ___
 
 ### <a id="__type"></a>(`page`, `args?`)
 
-This callback is used to define interactions about how `memlab` should interact with your app.
+The callback defines browser interactions which are
+used by memlab to interact with the web app under test.
 
  * **Parameters**:
     * `page`: `Page`
@@ -94,7 +95,7 @@ This callback is used to define interactions about how `memlab` should interact 
  * **Returns**: `Promise`<`void`\>
 
  * **Source**:
-    * core/src/lib/Types.ts:244
+    * core/src/lib/Types.ts:248
 
 ___
 
@@ -124,7 +125,7 @@ function leakFilter(node, _snapshot, _leakedNodeIds) {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:235
+    * core/src/lib/Types.ts:238
 
 ___
 
@@ -161,7 +162,7 @@ ___
 | `type` | `string` |
 
  * **Source**:
-    * core/src/lib/Types.ts:503
+    * core/src/lib/Types.ts:664
 
 ## Functions
 

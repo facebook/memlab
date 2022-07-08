@@ -7,12 +7,12 @@
  * @emails oncall+ws_labs
  * @format
  */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import {ParsedArgs} from 'minimist';
 import type {LaunchOptions, Page} from 'puppeteer';
 import type {ErrorHandling, MemLabConfig} from './Config';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 /** @internal */
 export type AnyValue = any;
 
@@ -177,6 +177,9 @@ export type QuickExperiment = {
  * The type for defining custom leak-filtering logic.
  * * **Examples**:
  * ```typescript
+ * const scenario = {
+ *
+ * };
  *
  * let map = Object.create(null);
  * const beforeLeakFilter = (snapshot: IHeapSnapshot, _leakedNodeIds: HeapNodeIdSet): void => {
@@ -239,7 +242,8 @@ export type LeakFilterCallback = (
 ) => boolean;
 
 /**
- * This callback is used to define interactions about how `memlab` should interact with your app.
+ * The callback defines browser interactions which are
+ * used by memlab to interact with the web app under test.
  */
 export type InteractionsCallback = (
   page: Page,
@@ -247,9 +251,34 @@ export type InteractionsCallback = (
 ) => Promise<void>;
 
 /**
- * This is the type definition for the test scenario file that you pass in to
- * the `memlab run --scenario` command. The test scenario instance can also be
- * passed to the [`run` API](docs/api/modules/api_src#run) exported by `@memlab/api`.
+ * Test scenario specifies how you want a E2E test to interact with a web browser.
+ * The test scenario can be saved as a `.js` file and passed to the `memlab
+ * run --scenario` command:
+ * ```javascript
+ * // save as test.js and use in terminal:
+ * // $ memlab run --scenario test.js
+ *
+ * module.exports = {
+ *   url: () => 'https://www.npmjs.com/',
+ *   action: async () => ... ,
+ *   back: async () => ... ,
+ * };
+ * ```
+ *
+ * The test scenario instance can also be passed to the
+ * [`run` API](../modules/api_src#run) exported by `@memlab/api`.
+ * ```typescript
+ * const {run} = require('@memlab/api');
+ *
+ * (async function () {
+ *   const scenario = {
+ *     url: () => 'https://www.facebook.com',
+ *     action: async () => ... ,
+ *     back: async () => ... ,
+ *   };
+ *   const leaks = await run({scenario});
+ * })();
+ * ```
  */
 export interface IScenario {
   /** @internal */
@@ -260,82 +289,214 @@ export interface IScenario {
    * If the page you are running memlab against requires authentication or
    * specific cookie(s) to be set, you can pass them as
    * a list of <name, value> pairs.
+   * @returns cookie list
+   * * **Examples**:
+   * ```typescript
+   * const scenario = {
+   *   url: () => 'https://www.facebook.com/',
+   *   cookies: () => [
+   *     {"name":"cm_j","value":"none"},
+   *     {"name":"datr","value":"yJvIY..."},
+   *     {"name":"c_user","value":"8917..."},
+   *     {"name":"xs","value":"95:9WQ..."},
+   *     // ...
+   *   ],
+   * };
+   * ```
    */
   cookies?: () => Cookies;
   /**
    * String value of the initial url of the page.
    *
+   * @returns the string value of the initial url
    * * **Examples**:
    * ```typescript
    * const scenario = {
-   *   url: () => 'https://www.youtube.com',
-   *   // ...
-   * }
+   *   url: () => 'https://www.npmjs.com/',
+   * };
    * ```
+   * If a test scenario only specifies the `url` callback (without the `action`
+   * callback), memlab will try to detect memory leaks from the initial page
+   * load. All objects allocated by the initial page load will be candidates
+   * for memory leak filtering.
    */
   url: () => string;
   /**
-   * `action` is callback function to define how the interactions should take place.
-   * `memlab` will interact with the page following what's described in the body
-   * of this function right before taking a heap snapshot for the target page.
+   * `action` is the callback function that defines the interaction
+   * where you want to trigger memory leaks after the initial page load.
+   * All JS objects in browser allocated by the browser interactions triggered
+   * from the `action` callback will be candidates for memory leak filtering.
+   *
+   * * **Parameters**:
+   *   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+   *     object, which provides APIs to interact with the web browser
    *
    * * **Examples**:
    * ```typescript
-   * async function action(page) {
-   *   const [button] = await page.$x("//button[contains(., 'Create detached DOMs')]");
-   *   if (button) {
-   *     await button.click();
-   *   }
+   * const scenario = {
+   *   url: () => 'https://www.npmjs.com/',
+   *   action: async (page) => {
+   *     await page.click('a[href="/link"]');
+   *   },
+   *   back: async (page) => {
+   *     await page.click('a[href="/back"]');
+   *   },
+   * }
+   * ```
+   * Note: always clean up external puppeteer references to JS objects
+   *       in the browser context.
+   * ```typescript
+   * const scenario = {
+   *   url: () => 'https://www.npmjs.com/',
+   *   action: async (page) => {
+   *     const elements = await page.$x("//button[contains(., 'Text in Button')]");
+   *     const [button] = elements;
+   *     if (button) {
+   *       await button.click();
+   *     }
+   *     // dispose external references to JS objects in browser context
+   *     await promise.all(elements.map(e => e.dispose()));
+   *   },
+   *   back: async (page) => ... ,
    * }
    ```
    */
   action?: InteractionsCallback;
   /**
-   * `back` is callback function to define how memlab should back/revert the action
-   * performed before. Think of it as undo action.
+   * `back` is the callback function that specifies how memlab should
+   * back/revert the `action` callback. Think of it as an undo action.
    *
-   * Example:
+   * * **Examples**:
    * ```typescript
-   * async function back(page) {
-   *   await page.click('a[href="/"]')
+   * const scenario = {
+   *   url: () => 'https://www.npmjs.com/',
+   *   action: async (page) => {
+   *     await page.click('a[href="/link"]');
+   *   },
+   *   back: async (page) => {
+   *     await page.click('a[href="/back"]');
+   *   },
    * }
-   ```
+   * ```
+   * Check out [this page](/docs/how-memlab-works) on why
+   * memlab needs to undo/revert the `action` callback.
    */
   back?: InteractionsCallback;
   /**
-   * Specifies how many times `memlab` should repeat the `action` and `back`.
+   * Specifies how many **extra** `action` and `back` actions performed by memlab.
+   * * **Examples**:
+   * ```typescript
+   * module.exports = {
+   *   url: () => ... ,
+   *   action: async (page) => ... ,
+   *   back: async (page) => ... ,
+   *   // browser interaction: two additional [ action -> back ]
+   *   // init-load -> action -> back -> action -> back -> action -> back
+   *   repeat: () => 2,
+   * };
+   * ```
    */
   repeat?: () => number;
   /**
-   * Callback function to provide if the page is loaded.
-   * @param page - puppeteer's [Page](https://pptr.dev/api/puppeteer.page/) object.
+   * Optional callback function that checks if the web page is loaded
+   * after for initial page loading and subsequent browser interactions.
+   *
+   * If this callback is not provided, memlab by default
+   * considers a navigation to be finished when there are no network
+   * connections for at least 500ms.
+   *
+   * * **Parameters**:
+   *   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+   *     object, which provides APIs to interact with the web browser
+   * * **Returns**: a boolean value, if it returns `true`, memlab will consider
+   *   the navigation completes, if it returns `false`, memlab will keep calling
+   *   this callback until it returns `true`. This is an async callback, you can
+   *   also `await` and returns `true` until some async logic is resolved.
+   * * **Examples**:
+   * ```typescript
+   * module.exports = {
+   *   url: () => ... ,
+   *   action: async (page) => ... ,
+   *   back: async (page) => ... ,
+   *   isPageLoaded: async (page) => {
+   *     await page.waitForNavigation({
+   *       // consider navigation to be finished when there are
+   *       // no more than 2 network connections for at least 500 ms.
+   *       waitUntil: 'networkidle2',
+   *       // Maximum navigation time in milliseconds
+   *       timeout: 5000,
+   *     });
+   *     return true;
+   *   },
+   * };
+   * ```
    */
   isPageLoaded?: CheckPageLoadCallback;
   /**
-   * Lifecycle function callback that is invoked initially once before calling any
-   * leak filter function.
+   * Lifecycle function callback that is invoked initially once before
+   * the subsequent `leakFilter` function calls. This callback could
+   * be used to initialize some data stores or to do some one-off
+   * preprocessings.
    *
-   * @param snaphost - heap snapshot see {@link IHeapSnapshot}
-   * @param leakedNodeIds - the set of leaked object (node) ids.
+   * * **Parameters**:
+   *   * snapshot: `IHeapSnapshot` | the final heap snapshot taken after
+   *     all browser interactions are done.
+   *     Check out {@link IHeapSnapshot} for more APIs that queries the heap snapshot.
+   *   * leakedNodeIds: `Set<number>` | the set of ids of all JS heap objects
+   *     allocated by the `action` call but not released after the `back` call
+   *     in browser.
+   *
+   * * **Examples**:
+   * ```typescript
+   * module.exports = {
+   *   url: () => ... ,
+   *   action: async (page) => ... ,
+   *   back: async (page) => ... ,
+   *   beforeLeakFilter: (snapshot, leakedNodeIds) {
+   *     // initialize some data stores
+   *   },
+   * };
+   * ```
    */
   beforeLeakFilter?: InitLeakFilterCallback;
   /**
-   * Callback that can be used to define a logic to filter the
-   * leaked objects. The callback is only called for every node
-   * allocated but not released from the target interaction
-   * in the heap snapshot.
+   * This callback that defines how you want to filter out the
+   * leaked objects. The callback is called for every node (JS heap
+   * object in browser) allocated by the `action` callback, but not
+   * released after the `back` callback. Those objects could be caches
+   * that are retained in memory on purpose, or they are memory leaks.
    *
-   * @param node - the node that is kept alive in the memory in the heap snapshot
-   * @param snapshot - the snapshot of target interaction
-   * @param leakedNodeIds - the set of leaked node ids
+   * This optional callback allows you to define your own algorithm
+   * to cherry pick memory leaks for specific JS program under test.
    *
-   * @returns the value indicating whether the given node in the snapshot
-   * should be considered as leaked.
+   * If this optional callback is not defined, memlab will use its
+   * built-in leak filter, which considers detached DOM elements
+   * and unmounted Fiber nodes (detached from React Fiber tree) as
+   * memory leaks.
+   *
+   * * **Parameters**:
+   *   * node: `IHeapNode` | one of the heap object allocated but not released.
+   *   * snapshot: `IHeapSnapshot` | the final heap snapshot taken after
+   *     all browser interactions are done.
+   *     Check out {@link IHeapSnapshot} for more APIs that queries the heap snapshot.
+   *   * leakedNodeIds: `Set<number>` | the set of ids of all JS heap objects
+   *     allocated by the `action` call but not released after the `back` call
+   *     in browser.
+   *
+   * * **Returns**: the boolean value indicating whether the given node in
+   *   the snapshot should be considered as leaked.
+   *
    * * **Examples**:
-   * ```javascript
-   * // any node in the heap snapshot that is greater than 1MB
-   * function leakFilter(node, _snapshot, _leakedNodeIds) {
-   *  return node.retainedSize > 1000000;
+   * ```typescript
+   * module.exports = {
+   *   url: () => ... ,
+   *   action: async (page) => ... ,
+   *   back: async (page) => ... ,
+   *   leakFilter(node, snapshot, leakedNodeIds) {
+   *     // any unreleased node (JS heap object) with 1MB+
+   *     // retained size is considered a memory leak
+   *     return node.retainedSize > 1000000;
+   *   },
    * };
    * ```
    */

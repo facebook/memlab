@@ -16,18 +16,18 @@ custom_edit_url: null
 ### <a id="id" name="id"></a> **id**: `number`
 
  * **Source**:
-    * core/src/lib/Types.ts:553
+    * core/src/lib/Types.ts:714
 
 ___
 
 ### <a id="name" name="name"></a> **name**: `string`
 
  * **Source**:
-    * core/src/lib/Types.ts:552
+    * core/src/lib/Types.ts:713
 
 ___
 
 ### <a id="type" name="type"></a> **type**: `string`
 
  * **Source**:
-    * core/src/lib/Types.ts:551
+    * core/src/lib/Types.ts:712
