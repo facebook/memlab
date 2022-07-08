@@ -1,4 +1,3 @@
-/* @nolint */
 //
 // Copyright (C) 2013 Matthew Wagerfield
 //
@@ -29,6 +28,8 @@
 //
 //============================================================
 
+/* @nolint */
+
 /**
  * Defines the Flat Surface Shader namespace for all the awesomeness to exist upon.
  * @author Matthew Wagerfield
@@ -51,7 +52,7 @@ FSS.Array = typeof Float32Array === 'function' ? Float32Array : Array;
  * @author Matthew Wagerfield
  */
 FSS.Utils = {
-  isNumber: function (value) {
+  isNumber(value) {
     return !isNaN(parseFloat(value)) && isFinite(value);
   },
 };
@@ -64,10 +65,10 @@ export default function startAnimation(containerID) {
    * @see https://gist.github.com/paulirish/1579671
    */
   (function () {
-    var lastTime = 0;
-    var vendors = ['ms', 'moz', 'webkit', 'o'];
+    let lastTime = 0;
+    const vendors = ['ms', 'moz', 'webkit', 'o'];
 
-    for (var x = 0; x < vendors.length && !window.requestAnimationFrame; ++x) {
+    for (let x = 0; x < vendors.length && !window.requestAnimationFrame; ++x) {
       window.requestAnimationFrame =
         window[vendors[x] + 'RequestAnimationFrame'];
       window.cancelAnimationFrame =
@@ -77,9 +78,9 @@ export default function startAnimation(containerID) {
 
     if (!window.requestAnimationFrame) {
       window.requestAnimationFrame = function (callback, element) {
-        var currentTime = new Date().getTime();
-        var timeToCall = Math.max(0, 16 - (currentTime - lastTime));
-        var id = window.setTimeout(function () {
+        const currentTime = new Date().getTime();
+        const timeToCall = Math.max(0, 16 - (currentTime - lastTime));
+        const id = window.setTimeout(function () {
           callback(currentTime + timeToCall);
         }, timeToCall);
         lastTime = currentTime + timeToCall;
@@ -114,107 +115,107 @@ export default function startAnimation(containerID) {
    * @author Matthew Wagerfield
    */
   FSS.Vector3 = {
-    create: function (x, y, z) {
-      var vector = new FSS.Array(3);
+    create(x, y, z) {
+      const vector = new FSS.Array(3);
       this.set(vector, x, y, z);
       return vector;
     },
-    clone: function (a) {
-      var vector = this.create();
+    clone(a) {
+      const vector = this.create();
       this.copy(vector, a);
       return vector;
     },
-    set: function (target, x, y, z) {
+    set(target, x, y, z) {
       target[0] = x || 0;
       target[1] = y || 0;
       target[2] = z || 0;
       return this;
     },
-    setX: function (target, x) {
+    setX(target, x) {
       target[0] = x || 0;
       return this;
     },
-    setY: function (target, y) {
+    setY(target, y) {
       target[1] = y || 0;
       return this;
     },
-    setZ: function (target, z) {
+    setZ(target, z) {
       target[2] = z || 0;
       return this;
     },
-    copy: function (target, a) {
+    copy(target, a) {
       target[0] = a[0];
       target[1] = a[1];
       target[2] = a[2];
       return this;
     },
-    add: function (target, a) {
+    add(target, a) {
       target[0] += a[0];
       target[1] += a[1];
       target[2] += a[2];
       return this;
     },
-    addVectors: function (target, a, b) {
+    addVectors(target, a, b) {
       target[0] = a[0] + b[0];
       target[1] = a[1] + b[1];
       target[2] = a[2] + b[2];
       return this;
     },
-    addScalar: function (target, s) {
+    addScalar(target, s) {
       target[0] += s;
       target[1] += s;
       target[2] += s;
       return this;
     },
-    subtract: function (target, a) {
+    subtract(target, a) {
       target[0] -= a[0];
       target[1] -= a[1];
       target[2] -= a[2];
       return this;
     },
-    subtractVectors: function (target, a, b) {
+    subtractVectors(target, a, b) {
       target[0] = a[0] - b[0];
       target[1] = a[1] - b[1];
       target[2] = a[2] - b[2];
       return this;
     },
-    subtractScalar: function (target, s) {
+    subtractScalar(target, s) {
       target[0] -= s;
       target[1] -= s;
       target[2] -= s;
       return this;
     },
-    multiply: function (target, a) {
+    multiply(target, a) {
       target[0] *= a[0];
       target[1] *= a[1];
       target[2] *= a[2];
       return this;
     },
-    multiplyVectors: function (target, a, b) {
+    multiplyVectors(target, a, b) {
       target[0] = a[0] * b[0];
       target[1] = a[1] * b[1];
       target[2] = a[2] * b[2];
       return this;
     },
-    multiplyScalar: function (target, s) {
+    multiplyScalar(target, s) {
       target[0] *= s;
       target[1] *= s;
       target[2] *= s;
       return this;
     },
-    divide: function (target, a) {
+    divide(target, a) {
       target[0] /= a[0];
       target[1] /= a[1];
       target[2] /= a[2];
       return this;
     },
-    divideVectors: function (target, a, b) {
+    divideVectors(target, a, b) {
       target[0] = a[0] / b[0];
       target[1] = a[1] / b[1];
       target[2] = a[2] / b[2];
       return this;
     },
-    divideScalar: function (target, s) {
+    divideScalar(target, s) {
       if (s !== 0) {
         target[0] /= s;
         target[1] /= s;
@@ -226,22 +227,22 @@ export default function startAnimation(containerID) {
       }
       return this;
     },
-    cross: function (target, a) {
-      var x = target[0];
-      var y = target[1];
-      var z = target[2];
+    cross(target, a) {
+      const x = target[0];
+      const y = target[1];
+      const z = target[2];
       target[0] = y * a[2] - z * a[1];
       target[1] = z * a[0] - x * a[2];
       target[2] = x * a[1] - y * a[0];
       return this;
     },
-    crossVectors: function (target, a, b) {
+    crossVectors(target, a, b) {
       target[0] = a[1] * b[2] - a[2] * b[1];
       target[1] = a[2] * b[0] - a[0] * b[2];
       target[2] = a[0] * b[1] - a[1] * b[0];
       return this;
     },
-    min: function (target, value) {
+    min(target, value) {
       if (target[0] < value) {
         target[0] = value;
       }
@@ -253,7 +254,7 @@ export default function startAnimation(containerID) {
       }
       return this;
     },
-    max: function (target, value) {
+    max(target, value) {
       if (target[0] > value) {
         target[0] = value;
       }
@@ -265,13 +266,13 @@ export default function startAnimation(containerID) {
       }
       return this;
     },
-    clamp: function (target, min, max) {
+    clamp(target, min, max) {
       this.min(target, min);
       this.max(target, max);
       return this;
     },
-    limit: function (target, min, max) {
-      var length = this.length(target);
+    limit(target, min, max) {
+      const length = this.length(target);
       if (min !== null && length < min) {
         this.setLength(target, min);
       } else if (max !== null && length > max) {
@@ -279,32 +280,32 @@ export default function startAnimation(containerID) {
       }
       return this;
     },
-    dot: function (a, b) {
+    dot(a, b) {
       return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
     },
-    normalise: function (target) {
+    normalise(target) {
       return this.divideScalar(target, this.length(target));
     },
-    negate: function (target) {
+    negate(target) {
       return this.multiplyScalar(target, -1);
     },
-    distanceSquared: function (a, b) {
-      var dx = a[0] - b[0];
-      var dy = a[1] - b[1];
-      var dz = a[2] - b[2];
+    distanceSquared(a, b) {
+      const dx = a[0] - b[0];
+      const dy = a[1] - b[1];
+      const dz = a[2] - b[2];
       return dx * dx + dy * dy + dz * dz;
     },
-    distance: function (a, b) {
+    distance(a, b) {
       return Math.sqrt(this.distanceSquared(a, b));
     },
-    lengthSquared: function (a) {
+    lengthSquared(a) {
       return a[0] * a[0] + a[1] * a[1] + a[2] * a[2];
     },
-    length: function (a) {
+    length(a) {
       return Math.sqrt(this.lengthSquared(a));
     },
-    setLength: function (target, l) {
-      var length = this.length(target);
+    setLength(target, l) {
+      const length = this.length(target);
       if (length !== 0 && l !== length) {
         this.multiplyScalar(target, l / length);
       }
@@ -317,56 +318,56 @@ export default function startAnimation(containerID) {
    * @author Matthew Wagerfield
    */
   FSS.Vector4 = {
-    create: function (x, y, z, w) {
-      var vector = new FSS.Array(4);
+    create(x, y, z, w) {
+      const vector = new FSS.Array(4);
       this.set(vector, x, y, z);
       return vector;
     },
-    set: function (target, x, y, z, w) {
+    set(target, x, y, z, w) {
       target[0] = x || 0;
       target[1] = y || 0;
       target[2] = z || 0;
       target[3] = w || 0;
       return this;
     },
-    setX: function (target, x) {
+    setX(target, x) {
       target[0] = x || 0;
       return this;
     },
-    setY: function (target, y) {
+    setY(target, y) {
       target[1] = y || 0;
       return this;
     },
-    setZ: function (target, z) {
+    setZ(target, z) {
       target[2] = z || 0;
       return this;
     },
-    setW: function (target, w) {
+    setW(target, w) {
       target[3] = w || 0;
       return this;
     },
-    add: function (target, a) {
+    add(target, a) {
       target[0] += a[0];
       target[1] += a[1];
       target[2] += a[2];
       target[3] += a[3];
       return this;
     },
-    multiplyVectors: function (target, a, b) {
+    multiplyVectors(target, a, b) {
       target[0] = a[0] * b[0];
       target[1] = a[1] * b[1];
       target[2] = a[2] * b[2];
       target[3] = a[3] * b[3];
       return this;
     },
-    multiplyScalar: function (target, s) {
+    multiplyScalar(target, s) {
       target[0] *= s;
       target[1] *= s;
       target[2] *= s;
       target[3] *= s;
       return this;
     },
-    min: function (target, value) {
+    min(target, value) {
       if (target[0] < value) {
         target[0] = value;
       }
@@ -381,7 +382,7 @@ export default function startAnimation(containerID) {
       }
       return this;
     },
-    max: function (target, value) {
+    max(target, value) {
       if (target[0] > value) {
         target[0] = value;
       }
@@ -396,7 +397,7 @@ export default function startAnimation(containerID) {
       }
       return this;
     },
-    clamp: function (target, min, max) {
+    clamp(target, min, max) {
       this.min(target, min);
       this.max(target, max);
       return this;
@@ -415,26 +416,26 @@ export default function startAnimation(containerID) {
   };
 
   FSS.Color.prototype = {
-    set: function (hex, opacity) {
+    set(hex, opacity) {
       hex = hex.replace('#', '');
-      var size = hex.length / 3;
+      const size = hex.length / 3;
       this.rgba[0] = parseInt(hex.substring(size * 0, size * 1), 16) / 255;
       this.rgba[1] = parseInt(hex.substring(size * 1, size * 2), 16) / 255;
       this.rgba[2] = parseInt(hex.substring(size * 2, size * 3), 16) / 255;
       this.rgba[3] = FSS.Utils.isNumber(opacity) ? opacity : this.rgba[3];
       return this;
     },
-    hexify: function (channel) {
-      var hex = Math.ceil(channel * 255).toString(16);
+    hexify(channel) {
+      let hex = Math.ceil(channel * 255).toString(16);
       if (hex.length === 1) {
         hex = '0' + hex;
       }
       return hex;
     },
-    format: function () {
-      var r = this.hexify(this.rgba[0]);
-      var g = this.hexify(this.rgba[1]);
-      var b = this.hexify(this.rgba[2]);
+    format() {
+      const r = this.hexify(this.rgba[0]);
+      const g = this.hexify(this.rgba[1]);
+      const b = this.hexify(this.rgba[2]);
       this.hex = '#' + r + g + b;
       return this.hex;
     },
@@ -449,7 +450,7 @@ export default function startAnimation(containerID) {
   };
 
   FSS.Object.prototype = {
-    setPosition: function (x, y, z) {
+    setPosition(x, y, z) {
       FSS.Vector3.set(this.position, x, y, z);
       return this;
     },
@@ -477,7 +478,7 @@ export default function startAnimation(containerID) {
   };
 
   FSS.Vertex.prototype = {
-    setPosition: function (x, y, z) {
+    setPosition(x, y, z) {
       FSS.Vector3.set(this.position, x, y, z);
       return this;
     },
@@ -506,7 +507,7 @@ export default function startAnimation(containerID) {
   };
 
   FSS.Triangle.prototype = {
-    computeCentroid: function () {
+    computeCentroid() {
       this.centroid[0] =
         this.a.position[0] + this.b.position[0] + this.c.position[0];
       this.centroid[1] =
@@ -516,7 +517,7 @@ export default function startAnimation(containerID) {
       FSS.Vector3.divideScalar(this.centroid, 3);
       return this;
     },
-    computeNormal: function () {
+    computeNormal() {
       FSS.Vector3.subtractVectors(this.u, this.b.position, this.a.position);
       FSS.Vector3.subtractVectors(this.v, this.c.position, this.a.position);
       FSS.Vector3.crossVectors(this.normal, this.u, this.v);
@@ -536,9 +537,9 @@ export default function startAnimation(containerID) {
   };
 
   FSS.Geometry.prototype = {
-    update: function () {
+    update() {
       if (this.dirty) {
-        var t, triangle;
+        let t, triangle;
         for (t = this.triangles.length - 1; t >= 0; t--) {
           triangle = this.triangles[t];
           triangle.computeCentroid();
@@ -564,7 +565,7 @@ export default function startAnimation(containerID) {
     this.sliceHeight = this.height / this.slices;
 
     // Cache Variables
-    var x,
+    let x,
       y,
       v0,
       v1,
@@ -596,8 +597,8 @@ export default function startAnimation(containerID) {
         v1 = vertices[x + 0][y + 1];
         v2 = vertices[x + 1][y + 0];
         v3 = vertices[x + 1][y + 1];
-        let t0 = new FSS.Triangle(v0, v1, v2);
-        let t1 = new FSS.Triangle(v2, v1, v3);
+        const t0 = new FSS.Triangle(v0, v1, v2);
+        const t1 = new FSS.Triangle(v2, v1, v3);
         this.triangles.push(t0, t1);
       }
     }
@@ -630,7 +631,7 @@ export default function startAnimation(containerID) {
   FSS.Mesh.prototype = Object.create(FSS.Object.prototype);
 
   FSS.Mesh.prototype.update = function (lights, calculate) {
-    var t, triangle, l, light, illuminance;
+    let t, triangle, l, light, illuminance;
 
     // Update Geometry
     this.geometry.update();
@@ -699,7 +700,7 @@ export default function startAnimation(containerID) {
   };
 
   FSS.Scene.prototype = {
-    add: function (object) {
+    add(object) {
       if (object instanceof FSS.Mesh && !~this.meshes.indexOf(object)) {
         this.meshes.push(object);
       } else if (object instanceof FSS.Light && !~this.lights.indexOf(object)) {
@@ -707,7 +708,7 @@ export default function startAnimation(containerID) {
       }
       return this;
     },
-    remove: function (object) {
+    remove(object) {
       if (object instanceof FSS.Mesh && ~this.meshes.indexOf(object)) {
         this.meshes.splice(this.meshes.indexOf(object), 1);
       } else if (object instanceof FSS.Light && ~this.lights.indexOf(object)) {
@@ -729,7 +730,7 @@ export default function startAnimation(containerID) {
   };
 
   FSS.Renderer.prototype = {
-    setSize: function (width, height) {
+    setSize(width, height) {
       if (this.width === width && this.height === height) return;
       this.width = width;
       this.height = height;
@@ -737,10 +738,10 @@ export default function startAnimation(containerID) {
       this.halfHeight = this.height * 0.5;
       return this;
     },
-    clear: function () {
+    clear() {
       return this;
     },
-    render: function (scene) {
+    render(scene) {
       return this;
     },
   };
@@ -782,7 +783,7 @@ export default function startAnimation(containerID) {
 
   FSS.CanvasRenderer.prototype.render = function (scene) {
     FSS.Renderer.prototype.render.call(this, scene);
-    var m, mesh, t, triangle, color;
+    let m, mesh, t, triangle, color;
 
     // Clear Context
     this.clear();
@@ -830,7 +831,7 @@ export default function startAnimation(containerID) {
     this.lights = null;
 
     // Create parameters object
-    var parameters = {
+    const parameters = {
       preserveDrawingBuffer: false,
       premultipliedAlpha: true,
       antialias: true,
@@ -857,7 +858,7 @@ export default function startAnimation(containerID) {
   FSS.WebGLRenderer.prototype = Object.create(FSS.Renderer.prototype);
 
   FSS.WebGLRenderer.prototype.getContext = function (canvas, parameters) {
-    var context = false;
+    let context = false;
     try {
       if (!(context = canvas.getContext('experimental-webgl', parameters))) {
         throw 'Error creating WebGL context.';
@@ -891,7 +892,7 @@ export default function startAnimation(containerID) {
   FSS.WebGLRenderer.prototype.render = function (scene) {
     FSS.Renderer.prototype.render.call(this, scene);
     if (this.unsupported) return;
-    var m,
+    let m,
       mesh,
       t,
       tl,
@@ -1060,7 +1061,7 @@ export default function startAnimation(containerID) {
     if (FSS.Utils.isNumber(value)) {
       buffer.data[index * buffer.size] = value;
     } else {
-      for (var i = value.length - 1; i >= 0; i--) {
+      for (let i = value.length - 1; i >= 0; i--) {
         buffer.data[index * buffer.size + i] = value[i];
       }
     }
@@ -1074,19 +1075,19 @@ export default function startAnimation(containerID) {
     if (this.unsupported) return;
 
     // Create shader source
-    var vs = FSS.WebGLRenderer.VS(lights);
-    var fs = FSS.WebGLRenderer.FS(lights);
+    const vs = FSS.WebGLRenderer.VS(lights);
+    const fs = FSS.WebGLRenderer.FS(lights);
 
     // Derive the shader fingerprint
-    var code = vs + fs;
+    const code = vs + fs;
 
     // Check if the program has already been compiled
     if (!!this.program && this.program.code === code) return;
 
     // Create the program and shaders
-    var program = this.gl.createProgram();
-    var vertexShader = this.buildShader(this.gl.VERTEX_SHADER, vs);
-    var fragmentShader = this.buildShader(this.gl.FRAGMENT_SHADER, fs);
+    const program = this.gl.createProgram();
+    const vertexShader = this.buildShader(this.gl.VERTEX_SHADER, vs);
+    const fragmentShader = this.buildShader(this.gl.FRAGMENT_SHADER, fs);
 
     // Attach an link the shader
     this.gl.attachShader(program, vertexShader);
@@ -1095,8 +1096,8 @@ export default function startAnimation(containerID) {
 
     // Add error handling
     if (!this.gl.getProgramParameter(program, this.gl.LINK_STATUS)) {
-      var error = this.gl.getError();
-      var status = this.gl.getProgramParameter(
+      const error = this.gl.getError();
+      const status = this.gl.getProgramParameter(
         program,
         this.gl.VALIDATE_STATUS,
       );
@@ -1176,7 +1177,7 @@ export default function startAnimation(containerID) {
     if (this.unsupported) return;
 
     // Create and compile shader
-    var shader = this.gl.createShader(type);
+    const shader = this.gl.createShader(type);
     this.gl.shaderSource(shader, source);
     this.gl.compileShader(shader);
 
@@ -1198,10 +1199,10 @@ export default function startAnimation(containerID) {
     structure,
     count,
   ) {
-    var buffer = {
+    const buffer = {
       buffer: this.gl.createBuffer(),
-      size: size,
-      structure: structure,
+      size,
+      structure,
       data: null,
     };
 
@@ -1225,7 +1226,7 @@ export default function startAnimation(containerID) {
   };
 
   FSS.WebGLRenderer.VS = function (lights) {
-    var shader = [
+    const shader = [
       // Precision
       'precision mediump float;',
 
@@ -1296,7 +1297,7 @@ export default function startAnimation(containerID) {
   };
 
   FSS.WebGLRenderer.FS = function (lights) {
-    var shader = [
+    const shader = [
       // Precision
       'precision mediump float;',
 
@@ -1340,7 +1341,7 @@ export default function startAnimation(containerID) {
 
   FSS.SVGRenderer.prototype.clear = function () {
     FSS.Renderer.prototype.clear.call(this);
-    for (var i = this.element.childNodes.length - 1; i >= 0; i--) {
+    for (let i = this.element.childNodes.length - 1; i >= 0; i--) {
       this.element.removeChild(this.element.childNodes[i]);
     }
     return this;
@@ -1348,7 +1349,7 @@ export default function startAnimation(containerID) {
 
   FSS.SVGRenderer.prototype.render = function (scene) {
     FSS.Renderer.prototype.render.call(this, scene);
-    var m, mesh, t, triangle, points, style;
+    let m, mesh, t, triangle, points, style;
 
     // Update Meshes
     for (m = scene.meshes.length - 1; m >= 0; m--) {
@@ -1384,7 +1385,7 @@ export default function startAnimation(containerID) {
   };
 
   FSS.SVGRenderer.prototype.formatStyle = function (color) {
-    var style = 'fill:' + color + ';';
+    let style = 'fill:' + color + ';';
     style += 'stroke:' + color + ';';
     return style;
   };
@@ -1397,12 +1398,12 @@ export default function startAnimation(containerID) {
     //------------------------------
     // Mesh Properties
     //------------------------------
-    var MESH = {
+    const MESH = {
       width: 1.8,
       height: 1.8,
       depth: 20,
-      segments: 20,
-      slices: 10,
+      segments: 35,
+      slices: 12,
       xRange: 0.8,
       yRange: 0.1,
       zRange: 1.0,
@@ -1414,7 +1415,7 @@ export default function startAnimation(containerID) {
     //------------------------------
     // Light Properties
     //------------------------------
-    var LIGHT = {
+    const LIGHT = {
       count: 2,
       xyScalar: 1,
       zOffset: 100,
@@ -1441,22 +1442,22 @@ export default function startAnimation(containerID) {
     // Render Properties
     //------------------------------
 
-    var RENDER = {
+    const RENDER = {
       renderer: 'canvas',
     };
 
     //------------------------------
     // Global Properties
     //------------------------------
-    var now,
+    let now,
       start = Date.now();
-    var center = FSS.Vector3.create();
-    var attractor = FSS.Vector3.create();
-    var container = document.getElementById(containerID);
-    var output = document.getElementById(containerID);
-    var renderer, scene, mesh, geometry, material;
-    var canvasRenderer;
-    var gui, autopilotController;
+    const center = FSS.Vector3.create();
+    const attractor = FSS.Vector3.create();
+    const container = document.getElementById(containerID);
+    const output = document.getElementById(containerID);
+    let renderer, scene, mesh, geometry, material;
+    let canvasRenderer;
+    let gui, autopilotController;
 
     //------------------------------
     // Methods
@@ -1505,7 +1506,7 @@ export default function startAnimation(containerID) {
       scene.add(mesh);
 
       // Augment vertices for animation
-      var v, vertex;
+      let v, vertex;
       for (v = geometry.vertices.length - 1; v >= 0; v--) {
         vertex = geometry.vertices[v];
         vertex.anchor = FSS.Vector3.clone(vertex.position);
@@ -1519,7 +1520,7 @@ export default function startAnimation(containerID) {
     }
 
     function createLights() {
-      var l, light;
+      let l, light;
       for (l = scene.lights.length - 1; l >= 0; l--) {
         light = scene.lights[l];
         scene.remove(light);
@@ -1561,11 +1562,11 @@ export default function startAnimation(containerID) {
       now = Date.now() - start;
       update();
       render();
-      requestAnimationFrame(animate);
+      setTimeout(() => requestAnimationFrame(animate), 160);
     }
 
     function update() {
-      var ox,
+      let ox,
         oy,
         oz,
         l,
@@ -1601,12 +1602,12 @@ export default function startAnimation(containerID) {
         FSS.Vector3.setZ(light.position, LIGHT.zOffset);
 
         // Calculate the force Luke!
-        var D = Math.clamp(
+        const D = Math.clamp(
           FSS.Vector3.distanceSquared(light.position, attractor),
           LIGHT.minDistance,
           LIGHT.maxDistance,
         );
-        var F = (LIGHT.gravity * light.mass) / D;
+        const F = (LIGHT.gravity * light.mass) / D;
         FSS.Vector3.subtractVectors(light.force, attractor, light.position);
         FSS.Vector3.normalise(light.force);
         FSS.Vector3.multiplyScalar(light.force, F);
@@ -1644,7 +1645,7 @@ export default function startAnimation(containerID) {
 
       // Draw Lights
       if (LIGHT.draw) {
-        var l, lx, ly, light;
+        let l, lx, ly, light;
         for (l = scene.lights.length - 1; l >= 0; l--) {
           light = scene.lights[l];
           lx = light.position[0];
