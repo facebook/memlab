@@ -43,6 +43,14 @@ export default class RunMeasureCommand extends BaseCommand {
     return [new CleanRunDataCommand(), new InitDirectoryCommand()];
   }
 
+  getExamples(): string[] {
+    return [
+      '--scenario <TEST_SCENARIO_FILE>',
+      '--scenario /tmp/test-scenario.js',
+      '--scenario /tmp/test-scenario.js --work-dir /tmp/test-1/',
+    ];
+  }
+
   getOptions(): BaseOption[] {
     return [
       new NumberOfRunsOption(),

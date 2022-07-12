@@ -47,6 +47,14 @@ export default class TakeSnapshotCommand extends BaseCommand {
     ];
   }
 
+  getExamples(): string[] {
+    return [
+      '--scenario <TEST_SCENARIO_FILE>',
+      '--scenario /tmp/test-scenario.js',
+      '--scenario /tmp/test-scenario.js --work-dir /tmp/test-1/',
+    ];
+  }
+
   getOptions(): BaseOption[] {
     return [
       new AppOption(),

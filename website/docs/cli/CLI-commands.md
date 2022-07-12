@@ -8,29 +8,27 @@
 Find memory leaks in web apps
 
 ```bash
-memlab run --app=comet --interaction=watch
+memlab run --scenario <TEST_SCENARIO_FILE>
+```
+
+#### examples
+
+```bash
+memlab run --scenario /tmp/test-scenario.js
+memlab run --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
 ```
 
 **Options**:
  * **`--work-dir`**: set the working directory of the current run
- * **`--app`**: set name for onboarded web application
- * **`--interaction`**: set name for onboarded interaction
  * **`--full`**: take heap snapshot for every step in E2E interaction
- * **`--skip-snapshot`**: skip taking heap snapshots
  * **`--skip-screenshot`**: skip taking screenshots
  * **`--skip-gc`**: skip doing garbage collection in browser
  * **`--skip-scroll`**: skip scrolling target page in browser
  * **`--skip-extra-ops`**: skip doing extra interactions (e.g., scrolling and waiting) on target and final page
- * **`--run-mode`**: set running mode
  * **`--local-puppeteer`**: enable remote browser instance debugging via local puppeteer
  * **`--scenario`**: set file path loading test scenario
  * **`--device`**: set the device type to emulate
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
- * **`--baseline`**: set file path of the baseline heap snapshot
- * **`--target`**: set file path of the target heap snapshot
- * **`--final`**: set file path of the final heap snapshot
- * **`--snapshot-dir`**: set directory path containing all heap snapshots under analysis
- * **`--engine`**: set the JavaScript engine (default to v8)
  * **`--leak-filter`**: specify a definition JS file for leak filter
  * **`--trace-object-size-above`**: objects with retained size (bytes) bigger than the threshold will be considered as leaks
  * **`--ignore-leak-cluster-size-below`**: ignore memory leaks with aggregated retained size smaller than the threshold
@@ -47,7 +45,7 @@ memlab run --app=comet --interaction=watch
 Find memory leaks in heap snapshots
 
 ```bash
-memlab find-leaks
+memlab find-leaks 
 ```
 
 **Options**:
@@ -73,13 +71,14 @@ memlab find-leaks
 Report retainer trace of a specific node, use with --nodeId
 
 ```bash
-memlab trace --node-id=@3123123
+memlab trace --node-id=<HEAP_OBJECT_ID>
 ```
 
 #### examples
 
 ```bash
-memlab trace--node-id=128127
+memlab trace --node-id=@3123123
+memlab trace --node-id=128127
 ```
 
 **Options**:
@@ -114,7 +113,7 @@ memlab analyze <PLUGIN_NAME> [PLUGIN_OPTIONS]
 Analyze collections holding stale objects
 
 ```bash
-memlab analyze collections-with-stale
+memlab analyze collections-with-stale 
 ```
 
 **Options**:
@@ -130,7 +129,7 @@ memlab analyze collections-with-stale
 Get detached DOM elements
 
 ```bash
-memlab analyze detached-DOM
+memlab analyze detached-DOM 
 ```
 
 **Options**:
@@ -146,7 +145,7 @@ memlab analyze detached-DOM
 Get global variables in heap
 
 ```bash
-memlab analyze global-variable
+memlab analyze global-variable 
 ```
 
 **Options**:
@@ -162,7 +161,7 @@ memlab analyze global-variable
 Get objects with the most out-going references in heap
 
 ```bash
-memlab analyze object-fanout
+memlab analyze object-fanout 
 ```
 
 **Options**:
@@ -178,7 +177,7 @@ memlab analyze object-fanout
 Get objects by key and value, without recursing into sub-objects
 
 ```bash
-memlab analyze object-shallow
+memlab analyze object-shallow 
 ```
 
 **Options**:
@@ -194,7 +193,7 @@ memlab analyze object-shallow
 List the shapes that retained most memory
 
 ```bash
-memlab analyze shape
+memlab analyze shape 
 ```
 
 **Options**:
@@ -210,7 +209,7 @@ memlab analyze shape
 Get the largest objects in heap
 
 ```bash
-memlab analyze object-size
+memlab analyze object-size 
 ```
 
 **Options**:
@@ -226,7 +225,7 @@ memlab analyze object-size
 Check unbound object growth
 
 ```bash
-memlab analyze unbound-object
+memlab analyze unbound-object 
 ```
 
 **Options**:
@@ -242,7 +241,7 @@ memlab analyze unbound-object
 Get shapes with unbound growth
 
 ```bash
-memlab analyze unbound-shape
+memlab analyze unbound-shape 
 ```
 
 **Options**:
@@ -258,7 +257,7 @@ memlab analyze unbound-shape
 Analyze string in heap
 
 ```bash
-memlab analyze string
+memlab analyze string 
 ```
 
 **Options**:
@@ -274,7 +273,7 @@ memlab analyze string
 Get unmounted React Fiber nodes
 
 ```bash
-memlab analyze unmounted-fiber-node
+memlab analyze unmounted-fiber-node 
 ```
 
 **Options**:
@@ -294,7 +293,7 @@ memlab analyze unmounted-fiber-node
 List all test scenarios
 
 ```bash
-memlab list
+memlab list 
 ```
 
 **Options**:
@@ -309,7 +308,7 @@ memlab list
 Reset and initialize all directories
 
 ```bash
-memlab reset
+memlab reset 
 ```
 
 **Options**:
@@ -325,7 +324,14 @@ memlab reset
 Run test scenario in measure mode
 
 ```bash
-memlab measure
+memlab measure --scenario <TEST_SCENARIO_FILE>
+```
+
+#### examples
+
+```bash
+memlab measure --scenario /tmp/test-scenario.js
+memlab measure --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
 ```
 
 **Options**:
@@ -355,7 +361,13 @@ memlab measure
 Warm up the target app
 
 ```bash
-memlab warmup
+memlab warmup --scenario <TEST_SCENARIO_FILE>
+```
+
+#### examples
+
+```bash
+memlab warmup --scenario /tmp/test-scenario.js
 ```
 
 **Options**:
@@ -394,7 +406,7 @@ memlab help <COMMAND> [SUB-COMMANDS]
 Query the default working directory
 
 ```bash
-memlab get-default-work-dir
+memlab get-default-work-dir 
 ```
 
 **Options**:
@@ -409,7 +421,14 @@ memlab get-default-work-dir
 Interact with web app and take heap snapshots
 
 ```bash
-memlab snapshot
+memlab snapshot --scenario <TEST_SCENARIO_FILE>
+```
+
+#### examples
+
+```bash
+memlab snapshot --scenario /tmp/test-scenario.js
+memlab snapshot --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
 ```
 
 **Options**:
@@ -438,7 +457,7 @@ memlab snapshot
 Warm up server and take heap snapshots
 
 ```bash
-memlab warmup-and-snapshot
+memlab warmup-and-snapshot 
 ```
 
 **Options**:

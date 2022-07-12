@@ -18,6 +18,15 @@ import CheckLeakCommand from './heap/CheckLeakCommand';
 import InitDirectoryCommand from './InitDirectoryCommand';
 import TakeSnapshotCommand from './snapshot/TakeSnapshotCommand';
 import SetWorkingDirectoryOption from '../options/SetWorkingDirectoryOption';
+import AppOption from '../options/AppOption';
+import InteractionOption from '../options/InteractionOption';
+import SkipSnapshotOption from '../options/SkipSnapshotOption';
+import RunningModeOption from '../options/RunningModeOption';
+import BaselineFileOption from '../options/heap/BaselineFileOption';
+import TargetFileOption from '../options/heap/TargetFileOption';
+import FinalFileOption from '../options/heap/FinalFileOption';
+import SnapshotDirectoryOption from '../options/heap/SnapshotDirectoryOption';
+import JSEngineOption from '../options/heap/JSEngineOption';
 
 export default class MemLabRunCommand extends BaseCommand {
   getCommandName(): string {
@@ -29,7 +38,11 @@ export default class MemLabRunCommand extends BaseCommand {
   }
 
   getExamples(): string[] {
-    return ['--app=comet --interaction=watch'];
+    return [
+      '--scenario <TEST_SCENARIO_FILE>',
+      '--scenario /tmp/test-scenario.js',
+      '--scenario /tmp/test-scenario.js --work-dir /tmp/test-1/',
+    ];
   }
 
   getPrerequisites(): BaseCommand[] {
@@ -42,6 +55,20 @@ export default class MemLabRunCommand extends BaseCommand {
 
   getOptions(): BaseOption[] {
     return [new SetWorkingDirectoryOption()];
+  }
+
+  getExcludedOptions(): BaseOption[] {
+    return [
+      new AppOption(),
+      new InteractionOption(),
+      new SkipSnapshotOption(),
+      new RunningModeOption(),
+      new BaselineFileOption(),
+      new TargetFileOption(),
+      new FinalFileOption(),
+      new SnapshotDirectoryOption(),
+      new JSEngineOption(),
+    ];
   }
 
   getCategory(): CommandCategory {

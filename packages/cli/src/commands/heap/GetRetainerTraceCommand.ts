@@ -38,7 +38,11 @@ export default class GetRetainerTraceCommand extends BaseCommand {
   }
 
   getExamples(): string[] {
-    return ['--node-id=@3123123', '--node-id=128127'];
+    return [
+      '--node-id=<HEAP_OBJECT_ID>',
+      '--node-id=@3123123',
+      '--node-id=128127',
+    ];
   }
 
   getOptions(): BaseOption[] {

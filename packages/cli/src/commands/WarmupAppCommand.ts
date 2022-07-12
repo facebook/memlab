@@ -37,6 +37,13 @@ export default class FBWarmupAppCommand extends BaseCommand {
     return [new InitDirectoryCommand(), new CheckXvfbSupportCommand()];
   }
 
+  getExamples(): string[] {
+    return [
+      '--scenario <TEST_SCENARIO_FILE>',
+      '--scenario /tmp/test-scenario.js',
+    ];
+  }
+
   getOptions(): BaseOption[] {
     return [
       new AppOption(),

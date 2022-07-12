@@ -131,16 +131,16 @@ export default class GenerateCLIDocCommand extends BaseCommand {
     const examples = command.getExamples();
     let example = '';
     if (examples.length > 0) {
-      example = ' ' + examples[0].trim();
+      example = examples[0].trim();
     }
     // write command synopsis
-    const cmd = `memlab ${name}${example}`;
+    const cmd = `memlab ${name} ${example}`;
     this.writeCodeBlock(docFile, cmd, 'bash');
 
     // write command examples if there is any
     const exampleBlock = examples
       .slice(1)
-      .map(example => `memlab ${name}${example.trim()}`)
+      .map(example => `memlab ${name} ${example.trim()}`)
       .join('\n');
     if (exampleBlock.length > 0) {
       this.writeTextWithNewLine(docFile, '\n#### examples\n');

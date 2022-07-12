@@ -50,21 +50,25 @@ abstract class Command {
     const uniqueOptions = new Map();
     const visitedCommands = new Set();
     const queue: BaseCommand[] = [self];
+    const excludedOptions = new Set(
+      self.getExcludedOptions().map(option => option.getOptionName()),
+    );
     while (queue.length > 0) {
-      const cur = queue.shift();
-      if (cur) {
-        const options = cur.getOptions();
-        for (const option of options) {
-          const optionName = option.getOptionName();
-          if (!uniqueOptions.has(optionName)) {
-            uniqueOptions.set(optionName, option);
-          }
+      const cur = queue.shift() as BaseCommand;
+      const options = cur.getOptions();
+      for (const option of options) {
+        const optionName = option.getOptionName();
+        if (excludedOptions.has(optionName)) {
+          continue;
         }
-        visitedCommands.add(cur.getCommandName());
-        for (const prereq of cur.getPrerequisites()) {
-          if (!visitedCommands.has(prereq.getCommandName())) {
-            queue.push(prereq);
-          }
+        if (!uniqueOptions.has(optionName)) {
+          uniqueOptions.set(optionName, option);
+        }
+      }
+      visitedCommands.add(cur.getCommandName());
+      for (const prereq of cur.getPrerequisites()) {
+        if (!visitedCommands.has(prereq.getCommandName())) {
+          queue.push(prereq);
         }
       }
     }
@@ -112,6 +116,14 @@ export default class BaseCommand extends Command {
 
   // get options supported by this command
   getOptions(): BaseOption[] {
+    return [];
+  }
+
+  // commands from getPrerequisites may propagate
+  // options that does not make sense for the
+  // current command, this returns the list of
+  // options that should be excluded from helper text
+  getExcludedOptions(): BaseOption[] {
     return [];
   }
 
