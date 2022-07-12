@@ -1,8 +1,20 @@
 # memlab
 
 memlab is an E2E testing and analysis framework for finding JavaScript memory
-leaks in Chromium. The CLI Toolbox and library provide extensible interfaces
-for analyzing heap snapshots taken from Chrome/Chromium, Node.js, Hermes, and Electron.js.
+leaks and optimization opportunities.
+
+Features:
+ * **Browser memory leak detection** - Write test scenario with puppeteer API,
+   memlab auto diffs JS heap snapshots, filters out memory leaks, and
+   aggregates results.
+ * **Object-oriented heap traversing API** - Supports self-defined memory leak
+   detector and programmatically analyzing JS heap snapshots taken from
+   Chromium-based browsers, Node.js, Electron.js, and Hermes
+ * **Memory CLI Toolbox** - Built-in toolbox and APIs for finding memory
+   optimization opportunities (not necessarily memory leaks)
+ * **Memory assertions in Node.js** - Enables unit test or running node.js
+   program to take a heap snapshot of its own state, do self memory checking,
+   or write advanced memory assertions
 
 ## CLI Usage
 
@@ -133,7 +145,7 @@ memlab is MIT licensed, as found in the [LICENSE](LICENSE) file.
 Check our [contributing guide](CONTRIBUTING.md) to learn about how to
 contribute to the project.
 
-## Code Of Conduct
+## Code of Conduct
 
 Check our [Code Of Conduct](CODE_OF_CONDUCT.md) to learn more about our
 contributor standards and expectations.

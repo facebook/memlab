@@ -11,7 +11,7 @@
 npm install -g memlab
 ```
 
-## Commands:
+## Commands
 To check if the installation complete, run `memlab help` in your console, you should see helper text as follows:
 ```bash
 $ memlab help

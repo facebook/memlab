@@ -6,20 +6,36 @@ sidebar_position: 1
 
 ## Why did we build memlab?
 
-One of the challenges in building a single-page application (SPA) like Facebook.com is to monitor & detect memory leaks at scale. Especially considering the number of changes that go live continuously, we built memlab that automates memory leak detection.
+One of the challenges in building a single-page application (SPA) like
+Facebook.com is to monitor & detect memory leaks at scale. Especially
+considering the number of changes that go live continuously, we built
+memlab that automates memory leak detection.
 
 ## What is memlab?
-`memlab` is a tool that lets you define your test `scenario` and helps you detect a memory leak in your SPA.
-The way `memlab` works is that it uses a headless browser using the [scenario file](/under-construction) to take a heap snapshot `baseline`,
-do some interactions like navigating away or clicking buttons, and take another snapshot `target`.
-Then, it compares the baseline against the target. This process repeats a few more times.
-If there is any memory leak in your SPA, then `memlab` will output and store them to your console and your local machine.
+memlab is a memory testing framework for JS in browsers.
+
+If you define a test scenario (using Puppeteer API) teaching memlab how to
+interact with your Single-page Application (SPA), memlab can handle the
+rest automatically:
+ * Interact with browser
+ * Take JavaScript heap snapshots
+ * Analyze heap snapshots and filter out memory leaks
+ * Aggregate and group memory leaks
+ * Generate retainer traces for memory leaks
+
+This can be useful if you want to set up continuous tests finding
+and reporting memory leaks in your SPA.
 
 ## What else can memlab do?
-- Detecting memory leaks of heap snapshots taken from Node.js, Electron.js, and Hermes
-- Built-in toolbox and APIs for finding memory optimization opportunities  - not necessarily memory leaks
-- Advanced memory assertions
+ * **Object-oriented heap traversing API** - Supports self-defined memory leak
+   detector and programmatically analyzing JS heap snapshots taken from
+   Chromium-based browsers, Node.js, Electron.js, and Hermes
+ * **Memory CLI Toolbox** - Built-in toolbox and APIs for finding memory
+   optimization opportunities (not necessarily memory leaks)
+ * **Memory assertions in Node.js** - Enables unit test or running node.js
+   program to take a heap snapshot of its own state, do self memory checking,
+   or write advanced memory assertions
 
-If you feel curious to test it out on your own,
-- Head over to [Getting Started](/docs/getting-started) section for getting started.
-- Want to learn more about [API](/docs/api)?
+If you feel curious to test it out on your own:
+- Head over to the [Getting Started](/docs/getting-started) section
+- Want to learn more about the [APIs](/docs/api)?
