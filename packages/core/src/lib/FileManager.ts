@@ -172,6 +172,14 @@ export class FileManager {
     return path.join(__dirname, '..', '..');
   }
 
+  public getMonoRepoDir(): string {
+    return path.join(this.getCoreProjectBaseDir(), '..', '..');
+  }
+
+  public getDocDir(): string {
+    return path.join(this.getMonoRepoDir(), 'website', 'docs');
+  }
+
   public getReportOutDir(options: FileOption = {}): string {
     return path.join(this.getPersistDataDir(options), 'reports');
   }

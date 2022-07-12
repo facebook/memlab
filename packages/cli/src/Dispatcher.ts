@@ -9,19 +9,13 @@
  */
 
 import type {ParsedArgs} from 'minimist';
-import {MemLabConfig, AnyRecord, utils} from '@memlab/core';
+import type {AnyRecord, MemLabConfig} from '@memlab/core';
 
-import fs from 'fs';
-import path from 'path';
-import {info, config, fileManager} from '@memlab/core';
-
+import {config, info} from '@memlab/core';
 import BaseCommand from './BaseCommand';
 import HelperCommand from './commands/helper/HelperCommand';
-import VerboseOption from './options/VerboseOption';
-import SetContinuousTestOption from './options/SetContinuousTestOption';
-import DebugOption from './options/DebugOption';
-import SilentOption from './options/SilentOption';
-import HelperOption from './options/HelperOption';
+import universalOptions from './options/lib/UniversalOptions';
+import CommandLoader from './CommandLoader';
 
 type RunCommandOptions = {
   isPrerequisite?: boolean;
@@ -29,28 +23,17 @@ type RunCommandOptions = {
   configFromOptions: AnyRecord;
 };
 
-const universalOptions = [
-  new HelperOption(),
-  new VerboseOption(),
-  new SetContinuousTestOption(),
-  new DebugOption(),
-  new SilentOption(),
-];
 const helperCommand = new HelperCommand();
-helperCommand.setUniversalOptions(universalOptions);
 
 class CommandDispatcher {
   private modules: Map<string, BaseCommand>;
-  private modulePaths: Map<string, string>;
   private executedCommands: Set<string> = new Set();
   private executingCommandStack: Array<string> = [];
 
   constructor() {
     // auto load all command modules
-    this.modules = new Map();
-    this.modulePaths = new Map();
-    this.registerBuiltInCommands();
-    this.registerCommands();
+    const commandLoader = new CommandLoader();
+    this.modules = commandLoader.getModules();
   }
 
   async dispatch(args: ParsedArgs): Promise<void> {
@@ -183,61 +166,6 @@ class CommandDispatcher {
       cliArgs,
       indent: '  ',
     });
-  }
-
-  private registerBuiltInCommands() {
-    // TBA
-  }
-
-  private registerCommands() {
-    const modulesDir = path.resolve(__dirname, 'commands');
-    this.registerCommandsFromDir(modulesDir);
-  }
-
-  private registerCommandsFromDir(modulesDir: string) {
-    const moduleFiles = fs.readdirSync(modulesDir);
-    for (const moduleFile of moduleFiles) {
-      const modulePath = path.join(modulesDir, moduleFile);
-
-      // recursively import modules from subdirectories
-      if (fs.lstatSync(modulePath).isDirectory()) {
-        this.registerCommandsFromDir(modulePath);
-        continue;
-      }
-
-      // only import modules files ends with with Command.js
-      if (!moduleFile.endsWith('Command.js')) {
-        continue;
-      }
-
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const module = require(modulePath);
-      const moduleConstructor =
-        typeof module.default === 'function' ? module.default : module;
-      const moduleInstance = new moduleConstructor();
-      if (!(moduleInstance instanceof BaseCommand)) {
-        utils.haltOrThrow('loading a command that does not extend BaseCommand');
-      }
-      const commandName = moduleInstance.getCommandName();
-      if (this.modules.has(commandName)) {
-        // resolve conflict
-        const ossCommandLoaded = !fileManager.isWithinInternalDirectory(
-          this.modulePaths.get(commandName) as string,
-        );
-        const loadingOssCommand =
-          !fileManager.isWithinInternalDirectory(modulePath);
-
-        if (ossCommandLoaded === loadingOssCommand) {
-          // when both commands are open source or neither are open source
-          info.midLevel(`MemLab command ${commandName} is already registered`);
-        } else if (!ossCommandLoaded && loadingOssCommand) {
-          // when open source command tries to overwrite non-open source command
-          continue;
-        }
-      }
-      this.modules.set(commandName, moduleInstance);
-      this.modulePaths.set(commandName, modulePath);
-    }
   }
 }
 

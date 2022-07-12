@@ -16,6 +16,7 @@ import stringWidth from 'string-width';
 import {config, info, utils} from '@memlab/core';
 import commandOrder from './lib/CommandOrder';
 import BaseCommand, {CommandCategory} from '../../BaseCommand';
+import universalOptions from '../../options/lib/UniversalOptions';
 
 type HelperOption = CLIOptions & {
   modules: Map<string, BaseCommand>;
@@ -26,7 +27,7 @@ type HelperOption = CLIOptions & {
 
 export default class HelperCommand extends BaseCommand {
   private printedCommand: Set<string> = new Set();
-  private universalOptions: BaseOption[] = [];
+  private universalOptions: BaseOption[] = universalOptions;
 
   // The following terminal command will initiate with this command
   // `memlab <command-name>`

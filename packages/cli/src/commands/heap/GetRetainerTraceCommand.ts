@@ -38,7 +38,7 @@ export default class GetRetainerTraceCommand extends BaseCommand {
   }
 
   getExamples(): string[] {
-    return ['--node-id=@3123123'];
+    return ['--node-id=@3123123', '--node-id=128127'];
   }
 
   getOptions(): BaseOption[] {

@@ -13,7 +13,7 @@ import type {BaseOption, CLIOptions, Optional} from '@memlab/core';
 import fs from 'fs';
 import path from 'path';
 import {fileManager} from '@memlab/core';
-import BaseCommand from '../BaseCommand';
+import BaseCommand, {CommandCategory} from '../BaseCommand';
 import CheckLeakCommand from './heap/CheckLeakCommand';
 import InitDirectoryCommand from './InitDirectoryCommand';
 import TakeSnapshotCommand from './snapshot/TakeSnapshotCommand';
@@ -42,6 +42,10 @@ export default class MemLabRunCommand extends BaseCommand {
 
   getOptions(): BaseOption[] {
     return [new SetWorkingDirectoryOption()];
+  }
+
+  getCategory(): CommandCategory {
+    return CommandCategory.COMMON;
   }
 
   async run(options: CLIOptions): Promise<void> {

@@ -77,7 +77,6 @@ article h3 code {
 }
 
 code {
-  background-color: transparent;
   border: none;
   font-family: monospace, 'Courier New', Courier;
   font-size: 0.95rem;
