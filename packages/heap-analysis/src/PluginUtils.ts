@@ -426,6 +426,7 @@ async function loadProcessedSnapshot(
   const file = options.file || utils.getSnapshotFilePathWithTabType(/.*/);
   const snapshot = await utils.getSnapshotFromFile(file as string, opt);
   analysis.preparePathFinder(snapshot);
+  info.flush();
   return snapshot;
 }
 

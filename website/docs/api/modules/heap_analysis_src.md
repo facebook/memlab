@@ -79,7 +79,7 @@ class TestObject {}
 ```
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:589
+    * heap-analysis/src/PluginUtils.ts:590
 
 ___
 
@@ -318,4 +318,4 @@ Each heap snapshot could be non-trivial in size, loading them all at once
 may not be possible.
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:494
+    * heap-analysis/src/PluginUtils.ts:495

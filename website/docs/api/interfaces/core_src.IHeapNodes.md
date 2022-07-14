@@ -10,7 +10,7 @@ custom_edit_url: null
 ### <a id="length" name="length"></a> **length**: `number`
 
  * **Source**:
-    * core/src/lib/Types.ts:773
+    * core/src/lib/Types.ts:968
 
 ## Methods
 
@@ -20,7 +20,7 @@ custom_edit_url: null
     * `callback`: (`node`: [`IHeapNode`](core_src.IHeapNode.md), `index`: `number`) => `boolean` \| `void`
  * **Returns**: `void`
  * **Source**:
-    * core/src/lib/Types.ts:775
+    * core/src/lib/Types.ts:970
 
 ___
 
@@ -30,7 +30,7 @@ ___
     * `callback`: (`node`: [`IHeapNode`](core_src.IHeapNode.md), `index`: `number`) => `boolean` \| `void`
  * **Returns**: `void`
  * **Source**:
-    * core/src/lib/Types.ts:776
+    * core/src/lib/Types.ts:971
 
 ___
 
@@ -40,4 +40,4 @@ ___
     * `index`: `number`
  * **Returns**: [`IHeapNode`](core_src.IHeapNode.md)
  * **Source**:
-    * core/src/lib/Types.ts:774
+    * core/src/lib/Types.ts:969

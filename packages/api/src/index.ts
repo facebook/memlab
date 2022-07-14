@@ -11,6 +11,6 @@
 export * from './API';
 export * from '@memlab/heap-analysis';
 export {default as BrowserInteractionResultReader} from './result-reader/BrowserInteractionResultReader';
-export {dumpNodeHeapSnapshot, getCurrentNodeHeap} from '@memlab/core';
+export {dumpNodeHeapSnapshot, getNodeInnocentHeap} from '@memlab/core';
 /** @internal */
 export {config} from '@memlab/core';

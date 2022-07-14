@@ -10,7 +10,7 @@ custom_edit_url: null
 ### <a id="length" name="length"></a> **length**: `number`
 
  * **Source**:
-    * core/src/lib/Types.ts:706
+    * core/src/lib/Types.ts:901
 
 ## Methods
 
@@ -20,7 +20,7 @@ custom_edit_url: null
     * `callback`: (`edge`: [`IHeapEdge`](core_src.IHeapEdge.md), `index`: `number`) => `boolean` \| `void`
  * **Returns**: `void`
  * **Source**:
-    * core/src/lib/Types.ts:708
+    * core/src/lib/Types.ts:903
 
 ___
 
@@ -30,4 +30,4 @@ ___
     * `index`: `number`
  * **Returns**: [`IHeapEdge`](core_src.IHeapEdge.md)
  * **Source**:
-    * core/src/lib/Types.ts:707
+    * core/src/lib/Types.ts:902

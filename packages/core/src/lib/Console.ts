@@ -424,6 +424,10 @@ class MemLabConsole {
     const progress = `${message}: |${bar}| ${percent}/100`;
     this.overwrite(progress, {level: 'top'});
   }
+
+  public flush(): void {
+    this.clearPrevOverwriteMsg();
+  }
 }
 
 export default MemLabConsole.getInstance();

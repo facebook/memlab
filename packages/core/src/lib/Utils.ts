@@ -617,6 +617,7 @@ async function getSnapshotFromFile(
   } catch (e) {
     handleSnapshotError(getError(e));
   }
+  info.flush();
   return ret as IHeapSnapshot;
 }
 

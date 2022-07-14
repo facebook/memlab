@@ -10,7 +10,7 @@
 
 import type {AnyValue, IHeapNode, IHeapSnapshot} from '../../../lib/Types';
 import config from '../../../lib/Config';
-import {getCurrentNodeHeap} from '../../../lib/NodeHeap';
+import {getNodeInnocentHeap} from '../../../lib/NodeHeap';
 
 declare global {
   interface Window {
@@ -80,7 +80,7 @@ test(
       return detected;
     };
 
-    const heap = await getCurrentNodeHeap();
+    const heap = await getNodeInnocentHeap();
     expect(checker(heap)).toBe(true);
   },
   timeout,
@@ -162,7 +162,7 @@ test(
       return true;
     };
 
-    const heap = await getCurrentNodeHeap();
+    const heap = await getNodeInnocentHeap();
     expect(checker(heap)).toBe(true);
   },
   timeout,

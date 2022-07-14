@@ -9,7 +9,7 @@
  */
 
 import config from '../../lib/Config';
-import {getCurrentNodeHeap} from '../../lib/NodeHeap';
+import {getNodeInnocentHeap} from '../../lib/NodeHeap';
 
 beforeEach(() => {
   config.isTest = true;
@@ -31,7 +31,7 @@ test(
     injected.complexConcatString += 123;
     injected.complexConcatString += '_suffix';
 
-    const heap = await getCurrentNodeHeap();
+    const heap = await getNodeInnocentHeap();
     const testObject = heap.getAnyObjectWithClassName('TestObject');
     expect(testObject).not.toBe(null);
 

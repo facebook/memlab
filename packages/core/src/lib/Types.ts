@@ -669,16 +669,211 @@ export type RunMetaInfo = {
 };
 
 export interface IHeapSnapshot {
+  /** @internal */
   snapshot: RawHeapSnapshot;
+  /**
+   * A pseudo array containing all heap graph nodes (JS objects in heap).
+   * A JS heap could contain millions of heap objects, so memlab uses
+   * a pseudo array as the collection of all the heap objects. The pseudo
+   * array provides API to query and traverse all heap objects.
+   *
+   * * **Examples**:
+   * ```typescript
+   * import type {IHeapSnapshot, IHeapNode} from '@memlab/core';
+   * import {dumpNodeHeapSnapshot} from '@memlab/core';
+   * import {getHeapFromFile} from '@memlab/heap-analysis';
+   *
+   * (async function () {
+   *   const heapFile = dumpNodeHeapSnapshot();
+   *   const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+   *
+   *   // get the total number of heap objects
+   *   heap.nodes.length;
+   *
+   *   heap.nodes.forEach((node: IHeapNode) => {
+   *     // traverse each heap object
+   *   });
+   * })();
+   * ```
+   */
   nodes: IHeapNodes;
+  /**
+   * A pseudo array containing all heap graph edges (references to heap objects
+   * in heap). A JS heap could contain millions of references, so memlab uses
+   * a pseudo array as the collection of all the heap edges. The pseudo
+   * array provides API to query and traverse all heap references.
+   *
+   * * **Examples**:
+   * ```typescript
+   * import type {IHeapSnapshot, IHeapEdge} from '@memlab/core';
+   * import {dumpNodeHeapSnapshot} from '@memlab/core';
+   * import {getHeapFromFile} from '@memlab/heap-analysis';
+   *
+   * (async function () {
+   *   const heapFile = dumpNodeHeapSnapshot();
+   *   const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+   *
+   *   // get the total number of heap references
+   *   heap.edges.length;
+   *
+   *   heap.edges.forEach((edge: IHeapEdge) => {
+   *     // traverse each reference in the heap
+   *   });
+   * })();
+   * ```
+   */
   edges: IHeapEdges;
+  /**
+   * If you have the id of a heap node (JS object in heap), use this API
+   * to get an {@link IHeapNode} associated with the id.
+   * @param id id of the heap node (JS object in heap) you would like to query
+   * @returns the API returns `null` if no heap object has the specified id.
+   *
+   * * **Examples**:
+   * ```typescript
+   * import type {IHeapSnapshot} from '@memlab/core';
+   * import {dumpNodeHeapSnapshot} from '@memlab/core';
+   * import {getHeapFromFile} from '@memlab/heap-analysis';
+   *
+   * (async function () {
+   *   const heapFile = dumpNodeHeapSnapshot();
+   *   const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+   *
+   *   const node = heap.getNodeById(351);
+   *   node?.id; // should be 351
+   * })();
+   * ```
+   */
   getNodeById(id: number): Nullable<IHeapNode>;
-  clearShortestPathInfo(): void;
-  // heap query APIs
+  /**
+   * Search for the heap and check if there is any JS object instance with
+   * a specified constructor name.
+   * @param className The contructor name of the object instance
+   * @returns `true` if there is at least one such object in the heap
+   *
+   * * **Examples**: you can write a jest unit test with memory assertions:
+   * ```typescript
+   * // save as example.test.ts
+   * import type {IHeapSnapshot, Nullable} from '@memlab/core';
+   * import {config, getNodeInnocentHeap} from '@memlab/core';
+   *
+   * class TestObject {
+   *   public arr1 = [1, 2, 3];
+   *   public arr2 = ['1', '2', '3'];
+   * }
+   *
+   * test('memory test with heap assertion', async () => {
+   *   config.muteConsole = true; // no console output
+   *
+   *   let obj: Nullable<TestObject> = new TestObject();
+   *   // get a heap snapshot of the current program state
+   *   let heap: IHeapSnapshot = await getNodeInnocentHeap();
+   *
+   *   // call some function that may add references to obj
+   *   rabbitHole(obj)
+   *
+   *   expect(heap.hasObjectWithClassName('TestObject')).toBe(true);
+   *   obj = null;
+   *
+   *   heap = await getNodeInnocentHeap();
+   *   // if rabbitHole does not have any side effect that
+   *   // adds new references to obj, then obj can be GCed
+   *   expect(heap.hasObjectWithClassName('TestObject')).toBe(false);
+   *
+   * }, 30000);
+   * ```
+   */
   hasObjectWithClassName(className: string): boolean;
+  /**
+   * Search for the heap and get one of the JS object instances with
+   * a specified constructor name (if there is any).
+   * @param className The contructor name of the object instance
+   * @returns a handle pointing to any one of the object instances, returns
+   *          `null` if no such object exists in the heap.
+   *
+   * * **Examples**:
+   * ```typescript
+   * import type {IHeapSnapshot} from '@memlab/core';
+   * import {getNodeInnocentHeap} from '@memlab/core';
+   *
+   * class TestObject {
+   *   public arr1 = [1, 2, 3];
+   *   public arr2 = ['1', '2', '3'];
+   * }
+   *
+   * (async function () {
+   *   const obj = new TestObject();
+   *   // get a heap snapshot of the current program state
+   *   const heap: IHeapSnapshot = await getNodeInnocentHeap();
+   *
+   *   const node = heap.getAnyObjectWithClassName('TestObject');
+   *   console.log(node?.name); // should be 'TestObject'
+   * })();
+   * ```
+   */
   getAnyObjectWithClassName(className: string): Nullable<IHeapNode>;
+  /**
+   * Search for the heap and check if there is any JS object instance with
+   * a specified property name.
+   * @param nameOrIndex The property name (string) or element index (number)
+   * on the object instance
+   * @returns returns `true` if there is at least one such object in the heap
+   *
+   * * **Examples**:
+   * ```typescript
+   * import type {IHeapSnapshot} from '@memlab/core';
+   * import {dumpNodeHeapSnapshot} from '@memlab/core';
+   * import {getHeapFromFile} from '@memlab/heap-analysis';
+   *
+   * (async function () {
+   *   // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   *   const object = {'memlab-test-heap-property': 'memlab-test-heap-value'};
+   *
+   *   const heapFile = dumpNodeHeapSnapshot();
+   *   const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+   *
+   *   // should be true
+   *   console.log(heap.hasObjectWithPropertyName('memlab-test-heap-property'));
+   * })();
+   * ```
+   */
   hasObjectWithPropertyName(nameOrIndex: string | number): boolean;
+  /**
+   * Search for the heap and check if there is any JS object instance with
+   * a marker tagged by {@link tagObject}.
+   * @param tag marker name on the object instances tagged by {@link tagObject}
+   * @returns returns `true` if there is at least one such object in the heap
+   *
+   * ```typescript
+   * import type {IHeapSnapshot, AnyValue} from '@memlab/core';
+   * import {config, getNodeInnocentHeap, tagObject} from '@memlab/core';
+   *
+   * test('memory test', async () => {
+   *   config.muteConsole = true;
+   *   const o1: AnyValue = {};
+   *   let o2: AnyValue = {};
+   *
+   *   // tag o1 with marker: "memlab-mark-1", does not modify o1 in any way
+   *   tagObject(o1, 'memlab-mark-1');
+   *   // tag o2 with marker: "memlab-mark-2", does not modify o2 in any way
+   *   tagObject(o2, 'memlab-mark-2');
+   *
+   *   o2 = null;
+   *
+   *   const heap: IHeapSnapshot = await getNodeInnocentHeap();
+   *
+   *   // expect object with marker "memlab-mark-1" exists
+   *   expect(heap.hasObjectWithTag('memlab-mark-1')).toBe(true);
+   *
+   *   // expect object with marker "memlab-mark-2" can be GCed
+   *   expect(heap.hasObjectWithTag('memlab-mark-2')).toBe(false);
+   *
+   * }, 30000);
+   * ```
+   */
   hasObjectWithTag(tag: string): boolean;
+  /** @internal */
+  clearShortestPathInfo(): void;
 }
 
 export interface IHeapLocation {

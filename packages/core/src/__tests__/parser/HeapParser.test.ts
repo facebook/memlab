@@ -10,7 +10,7 @@
 
 import type {Nullable} from '../../lib/Types';
 import config from '../../lib/Config';
-import {getCurrentNodeHeap} from '../../lib/NodeHeap';
+import {getNodeInnocentHeap} from '../../lib/NodeHeap';
 
 beforeEach(() => {
   config.isTest = true;
@@ -27,7 +27,7 @@ test(
     }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const injected = new TestObject();
-    const heap = await getCurrentNodeHeap();
+    const heap = await getNodeInnocentHeap();
     expect(heap.hasObjectWithClassName('TestObject')).toBe(true);
   },
   timeout,
@@ -44,7 +44,7 @@ test(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     injected = null;
 
-    const heap = await getCurrentNodeHeap();
+    const heap = await getNodeInnocentHeap();
     expect(heap.hasObjectWithClassName('TestObject')).toBe(false);
   },
   timeout,
