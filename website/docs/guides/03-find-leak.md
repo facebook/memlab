@@ -2,8 +2,12 @@
 id: 'guides-find-leaks'
 ---
 
-# Finding a Leak
-Let's say there is a case you know that memory leaks exist but `memlab` is not showing it as a leak. However, you want to see them all.
+# Find Memory Leaks Not Reported
+
+By default, memlab reports high-confidence memory leaks (filtered out by its
+built-in leak detector). In case some memory leaks exist but memlab
+does not report the leaks, this tutorial shows other options to surface
+suspicious heap objects.
 
 Let's start by running the following command. Make sure to not specify any leak
 filter in the scenario file. MemLab will apply its build-in leak detectors
@@ -24,7 +28,10 @@ as a memory leak. In this case, there are a bunch of objects not
 released from the target interaction.
 
 memlab clusters the retainer traces of the leaked objects and print them in
-decreasing order based on the [aggregated retained sizes](https://developer.chrome.com/docs/devtools/memory-problems/memory-101/#retained_size) of leak clusters.
+decreasing order based on the
+[aggregated retained sizes](https://developer.chrome.com/docs/devtools/memory-problems/memory-101/#retained_size)
+of leak clusters.
+
 ```bash
 MemLab found 46 leak(s)
 --Similar leaks in this run: 4--

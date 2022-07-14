@@ -22,7 +22,7 @@ Options for configuring browser interaction run, all fields are optional
 | :------ | :------ | :------ |
 | `cookiesFile?` | `string` | the absolute path of cookies file |
 | `evalInBrowserAfterInitLoad?` | `AnyFunction` | function to be evaluated in browser context after the web page initial load |
-| `scenario?` | `IScenario` | test scenario definition |
+| `scenario?` | `IScenario` | test scenario specifying how to interact with browser (for more details view [IScenario](../interfaces/core_src.IScenario.md)) |
 | `snapshotForEachStep?` | `boolean` | if true, take heap snapshot for each interaction step, by default this is false, which means memlab will decide which steps it will take heap snapshots |
 
  * **Source**:
@@ -57,7 +57,7 @@ const {takeSnapshots, StringAnalysis} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:222
+    * api/src/API.ts:225
 
 ___
 
@@ -83,7 +83,7 @@ const {findLeaks, takeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:189
+    * api/src/API.ts:192
 
 ___
 
@@ -110,7 +110,7 @@ const {run} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:124
+    * api/src/API.ts:127
 
 ___
 
@@ -135,7 +135,7 @@ const {takeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:157
+    * api/src/API.ts:160
 
 ___
 
@@ -161,4 +161,4 @@ const {warmupAndTakeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:90
+    * api/src/API.ts:93

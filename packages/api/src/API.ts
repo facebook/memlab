@@ -41,7 +41,10 @@ import BrowserInteractionResultReader from './result-reader/BrowserInteractionRe
  * Options for configuring browser interaction run, all fields are optional
  */
 export type RunOptions = {
-  /** test scenario definition */
+  /**
+   * test scenario specifying how to interact with browser
+   * (for more details view {@link IScenario})
+   */
   scenario?: IScenario;
   /** the absolute path of cookies file */
   cookiesFile?: string;

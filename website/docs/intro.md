@@ -14,9 +14,10 @@ memlab that automates memory leak detection.
 ## What is memlab?
 memlab is a memory testing framework for JS in browsers.
 
-If you define a test scenario (using Puppeteer API) teaching memlab how to
-interact with your Single-page Application (SPA), memlab can handle the
-rest automatically:
+If you define a [test scenario](./api/interfaces/core_src.IScenario)
+(using [Puppeteer API](https://pptr.dev/api/puppeteer.page#methods))
+teaching memlab how to interact with your Single-page Application (SPA),
+memlab can handle the rest automatically:
  * Interact with browser
  * Take JavaScript heap snapshots
  * Analyze heap snapshots and filter out memory leaks
