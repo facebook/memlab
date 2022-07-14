@@ -17,8 +17,13 @@ module.exports = function nomralizeTypeSpeed(events) {
     deltas[i] = events[i].time - events[i - 1].time;
     const content = events[i].content;
 
-    // if this is an "Enter" hit by user input
-    if (content === '\r\n' && events[i - 1].content.length === 1) {
+    // if this event has a manually defined time
+    // gap to the previous event
+    if ('timeGapFromPreviousStep' in events[i]) {
+      deltas[i] = events[i].timeGapFromPreviousStep;
+
+      // if this is an "Enter" hit by user input
+    } else if (content === '\r\n' && events[i - 1].content.length === 1) {
       deltas[i] = 1000;
 
       // speed up the empty space, which feel more natural
