@@ -8,7 +8,7 @@
  * @format
  */
 
-import React, {ReactNode, useEffect} from 'react';
+import React, {ReactNode, useLayoutEffect} from 'react';
 import clsx from 'clsx';
 import Layout from '@theme/Layout';
 import Link from '@docusaurus/Link';
@@ -120,7 +120,7 @@ export default function Home(): React.ReactElement {
   const {siteConfig} = useDocusaurusContext();
   const headerContainerID = 'css-animated-bg-container';
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     startAnimation(headerContainerID);
   }, []);
 
