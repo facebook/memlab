@@ -53,7 +53,7 @@ memlab find-leaks
  * **`--target`**: set file path of the target heap snapshot
  * **`--final`**: set file path of the final heap snapshot
  * **`--snapshot-dir`**: set directory path containing all heap snapshots under analysis
- * **`--engine`**: set the JavaScript engine (default to v8)
+ * **`--engine`**: set the JavaScript engine (default to V8)
  * **`--leak-filter`**: specify a definition JS file for leak filter
  * **`--trace-object-size-above`**: objects with retained size (bytes) bigger than the threshold will be considered as leaks
  * **`--ignore-leak-cluster-size-below`**: ignore memory leaks with aggregated retained size smaller than the threshold
@@ -84,7 +84,7 @@ memlab trace --node-id=128127
 **Options**:
  * **`--snapshot`**: set file path of the heap snapshot under analysis
  * **`--snapshot-dir`**: set directory path containing all heap snapshots under analysis
- * **`--engine`**: set the JavaScript engine (default to v8)
+ * **`--engine`**: set the JavaScript engine (default to V8)
  * **`--node-id`**: set heap node ID
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details

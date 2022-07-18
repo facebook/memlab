@@ -665,7 +665,7 @@ function getEdgeByNameAndType(
     return null;
   }
 
-  return node.findReference(
+  return node.findAnyReference(
     (edge: IHeapEdge) =>
       edge.name_or_index === edgeName &&
       (type === undefined || edge.type === type),
@@ -679,7 +679,7 @@ function getEdgeStartsWithName(
   if (!node) {
     return null;
   }
-  return node.findReference(
+  return node.findAnyReference(
     edge =>
       typeof edge.name_or_index === 'string' &&
       edge.name_or_index.startsWith(prefix),

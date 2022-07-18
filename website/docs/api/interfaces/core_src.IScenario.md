@@ -78,7 +78,7 @@ const scenario = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:364
+    * core/src/lib/Types.ts:471
 
 ___
 
@@ -103,7 +103,7 @@ Check out [this page](/docs/how-memlab-works) on why
 memlab needs to undo/revert the `action` callback.
 
  * **Source**:
-    * core/src/lib/Types.ts:384
+    * core/src/lib/Types.ts:491
 
 ___
 
@@ -111,7 +111,7 @@ ___
 
 Lifecycle function callback that is invoked initially once before
 the subsequent `leakFilter` function calls. This callback could
-be used to initialize some data stores or to do some one-off
+be used to initialize some data stores or to any one-off
 preprocessings.
 
 * **Parameters**:
@@ -135,7 +135,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:461
+    * core/src/lib/Types.ts:568
 
 ___
 
@@ -175,13 +175,13 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:434
+    * core/src/lib/Types.ts:541
 
 ___
 
 ### <a id="leakfilter" name="leakfilter"></a> `Optional` **leakFilter**: [`LeakFilterCallback`](../modules/core_src.md#leakfiltercallback)
 
-This callback that defines how you want to filter out the
+This callback defines how you want to filter out the
 leaked objects. The callback is called for every node (JS heap
 object in browser) allocated by the `action` callback, but not
 released after the `back` callback. Those objects could be caches
@@ -222,7 +222,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:503
+    * core/src/lib/Types.ts:610
 
 ## Methods
 
@@ -248,7 +248,7 @@ const scenario = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:307
+    * core/src/lib/Types.ts:414
 
 ___
 
@@ -269,7 +269,7 @@ module.exports = {
 
  * **Returns**: `number`
  * **Source**:
-    * core/src/lib/Types.ts:399
+    * core/src/lib/Types.ts:506
 
 ___
 
@@ -290,4 +290,4 @@ load. All objects allocated by the initial page load will be candidates
 for memory leak filtering.
 
  * **Source**:
-    * core/src/lib/Types.ts:323
+    * core/src/lib/Types.ts:430

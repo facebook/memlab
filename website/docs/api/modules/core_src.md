@@ -13,7 +13,6 @@ custom_edit_url: null
 - [IHeapEdges](../interfaces/core_src.IHeapEdges.md)
 - [IHeapLocation](../interfaces/core_src.IHeapLocation.md)
 - [IHeapNode](../interfaces/core_src.IHeapNode.md)
-- [IHeapNodeBasic](../interfaces/core_src.IHeapNodeBasic.md)
 - [IHeapNodes](../interfaces/core_src.IHeapNodes.md)
 - [IHeapSnapshot](../interfaces/core_src.IHeapSnapshot.md)
 - [IHeapStringNode](../interfaces/core_src.IHeapStringNode.md)
@@ -35,7 +34,7 @@ Callback function to provide if the page is loaded.
  * **Returns**: `Promise`<`boolean`\>
 
  * **Source**:
-    * core/src/lib/Types.ts:607
+    * core/src/lib/Types.ts:714
 
 ___
 
@@ -57,7 +56,7 @@ ___
  * **Returns**: `Optional`<{ `stop`: `boolean`  }\>
 
  * **Source**:
-    * core/src/lib/Types.ts:959
+    * core/src/lib/Types.ts:1073
 
 ___
 
@@ -76,7 +75,7 @@ leak filter function.
  * **Returns**: `void`
 
  * **Source**:
-    * core/src/lib/Types.ts:213
+    * core/src/lib/Types.ts:320
 
 ___
 
@@ -95,7 +94,7 @@ used by memlab to interact with the web app under test.
  * **Returns**: `Promise`<`void`\>
 
  * **Source**:
-    * core/src/lib/Types.ts:248
+    * core/src/lib/Types.ts:355
 
 ___
 
@@ -125,7 +124,7 @@ function leakFilter(node, _snapshot, _leakedNodeIds) {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:238
+    * core/src/lib/Types.ts:345
 
 ___
 
@@ -162,7 +161,7 @@ ___
 | `type` | `string` |
 
  * **Source**:
-    * core/src/lib/Types.ts:664
+    * core/src/lib/Types.ts:771
 
 ## Functions
 

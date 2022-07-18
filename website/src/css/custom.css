@@ -18,7 +18,7 @@
 
 /* You can override the default Infima variables here. */
 :root {
-  --ifm-code-font-size: 90%;
+  --ifm-code-font-size: 85%;
   --ifm-color-primary: #32accd;
   --ifm-color-primary-dark: #2d9bb9;
   --ifm-color-primary-darker: #2a92ae;
@@ -80,6 +80,7 @@ code {
   border: none;
   font-family: monospace, 'Courier New', Courier;
   font-size: 0.95rem;
+  /* font-weight: bold; */
 }
 
 #css-animated-bg-container {

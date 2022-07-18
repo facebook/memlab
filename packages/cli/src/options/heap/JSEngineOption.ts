@@ -18,11 +18,11 @@ export default class JSEngineOption extends BaseOption {
   }
 
   getDescription(): string {
-    return 'set the JavaScript engine (default to v8)';
+    return 'set the JavaScript engine (default to V8)';
   }
 
   getExampleValues(): string[] {
-    return ['v8', 'hermes'];
+    return ['V8', 'hermes'];
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {

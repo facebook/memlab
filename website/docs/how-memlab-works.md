@@ -26,7 +26,7 @@ following order:
 
 ### 2. Heap Analysis
 
-**Snapshot decoding**: memlab decodes v8 (or hermes) heap snapshots and
+**Snapshot decoding**: memlab decodes V8 (or hermes) heap snapshots and
 provides [APIs](./api/interfaces/core_src.IHeapSnapshot) that allows
 querying JavaScript heap.
 

@@ -219,7 +219,7 @@ export default class HeapSnapshot implements IHeapSnapshot {
     }
 
     // check if the table has any weak reference to any object
-    const ref = table.findReference(
+    const ref = table.findAnyReference(
       (edge: IHeapEdge) =>
         edge.type === 'weak' && edge.toNode.name !== 'system / Oddball',
     );

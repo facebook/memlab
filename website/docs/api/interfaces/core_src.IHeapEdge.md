@@ -16,53 +16,53 @@ custom_edit_url: null
 ### <a id="edgeindex" name="edgeindex"></a> **edgeIndex**: `number`
 
  * **Source**:
-    * core/src/lib/Types.ts:893
+    * core/src/lib/Types.ts:1006
 
 ___
 
 ### <a id="fromnode" name="fromnode"></a> **fromNode**: [`IHeapNode`](core_src.IHeapNode.md)
 
  * **Source**:
-    * core/src/lib/Types.ts:897
+    * core/src/lib/Types.ts:1010
 
 ___
 
 ### <a id="is\_index" name="is\_index"></a> **is\_index**: `boolean`
 
  * **Source**:
-    * core/src/lib/Types.ts:894
+    * core/src/lib/Types.ts:1007
 
 ___
 
 ### <a id="name\_or\_index" name="name\_or\_index"></a> **name\_or\_index**: `string` \| `number`
 
  * **Source**:
-    * core/src/lib/Types.ts:887
+    * core/src/lib/Types.ts:1000
 
 ___
 
 ### <a id="snapshot" name="snapshot"></a> **snapshot**: [`IHeapSnapshot`](core_src.IHeapSnapshot.md)
 
  * **Source**:
-    * core/src/lib/Types.ts:892
+    * core/src/lib/Types.ts:1005
 
 ___
 
 ### <a id="tonode" name="tonode"></a> **toNode**: [`IHeapNode`](core_src.IHeapNode.md)
 
  * **Source**:
-    * core/src/lib/Types.ts:896
+    * core/src/lib/Types.ts:1009
 
 ___
 
 ### <a id="to\_node" name="to\_node"></a> **to\_node**: `number`
 
  * **Source**:
-    * core/src/lib/Types.ts:895
+    * core/src/lib/Types.ts:1008
 
 ___
 
 ### <a id="type" name="type"></a> **type**: `string`
 
  * **Source**:
-    * core/src/lib/Types.ts:888
+    * core/src/lib/Types.ts:1001

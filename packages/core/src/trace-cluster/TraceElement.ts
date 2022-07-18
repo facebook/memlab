@@ -77,8 +77,8 @@ export class NodeRecord implements IHeapNode {
   ): void {
     throw new Error('NodeRecord.forEachReferrer is not implemented');
   }
-  findReference(): Nullable<IHeapEdge> {
-    throw new Error('NodeRecord.findReference is not implemented');
+  findAnyReference(): Nullable<IHeapEdge> {
+    throw new Error('NodeRecord.findAnyReference is not implemented');
   }
   findAnyReferrer(): Nullable<IHeapEdge> {
     throw new Error('NodeRecord.findAnyReferrer is not implemented');

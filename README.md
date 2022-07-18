@@ -78,7 +78,7 @@ View which object keeps growing in size during interaction in the previous run:
 memlab analyze unbound-object
 ```
 
-Analyze pre-fetched v8/hermes `.heapsnapshot` files:
+Analyze pre-fetched V8/hermes `.heapsnapshot` files:
 
 ```bash
 memlab analyze unbound-object --snapshot-dir <DIR_OF_SNAPSHOT_FILES>

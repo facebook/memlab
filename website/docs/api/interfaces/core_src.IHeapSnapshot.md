@@ -5,6 +5,11 @@ sidebar_label: "IHeapSnapshot"
 custom_edit_url: null
 ---
 
+A heap snapshot is generally a graph where graph nodes are JS heap objects
+and graph edges are JS references among JS heap objects. For more details
+on the structure of nodes and edges in the heap graph, check out
+[IHeapNode](core_src.IHeapNode.md) and [IHeapEdge](core_src.IHeapEdge.md).
+
 ## Properties
 
 ### <a id="edges" name="edges"></a> **edges**: [`IHeapEdges`](core_src.IHeapEdges.md)
@@ -34,7 +39,7 @@ import {getHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:725
+    * core/src/lib/Types.ts:838
 
 ___
 
@@ -65,7 +70,7 @@ import {getHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:699
+    * core/src/lib/Types.ts:812
 
 ## Methods
 
@@ -100,7 +105,7 @@ class TestObject {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:814
+    * core/src/lib/Types.ts:927
 
 ___
 
@@ -129,7 +134,7 @@ import {getHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:747
+    * core/src/lib/Types.ts:860
 
 ___
 
@@ -175,7 +180,7 @@ test('memory test with heap assertion', async () => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:786
+    * core/src/lib/Types.ts:899
 
 ___
 
@@ -207,7 +212,7 @@ import {getHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:840
+    * core/src/lib/Types.ts:953
 
 ___
 
@@ -248,4 +253,4 @@ test('memory test', async () => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:874
+    * core/src/lib/Types.ts:987

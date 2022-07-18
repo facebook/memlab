@@ -25,7 +25,7 @@ import {getHeapFromFile} from '@memlab/heap-analysis';
   const nodes: IHeapNodes = heap.nodes;
   nodes.length;
   nodes.get(0);
-  nodes.forEach((edge, i) => {
+  nodes.forEach((node, i) => {
     if (stopIteration) {
       return false;
     }
@@ -41,7 +41,7 @@ The total number of nodes in heap graph (or JS objects in heap
 snapshot).
 
  * **Source**:
-    * core/src/lib/Types.ts:1048
+    * core/src/lib/Types.ts:1457
 
 ## Methods
 
@@ -54,7 +54,7 @@ to each element in ascending order of element index.
     * `callback`: (`node`: [`IHeapNode`](core_src.IHeapNode.md), `index`: `number`) => `boolean` \| `void` | the callback does not need to return any value, if the callback returns `false` when iterating on element at index `i`, then all elements after `i` won't be iterated.
  * **Returns**: `void`
  * **Source**:
-    * core/src/lib/Types.ts:1064
+    * core/src/lib/Types.ts:1473
 
 ___
 
@@ -68,4 +68,4 @@ get an [IHeapNode](core_src.IHeapNode.md) element at the specified index
 at the specified index, otherwise it returns `null`.
 
  * **Source**:
-    * core/src/lib/Types.ts:1056
+    * core/src/lib/Types.ts:1465

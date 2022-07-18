@@ -107,7 +107,7 @@ function identifyAndSetEngine(snapshot: IHeapSnapshot): void {
   }
 
   info.overwrite('identifying snapshot engine...');
-  let engine = 'v8';
+  let engine = 'V8';
   snapshot.nodes.forEach((node: IHeapNode) => {
     if (node.type === 'object' && node.name.startsWith('Object(')) {
       engine = 'hermes';

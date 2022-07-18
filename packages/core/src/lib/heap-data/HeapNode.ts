@@ -174,7 +174,7 @@ export default class HeapNode implements IHeapNode {
     }
   }
 
-  findReference(predicate: Predicator<IHeapEdge>): Nullable<IHeapEdge> {
+  findAnyReference(predicate: Predicator<IHeapEdge>): Nullable<IHeapEdge> {
     let found: Nullable<IHeapEdge> = null;
     this.forEachReference((edge: IHeapEdge) => {
       if (predicate(edge)) {

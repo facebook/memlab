@@ -13,8 +13,8 @@ import {setInternalValue} from './InternalValueSetter';
 const constants = {
   isFB: false,
   isFRL: false,
-  defaultEngine: 'v8',
-  supportedEngines: ['v8', 'hermes'],
+  defaultEngine: 'V8',
+  supportedEngines: ['V8', 'hermes'],
   supportedBrowsers: Object.create(null),
   internalDir: 'fb-internal',
   monoRepoDir: '',

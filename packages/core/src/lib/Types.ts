@@ -174,16 +174,49 @@ export type QuickExperiment = {
 };
 
 /**
- * The type for defining custom leak-filtering logic.
- * * **Examples**:
+ * The `ILeakFilter` interface allows you to define a leak detector and
+ * customize the leak filtering logic in memlab (instead of using the
+ * built-in leak filters).
+ *
+ * Use the leak filter definition in command line interface to filter
+ * leaks detected from browser interactions
+ * ```bash
+ * memlab run --scenario <SCENARIO FILE> --leak-filter <PATH TO leak-filter.js>
+ * ```
+ *
+ * If you have already run `memlab run` or `memlab snapshot` which saved
+ * heap snapshot and other meta data on disk, use the following command
+ * to filter leaks based on those saved heap snapshots (query the default
+ * data location by `memlab get-default-work-dir`).
+ *
+ * ```bash
+ * memlab find-leaks --leak-filter <PATH TO leak-filter.js>
+ * ```
+ * Here is an example TypeScript file defining a leak filter.
+ * The command line interface only accepts compiled JavaScript file.
+ * You can also define the leak filter in JavaScript (without the
+ * type annotations.
+ *
  * ```typescript
- * const scenario = {
+ * import {IHeapNode, IHeapSnapshot, HeapNodeIdSet, utils} from '@memlab/core';
  *
- * };
- *
- * let map = Object.create(null);
+ * function initMap(snapshot: IHeapSnapshot): Record<string, number> {
+ *   const map = Object.create(null);
+ *   snapshot.nodes.forEach(node => {
+ *     if (node.type !== 'string') {
+ *       return;
+ *     }
+ *     const str = utils.getStringNodeValue(node);
+ *     if (str in map) {
+ *       ++map[str];
+ *     } else {
+ *       map[str] = 1;
+ *     }
+ *   });
+ *   return map;
+ * }
  * const beforeLeakFilter = (snapshot: IHeapSnapshot, _leakedNodeIds: HeapNodeIdSet): void => {
- *   map = initializeMapUsingSnapshot(snapshot);
+ *   map = initMap(snapshot);
  * };
  *
  * // duplicated string with size > 1KB as memory leak
@@ -199,7 +232,81 @@ export type QuickExperiment = {
  * ```
  */
 export interface ILeakFilter {
+  /**
+   * Lifecycle function callback that is invoked initially once before
+   * the subsequent `leakFilter` function calls. This callback could
+   * be used to initialize some data stores or any one-off
+   * preprocessings.
+   *
+   * * **Parameters**:
+   *   * snapshot: `IHeapSnapshot` | the final heap snapshot taken after
+   *     all browser interactions are done.
+   *     Check out {@link IHeapSnapshot} for more APIs that queries the heap snapshot.
+   *   * leakedNodeIds: `Set<number>` | the set of ids of all JS heap objects
+   *     allocated by the `action` call but not released after the `back` call
+   *     in browser.
+   *
+   * * **Examples**:
+   * ```typescript
+   * module.exports = {
+   *   beforeLeakFilter: (snapshot, leakedNodeIds) {
+   *     // initialize some data stores
+   *   },
+   *   leakFilter(node, snapshot, leakedNodeIds) {
+   *     // use the data stores
+   *   },
+   * };
+   * ```
+   */
   beforeLeakFilter?: InitLeakFilterCallback;
+  /**
+   * This callback defines how you want to filter out the
+   * leaked objects. The callback is called for every node (JS heap
+   * object in browser) allocated by the `action` callback, but not
+   * released after the `back` callback. Those objects could be caches
+   * that are retained in memory on purpose, or they are memory leaks.
+   *
+   * This optional callback allows you to define your own algorithm
+   * to cherry pick memory leaks for specific JS program under test.
+   *
+   * If this optional callback is not defined, memlab will use its
+   * built-in leak filter, which considers detached DOM elements
+   * and unmounted Fiber nodes (detached from React Fiber tree) as
+   * memory leaks.
+   *
+   * * **Parameters**:
+   *   * node: `IHeapNode` | one of the heap object allocated but not released.
+   *   * snapshot: `IHeapSnapshot` | the final heap snapshot taken after
+   *     all browser interactions are done.
+   *     Check out {@link IHeapSnapshot} for more APIs that queries the heap snapshot.
+   *   * leakedNodeIds: `Set<number>` | the set of ids of all JS heap objects
+   *     allocated by the `action` call but not released after the `back` call
+   *     in browser.
+   *
+   * * **Returns**: the boolean value indicating whether the given node in
+   *   the snapshot should be considered as leaked.
+   *
+   *
+   * ```javascript
+   * // save as leak-filter.js
+   * module.exports = {
+   *   leakFilter(node, snapshot, leakedNodeIds) {
+   *     // any unreleased node (JS heap object) with 1MB+
+   *     // retained size is considered a memory leak
+   *     return node.retainedSize > 1000000;
+   *   },
+   * };
+   * ```
+   *
+   * Use the leak filter definition in command line interface:
+   * ```bash
+   * memlab find-leaks --leak-filter <PATH TO leak-filter.js>
+   * ```
+   *
+   * ```bash
+   * memlab run --scenario <SCENARIO FILE> --leak-filter <PATH TO leak-filter.js>
+   * ```
+   */
   leakFilter: LeakFilterCallback;
 }
 
@@ -435,7 +542,7 @@ export interface IScenario {
   /**
    * Lifecycle function callback that is invoked initially once before
    * the subsequent `leakFilter` function calls. This callback could
-   * be used to initialize some data stores or to do some one-off
+   * be used to initialize some data stores or to any one-off
    * preprocessings.
    *
    * * **Parameters**:
@@ -460,7 +567,7 @@ export interface IScenario {
    */
   beforeLeakFilter?: InitLeakFilterCallback;
   /**
-   * This callback that defines how you want to filter out the
+   * This callback defines how you want to filter out the
    * leaked objects. The callback is called for every node (JS heap
    * object in browser) allocated by the `action` callback, but not
    * released after the `back` callback. Those objects could be caches
@@ -668,6 +775,12 @@ export type RunMetaInfo = {
   browserInfo: IBrowserInfo;
 };
 
+/**
+ * A heap snapshot is generally a graph where graph nodes are JS heap objects
+ * and graph edges are JS references among JS heap objects. For more details
+ * on the structure of nodes and edges in the heap graph, check out
+ * {@link IHeapNode} and {@link IHeapEdge}.
+ */
 export interface IHeapSnapshot {
   /** @internal */
   snapshot: RawHeapSnapshot;
@@ -950,6 +1063,7 @@ export interface IHeapEdges {
   forEach(callback: (edge: IHeapEdge, index: number) => void | boolean): void;
 }
 
+/** @internal */
 export interface IHeapNodeBasic {
   type: string;
   name: string;
@@ -960,47 +1074,342 @@ export type EdgeIterationCallback = (
   edge: IHeapEdge,
 ) => Optional<{stop: boolean}>;
 
+/**
+ * An `IHeapNode` instance represents a JS heap object in a heap snapshot.
+ * A heap snapshot is generally a graph where graph nodes are JS heap objects
+ * and graph edges are JS references among JS heap objects.
+ *
+ * @readonly it is not recommended to modify any IHeapNode instance
+ *
+ * * **Examples**: V8 or hermes heap snapshot can be parsed by the
+ * {@link getHeapFromFile} API.
+ *
+ * ```typescript
+ * import type {IHeapSnapshot, IHeapNode} from '@memlab/core';
+ * import {dumpNodeHeapSnapshot} from '@memlab/core';
+ * import {getHeapFromFile} from '@memlab/heap-analysis';
+ *
+ * (async function () {
+ *   const heapFile = dumpNodeHeapSnapshot();
+ *   const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+ *
+ *   // iterate over each node (heap object)
+ *   heap.nodes.forEach((node: IHeapNode, i: number) => {
+ *     // use the heap node APIs here
+ *     const id = node.id;
+ *     const type = node.type;
+ *     // ...
+ *   });
+ * })();
+ * ```
+ */
 export interface IHeapNode extends IHeapNodeBasic {
+  /**
+   * the type of the heap node object. All possible types:
+   * This is engine-specific, for example all types in V8:
+   * `hidden`, `array`, `string`, `object`, `code`, `closure`, `regexp`,
+   * `number`, `native`, `synthetic`, `concatenated string`, `sliced string`,
+   * `symbol`, `bigint`
+   */
+  type: string;
+  /**
+   * this is the `name` field associated with the heap object,
+   * for JS object instances (type `object`), `name` is the constructor's name
+   * of the object instance. for `string`, `name` is the string value.
+   */
+  name: string;
+  /**
+   * unique id of the heap object
+   */
+  id: number;
+  /**
+   * get the {@link IHeapSnapshot} containing this heap object
+   */
   snapshot: IHeapSnapshot;
+  /**
+   * * If the heap object is a DOM element and the DOM element is detached
+   * from the DOM tree, `is_detached` will be `true`;
+   * * If the heap object is a React Fiber node and the Fiber node is unmounted
+   * from the React Fiber tree, `is_detached` will be `true`;
+   * otherwise it will be `false`
+   */
   is_detached: boolean;
+  /** @internal */
   detachState: number;
+  /** @internal */
   markAsDetached(): void;
+  /** @internal */
   attributes: number;
+  /**
+   * The *shallow size* of the heap object (i.e., the size of memory that is held
+   * by the object itself.). For difference between **shallow size** and
+   * **retained size**, check out
+   * [this doc](https://developer.chrome.com/docs/devtools/memory-problems/memory-101/#object_sizes).
+   */
   self_size: number;
+  /**
+   * The total number of outgoing JS references (including engine-internal,
+   * native, and JS references).
+   */
   edge_count: number;
+  /** @internal */
   trace_node_id: number;
+  /**
+   * Get a JS array containing all outgoing JS references from this heap object
+   * (including engine-internal, native, and JS references).
+   */
   references: IHeapEdge[];
+  /**
+   * Get a JS array containing all incoming JS references pointing to this heap
+   * object (including engine-internal, native, and JS references).
+   */
   referrers: IHeapEdge[];
+  /**
+   * The incoming edge which leads to the parent node
+   * on the shortest path to GC root.
+   */
   pathEdge: IHeapEdge | null;
+  /**
+   * index of this heap object inside the `node.snapshot.nodes` pseudo array
+   */
   nodeIndex: number;
+  /**
+   * The *retained size* of the heap object (i.e., the total size of memory that
+   * could be released if this object is released). For difference between
+   * **retained size** and **shallow size**, check out
+   * [this doc](https://developer.chrome.com/docs/devtools/memory-problems/memory-101/#object_sizes).
+   */
   retainedSize: number;
+  /**
+   * get the dominator node of this node. If the dominator node gets released
+   * there will be no path from GC to this node, and therefore this node can
+   * also be released.
+   * For more information on what a dominator node is, please check out
+   * [this doc](https://developer.chrome.com/docs/devtools/memory-problems/memory-101/#dominators).
+   */
   dominatorNode: IHeapNode | null;
+  /**
+   * source location information of this heap object (if it is recorded by
+   * the heap snapshot).
+   */
   location: IHeapLocation | null;
+  /** @internal */
   highlight?: boolean;
+  /**
+   * check if this a string node (normal string node, concatenated string node
+   * or sliced string node)
+   */
   isString: boolean;
+  /**
+   * convert to an {@link IHeapStringNode} object if this node is a string node.
+   * The {@link IHeapStringNode} object supports querying the string content
+   * inside the string node.
+   */
   toStringNode(): Nullable<IHeapStringNode>;
+  /**
+   * executes a provided callback once for each JavaScript reference in the
+   * hosting node (or outgoing edges from the node)
+   * @param callback the callback for each outgoing JavaScript reference
+   * @returns this API returns void
+   *
+   * * **Examples**:
+   * ```typescript
+   * node.forEachReference((edge: IHeapEdge) => {
+   *   // process edge ...
+   *
+   *   // if no need to iterate over remaining edges after
+   *   // the current edge in the node.references list
+   *   return {stop: true};
+   * });
+   * ```
+   */
   forEachReference(callback: EdgeIterationCallback): void;
+  /**
+   * executes a provided callback once for each JavaScript reference pointing
+   * to the hosting node (or incoming edges to the node)
+   * @param callback the callback for each incoming JavaScript reference
+   * @returns this API returns void
+   *
+   * * **Examples**:
+   * ```typescript
+   * node.forEachReferrer((edge: IHeapEdge) => {
+   *   // process edge ...
+   *
+   *   // if no need to iterate over remaining edges after
+   *   // the current edge in the node.referrers list
+   *   return {stop: true};
+   * });
+   * ```
+   */
   forEachReferrer(callback: EdgeIterationCallback): void;
-  findReference: (predicate: Predicator<IHeapEdge>) => Nullable<IHeapEdge>;
+  /**
+   * executes a provided predicate callback once for each JavaScript reference
+   * in the hosting node (or outgoing edges from the node) until the predicate
+   * returns `true`
+   * @param predicate the callback for each outgoing JavaScript reference
+   * @returns the first outgoing edge for which the predicate returns `true`,
+   * otherwise returns `null` if no such edge is found.
+   *
+   * * **Examples**:
+   * ```typescript
+   * const reference = node.findAnyReference((edge: IHeapEdge) => {
+   *   // find the outgoing reference with name "ref"
+   *   return edge.name_or_index === 'ref';
+   * });
+   * ```
+   */
+  findAnyReference: (predicate: Predicator<IHeapEdge>) => Nullable<IHeapEdge>;
+  /**
+   * executes a provided predicate callback once for each JavaScript reference
+   * pointing to the hosting node (or incoming edges to the node) until the
+   * predicate returns `true`
+   * @param predicate the callback for each incoming JavaScript reference
+   * @returns the first incoming edge for which the predicate returns `true`,
+   * otherwise returns `null` if no such edge is found.
+   *
+   * * **Examples**:
+   * ```typescript
+   * const referrer = node.findAnyReferrer((edge: IHeapEdge) => {
+   *   // find the incoming reference with name "ref"
+   *   return edge.name_or_index === 'ref';
+   * });
+   * ```
+   */
   findAnyReferrer: (predicate: Predicator<IHeapEdge>) => Nullable<IHeapEdge>;
+  /**
+   * executes a provided predicate callback once for each JavaScript reference
+   * pointing to the hosting node (or incoming edges to the node)
+   * @param predicate the callback for each incoming JavaScript reference
+   * @returns an array containing all the incoming edges for which the
+   * predicate returns `true`, otherwise returns an empty array if no such
+   * edge is found.
+   *
+   * * **Examples**:
+   * ```typescript
+   * const referrers = node.findReferrers((edge: IHeapEdge) => {
+   *   // find all the incoming references with name "ref"
+   *   return edge.name_or_index === 'ref';
+   * });
+   * ```
+   */
   findReferrers: (predicate: Predicator<IHeapEdge>) => IHeapEdge[];
+  /**
+   * Given a JS reference's name and type, this API finds an outgoing JS
+   * reference from the hosting node.
+   * @param edgeName the name of the outgoing JavaScript reference
+   * @param edgeType optional parameter specifying the type of the outgoing
+   * JavaScript reference
+   * @returns the outgoing edge that meets the specification
+   *
+   * * **Examples**:
+   * ```typescript
+   * // find the internal reference to node's hidden class
+   * const reference = node.getReference('map', 'hidden');
+   * ```
+   */
   getReference: (
     edgeName: string | number,
     edgeType?: string,
   ) => Nullable<IHeapEdge>;
+  /**
+   * Given a JS reference's name and type, this API finds the outgoing JS
+   * reference from the hosting node, and returns the JS heap object pointed to
+   * by the outgoing JS reference.
+   * @param edgeName the name of the outgoing JavaScript reference
+   * @param edgeType optional parameter specifying the type of the outgoing
+   * JavaScript reference
+   * @returns the node pointed to by the outgoing reference that meets
+   * the specification
+   *
+   * * **Examples**:
+   * ```typescript
+   * // find the node's hidden class
+   * const hiddenClassNode = node.getReferenceNode('map', 'hidden');
+   * // this is equivalent to
+   * const hiddenClassNode2 = node.getReference('map', 'hidden')?.toNode;
+   * ```
+   */
   getReferenceNode: (
     edgeName: string | number,
     edgeType?: string,
   ) => Nullable<IHeapNode>;
+  /**
+   * Given a JS reference's name and type, this API finds an incoming JS
+   * reference pointing to the hosting node.
+   * @param edgeName the name of the incoming JavaScript reference
+   * @param edgeType optional parameter specifying the type of the incoming
+   * JavaScript reference
+   * @returns the incoming edge that meets the specification
+   *
+   * * **Examples**:
+   * ```typescript
+   * // find one of the JS reference named "ref" pointing to node
+   * const reference = node.getAnyReferrer('ref', 'property');
+   * ```
+   */
   getAnyReferrer: (
     edgeName: string | number,
     edgeType?: string,
   ) => Nullable<IHeapEdge>;
+  /**
+   * Given a JS reference's name and type, this API finds one of the incoming JS
+   * references pointing to the hosting node, and returns the JS heap object
+   * containing the incoming reference.
+   * @param edgeName the name of the incoming JavaScript reference
+   * @param edgeType optional parameter specifying the type of the incoming
+   * JavaScript reference
+   * @returns the node containing the incoming JS reference that meets
+   * the specification
+   *
+   * * **Examples**:
+   * ```typescript
+   * // find one of the JS heap object with a JS reference
+   * // named "ref" pointing to node
+   * const n1 = node.getAnyReferrerNode('ref', 'property');
+   * // this is equivalent to
+   * const n2 = node.getAnyReferrer('ref', 'property')?.fromNode;
+   * ```
+   */
   getAnyReferrerNode: (
     edgeName: string | number,
     edgeType?: string,
   ) => Nullable<IHeapNode>;
+  /**
+   * Given a JS reference's name and type, this API finds all the incoming JS
+   * reference pointing to the hosting node.
+   * @param edgeName the name of the incoming JavaScript reference
+   * @param edgeType optional parameter specifying the type of the incoming
+   * JavaScript reference
+   * @returns an array containing all the incoming edges that
+   * meet the specification
+   *
+   * * **Examples**:
+   * ```typescript
+   * // find all of of the JS reference named "ref" pointing to node
+   * const referrers = node.getReferrers('ref', 'property');
+   * ```
+   */
   getReferrers: (edgeName: string | number, edgeType?: string) => IHeapEdge[];
+  /**
+   * Given a JS reference's name and type, this API finds all of the incoming JS
+   * references pointing to the hosting node, and returns an array containing
+   * the hosting node for each of the incoming JS references.
+   * @param edgeName the name of the incoming JavaScript reference
+   * @param edgeType optional parameter specifying the type of the incoming
+   * JavaScript reference
+   * @returns an array containing the hosting nodes, with each node corresponds
+   * to each incoming JS reference that meets the specification
+   *
+   * * **Examples**:
+   * ```typescript
+   * // find all of the JS heap object with a JS reference
+   * // named "ref" pointing to node
+   * const nodes1 = node.getReferrerNodes('ref', 'property');
+   * // this is equivalent to
+   * const nodes2 = node.getReferrers('ref', 'property')
+   *   .map(edge => edge.fromNode);
+   * ```
+   */
   getReferrerNodes: (
     edgeName: string | number,
     edgeType?: string,
@@ -1032,7 +1441,7 @@ export interface IHeapStringNode extends IHeapNode {
  *   const nodes: IHeapNodes = heap.nodes;
  *   nodes.length;
  *   nodes.get(0);
- *   nodes.forEach((edge, i) => {
+ *   nodes.forEach((node, i) => {
  *     if (stopIteration) {
  *       return false;
  *     }
