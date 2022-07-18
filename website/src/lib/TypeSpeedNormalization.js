@@ -27,7 +27,13 @@ module.exports = function nomralizeTypeSpeed(events, speedFactor = 1) {
 
       // if this is an "Enter" hit by user input
     } else if (content === '\r\n' && events[i - 1].content.length === 1) {
-      deltas[i] = 1000;
+      // if the "Enter" is ending a comment (starts with a "#")
+      // and the next line is also a comment
+      if (i + 2 < events.length && events[i + 2].content === '#') {
+        deltas[i] = 600;
+      } else {
+        deltas[i] = 1000;
+      }
 
       // speed up the empty space, which feel more natural
     } else if (content === ' ') {

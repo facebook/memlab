@@ -996,17 +996,79 @@ export interface IHeapLocation {
   column: number;
 }
 
+/** @internal */
 export interface IHeapEdgeBasic {
   name_or_index: number | string;
   type: string;
 }
 
+/**
+ * An `IHeapEdge` instance represents a JS reference in a heap snapshot.
+ * A heap snapshot is generally a graph where graph nodes are JS heap objects
+ * and graph edges are JS references among JS heap objects.
+ *
+ * @readonly it is not recommended to modify any `IHeapEdge` instance
+ *
+ * * **Examples**: V8 or hermes heap snapshot can be parsed by the
+ * {@link getHeapFromFile} API.
+ *
+ * ```typescript
+ * import type {IHeapSnapshot, IHeapEdge} from '@memlab/core';
+ * import {dumpNodeHeapSnapshot} from '@memlab/core';
+ * import {getHeapFromFile} from '@memlab/heap-analysis';
+ *
+ * (async function () {
+ *   const heapFile = dumpNodeHeapSnapshot();
+ *   const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+ *
+ *   // iterate over each edge (JS reference in heap)
+ *   heap.edges.forEach((edge: IHeapEdge, i: number) => {
+ *     // use the heap edge APIs here
+ *     const nameOrIndex = edge.name_or_index;
+ *     // ...
+ *   });
+ * })();
+ * ```
+ */
 export interface IHeapEdge extends IHeapEdgeBasic {
+  /**
+   * name of the JS reference. If this is a reference to an array element
+   * or internal table element, it is an numeric index
+   */
+  name_or_index: number | string;
+  /**
+   * type of the JS reference, all types:
+   * `context`, `element`, `property`, `internal`, `hidden`, `shortcut`, `weak`
+   */
+  type: string;
+  /**
+   * get the {@link IHeapSnapshot} containing this JS reference
+   */
   snapshot: IHeapSnapshot;
+  /**
+   * index of this JS reference inside the `edge.snapshot.edges` pseudo array
+   */
   edgeIndex: number;
+  /**
+   * if `true`, means this is a reference to an array element
+   * or internal table element (`edge.name_or_index` will return a number),
+   * otherwise this is a reference with a string name (`edge.name_or_index`
+   * will return a string)
+   */
   is_index: boolean;
+  /**
+   * the index of the JS heap object pointed to by this reference
+   */
   to_node: number;
+  /**
+   * returns an {@link IHeapNode} instance representing the JS heap object
+   * pointed to by this reference
+   */
   toNode: IHeapNode;
+  /**
+   * returns an {@link IHeapNode} instance representing the hosting
+   * JS heap object where this reference starts
+   */
   fromNode: IHeapNode;
 }
 
@@ -1079,7 +1141,7 @@ export type EdgeIterationCallback = (
  * A heap snapshot is generally a graph where graph nodes are JS heap objects
  * and graph edges are JS references among JS heap objects.
  *
- * @readonly it is not recommended to modify any IHeapNode instance
+ * @readonly it is not recommended to modify any `IHeapNode` instance
  *
  * * **Examples**: V8 or hermes heap snapshot can be parsed by the
  * {@link getHeapFromFile} API.

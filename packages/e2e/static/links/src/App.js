@@ -11,7 +11,7 @@
 
 import React from 'react';
 
-// Use the the window.injectHookForLink{n} hook to inject objects
+// Use the window.injectHookForLink{n} hook to inject objects
 // to memory when link-{n} is triggered, for example:
 //
 //  window.injectHookForLink4 = () => {

@@ -9,7 +9,6 @@ custom_edit_url: null
 ## Interfaces
 
 - [IHeapEdge](../interfaces/core_src.IHeapEdge.md)
-- [IHeapEdgeBasic](../interfaces/core_src.IHeapEdgeBasic.md)
 - [IHeapEdges](../interfaces/core_src.IHeapEdges.md)
 - [IHeapLocation](../interfaces/core_src.IHeapLocation.md)
 - [IHeapNode](../interfaces/core_src.IHeapNode.md)
@@ -56,7 +55,7 @@ ___
  * **Returns**: `Optional`<{ `stop`: `boolean`  }\>
 
  * **Source**:
-    * core/src/lib/Types.ts:1073
+    * core/src/lib/Types.ts:1135
 
 ___
 

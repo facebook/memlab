@@ -31,6 +31,14 @@
   --ifm-paragraph-margin: 0rem;
 }
 
+:root code {
+  color: var(--ifm-color-gray-800);
+}
+
+:root a code {
+  color: var(--ifm-link-color);
+}
+
 /* For readability concerns, you should choose a lighter palette in dark mode. */
 [data-theme='dark'] {
   --ifm-color-primary: #32accd;
@@ -40,6 +48,10 @@
   --ifm-color-primary-light: #47b4d2;
   --ifm-color-primary-lighter: #51b8d4;
   --ifm-color-primary-lightest: #70c5dc;
+}
+
+[data-theme='dark'] code {
+  color: var(--ifm-font-color-base);
 }
 
 article {
@@ -80,7 +92,7 @@ code {
   border: none;
   font-family: monospace, 'Courier New', Courier;
   font-size: 0.95rem;
-  /* font-weight: bold; */
+  font-weight: bold;
 }
 
 #css-animated-bg-container {
