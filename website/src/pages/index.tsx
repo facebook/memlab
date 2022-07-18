@@ -141,6 +141,7 @@ export default function Home(): React.ReactElement {
             </p>
             <div className={styles.buttons}>
               <Link
+                id="learn-more"
                 className={clsx(
                   'button button--outline button--secondary button--lg',
                   styles.getStarted,

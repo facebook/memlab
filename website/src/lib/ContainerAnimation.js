@@ -1401,15 +1401,15 @@ export default function startAnimation(containerID) {
     const MESH = {
       width: 1.8,
       height: 1.8,
-      depth: 20,
+      depth: 12,
       segments: 35,
       slices: 12,
-      xRange: 0.8,
-      yRange: 0.1,
+      xRange: 0.5,
+      yRange: 0.5,
       zRange: 1.0,
       ambient: '#555555',
       diffuse: '#696969',
-      speed: 0.00008,
+      speed: 0.00005,
     };
 
     //------------------------------
@@ -1419,8 +1419,8 @@ export default function startAnimation(containerID) {
       count: 2,
       xyScalar: 1,
       zOffset: 100,
-      ambient: '#0ed66b',
-      diffuse: '#becc57',
+      ambient: '#f4df4f',
+      diffuse: '#def24b',
       speed: 0.00001,
       gravity: 500,
       dampening: 0.95,

@@ -757,7 +757,7 @@ function summarizeNode(
   let nodeImpact = '';
   if (nodeRetainSize) {
     nodeImpact = options.color
-      ? chalk.grey('[') + chalk.blue(nodeRetainSize) + chalk.grey(']')
+      ? chalk.grey('[') + chalk.blue.bold(nodeRetainSize) + chalk.grey(']')
       : `[${nodeRetainSize}]`;
   }
 

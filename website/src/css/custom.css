@@ -101,11 +101,17 @@ code {
 }
 
 #title, #sub-title {
-  text-shadow: 1px 1px 4px rgb(122 117 117);
+  color: black;
+  text-shadow: 2px 2px 2px rgb(209, 183, 61);
+}
+
+#learn-more {
+  color: black;
 }
 
 #header-container {
   display: flex;
+  word-wrap: normal;
 }
 
 #left-header-section {
