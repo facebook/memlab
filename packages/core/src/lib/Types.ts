@@ -897,9 +897,56 @@ export interface IHeapEdge extends IHeapEdgeBasic {
   fromNode: IHeapNode;
 }
 
+/**
+ * A pseudo array containing all heap graph edges (references to heap objects
+ * in heap). A JS heap could contain millions of references, so memlab uses
+ * a pseudo array as the collection of all the heap edges. The pseudo
+ * array provides API to query and traverse all heap references.
+ *
+ * @readonly modifying this pseudo array is not recommended
+ *
+ * * **Examples**:
+ * ```typescript
+ * import type {IHeapSnapshot, IHeapEdges} from '@memlab/core';
+ * import {dumpNodeHeapSnapshot} from '@memlab/core';
+ * import {getHeapFromFile} from '@memlab/heap-analysis';
+ *
+ * (async function () {
+ *   const heapFile = dumpNodeHeapSnapshot();
+ *   const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+ *
+ *   const edges: IHeapEdges = heap.edges;
+ *   edges.length;
+ *   edges.get(0);
+ *   edges.forEach((edge, i) => {
+ *     if (stopIteration) {
+ *       return false;
+ *     }
+ *   });
+ * })();
+ * ```
+ */
 export interface IHeapEdges {
+  /**
+   * The total number of edges in heap graph (or JS references in heap
+   * snapshot).
+   */
   length: number;
-  get(index: number): IHeapEdge;
+  /**
+   * get an {@link IHeapEdge} element at the specified index
+   * @param index the index of an element in the pseudo array, the index ranges
+   * from 0 to array length - 1. Notice that this is not the heap node id.
+   * @returns When 0 <= `index` < array.length, this API returns the element
+   * at the specified index, otherwise it returns `null`.
+   */
+  get(index: number): Nullable<IHeapEdge>;
+  /**
+   * Iterate over all array elements and apply the callback
+   * to each element in ascending order of element index.
+   * @param callback the callback does not need to return any value, if
+   * the callback returns `false` when iterating on element at index `i`,
+   * then all elements after `i` won't be iterated.
+   */
   forEach(callback: (edge: IHeapEdge, index: number) => void | boolean): void;
 }
 
@@ -964,10 +1011,58 @@ export interface IHeapStringNode extends IHeapNode {
   stringValue: string;
 }
 
+/**
+ * A pseudo array containing all heap graph nodes (JS objects
+ * in heap). A JS heap could contain millions of objects, so memlab uses
+ * a pseudo array as the collection of all the heap nodes. The pseudo
+ * array provides API to query and traverse all heap objects.
+ *
+ * @readonly modifying this pseudo array is not recommended
+ *
+ * * **Examples**:
+ * ```typescript
+ * import type {IHeapSnapshot, IHeapNodes} from '@memlab/core';
+ * import {dumpNodeHeapSnapshot} from '@memlab/core';
+ * import {getHeapFromFile} from '@memlab/heap-analysis';
+ *
+ * (async function () {
+ *   const heapFile = dumpNodeHeapSnapshot();
+ *   const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+ *
+ *   const nodes: IHeapNodes = heap.nodes;
+ *   nodes.length;
+ *   nodes.get(0);
+ *   nodes.forEach((edge, i) => {
+ *     if (stopIteration) {
+ *       return false;
+ *     }
+ *   });
+ * })();
+ * ```
+ */
 export interface IHeapNodes {
+  /**
+   * The total number of nodes in heap graph (or JS objects in heap
+   * snapshot).
+   */
   length: number;
-  get(index: number): IHeapNode;
+  /**
+   * get an {@link IHeapNode} element at the specified index
+   * @param index the index of an element in the pseudo array, the index ranges
+   * from 0 to array length - 1. Notice that this is not the heap node id.
+   * @returns When 0 <= `index` < array.length, this API returns the element
+   * at the specified index, otherwise it returns `null`.
+   */
+  get(index: number): Nullable<IHeapNode>;
+  /**
+   * Iterate over all array elements and apply the callback
+   * to each element in ascending order of element index.
+   * @param callback the callback does not need to return any value, if
+   * the callback returns `false` when iterating on element at index `i`,
+   * then all elements after `i` won't be iterated.
+   */
   forEach(callback: (node: IHeapNode, index: number) => void | boolean): void;
+  /** @internal */
   forEachTraceable(
     callback: (node: IHeapNode, index: number) => void | boolean,
   ): void;

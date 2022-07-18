@@ -124,7 +124,7 @@ class TraceFinder {
     const nodesToVisit = new Uint32Array(nodesCount);
     let nodesToVisitLength = 0;
 
-    const node = snapshot.nodes.get(ROOT_NODE_INDEX);
+    const node = snapshot.nodes.get(ROOT_NODE_INDEX) as IHeapNode;
 
     for (const edge of node.references) {
       if (edge.type === 'element') {
@@ -142,7 +142,7 @@ class TraceFinder {
     // flag all heap objects reachable from the root
     while (nodesToVisitLength > 0) {
       const nodeIndex = nodesToVisit[--nodesToVisitLength];
-      const node = snapshot.nodes.get(nodeIndex);
+      const node = snapshot.nodes.get(nodeIndex) as IHeapNode;
 
       for (const edge of node.references) {
         const childNode = edge.toNode;
@@ -174,7 +174,7 @@ class TraceFinder {
     firstEdgeIndexes[nodeCount] = forwardEdges.length;
     for (let nodeIndex = 0, edgeIndex = 0; nodeIndex < nodeCount; ++nodeIndex) {
       firstEdgeIndexes[nodeIndex] = edgeIndex;
-      edgeIndex += snapshot.nodes.get(nodeIndex).edge_count;
+      edgeIndex += (snapshot.nodes.get(nodeIndex) as IHeapNode).edge_count;
     }
 
     const flag = PAGE_OBJECT_FLAG;
@@ -203,11 +203,12 @@ class TraceFinder {
 
         if (edgeIndex < edgesEnd) {
           edgeStack[stackTopIndex]++;
-          const edgeType = forwardEdges.get(edgeIndex).type;
+          const edgeType = (forwardEdges.get(edgeIndex) as IHeapEdge).type;
           if (!utils.isEssentialEdge(nodeIndex, edgeType, rootNodeIndex)) {
             continue;
           }
-          const childNodeIndex = forwardEdges.get(edgeIndex).toNode.nodeIndex;
+          const childNodeIndex = (forwardEdges.get(edgeIndex) as IHeapEdge)
+            .toNode.nodeIndex;
           if (visited[childNodeIndex]) {
             continue;
           }
@@ -259,7 +260,9 @@ class TraceFinder {
       for (let nodeIndex = 0; nodeIndex < nodeCount; ++nodeIndex) {
         if (
           visited[nodeIndex] ||
-          !utils.hasOnlyWeakReferrers(snapshot.nodes.get(nodeIndex))
+          !utils.hasOnlyWeakReferrers(
+            snapshot.nodes.get(nodeIndex) as IHeapNode,
+          )
         ) {
           continue;
         }
@@ -324,7 +327,7 @@ class TraceFinder {
     firstEdgeIndexes[nodeCount] = forwardEdges.length;
     for (let nodeIndex = 0, edgeIndex = 0; nodeIndex < nodeCount; ++nodeIndex) {
       firstEdgeIndexes[nodeIndex] = edgeIndex;
-      edgeIndex += nodes.get(nodeIndex).edge_count;
+      edgeIndex += (nodes.get(nodeIndex) as IHeapNode).edge_count;
     }
 
     const flag = PAGE_OBJECT_FLAG;
@@ -347,11 +350,12 @@ class TraceFinder {
       edgeIndex < endEdgeIndex;
       edgeIndex++
     ) {
-      const edgeType = forwardEdges.get(edgeIndex).type;
+      const edgeType = (forwardEdges.get(edgeIndex) as IHeapEdge).type;
       if (!utils.isEssentialEdge(ROOT_NODE_INDEX, edgeType, ROOT_NODE_INDEX)) {
         continue;
       }
-      const childNodeIndex = forwardEdges.get(edgeIndex).toNode.nodeIndex;
+      const childNodeIndex = (forwardEdges.get(edgeIndex) as IHeapEdge).toNode
+        .nodeIndex;
       nodesWithOutdatedDominatorInfo[
         nodeIndex2PostOrderIndex[childNodeIndex]
       ] = 1;
@@ -380,7 +384,7 @@ class TraceFinder {
         const nodeFlag = flags[nodeIndex] & flag;
         let newDominatorIndex = emptySlot;
         let isOrphanNode = true;
-        const node = nodes.get(nodeIndex);
+        const node = nodes.get(nodeIndex) as IHeapNode;
         for (const edge of node.referrers) {
           const referrerEdgeType = edge.type;
           const referrerNodeIndex = edge.fromNode.nodeIndex;
@@ -440,7 +444,7 @@ class TraceFinder {
           dominators[postOrderIndex] = newDominatorIndex;
           dominatorInfoChanged = true;
           nodeIndex = postOrderIndex2NodeIndex[postOrderIndex];
-          const node = nodes.get(nodeIndex);
+          const node = nodes.get(nodeIndex) as IHeapNode;
           for (const edge of node.references) {
             nodesWithOutdatedDominatorInfo[
               nodeIndex2PostOrderIndex[edge.toNode.nodeIndex]
@@ -473,7 +477,7 @@ class TraceFinder {
     const retainedSizes = new Float64Array(nodeCount);
 
     for (let nodeIndex = 0; nodeIndex < nodeCount; ++nodeIndex) {
-      retainedSizes[nodeIndex] = nodes.get(nodeIndex).self_size;
+      retainedSizes[nodeIndex] = (nodes.get(nodeIndex) as IHeapNode).self_size;
     }
 
     // add each heap object size to its dominator
@@ -572,7 +576,7 @@ class TraceFinder {
     );
     // step 4: assign retained sizes and dominators to nodes
     for (let i = 0; i < retainedSizes.length; i++) {
-      const node = snapshot.nodes.get(i);
+      const node = snapshot.nodes.get(i) as IHeapNode;
       node.retainedSize = retainedSizes[i];
       node.dominatorNode = snapshot.nodes.get(dominatorInfo[i]);
     }

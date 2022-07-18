@@ -104,12 +104,15 @@ export default class HeapSnapshot implements IHeapSnapshot {
     // virtual nodes
     this.nodes = {
       length: self._nodeCount,
-      get(idx: number): IHeapNode {
+      get(idx: number): Nullable<IHeapNode> {
+        if (idx < 0 || idx >= self._nodeCount) {
+          return null;
+        }
         return new HeapNode(self, idx);
       },
       forEach(cb) {
         for (let i = 0; i < this.length; i++) {
-          const ret = cb(this.get(i), i);
+          const ret = cb(this.get(i) as IHeapNode, i);
           if (ret === false) {
             break;
           }
@@ -117,7 +120,7 @@ export default class HeapSnapshot implements IHeapSnapshot {
       },
       forEachTraceable(cb) {
         for (let i = 0; i < this.length; i++) {
-          const node = this.get(i);
+          const node = this.get(i) as IHeapNode;
           if (!node.pathEdge) {
             continue;
           }
@@ -132,12 +135,15 @@ export default class HeapSnapshot implements IHeapSnapshot {
     // virtual edges
     this.edges = {
       length: self._edgeCount,
-      get(idx) {
+      get(idx): Nullable<IHeapEdge> {
+        if (idx < 0 || idx >= self._edgeCount) {
+          return null;
+        }
         return new HeapEdge(self, idx);
       },
       forEach(cb) {
         for (let i = 0; i < this.length; i++) {
-          const ret = cb(this.get(i), i);
+          const ret = cb(this.get(i) as IHeapEdge, i);
           if (ret === false) {
             break;
           }

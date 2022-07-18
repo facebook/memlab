@@ -235,6 +235,9 @@ function JSONifyFiberNodeReturnTrace(
       continue;
     }
     const parent = node.snapshot.nodes.get(index);
+    if (!parent) {
+      continue;
+    }
     const parentInfo = getNodeNameInJSON(parent, args);
     key = `${key}:  --return (property)--->  ${parentInfo}`;
     const info = JSONifyFiberNodeShallow(parent);
