@@ -1,6 +1,6 @@
 {
   "name": "@memlab/core",
-  "version": "1.1.0",
+  "version": "1.1.2",
   "license": "MIT",
   "description": "memlab core libraries",
   "author": "Liang Gong <lgong@fb.com>",
@@ -58,6 +58,7 @@
   "scripts": {
     "build-pkg": "tsc",
     "test-pkg": "jest .",
+    "publish-patch": "npm version patch --force && npm publish",
     "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
   },
   "bugs": {

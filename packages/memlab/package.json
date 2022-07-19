@@ -1,6 +1,6 @@
 {
   "name": "memlab",
-  "version": "1.1.13-alpha",
+  "version": "1.1.16",
   "license": "MIT",
   "description": "memlab is a framework that analyzes memory and finds memory leaks in JavaScript applications.",
   "main": "dist/index.js",
@@ -53,6 +53,7 @@
   "scripts": {
     "preinstall": "node bin/preinstall",
     "build-pkg": "tsc",
+    "publish-patch": "npm version patch --force && npm publish",
     "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
   },
   "devEngines": {

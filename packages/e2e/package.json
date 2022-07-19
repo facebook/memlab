@@ -1,6 +1,6 @@
 {
   "name": "@memlab/e2e",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "license": "MIT",
   "description": "memlab browser E2E interaction libraries",
   "author": "Liang Gong <lgong@fb.com>",
@@ -48,6 +48,7 @@
   },
   "scripts": {
     "build-pkg": "tsc",
+    "publish-patch": "npm version patch --force && npm publish",
     "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
   },
   "bugs": {
