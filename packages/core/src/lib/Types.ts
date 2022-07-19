@@ -112,7 +112,7 @@ export interface IE2EScenarioSynthesizer {
   getOrigin(): Nullable<string>;
   getDomain(): string;
   getDomainPrefixes(): string[];
-  getCookieFile(visitPlan: IE2EScenarioVisitPlan): string | null;
+  getCookieFile(visitPlan: IE2EScenarioVisitPlan): Nullable<string>;
   getAvailableSteps(): IE2EStepBasic[];
   getNodeNameBlocklist(): string[];
   getEdgeNameBlocklist(): string[];
@@ -989,16 +989,68 @@ export interface IHeapSnapshot {
   clearShortestPathInfo(): void;
 }
 
+/**
+ * An `IHeapLocation` instance contains a source location information
+ * associated with a JS heap object.
+ * A heap snapshot is generally a graph where graph nodes are JS heap objects
+ * and graph edges are JS references among JS heap objects.
+ *
+ * @readonly it is not recommended to modify any `IHeapLocation` instance
+ *
+ * * **Examples**: V8 or hermes heap snapshot can be parsed by the
+ * {@link getHeapFromFile} API.
+ *
+ * ```typescript
+ * import type {IHeapSnapshot, IHeapNode, IHeapLocation} from '@memlab/core';
+ * import {dumpNodeHeapSnapshot} from '@memlab/core';
+ * import {getHeapFromFile} from '@memlab/heap-analysis';
+ *
+ * (async function () {
+ *   const heapFile = dumpNodeHeapSnapshot();
+ *   const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+ *
+ *   // iterate over each node (heap object)
+ *   heap.nodes.forEach((node: IHeapNode, i: number) => {
+ *     const location: Nullable<IHeapLocation> = node.location;
+ *     if (location) {
+ *       // use the location API here
+ *       location.line;
+ *       // ...
+ *     }
+ *   });
+ * })();
+ * ```
+ */
 export interface IHeapLocation {
+  /**
+   * get the {@link IHeapSnapshot} containing this location instance
+   */
   snapshot: IHeapSnapshot;
+  /**
+   * get the script ID of the source file
+   */
   script_id: number;
+  /**
+   * get the line number
+   */
   line: number;
+  /**
+   * get the column number
+   */
   column: number;
 }
 
 /** @internal */
 export interface IHeapEdgeBasic {
+  /**
+   * name of the JS reference. If this is a reference to an array element
+   * or internal table element, it is an numeric index
+   */
   name_or_index: number | string;
+  /**
+   * type of the JS reference, all types:
+   * `context`, `element`, `property`, `internal`, `hidden`, `shortcut`, `weak`
+   */
   type: string;
 }
 
@@ -1031,16 +1083,6 @@ export interface IHeapEdgeBasic {
  * ```
  */
 export interface IHeapEdge extends IHeapEdgeBasic {
-  /**
-   * name of the JS reference. If this is a reference to an array element
-   * or internal table element, it is an numeric index
-   */
-  name_or_index: number | string;
-  /**
-   * type of the JS reference, all types:
-   * `context`, `element`, `property`, `internal`, `hidden`, `shortcut`, `weak`
-   */
-  type: string;
   /**
    * get the {@link IHeapSnapshot} containing this JS reference
    */
@@ -1127,8 +1169,23 @@ export interface IHeapEdges {
 
 /** @internal */
 export interface IHeapNodeBasic {
+  /**
+   * the type of the heap node object. All possible types:
+   * This is engine-specific, for example all types in V8:
+   * `hidden`, `array`, `string`, `object`, `code`, `closure`, `regexp`,
+   * `number`, `native`, `synthetic`, `concatenated string`, `sliced string`,
+   * `symbol`, `bigint`
+   */
   type: string;
+  /**
+   * this is the `name` field associated with the heap object,
+   * for JS object instances (type `object`), `name` is the constructor's name
+   * of the object instance. for `string`, `name` is the string value.
+   */
   name: string;
+  /**
+   * unique id of the heap object
+   */
   id: number;
 }
 
@@ -1166,24 +1223,6 @@ export type EdgeIterationCallback = (
  * ```
  */
 export interface IHeapNode extends IHeapNodeBasic {
-  /**
-   * the type of the heap node object. All possible types:
-   * This is engine-specific, for example all types in V8:
-   * `hidden`, `array`, `string`, `object`, `code`, `closure`, `regexp`,
-   * `number`, `native`, `synthetic`, `concatenated string`, `sliced string`,
-   * `symbol`, `bigint`
-   */
-  type: string;
-  /**
-   * this is the `name` field associated with the heap object,
-   * for JS object instances (type `object`), `name` is the constructor's name
-   * of the object instance. for `string`, `name` is the string value.
-   */
-  name: string;
-  /**
-   * unique id of the heap object
-   */
-  id: number;
   /**
    * get the {@link IHeapSnapshot} containing this heap object
    */
@@ -1249,12 +1288,12 @@ export interface IHeapNode extends IHeapNodeBasic {
    * For more information on what a dominator node is, please check out
    * [this doc](https://developer.chrome.com/docs/devtools/memory-problems/memory-101/#dominators).
    */
-  dominatorNode: IHeapNode | null;
+  dominatorNode: Nullable<IHeapNode>;
   /**
    * source location information of this heap object (if it is recorded by
    * the heap snapshot).
    */
-  location: IHeapLocation | null;
+  location: Nullable<IHeapLocation>;
   /** @internal */
   highlight?: boolean;
   /**
@@ -1478,7 +1517,41 @@ export interface IHeapNode extends IHeapNodeBasic {
   ) => IHeapNode[];
 }
 
+/**
+ * An `IHeapStringNode` instance represents a JS string in a heap snapshot.
+ * A heap snapshot is generally a graph where graph nodes are JS heap objects
+ * and graph edges are JS references among JS heap objects.
+ *
+ * @readonly it is not recommended to modify any `IHeapStringNode` instance
+ *
+ * * **Examples**: V8 or hermes heap snapshot can be parsed by the
+ * {@link getHeapFromFile} API.
+ *
+ * ```typescript
+ * import type {IHeapSnapshot, IHeapNode, IHeapStringNode} from '@memlab/core';
+ * import {dumpNodeHeapSnapshot} from '@memlab/core';
+ * import {getHeapFromFile} from '@memlab/heap-analysis';
+ *
+ * (async function () {
+ *   const heapFile = dumpNodeHeapSnapshot();
+ *   const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+ *
+ *   // iterate over each node (heap object)
+ *   heap.nodes.forEach((node: IHeapNode, i: number) => {
+ *     if (node.isString) {
+ *       const stringNode: IheapStringNode = node.toStringNode();
+ *       // get the string value
+ *       stringNode.stringValue;
+ *     }
+ *   });
+ * })();
+ * ```
+ */
 export interface IHeapStringNode extends IHeapNode {
+  /**
+   * get the string value of the JS string heap object associated with
+   * this `IHeapStringNode` instance in heap
+   */
   stringValue: string;
 }
 

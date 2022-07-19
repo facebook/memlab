@@ -55,7 +55,7 @@ ___
  * **Returns**: `Optional`<{ `stop`: `boolean`  }\>
 
  * **Source**:
-    * core/src/lib/Types.ts:1135
+    * core/src/lib/Types.ts:1192
 
 ___
 

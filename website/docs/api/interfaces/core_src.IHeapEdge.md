@@ -45,7 +45,7 @@ import {getHeapFromFile} from '@memlab/heap-analysis';
 index of this JS reference inside the `edge.snapshot.edges` pseudo array
 
  * **Source**:
-    * core/src/lib/Types.ts:1051
+    * core/src/lib/Types.ts:1093
 
 ___
 
@@ -55,7 +55,7 @@ returns an [IHeapNode](core_src.IHeapNode.md) instance representing the hosting
 JS heap object where this reference starts
 
  * **Source**:
-    * core/src/lib/Types.ts:1072
+    * core/src/lib/Types.ts:1114
 
 ___
 
@@ -67,7 +67,7 @@ otherwise this is a reference with a string name (`edge.name_or_index`
 will return a string)
 
  * **Source**:
-    * core/src/lib/Types.ts:1058
+    * core/src/lib/Types.ts:1100
 
 ___
 
@@ -77,7 +77,7 @@ name of the JS reference. If this is a reference to an array element
 or internal table element, it is an numeric index
 
  * **Source**:
-    * core/src/lib/Types.ts:1038
+    * core/src/lib/Types.ts:1049
 
 ___
 
@@ -86,7 +86,7 @@ ___
 get the [IHeapSnapshot](core_src.IHeapSnapshot.md) containing this JS reference
 
  * **Source**:
-    * core/src/lib/Types.ts:1047
+    * core/src/lib/Types.ts:1089
 
 ___
 
@@ -96,7 +96,7 @@ returns an [IHeapNode](core_src.IHeapNode.md) instance representing the JS heap 
 pointed to by this reference
 
  * **Source**:
-    * core/src/lib/Types.ts:1067
+    * core/src/lib/Types.ts:1109
 
 ___
 
@@ -105,7 +105,7 @@ ___
 the index of the JS heap object pointed to by this reference
 
  * **Source**:
-    * core/src/lib/Types.ts:1062
+    * core/src/lib/Types.ts:1104
 
 ___
 
@@ -115,4 +115,4 @@ type of the JS reference, all types:
 `context`, `element`, `property`, `internal`, `hidden`, `shortcut`, `weak`
 
  * **Source**:
-    * core/src/lib/Types.ts:1043
+    * core/src/lib/Types.ts:1054
