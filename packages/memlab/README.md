@@ -1,8 +1,25 @@
 # memlab
 
 memlab is an E2E testing and analysis framework for finding JavaScript memory
-leaks in Chromium. The CLI Toolbox and library provide extensible interfaces
-for analyzing heap snapshots taken from Chrome/Chromium, Node.js, Hermes, and Electron.js.
+leaks and optimization opportunities.
+
+Features:
+ * **Browser memory leak detection** - Write test scenario with puppeteer API,
+   memlab auto diffs JS heap snapshots, filters out memory leaks, and
+   aggregates results.
+ * **Object-oriented heap traversing API** - Supports self-defined memory leak
+   detector and programmatically analyzing JS heap snapshots taken from
+   Chromium-based browsers, Node.js, Electron.js, and Hermes
+ * **Memory CLI Toolbox** - Built-in toolbox and APIs for finding memory
+   optimization opportunities (not necessarily memory leaks)
+ * **Memory assertions in Node.js** - Enables unit test or running node.js
+   program to take a heap snapshot of its own state, do self memory checking,
+   or write advanced memory assertions
+
+Online Resources:
+
+* [Official Website and Demo](https://facebookincubator.github.io/memlab)
+* [Documentation](https://facebookincubator.github.io/memlab/docs/intro)
 
 ## CLI Usage
 
@@ -14,7 +31,8 @@ npm install -g memlab
 
 ### Find Memory Leaks
 
-To find memory leaks in Google Maps, you can create a scenario file defining how
+To find memory leaks in Google Maps, you can create a
+[scenario file](https://facebookincubator.github.io/memlab/docs/api/interfaces/core_src.IScenario) defining how
 to interact with the Google Maps, let's name it `test-google-maps.js`:
 
 ```javascript
@@ -46,6 +64,7 @@ memlab run --scenario test-google-maps.js
 ```
 
 If you want to use a self-defined leak detector, add a `filterLeak` callback
+([doc](https://facebookincubator.github.io/memlab/docs/api/interfaces/core_src.IScenario/#-optional-beforeleakfilter-initleakfiltercallback))
 in the scenario file. `filterLeak` will be called for every unreleased heap
 object (`node`) allocated by the target interaction.
 
@@ -57,7 +76,8 @@ function filterLeak(node, heap) {
 ```
 
 `heap` is the graph representation of the final JavaScript heap snapshot.
-For more details, view the [doc site](https://facebookincubator.github.io/memlab).
+For more details, view the
+[doc site](https://facebookincubator.github.io/memlab/docs/api/interfaces/core_src.IHeapSnapshot).
 
 ### Heap Analysis and Investigation
 
@@ -72,7 +92,8 @@ Analyze pre-fetched V8/hermes `.heapsnapshot` files:
 memlab analyze unbound-object --snapshot-dir <DIR_OF_SNAPSHOT_FILES>
 ```
 
-Use `memlab analyze` to view all built-in memory analyses. For extension, view the [doc site](https://facebookincubator.github.io/memlab).
+Use `memlab analyze` to view all built-in memory analyses.
+For extension, view the [doc site](https://facebookincubator.github.io/memlab).
 
 View retainer trace of a particular object:
 ```bash
@@ -100,3 +121,42 @@ const scenario = {
 }
 memlab.run({scenario});
 ```
+
+## Memory Assertions
+
+memlab makes it possible to enable a unit test or running node.js program
+to take a heap snapshot of its own state, and write advanced memory assertions:
+
+```typescript
+// save as example.test.ts
+import type {IHeapSnapshot, Nullable} from '@memlab/core';
+import {config, getNodeInnocentHeap} from '@memlab/core';
+
+class TestObject {
+  public arr1 = [1, 2, 3];
+  public arr2 = ['1', '2', '3'];
+}
+
+test('memory test with heap assertion', async () => {
+  config.muteConsole = true; // no console output
+
+  let obj: Nullable<TestObject> = new TestObject();
+  // get a heap snapshot of the current program state
+  let heap: IHeapSnapshot = await getNodeInnocentHeap();
+
+  // call some function that may add references to obj
+  rabbitHole(obj)
+
+  expect(heap.hasObjectWithClassName('TestObject')).toBe(true);
+  obj = null;
+
+  heap = await getNodeInnocentHeap();
+  // if rabbitHole does not have any side effect that
+  // adds new references to obj, then obj can be GCed
+  expect(heap.hasObjectWithClassName('TestObject')).toBe(false);
+
+}, 30000);
+```
+
+For other APIs check out the
+[API documentation](https://facebookincubator.github.io/memlab/docs/api/interfaces/core_src.IHeapSnapshot#hasobjectwithclassnameclassname).
