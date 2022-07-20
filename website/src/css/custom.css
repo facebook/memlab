@@ -95,10 +95,6 @@ code {
   font-weight: bold;
 }
 
-#css-animated-bg-container {
-  background-color: transparent;
-}
-
 #header-animation-canvas {
   position: absolute;
   width: 100%;
@@ -141,4 +137,7 @@ code {
 #css-animated-bg-container {
   padding-top: 16px;
   padding-bottom: 0px;
+  background-color: #e5d465;
+  background: linear-gradient(#ffe53b, #dac540);
+  z-index: -2;
 }

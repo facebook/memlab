@@ -756,7 +756,6 @@ export default function startAnimation(containerID) {
     this.element.style.display = 'block';
     this.element.setAttribute('id', 'header-animation-canvas');
     this.context = this.element.getContext('2d');
-    //this.element.style.filter = "blur(10px)";
     this.setSize(this.element.width, this.element.height);
   };
 

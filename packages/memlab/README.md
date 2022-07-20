@@ -63,7 +63,40 @@ the web page and detect memory leaks with built-in leak detectors:
 memlab run --scenario test-google-maps.js
 ```
 
-If you want to use a self-defined leak detector, add a `filterLeak` callback
+memlab will print memory leak results showing one representative
+retainer trace for each cluster of leaked objects.
+
+**Retainer traces**: This is the result from
+[an example website](https://facebookincubator.github.io/memlab/docs/guides/guides-find-leaks),
+the retainer trace is an object reference chain from the GC root to a leaked
+object. The trace shows why and how a leaked object is still kept alive in
+memory. Breaking the reference chain means the leaked object will no longer
+be reachable from the GC root, and therefore can be garbage collected.
+By following the leak trace one step at a time, you will be able to find
+a reference that should be set to null (but it wasn't due to a bug).
+
+```bash
+MemLab found 46 leak(s)
+--Similar leaks in this run: 4--
+--Retained size of leaked objects: 8.3MB--
+[Window] (native) @35847 [8.3MB]
+  --20 (element)--->  [InternalNode] (native) @130981728 [8.3MB]
+  --8 (element)--->  [InternalNode] (native) @130980288 [8.3MB]
+  --1 (element)--->  [EventListener] (native) @131009888 [8.3MB]
+  --1 (element)--->  [V8EventListener] (native) @224808192 [8.3MB]
+  --1 (element)--->  [eventHandler] (closure) @168079 [8.3MB]
+  --context (internal)--->  [<function scope>] (object) @181905 [8.3MB]
+  --bigArray (variable)--->  [Array] (object) @182925 [8.3MB]
+  --elements (internal)--->  [(object elements)] (array) @182929 [8.3MB]
+...
+```
+To get readable trace, the web site under test needs to serve non-minified code (or at least minified code
+with readable variables, function name, and property names on objects).
+
+Alternatively, you can debug the leak by loading the heap snapshot taken by memlab (saved in `$(memlab get-default-work-dir)/data/cur`)
+in Chrome DevTool and search for the leaked object ID (`@182929`).
+
+**Self-defined leak detector**: If you want to use a self-defined leak detector, add a `filterLeak` callback
 ([doc](https://facebookincubator.github.io/memlab/docs/api/interfaces/core_src.IScenario/#-optional-beforeleakfilter-initleakfiltercallback))
 in the scenario file. `filterLeak` will be called for every unreleased heap
 object (`node`) allocated by the target interaction.
