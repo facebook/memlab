@@ -48,7 +48,10 @@ export type RunOptions = {
   scenario?: IScenario;
   /** the absolute path of cookies file */
   cookiesFile?: string;
-  /** function to be evaluated in browser context after the web page initial load */
+  /**
+   * function to be evaluated in browser context after
+   * the web page initial load
+   */
   evalInBrowserAfterInitLoad?: AnyFunction;
   /**
    * if true, take heap snapshot for each interaction step,
@@ -56,6 +59,30 @@ export type RunOptions = {
    * which steps it will take heap snapshots
    */
   snapshotForEachStep?: boolean;
+  /**
+   * specify the working directory where you want memlab to dump
+   * heap snapshots and other meta data of the test run. If no
+   * working directory is provided, memlab will generate a random
+   * temp directory under the operating system's default directory
+   * for temporary files.
+   * Note: It's the caller's responsibility to make sure the
+   * specified working directory exists.
+   */
+  workDir?: string;
+};
+
+/**
+ * A data structure holding the result of the {@link run} API call.
+ */
+export type RunResult = {
+  /**
+   * leak traces detected and clustered from the browser interaction
+   */
+  leaks: ISerializedInfo[];
+  /**
+   * a utility for reading browser interaction results from disk
+   */
+  runResult: BrowserInteractionResultReader;
 };
 
 /**
@@ -93,8 +120,7 @@ export type APIOptions = {
 export async function warmupAndTakeSnapshots(
   options: RunOptions = {},
 ): Promise<BrowserInteractionResultReader> {
-  const config = MemLabConfig.resetConfigWithTranscientDir();
-  setConfigByRunOptions(config, options);
+  const config = getConfigFromRunOptions(options);
   config.externalCookiesFile = options.cookiesFile;
   config.scenario = options.scenario;
   const testPlanner = new TestPlanner({config});
@@ -111,7 +137,8 @@ export async function warmupAndTakeSnapshots(
  * and {@link findLeaks}.
  *
  * @param runOptions configure browser interaction run
- * @returns leak traces detected and clustered from the browser interaction
+ * @returns memory leaks detected and a utility reading browser
+ * interaction results from disk
  * * **Examples**:
  * ```javascript
  * const {run} = require('@memlab/api');
@@ -120,15 +147,12 @@ export async function warmupAndTakeSnapshots(
  *   const scenario = {
  *     url: () => 'https://www.facebook.com',
  *   };
- *   const leaks = await run({scenario});
+ *   const {leaks} = await run({scenario});
  * })();
  * ```
  */
-export async function run(
-  runOptions: RunOptions = {},
-): Promise<ISerializedInfo[]> {
-  const config = MemLabConfig.resetConfigWithTranscientDir();
-  setConfigByRunOptions(config, runOptions);
+export async function run(runOptions: RunOptions = {}): Promise<RunResult> {
+  const config = getConfigFromRunOptions(runOptions);
   config.externalCookiesFile = runOptions.cookiesFile;
   config.scenario = runOptions.scenario;
   const testPlanner = new TestPlanner({config});
@@ -136,7 +160,8 @@ export async function run(
   await warmup({testPlanner, config, evalInBrowserAfterInitLoad});
   await testInBrowser({testPlanner, config, evalInBrowserAfterInitLoad});
   const runResult = BrowserInteractionResultReader.from(config.workDir);
-  return await findLeaks(runResult);
+  const leaks = await findLeaks(runResult);
+  return {leaks, runResult};
 }
 
 /**
@@ -144,7 +169,7 @@ export async function run(
  * This is equivalent to run `memlab snapshot` in CLI.
  *
  * @param options configure browser interaction run
- * @returns browser interaction results
+ * @returns a utility reading browser interaction results from disk
  * * **Examples**:
  * ```javascript
  * const {takeSnapshots} = require('@memlab/api');
@@ -160,8 +185,7 @@ export async function run(
 export async function takeSnapshots(
   options: RunOptions = {},
 ): Promise<BrowserInteractionResultReader> {
-  const config = MemLabConfig.resetConfigWithTranscientDir();
-  setConfigByRunOptions(config, options);
+  const config = getConfigFromRunOptions(options);
   config.externalCookiesFile = options.cookiesFile;
   config.scenario = options.scenario;
   const testPlanner = new TestPlanner();
@@ -280,11 +304,15 @@ export async function warmup(options: APIOptions = {}): Promise<void> {
   }
 }
 
-function setConfigByRunOptions(
-  config: MemLabConfig,
-  options: RunOptions,
-): void {
+function getConfigFromRunOptions(options: RunOptions): MemLabConfig {
+  let config = MemLabConfig.getInstance();
+  if (options.workDir) {
+    fileManager.initDirs(config, {workDir: options.workDir});
+  } else {
+    config = MemLabConfig.resetConfigWithTranscientDir();
+  }
   config.isFullRun = !!options.snapshotForEachStep;
+  return config;
 }
 
 async function setupPage(page: Page, options: APIOptions = {}): Promise<void> {

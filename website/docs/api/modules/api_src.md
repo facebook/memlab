@@ -24,9 +24,26 @@ Options for configuring browser interaction run, all fields are optional
 | `evalInBrowserAfterInitLoad?` | `AnyFunction` | function to be evaluated in browser context after the web page initial load |
 | `scenario?` | `IScenario` | test scenario specifying how to interact with browser (for more details view [IScenario](../interfaces/core_src.IScenario.md)) |
 | `snapshotForEachStep?` | `boolean` | if true, take heap snapshot for each interaction step, by default this is false, which means memlab will decide which steps it will take heap snapshots |
+| `workDir?` | `string` | specify the working directory where you want memlab to dump heap snapshots and other meta data of the test run. If no working directory is provided, memlab will generate a random temp directory under the operating system's default directory for temporary files. Note: It's the caller's responsibility to make sure the specified working directory exists. |
 
  * **Source**:
     * api/src/API.ts:43
+
+___
+
+### <a id="runresult" name="runresult"></a> **RunResult**: `Object`
+
+A data structure holding the result of the [run](api_src.md#run) API call.
+
+#### Type declaration
+
+| Name | Type | Description |
+| :------ | :------ | :------ |
+| `leaks` | `ISerializedInfo`[] | leak traces detected and clustered from the browser interaction |
+| `runResult` | [`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md) | a utility for reading browser interaction results from disk |
+
+ * **Source**:
+    * api/src/API.ts:77
 
 ## Functions
 
@@ -57,7 +74,7 @@ const {takeSnapshots, StringAnalysis} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:225
+    * api/src/API.ts:249
 
 ___
 
@@ -83,7 +100,7 @@ const {findLeaks, takeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:192
+    * api/src/API.ts:216
 
 ___
 
@@ -96,7 +113,8 @@ and [findLeaks](api_src.md#findleaks).
 
  * **Parameters**:
     * `runOptions`: [`RunOptions`](api_src.md#runoptions) | configure browser interaction run
- * **Returns**: `Promise`<`ISerializedInfo`[]\> | leak traces detected and clustered from the browser interaction
+ * **Returns**: `Promise`<[`RunResult`](api_src.md#runresult)\> | memory leaks detected and a utility reading browser
+interaction results from disk
 * **Examples**:
 ```javascript
 const {run} = require('@memlab/api');
@@ -105,12 +123,12 @@ const {run} = require('@memlab/api');
   const scenario = {
     url: () => 'https://www.facebook.com',
   };
-  const leaks = await run({scenario});
+  const {leaks} = await run({scenario});
 })();
 ```
 
  * **Source**:
-    * api/src/API.ts:127
+    * api/src/API.ts:154
 
 ___
 
@@ -121,7 +139,7 @@ This is equivalent to run `memlab snapshot` in CLI.
 
  * **Parameters**:
     * `options`: [`RunOptions`](api_src.md#runoptions) | configure browser interaction run
- * **Returns**: `Promise`<[`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md)\> | browser interaction results
+ * **Returns**: `Promise`<[`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md)\> | a utility reading browser interaction results from disk
 * **Examples**:
 ```javascript
 const {takeSnapshots} = require('@memlab/api');
@@ -135,7 +153,7 @@ const {takeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:160
+    * api/src/API.ts:185
 
 ___
 
@@ -161,4 +179,4 @@ const {warmupAndTakeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:93
+    * api/src/API.ts:120

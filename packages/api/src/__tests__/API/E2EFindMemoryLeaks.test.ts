@@ -13,6 +13,9 @@
 import type {Page} from 'puppeteer';
 import type {IHeapNode, IScenario} from '@memlab/core';
 
+import os from 'os';
+import path from 'path';
+import fs from 'fs-extra';
 import {run} from '../../index';
 import {scenario, testSetup, testTimeout} from './lib/E2ETestSettings';
 
@@ -42,7 +45,7 @@ function injectDetachedDOMElements() {
 test(
   'leak detector can find detached DOM elements',
   async () => {
-    const leaks = await run({
+    const {leaks} = await run({
       scenario,
       evalInBrowserAfterInitLoad: injectDetachedDOMElements,
     });
@@ -71,14 +74,22 @@ test(
       },
     };
 
-    const leaks = await run({
+    const workDir = path.join(os.tmpdir(), 'memlab-api-test', `${process.pid}`);
+    fs.mkdirsSync(workDir);
+
+    const result = await run({
       scenario: selfDefinedScenario,
       evalInBrowserAfterInitLoad: injectDetachedDOMElements,
+      workDir,
     });
     // detected all different leak trace cluster
-    expect(leaks.length).toBe(1);
+    expect(result.leaks.length).toBe(1);
     // expect all traces are found
-    expect(leaks.some(leak => JSON.stringify(leak).includes('_randomObject')));
+    expect(
+      result.leaks.some(leak => JSON.stringify(leak).includes('_randomObject')),
+    );
+    const reader = result.runResult;
+    expect(path.resolve(reader.getRootDirectory())).toBe(path.resolve(workDir));
   },
   testTimeout,
 );

@@ -38,7 +38,7 @@ function inject() {
 }
 
 async function test() {
-  const leaks = await run({scenario, evalInBrowserAfterInitLoad: inject});
+  const {leaks} = await run({scenario, evalInBrowserAfterInitLoad: inject});
   info.lowLevel(`${leaks.length}`);
 }
 
