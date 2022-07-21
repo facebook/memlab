@@ -17,7 +17,7 @@ const config = {
   tagline:
     'Analyzes JavaScript heap and finds memory leaks in browser and node.js',
   url: 'https://facebookincubator.github.io/',
-  baseUrl: '/memlab',
+  baseUrl: '/memlab/',
   organizationName: 'facebookincubator',
   projectName: 'memlab',
   onBrokenLinks: 'warn',
