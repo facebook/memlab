@@ -6,6 +6,7 @@
  *
  * @emails oncall+ws_labs
  * @format
+ * @oncall ws_labs
  */
 
 import {Head, Html, Main, NextScript} from 'next/document';

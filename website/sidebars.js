@@ -5,8 +5,9 @@
  * LICENSE file in the root directory of this source tree.
  *
  * @emails oncall+ws_labs
- * @nolint
  * @format
+ * @nolint
+ * @oncall ws_labs
  */
 
 /**
