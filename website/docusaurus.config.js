@@ -16,8 +16,8 @@ const config = {
   title: 'memlab',
   tagline:
     'Analyzes JavaScript heap and finds memory leaks in browser and node.js',
-  url: 'https://urban-spork-90ea3c5e.pages.github.io/',
-  baseUrl: '/',
+  url: 'https://facebookincubator.github.io/',
+  baseUrl: '/memlab',
   organizationName: 'facebookincubator',
   projectName: 'memlab',
   onBrokenLinks: 'warn',
