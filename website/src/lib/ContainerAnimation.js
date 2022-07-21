@@ -1462,13 +1462,16 @@ export default function startAnimation(containerID) {
     // Methods
     //------------------------------
     function initialise() {
-      createRenderer();
-      createScene();
-      createMesh();
-      createLights();
-      addEventListeners();
-      resize(container.offsetWidth, container.offsetHeight);
-      animate();
+      if (window.innerWidth >= 996) {
+        createRenderer();
+        createScene();
+        createMesh();
+        createLights();
+        addEventListeners();
+        resize(container.offsetWidth, container.offsetHeight);
+        animate();
+        container.style.background = 'transparent';
+      }
     }
 
     function createRenderer() {

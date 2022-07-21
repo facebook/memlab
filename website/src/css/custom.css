@@ -137,13 +137,12 @@ code {
 #css-animated-bg-container {
   padding-top: 16px;
   padding-bottom: 0px;
-  background-color: transparent;
+  background: linear-gradient(#ffe53b, #dac540);
 }
 
 
 @media screen and (max-width: 996px) {
   #css-animated-bg-container {
-    background-color: #e5d465;
     background: linear-gradient(#ffe53b, #dac540);
     padding-bottom: 60px;
   }
