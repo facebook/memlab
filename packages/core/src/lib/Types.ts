@@ -369,6 +369,9 @@ export type InteractionsCallback = (
  *   url: () => 'https://www.npmjs.com/',
  *   action: async () => ... ,
  *   back: async () => ... ,
+ *   cookies: () => ... , // optional
+ *   repeat: () => ... , // optional
+ *   ...
  * };
  * ```
  *
@@ -382,6 +385,9 @@ export type InteractionsCallback = (
  *     url: () => 'https://www.facebook.com',
  *     action: async () => ... ,
  *     back: async () => ... ,
+ *     cookies: () => ... , // optional
+ *     repeat: () => ... , // optional
+ *     ...
  *   };
  *   const leaks = await run({scenario});
  * })();
@@ -395,17 +401,21 @@ export interface IScenario {
   /**
    * If the page you are running memlab against requires authentication or
    * specific cookie(s) to be set, you can pass them as
-   * a list of <name, value> pairs.
+   * a list of `<name, value, domain>` tuples.
+   *
+   * **Note**: please make sure that you provide the correct `domain` field for
+   * the cookies tuples.
+   *
    * @returns cookie list
    * * **Examples**:
    * ```typescript
    * const scenario = {
    *   url: () => 'https://www.facebook.com/',
    *   cookies: () => [
-   *     {"name":"cm_j","value":"none"},
-   *     {"name":"datr","value":"yJvIY..."},
-   *     {"name":"c_user","value":"8917..."},
-   *     {"name":"xs","value":"95:9WQ..."},
+   *     {name:'cm_j', value: 'none', domain: '.facebook.com'},
+   *     {name:'datr', value: 'yJvIY...', domain: '.facebook.com'},
+   *     {name:'c_user', value: '8917...', domain: '.facebook.com'},
+   *     {name:'xs', value: '95:9WQ...', domain: '.facebook.com'},
    *     // ...
    *   ],
    * };
@@ -506,7 +516,7 @@ export interface IScenario {
   repeat?: () => number;
   /**
    * Optional callback function that checks if the web page is loaded
-   * after for initial page loading and subsequent browser interactions.
+   * for the initial page load and subsequent browser interactions.
    *
    * If this callback is not provided, memlab by default
    * considers a navigation to be finished when there are no network
@@ -954,6 +964,10 @@ export interface IHeapSnapshot {
   /**
    * Search for the heap and check if there is any JS object instance with
    * a marker tagged by {@link tagObject}.
+   *
+   * The `tagObject` API does not modify the object instance in any way
+   * (e.g., no additional or hidden properties added to the tagged object).
+   *
    * @param tag marker name on the object instances tagged by {@link tagObject}
    * @returns returns `true` if there is at least one such object in the heap
    *
@@ -1718,9 +1732,7 @@ export interface IMemoryAnalystHeapNodeReferrenceStat {
 /** @internal */
 export interface IClusterStrategy {
   diffTraces: (
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     newLeakTraces: LeakTrace[],
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     existingLeakTraces: LeakTrace[],
   ) => TraceDiff;
 }

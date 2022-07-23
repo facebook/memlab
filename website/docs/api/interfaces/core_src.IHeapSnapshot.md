@@ -39,7 +39,7 @@ import {getHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:838
+    * core/src/lib/Types.ts:848
 
 ___
 
@@ -70,7 +70,7 @@ import {getHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:812
+    * core/src/lib/Types.ts:822
 
 ## Methods
 
@@ -105,7 +105,7 @@ class TestObject {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:927
+    * core/src/lib/Types.ts:937
 
 ___
 
@@ -134,7 +134,7 @@ import {getHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:860
+    * core/src/lib/Types.ts:870
 
 ___
 
@@ -180,7 +180,7 @@ test('memory test with heap assertion', async () => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:899
+    * core/src/lib/Types.ts:909
 
 ___
 
@@ -212,7 +212,7 @@ import {getHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:953
+    * core/src/lib/Types.ts:963
 
 ___
 
@@ -220,6 +220,9 @@ ___
 
 Search for the heap and check if there is any JS object instance with
 a marker tagged by [tagObject](../modules/core_src.md#tagobject).
+
+The `tagObject` API does not modify the object instance in any way
+(e.g., no additional or hidden properties added to the tagged object).
 
  * **Parameters**:
     * `tag`: `string` | marker name on the object instances tagged by [tagObject](../modules/core_src.md#tagobject)
@@ -253,4 +256,4 @@ test('memory test', async () => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:987
+    * core/src/lib/Types.ts:1001

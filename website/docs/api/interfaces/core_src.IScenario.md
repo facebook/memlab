@@ -16,6 +16,9 @@ module.exports = {
   url: () => 'https://www.npmjs.com/',
   action: async () => ... ,
   back: async () => ... ,
+  cookies: () => ... , // optional
+  repeat: () => ... , // optional
+  ...
 };
 ```
 
@@ -29,6 +32,9 @@ const {run} = require('@memlab/api');
     url: () => 'https://www.facebook.com',
     action: async () => ... ,
     back: async () => ... ,
+    cookies: () => ... , // optional
+    repeat: () => ... , // optional
+    ...
   };
   const leaks = await run({scenario});
 })();
@@ -78,7 +84,7 @@ const scenario = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:471
+    * core/src/lib/Types.ts:481
 
 ___
 
@@ -103,7 +109,7 @@ Check out [this page](/docs/how-memlab-works) on why
 memlab needs to undo/revert the `action` callback.
 
  * **Source**:
-    * core/src/lib/Types.ts:491
+    * core/src/lib/Types.ts:501
 
 ___
 
@@ -135,14 +141,14 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:568
+    * core/src/lib/Types.ts:578
 
 ___
 
 ### <a id="ispageloaded" name="ispageloaded"></a> `Optional` **isPageLoaded**: [`CheckPageLoadCallback`](../modules/core_src.md#checkpageloadcallback)
 
 Optional callback function that checks if the web page is loaded
-after for initial page loading and subsequent browser interactions.
+for the initial page load and subsequent browser interactions.
 
 If this callback is not provided, memlab by default
 considers a navigation to be finished when there are no network
@@ -175,7 +181,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:541
+    * core/src/lib/Types.ts:551
 
 ___
 
@@ -222,7 +228,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:610
+    * core/src/lib/Types.ts:620
 
 ## Methods
 
@@ -230,7 +236,10 @@ module.exports = {
 
 If the page you are running memlab against requires authentication or
 specific cookie(s) to be set, you can pass them as
-a list of <name, value> pairs.
+a list of `<name, value, domain>` tuples.
+
+**Note**: please make sure that you provide the correct `domain` field for
+the cookies tuples.
 
  * **Returns**: [`Cookies`](../modules/core_src.md#cookies) | cookie list
 * **Examples**:
@@ -238,17 +247,17 @@ a list of <name, value> pairs.
 const scenario = {
   url: () => 'https://www.facebook.com/',
   cookies: () => [
-    {"name":"cm_j","value":"none"},
-    {"name":"datr","value":"yJvIY..."},
-    {"name":"c_user","value":"8917..."},
-    {"name":"xs","value":"95:9WQ..."},
+    {name:'cm_j', value: 'none', domain: '.facebook.com'},
+    {name:'datr', value: 'yJvIY...', domain: '.facebook.com'},
+    {name:'c_user', value: '8917...', domain: '.facebook.com'},
+    {name:'xs', value: '95:9WQ...', domain: '.facebook.com'},
     // ...
   ],
 };
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:414
+    * core/src/lib/Types.ts:424
 
 ___
 
@@ -269,7 +278,7 @@ module.exports = {
 
  * **Returns**: `number`
  * **Source**:
-    * core/src/lib/Types.ts:506
+    * core/src/lib/Types.ts:516
 
 ___
 
@@ -290,4 +299,4 @@ load. All objects allocated by the initial page load will be candidates
 for memory leak filtering.
 
  * **Source**:
-    * core/src/lib/Types.ts:430
+    * core/src/lib/Types.ts:440

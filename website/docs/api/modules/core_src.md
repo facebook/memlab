@@ -33,7 +33,7 @@ Callback function to provide if the page is loaded.
  * **Returns**: `Promise`<`boolean`\>
 
  * **Source**:
-    * core/src/lib/Types.ts:714
+    * core/src/lib/Types.ts:724
 
 ___
 
@@ -55,7 +55,7 @@ ___
  * **Returns**: `Optional`<{ `stop`: `boolean`  }\>
 
  * **Source**:
-    * core/src/lib/Types.ts:1192
+    * core/src/lib/Types.ts:1206
 
 ___
 
@@ -160,7 +160,7 @@ ___
 | `type` | `string` |
 
  * **Source**:
-    * core/src/lib/Types.ts:771
+    * core/src/lib/Types.ts:781
 
 ## Functions
 
