@@ -215,6 +215,7 @@ export class MemLabConfig {
   clusterRetainedSizeThreshold: number;
   _isFullRun: boolean;
   _scenario: Optional<IScenario>;
+  _isHeadfulBrowser: boolean;
   externalLeakFilter?: Optional<ILeakFilter>;
   monoRepoDir: string;
   muteConsole: boolean;
@@ -236,6 +237,7 @@ export class MemLabConfig {
     this._deviceManualOverridden = false;
     this._timerNodes = ['Pending activities'];
     this._timerEdges = [];
+    this._isHeadfulBrowser = false;
     this.targetApp = constant.unset;
     this.targetTab = constant.unset;
     this.analysisMode = constant.unset;
@@ -249,6 +251,7 @@ export class MemLabConfig {
 
     // set puppeteer configuration
     this.puppeteerConfig = {
+      headless: !this._isHeadfulBrowser,
       devtools: this.openDevtoolsConsole,
       // IMPORTANT: test ContinuousTest before change this config
       ignoreHTTPSErrors: true,
@@ -565,6 +568,19 @@ export class MemLabConfig {
 
   get browser(): string {
     return this._browser || 'google-chrome';
+  }
+
+  set isHeadfulBrowser(isHeadful: boolean) {
+    this._isHeadfulBrowser = isHeadful;
+    this.puppeteerConfig.headless = !isHeadful;
+    if (isHeadful) {
+      // if running in headful mode
+      this.disableXvfb();
+    }
+  }
+
+  get isHeadfulBrowser(): boolean {
+    return this._isHeadfulBrowser;
   }
 
   get browserBinaryPath(): string {

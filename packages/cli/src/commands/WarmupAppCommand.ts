@@ -23,6 +23,7 @@ import SetDeviceOption from '../options/SetDeviceOption';
 import DisableXvfbOption from '../options/DisableXvfbOption';
 import SkipWarmupOption from '../options/SkipWarmupOption';
 import CheckXvfbSupportCommand from './snapshot/CheckXvfbSupportCommand';
+import HeadfulBrowserOption from '../options/HeadfulBrowserOption';
 
 export default class FBWarmupAppCommand extends BaseCommand {
   getCommandName(): string {
@@ -46,6 +47,7 @@ export default class FBWarmupAppCommand extends BaseCommand {
 
   getOptions(): BaseOption[] {
     return [
+      new HeadfulBrowserOption(),
       new AppOption(),
       new InteractionOption(),
       new RunningModeOption(),

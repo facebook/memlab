@@ -29,6 +29,7 @@ import ScenarioFileOption from '../options/ScenarioFileOption';
 import SetDeviceOption from '../options/SetDeviceOption';
 import DisableXvfbOption from '../options/DisableXvfbOption';
 import NumberOfRunsOption from '../options/NumberOfRunsOption';
+import HeadfulBrowserOption from '../options/HeadfulBrowserOption';
 
 export default class RunMeasureCommand extends BaseCommand {
   getCommandName(): string {
@@ -53,6 +54,7 @@ export default class RunMeasureCommand extends BaseCommand {
 
   getOptions(): BaseOption[] {
     return [
+      new HeadfulBrowserOption(),
       new NumberOfRunsOption(),
       new AppOption(),
       new InteractionOption(),

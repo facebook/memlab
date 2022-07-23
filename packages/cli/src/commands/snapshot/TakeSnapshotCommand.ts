@@ -29,6 +29,7 @@ import SetDeviceOption from '../../options/SetDeviceOption';
 import DisableXvfbOption from '../../options/DisableXvfbOption';
 import InitDirectoryCommand from '../InitDirectoryCommand';
 import CheckXvfbSupportCommand from './CheckXvfbSupportCommand';
+import HeadfulBrowserOption from '../../options/HeadfulBrowserOption';
 
 export default class TakeSnapshotCommand extends BaseCommand {
   getCommandName(): string {
@@ -57,6 +58,7 @@ export default class TakeSnapshotCommand extends BaseCommand {
 
   getOptions(): BaseOption[] {
     return [
+      new HeadfulBrowserOption(),
       new AppOption(),
       new InteractionOption(),
       new FullExecutionOption(),
