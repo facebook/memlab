@@ -31,7 +31,7 @@ and reporting memory leaks in your SPA.
  * **Object-oriented heap traversing API** - Supports self-defined memory leak
    detector and programmatically analyzing JS heap snapshots taken from
    Chromium-based browsers, Node.js, Electron.js, and Hermes
- * **Memory CLI Toolbox** - Built-in toolbox and APIs for finding memory
+ * **Memory CLI toolbox** - Built-in toolbox and APIs for finding memory
    optimization opportunities (not necessarily memory leaks)
  * **Memory assertions in Node.js** - Enables unit test or running node.js
    program to take a heap snapshot of its own state, do self memory checking,
