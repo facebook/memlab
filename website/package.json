@@ -20,7 +20,7 @@
     "@docusaurus/preset-classic": "2.0.0-beta.21",
     "@mdx-js/react": "^1.6.22",
     "@memlab/memlab-docusaurus-plugin-typedoc": "^0.17.8",
-    "@memlab/memlab-typedoc-plugin-markdown": "^3.12.9",
+    "@memlab/memlab-typedoc-plugin-markdown": "3.13.21",
     "clsx": "^1.1.1",
     "prism-react-renderer": "^1.3.3",
     "raw-loader": "^4.0.2",

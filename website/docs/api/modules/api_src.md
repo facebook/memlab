@@ -16,8 +16,6 @@ custom_edit_url: null
 
 Options for configuring browser interaction run, all fields are optional
 
-#### Type declaration
-
 | Name | Type | Description |
 | :------ | :------ | :------ |
 | `cookiesFile?` | `string` | the absolute path of cookies file |
@@ -34,8 +32,6 @@ ___
 ### <a id="runresult" name="runresult"></a> **RunResult**: `Object`
 
 A data structure holding the result of the [run](api_src.md#run) API call.
-
-#### Type declaration
 
 | Name | Type | Description |
 | :------ | :------ | :------ |

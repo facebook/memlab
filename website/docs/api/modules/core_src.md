@@ -22,10 +22,6 @@ custom_edit_url: null
 
 ### <a id="checkpageloadcallback" name="checkpageloadcallback"></a> **CheckPageLoadCallback**: (`page`: `Page`) => `Promise`<`boolean`\>
 
-#### Type declaration
-
-### <a id="__type"></a>(`page`)
-
 Callback function to provide if the page is loaded.
 
  * **Parameters**:
@@ -46,10 +42,6 @@ ___
 
 ### <a id="edgeiterationcallback" name="edgeiterationcallback"></a> **EdgeIterationCallback**: (`edge`: [`IHeapEdge`](../interfaces/core_src.IHeapEdge.md)) => `Optional`<{ `stop`: `boolean`  }\>
 
-#### Type declaration
-
-### <a id="__type"></a>(`edge`)
-
  * **Parameters**:
     * `edge`: [`IHeapEdge`](../interfaces/core_src.IHeapEdge.md)
  * **Returns**: `Optional`<{ `stop`: `boolean`  }\>
@@ -60,10 +52,6 @@ ___
 ___
 
 ### <a id="initleakfiltercallback" name="initleakfiltercallback"></a> **InitLeakFilterCallback**: (`snapshot`: [`IHeapSnapshot`](../interfaces/core_src.IHeapSnapshot.md), `leakedNodeIds`: `HeapNodeIdSet`) => `void`
-
-#### Type declaration
-
-### <a id="__type"></a>(`snapshot`, `leakedNodeIds`)
 
 Lifecycle function callback that is invoked initially once before calling any
 leak filter function.
@@ -80,10 +68,6 @@ ___
 
 ### <a id="interactionscallback" name="interactionscallback"></a> **InteractionsCallback**: (`page`: `Page`, `args?`: `OperationArgs`) => `Promise`<`void`\>
 
-#### Type declaration
-
-### <a id="__type"></a>(`page`, `args?`)
-
 The callback defines browser interactions which are
 used by memlab to interact with the web app under test.
 
@@ -98,10 +82,6 @@ used by memlab to interact with the web app under test.
 ___
 
 ### <a id="leakfiltercallback" name="leakfiltercallback"></a> **LeakFilterCallback**: (`node`: [`IHeapNode`](../interfaces/core_src.IHeapNode.md), `snapshot`: [`IHeapSnapshot`](../interfaces/core_src.IHeapSnapshot.md), `leakedNodeIds`: `HeapNodeIdSet`) => `boolean`
-
-#### Type declaration
-
-### <a id="__type"></a>(`node`, `snapshot`, `leakedNodeIds`)
 
 Callback that can be used to define a logic to filter the
 leaked objects. The callback is only called for every node
@@ -135,10 +115,6 @@ ___
 | :------ |
 | `T` |
 
-#### Type declaration
-
-### <a id="__type"></a>(`node`)
-
  * **Parameters**:
     * `node`: `T`
  * **Returns**: `boolean`
@@ -149,8 +125,6 @@ ___
 ___
 
 ### <a id="runmetainfo" name="runmetainfo"></a> **RunMetaInfo**: `Object`
-
-#### Type declaration
 
 | Name | Type |
 | :------ | :------ |
