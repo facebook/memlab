@@ -1,15 +1,15 @@
 # Installation
 
+```bash
+npm install -g memlab
+```
+
 ## Prequisites
 
 - [Node.js](https://nodejs.org/) version 14 or above:
   - When installing Node.js, you are recommended to check all checkboxes related to dependencies.
 - [Npm](https://docs.npmjs.com/)
 
-## Install
-```bash
-npm install -g memlab
-```
 
 ## Commands
 To check if the installation complete, run `memlab help` in your console, you should see helper text as follows:

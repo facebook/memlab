@@ -7,7 +7,7 @@ In a nutshell, memlab starts a headless Chrome browser, interacts with the page,
 takes heap snapshots, and finds memory leaks by parsing, diffing, and analyzing
 heap snapshots.
 
-### 1. Browser Interaction
+## 1. Browser Interaction
 For example, if we want to find memory leaks triggered by some interactions
 in a web app on a target page (`TP`), memlab visits the web page in the
 following order:
@@ -24,7 +24,7 @@ following order:
    *(the final page is specified by the **`back`**
    callback in [test scenario](api/interfaces/core_src.IScenario))*
 
-### 2. Heap Analysis
+## 2. Heap Analysis
 
 **Snapshot decoding**: memlab decodes V8 (or hermes) heap snapshots and
 provides [APIs](./api/interfaces/core_src.IHeapSnapshot) that allows
@@ -51,7 +51,7 @@ The built-in leak detectors use domain-specific heuristics to further refine
 the list of leaked objects (e.g., detached DOM elements, error stack trace, etc.
 memlab also identifies React Fiber tree and detects unmounted Fiber nodes).
 
-### 3. Retainer Traces for Memory Leaks
+## 3. Retainer Traces for Memory Leaks
 
 memlab generates retainer traces from GC roots to leaked objects. Sometimes
 certain interactions could trigger thoudsands of leaked objects, it would be

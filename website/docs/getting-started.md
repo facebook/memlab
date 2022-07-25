@@ -9,7 +9,7 @@ in your local machine. We start with defining the scenario file where we
 specify how memlab should interact with our page.
 
 
-### Write a Test Scenario
+## Write a Test Scenario
 A scenario file is a `js` file that exports functions to provide details about
 how to navigate to and interact with your page. Now let's copy the following
 example and save it as `~/memlab/scenraio.js` file somewhere we can find later.
@@ -40,7 +40,7 @@ Feel free to save the scenario file anywhere. We will be running memlab
 with this file shortly.
 :::
 
-### Running memlab
+## Running memlab
 Run `memlab` in your console to make sure it is installed. You should see
 the help instructions in console.
 

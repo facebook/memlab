@@ -18,7 +18,7 @@
 
 /* You can override the default Infima variables here. */
 :root {
-  --ifm-code-font-size: 85%;
+  --ifm-code-font-size: 95%;
   --ifm-color-primary: #32accd;
   --ifm-color-primary-dark: #2d9bb9;
   --ifm-color-primary-darker: #2a92ae;
@@ -29,14 +29,11 @@
   --ifm-container-width: 1140px;
   --ifm-table-cell-padding: 0.35rem;
   --ifm-paragraph-margin: 0rem;
+  --ifm-font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", Oxygen, Cantarell,  "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif
 }
 
-:root code {
-  color: var(--ifm-color-gray-800);
-}
-
-:root a code {
-  color: var(--ifm-link-color);
+:root .prism-code {
+  --ifm-code-font-size: 85%;
 }
 
 /* For readability concerns, you should choose a lighter palette in dark mode. */
@@ -50,8 +47,8 @@
   --ifm-color-primary-lightest: #70c5dc;
 }
 
-[data-theme='dark'] code {
-  color: var(--ifm-font-color-base);
+.padding-top--md {
+  padding-top: 32px !important;
 }
 
 article {
@@ -61,38 +58,71 @@ article {
 }
 
 article h1 {
-  font-size: 2.3rem !important;
+  font-size: 32px !important;
+  font-weight: 600;
 }
 
 article h1 code {
-  font-size: 2.3rem !important;
+  font-size: 32px !important;
 }
 
 article h2 {
-  font-size: 1.8rem !important;
+  font-size: 24px !important;
+  font-weight: 600;
+  margin: 48px 0 16px;
+  border-top: 1px solid rgba(60, 60, 60, .12);
+  padding-top: 24px;
+  letter-spacing: -.02em;
+}
+
+[data-theme='dark'] article h2 {
+  border-top: 1px solid rgba(84, 84, 84, .48);
 }
 
 article h2 code {
-  font-size: 1.8rem !important;
+  font-size: 24px !important;
 }
 
 article h3 {
-  font-size: 1.3rem !important;
+  font-size: 20px !important;
+  font-weight: 600;
 }
 
 article h3 code {
-  font-size: 1.3rem !important;
+  font-size: 20px !important;
+}
+
+article strong {
+  font-weight: 600;
 }
 
 .navbar .navbar__items {
   flex: auto;
 }
 
+hr {
+  background-color: rgba(60, 60, 60, .12);
+}
+
+[data-theme='dark'] hr {
+  background-color: rgba(84, 84, 84, .48);
+}
+
+a code {
+  color: var(--ifm-link-color);
+}
+
 code {
   border: none;
+  color: var(--ifm-color-gray-800);
   font-family: monospace, 'Courier New', Courier;
-  font-size: 0.95rem;
-  font-weight: bold;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 3px 6px;
+}
+
+[data-theme='dark'] code {
+  color: var(--ifm-color-gray-200);
 }
 
 #header-animation-canvas {

@@ -146,7 +146,7 @@ export default function Home(): React.ReactElement {
                   'button button--outline button--secondary button--lg',
                   styles.getStarted,
                 )}
-                to={useBaseUrl('docs/intro')}>
+                to={useBaseUrl('docs/getting-started')}>
                 Learn more
               </Link>
             </div>
