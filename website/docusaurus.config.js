@@ -47,6 +47,13 @@ const config = {
         readme: 'none',
       },
     ],
+    [
+      '@docusaurus/plugin-google-gtag',
+      {
+        trackingID: 'G-LGBX08ST0E',
+        anonymizeIP: true,
+      },
+    ],
   ],
   presets: [
     [
