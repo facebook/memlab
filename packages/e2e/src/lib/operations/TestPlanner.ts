@@ -154,7 +154,8 @@ export class TestPlanner {
     synthesizer: IE2EScenarioSynthesizer,
   ): Cookies {
     if (this.scenario && this.scenario.cookies) {
-      return this.scenario.cookies();
+      const cookies = this.scenario.cookies();
+      return this.populateDomainInCookiesFromScenario(cookies, this.scenario);
     }
     let cookieFile = synthesizer.getCookieFile(visitPlan);
 
@@ -176,6 +177,23 @@ export class TestPlanner {
       synthesizer.getDomain(),
       synthesizer.getDomainPrefixes(),
     );
+  }
+
+  private populateDomainInCookiesFromScenario(
+    cookies: Cookies,
+    scenario: IScenario,
+  ): Cookies {
+    const ret = [];
+    const url = new URL(scenario.url());
+    const domain = '.' + url.hostname.split('.').slice(1).join('.');
+    for (const cookie of cookies) {
+      if (cookie.domain) {
+        ret.push({...cookie});
+      } else {
+        ret.push({...cookie, domain});
+      }
+    }
+    return ret;
   }
 
   private populateDomainInCookies(

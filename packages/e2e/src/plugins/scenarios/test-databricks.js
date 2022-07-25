@@ -26,7 +26,7 @@ async function back(page) {
 
 // specify the number of repeat for the action
 function repeat() {
-  return 15;
+  return 1;
 }
 
 module.exports = {action, back, repeat, url};

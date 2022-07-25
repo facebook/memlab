@@ -29,11 +29,11 @@ Callback function to provide if the page is loaded.
  * **Returns**: `Promise`<`boolean`\>
 
  * **Source**:
-    * core/src/lib/Types.ts:724
+    * core/src/lib/Types.ts:737
 
 ___
 
-### <a id="cookies" name="cookies"></a> **Cookies**: { `name`: `string` ; `value`: `string`  }[]
+### <a id="cookies" name="cookies"></a> **Cookies**: { `domain?`: `string` ; `name`: `string` ; `value`: `string`  }[]
 
  * **Source**:
     * core/src/lib/Types.ts:104
@@ -47,7 +47,7 @@ ___
  * **Returns**: `Optional`<{ `stop`: `boolean`  }\>
 
  * **Source**:
-    * core/src/lib/Types.ts:1206
+    * core/src/lib/Types.ts:1219
 
 ___
 
@@ -62,7 +62,7 @@ leak filter function.
  * **Returns**: `void`
 
  * **Source**:
-    * core/src/lib/Types.ts:320
+    * core/src/lib/Types.ts:321
 
 ___
 
@@ -77,7 +77,7 @@ used by memlab to interact with the web app under test.
  * **Returns**: `Promise`<`void`\>
 
  * **Source**:
-    * core/src/lib/Types.ts:355
+    * core/src/lib/Types.ts:356
 
 ___
 
@@ -103,7 +103,7 @@ function leakFilter(node, _snapshot, _leakedNodeIds) {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:345
+    * core/src/lib/Types.ts:346
 
 ___
 
@@ -134,7 +134,7 @@ ___
 | `type` | `string` |
 
  * **Source**:
-    * core/src/lib/Types.ts:781
+    * core/src/lib/Types.ts:794
 
 ## Functions
 

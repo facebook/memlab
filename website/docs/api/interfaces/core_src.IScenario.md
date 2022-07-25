@@ -64,6 +64,8 @@ const scenario = {
     await page.click('a[href="/back"]');
   },
 }
+
+module.exports = scenario;
 ```
 Note: always clean up external puppeteer references to JS objects
       in the browser context.
@@ -81,10 +83,12 @@ const scenario = {
   },
   back: async (page) => ... ,
 }
+
+module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:481
+    * core/src/lib/Types.ts:494
 
 ___
 
@@ -109,7 +113,7 @@ Check out [this page](/docs/how-memlab-works) on why
 memlab needs to undo/revert the `action` callback.
 
  * **Source**:
-    * core/src/lib/Types.ts:501
+    * core/src/lib/Types.ts:514
 
 ___
 
@@ -141,7 +145,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:578
+    * core/src/lib/Types.ts:591
 
 ___
 
@@ -181,7 +185,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:551
+    * core/src/lib/Types.ts:564
 
 ___
 
@@ -228,7 +232,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:620
+    * core/src/lib/Types.ts:633
 
 ## Methods
 
@@ -239,7 +243,11 @@ specific cookie(s) to be set, you can pass them as
 a list of `<name, value, domain>` tuples.
 
 **Note**: please make sure that you provide the correct `domain` field for
-the cookies tuples.
+the cookies tuples. If no `domain` field is specified, memlab will try
+to fill in a domain based on the `url` callback.
+For example, when the `domain` field is absent,
+memlab will auto fill in `.facebook.com` as domain base
+on the initial page load's url: `https://www.facebook.com/`.
 
  * **Returns**: [`Cookies`](../modules/core_src.md#cookies) | cookie list
 * **Examples**:
@@ -254,10 +262,12 @@ const scenario = {
     // ...
   ],
 };
+
+module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:424
+    * core/src/lib/Types.ts:431
 
 ___
 
@@ -278,7 +288,7 @@ module.exports = {
 
  * **Returns**: `number`
  * **Source**:
-    * core/src/lib/Types.ts:516
+    * core/src/lib/Types.ts:529
 
 ___
 
@@ -292,6 +302,8 @@ String value of the initial url of the page.
 const scenario = {
   url: () => 'https://www.npmjs.com/',
 };
+
+module.exports = scenario;
 ```
 If a test scenario only specifies the `url` callback (without the `action`
 callback), memlab will try to detect memory leaks from the initial page
@@ -299,4 +311,4 @@ load. All objects allocated by the initial page load will be candidates
 for memory leak filtering.
 
  * **Source**:
-    * core/src/lib/Types.ts:440
+    * core/src/lib/Types.ts:449

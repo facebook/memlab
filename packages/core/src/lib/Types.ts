@@ -104,6 +104,7 @@ export type CLIArgs = {
 export type Cookies = Array<{
   name: string;
   value: string;
+  domain?: string;
 }>;
 
 /** @internal */
@@ -404,7 +405,11 @@ export interface IScenario {
    * a list of `<name, value, domain>` tuples.
    *
    * **Note**: please make sure that you provide the correct `domain` field for
-   * the cookies tuples.
+   * the cookies tuples. If no `domain` field is specified, memlab will try
+   * to fill in a domain based on the `url` callback.
+   * For example, when the `domain` field is absent,
+   * memlab will auto fill in `.facebook.com` as domain base
+   * on the initial page load's url: `https://www.facebook.com/`.
    *
    * @returns cookie list
    * * **Examples**:
@@ -419,6 +424,8 @@ export interface IScenario {
    *     // ...
    *   ],
    * };
+   *
+   * module.exports = scenario;
    * ```
    */
   cookies?: () => Cookies;
@@ -431,6 +438,8 @@ export interface IScenario {
    * const scenario = {
    *   url: () => 'https://www.npmjs.com/',
    * };
+   *
+   * module.exports = scenario;
    * ```
    * If a test scenario only specifies the `url` callback (without the `action`
    * callback), memlab will try to detect memory leaks from the initial page
@@ -459,6 +468,8 @@ export interface IScenario {
    *     await page.click('a[href="/back"]');
    *   },
    * }
+   *
+   * module.exports = scenario;
    * ```
    * Note: always clean up external puppeteer references to JS objects
    *       in the browser context.
@@ -476,6 +487,8 @@ export interface IScenario {
    *   },
    *   back: async (page) => ... ,
    * }
+   *
+   * module.exports = scenario;
    ```
    */
   action?: InteractionsCallback;
