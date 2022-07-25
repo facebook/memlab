@@ -26,10 +26,13 @@ Callback function to provide if the page is loaded.
 
  * **Parameters**:
     * `page`: `Page` | puppeteer's [Page](https://pptr.dev/api/puppeteer.page/) object.
- * **Returns**: `Promise`<`boolean`\>
+ * **Returns**: `Promise`<`boolean`\> | a boolean value, if it returns `true`, memlab will consider
+the navigation completes, if it returns `false`, memlab will keep calling
+this callback until it returns `true`. This is an async callback, you can
+also `await` and returns `true` until some async logic is resolved.
 
  * **Source**:
-    * core/src/lib/Types.ts:737
+    * core/src/lib/Types.ts:745
 
 ___
 
@@ -47,7 +50,7 @@ ___
  * **Returns**: `Optional`<{ `stop`: `boolean`  }\>
 
  * **Source**:
-    * core/src/lib/Types.ts:1219
+    * core/src/lib/Types.ts:1227
 
 ___
 
@@ -134,7 +137,7 @@ ___
 | `type` | `string` |
 
  * **Source**:
-    * core/src/lib/Types.ts:794
+    * core/src/lib/Types.ts:802
 
 ## Functions
 

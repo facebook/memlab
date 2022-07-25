@@ -2,7 +2,7 @@
 id: 'integration-and-file-structure'
 ---
 
-# Continuous Test
+# Set up Continuous Test
 
 Setting up a continuous testing service that finds web memory leaks with memlab
 consists of a few parts:

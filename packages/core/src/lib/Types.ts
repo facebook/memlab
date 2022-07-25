@@ -496,6 +496,10 @@ export interface IScenario {
    * `back` is the callback function that specifies how memlab should
    * back/revert the `action` callback. Think of it as an undo action.
    *
+   * * **Parameters**:
+   *   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+   *     object, which provides APIs to interact with the web browser
+   *
    * * **Examples**:
    * ```typescript
    * const scenario = {
@@ -733,6 +737,10 @@ export interface IDataBuilder {
 /**
  * Callback function to provide if the page is loaded.
  * @param page - puppeteer's [Page](https://pptr.dev/api/puppeteer.page/) object.
+ * @returns a boolean value, if it returns `true`, memlab will consider
+ * the navigation completes, if it returns `false`, memlab will keep calling
+ * this callback until it returns `true`. This is an async callback, you can
+ * also `await` and returns `true` until some async logic is resolved.
  */
 export type CheckPageLoadCallback = (page: Page) => Promise<boolean>;
 

@@ -1,8 +1,5 @@
 # How memlab Works
 
-Manually triggering, finding, and analyzing memory leaks is tedious
-and inefficient. MemLab is designed to automate and ease the process.
-
 In a nutshell, memlab starts a headless Chrome browser, interacts with the page,
 takes heap snapshots, and finds memory leaks by parsing, diffing, and analyzing
 heap snapshots.

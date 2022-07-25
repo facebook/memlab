@@ -23,7 +23,11 @@
 /** @type {import('@docusaurus/plugin-content-docs').SidebarsConfig} */
 const sidebars = {
   sidebar: [
-    'intro',
+    {
+      type: 'doc',
+      id: 'intro',
+      label: 'Introduction',
+    },
     'installation',
     'getting-started',
     'cli/CLI-commands',

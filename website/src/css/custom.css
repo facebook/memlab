@@ -19,6 +19,8 @@
 /* You can override the default Infima variables here. */
 :root {
   --ifm-code-font-size: 95%;
+  --doc-sidebar-width: 330px !important;
+  --ifm-color-content: #172531;
   --ifm-color-primary: #32accd;
   --ifm-color-primary-dark: #2d9bb9;
   --ifm-color-primary-darker: #2a92ae;
@@ -54,7 +56,7 @@
 article {
   margin-left: auto;
   margin-right: auto;
-  max-width: 780px;
+  max-width: 730px;
 }
 
 article h1 {

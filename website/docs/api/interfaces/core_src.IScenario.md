@@ -97,6 +97,10 @@ ___
 `back` is the callback function that specifies how memlab should
 back/revert the `action` callback. Think of it as an undo action.
 
+* **Parameters**:
+  * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+    object, which provides APIs to interact with the web browser
+
 * **Examples**:
 ```typescript
 const scenario = {
@@ -113,7 +117,7 @@ Check out [this page](/docs/how-memlab-works) on why
 memlab needs to undo/revert the `action` callback.
 
  * **Source**:
-    * core/src/lib/Types.ts:514
+    * core/src/lib/Types.ts:518
 
 ___
 
@@ -145,7 +149,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:591
+    * core/src/lib/Types.ts:595
 
 ___
 
@@ -185,7 +189,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:564
+    * core/src/lib/Types.ts:568
 
 ___
 
@@ -232,7 +236,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:633
+    * core/src/lib/Types.ts:637
 
 ## Methods
 
@@ -288,7 +292,7 @@ module.exports = {
 
  * **Returns**: `number`
  * **Source**:
-    * core/src/lib/Types.ts:529
+    * core/src/lib/Types.ts:533
 
 ___
 
