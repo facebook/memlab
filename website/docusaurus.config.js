@@ -171,6 +171,14 @@ const config = {
         copyright: `Copyright © ${new Date().getFullYear()}
           Facebook, Inc. Built with Docusaurus.`,
       },
+      algolia: {
+        // The application ID provided by Algolia
+        appId: 'OLRNUAX6MR',
+        // Public API key: it is safe to commit it
+        apiKey: 'f7470165b69610e2eca6a903e6b7683d',
+        indexName: 'memlab doc site',
+        contextualSearch: false,
+      },
     },
 };
 

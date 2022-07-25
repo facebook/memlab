@@ -1,0 +1,25 @@
+{
+  "index_name": "memlab doc site",
+  "start_urls": [
+    "https://facebookincubator.github.io/memlab/docs/intro",
+    "https://facebookincubator.github.io/memlab/docs/installation",
+    "https://facebookincubator.github.io/memlab/docs/getting-started",
+    "https://facebookincubator.github.io/memlab/docs/cli/CLI-commands",
+    "https://facebookincubator.github.io/memlab/docs/guides/guides-detached-dom",
+    "https://facebookincubator.github.io/memlab/docs/guides/guides-detect-oversized-object",
+    "https://facebookincubator.github.io/memlab/docs/guides/guides-find-leaks",
+    "https://facebookincubator.github.io/memlab/docs/guides/integration-and-file-structure",
+    "https://facebookincubator.github.io/memlab/docs/how-memlab-works",
+    "https://facebookincubator.github.io/memlab/docs/api/"
+  ],
+  "stop_urls": [],
+  "selectors": {
+    "lvl0": "article h1",
+    "lvl1": "article h2",
+    "lvl2": "article h3",
+    "lvl3": "article h4",
+    "lvl4": "article h5",
+    "lvl5": "article h6",
+    "text": "article p, article li"
+  }
+}
