@@ -42,7 +42,8 @@ npm install && npm run dev
 ```
 
 This will spin up an example Nextjs app. Let's make sure it is
-running by visiting from your browser [http://localhost:3000](http://localhost:3000):
+running by visiting from your browser
+[http://localhost:3000](http://localhost:3000):
 
 :::note
 The port number `:3000` may be different in your case.
@@ -68,6 +69,32 @@ memlab run --scenario ~/memlab/scenarios/detached-dom.js
 
 For each leaked object group, memLab prints one representative leak trace.
 
+![memlab run result](./memlab-result-2.png)
+
+Let's break down the results from the top to bottom:
+
+**Part-1**: Browser interaction breadcrumb shows the browser
+interactions (navigations) `memlab` performed as specified in our scenario file.
+
+  * **`page-load[6.5MB](baseline)[s1]`** - the JavaScript heap size was
+    `6.5MB` on initial page load. The `baseline` heap snapshot will be saved as
+    `s1.heapsnapshot` on disk.
+  * **`action-on-page[6.6MB](baseline)[s2]`** - After clicking the
+    "Create detached DOMs" button, the heap size increased to `6.6MB`.
+  * **`revert[7MB](final)[s3]`** - The web page finally reached 7MB
+    after navigating away from the page that triggered the memory leak.
+
+**Part-2**: Overall summary of the leak trace
+
+  * **`1024 leaks`** - There were 1024 leaked objects.
+    Line 12 of the [example app](docs/guides/guides-detached-dom#example-web-app-under-test)
+    created **1024** detached DOM objects in the `for` loop.
+  * **`Retained size`** - the aggregated retained sizes of the leaked objects
+    cluster is `143.3KB` (memory leaks are grouped together based on the
+    similarity of retainer traces).
+
+**Part-3**: Detailed representative *leak trace* for each leak cluster
+
 :::note
 A *leak trace* is an object reference chain from the GC root to a leaked object.
 The trace shows why and how a leaked object is still kept alive in memory.
@@ -78,28 +105,11 @@ By following the leak trace one step at a time, you will be able to find a
 reference that should be set to `null` (but it wasn't due to a bug).
 :::
 
-![memlab run result](./memlab-result.png)
-
-Let's break down the result from the top to bottom.
-- The red rectangle shows the browser interactions (navigations) `memlab` performed as specified in our scenario file.
-    - **`page-load[6.2MB](baseline)[s1]`** - the JavaScript heap size was
-    `6.2MB` on initial page load. The `baseline` heap snapshot will be saved as
-    `s1.heapsnapshot` on disk.
-    After clicking the *Create detached DOMs* button,
-    the heap size increased to `6.3MB` and it stayed the same after navigating away.
-
-- Overall summary of the leak trace.
-    - **`1024 leaks`** - it shows that there were 1024 leaked objects.
-    (Line `12` of the [example app](docs/guides/guides-detached-dom#example-web-app-under-test)
-    created **1024** detached DOM objects in the `for` loop)
-    - **`Retained size`** - the aggregated retained sizes of the leaked objects
-    cluster is `143.3KB` (memory leaks are grouped together based on the similarity of retainer traces).
-
-- **`leakedObjects`** - this shows that `leakedObjects` was a property of
-`Window` object with size `148.5KB` pointing to an `Array` object.
-Since it is overwhelming to show all 1024 leak traces,
-`memlab` only prints one represantative leak trace.
-In short, the leak trace path from `window` object to leaked object is:
+  * `leakedObjects` - this shows that `leakedObjects` was a property of
+    `Window` object with size `148.5KB` pointing to an `Array` object.
+    Since it is overwhelming to show all 1024 leak traces,
+    `memlab` only prints one represantative leak trace.
+    In short, the leak trace path from `window` object to leaked object is:
 ```
 [window](object) -> leakedObjects(property) -> [Array](object)
   -> 0(element) -> [Detached HTMLDIVElement](native)
