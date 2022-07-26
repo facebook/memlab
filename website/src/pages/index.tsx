@@ -125,9 +125,7 @@ export default function Home(): React.ReactElement {
   }, []);
 
   return (
-    <Layout
-      title={`${siteConfig.title}`}
-      description="memlab is an E2E testing, memory leak detection, and heap analysis framework for front-end JavaScript.">
+    <Layout description="memlab is an E2E testing, memory leak detection, and heap analysis framework for front-end JavaScript.">
       <header
         id={headerContainerID}
         className={clsx('hero hero--primary', styles.heroBanner)}>
