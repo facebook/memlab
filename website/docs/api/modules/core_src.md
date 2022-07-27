@@ -32,7 +32,7 @@ this callback until it returns `true`. This is an async callback, you can
 also `await` and returns `true` until some async logic is resolved.
 
  * **Source**:
-    * core/src/lib/Types.ts:745
+    * core/src/lib/Types.ts:752
 
 ___
 
@@ -50,7 +50,7 @@ ___
  * **Returns**: `Optional`<{ `stop`: `boolean`  }\>
 
  * **Source**:
-    * core/src/lib/Types.ts:1227
+    * core/src/lib/Types.ts:1234
 
 ___
 
@@ -65,7 +65,7 @@ leak filter function.
  * **Returns**: `void`
 
  * **Source**:
-    * core/src/lib/Types.ts:321
+    * core/src/lib/Types.ts:328
 
 ___
 
@@ -80,7 +80,7 @@ used by memlab to interact with the web app under test.
  * **Returns**: `Promise`<`void`\>
 
  * **Source**:
-    * core/src/lib/Types.ts:356
+    * core/src/lib/Types.ts:363
 
 ___
 
@@ -106,7 +106,7 @@ function leakFilter(node, _snapshot, _leakedNodeIds) {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:346
+    * core/src/lib/Types.ts:353
 
 ___
 
@@ -137,7 +137,7 @@ ___
 | `type` | `string` |
 
  * **Source**:
-    * core/src/lib/Types.ts:802
+    * core/src/lib/Types.ts:809
 
 ## Functions
 

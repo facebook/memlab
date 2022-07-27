@@ -289,6 +289,21 @@ memlab analyze unmounted-fiber-node
 ## MISC Commands
 
 
+### memlab version
+
+Show the versions of all memlab packages installed
+
+```bash
+memlab version 
+```
+
+**Options**:
+ * **`--help`**, **`-h`**: print helper text
+ * **`--verbose`**, **`-v`**: show more details
+ * **`--sc`**: set to continuous test mode
+ * **`--debug`**: enable manual debugging
+ * **`--silent`**, **`-s`**: mute all terminal output
+
 ### memlab list
 
 List all test scenarios

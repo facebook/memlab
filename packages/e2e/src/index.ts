@@ -8,6 +8,13 @@
  * @format
  */
 
+import path from 'path';
+import {PackageInfoLoader} from '@memlab/core';
+/** @internal */
+export async function registerPackage(): Promise<void> {
+  return PackageInfoLoader.registerPackage(path.join(__dirname, '..'));
+}
+
 export {default as defaultTestPlanner} from './lib/operations/TestPlanner';
 export * from './lib/operations/TestPlanner';
 export {default as Xvfb} from './lib/operations/XVirtualFrameBuffer';

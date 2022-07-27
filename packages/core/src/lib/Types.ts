@@ -145,6 +145,13 @@ export interface E2EScenarioSynthesizerConstructor {
 }
 
 /** @internal */
+export interface IPackageInfo {
+  name: string;
+  version: string;
+  packageLocation?: string;
+}
+
+/** @internal */
 export interface IRunningMode {
   setConfig(config: Config): void;
   beforeRunning(visitPlan: IE2EScenarioVisitPlan): void;

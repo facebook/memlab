@@ -8,6 +8,13 @@
  * @format
  */
 
+import path from 'path';
+import {PackageInfoLoader} from './lib/PackageInfoLoader';
+/** @internal */
+export async function registerPackage(): Promise<void> {
+  return PackageInfoLoader.registerPackage(path.join(__dirname, '..'));
+}
+
 export * from './lib/Types';
 /** @internal */
 export {default as config} from './lib/Config';
@@ -43,4 +50,6 @@ export {default as leakClusterLogger} from './logger/LeakClusterLogger';
 export {default as NormalizedTrace} from './trace-cluster/TraceBucket';
 /** @internal */
 export {default as EvaluationMetric} from './trace-cluster/EvalutationMetric';
+/** @internal */
+export * from './lib/PackageInfoLoader';
 export * from './lib/NodeHeap';

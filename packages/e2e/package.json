@@ -1,6 +1,6 @@
 {
   "name": "@memlab/e2e",
-  "version": "1.0.3",
+  "version": "1.0.6",
   "license": "MIT",
   "description": "memlab browser E2E interaction libraries",
   "author": "Liang Gong <lgong@fb.com>",
@@ -20,7 +20,7 @@
     "static"
   ],
   "dependencies": {
-    "@memlab/core": "^1.0.0",
+    "@memlab/core": "^1.1.5",
     "ansi": "^0.3.1",
     "babar": "^0.2.0",
     "chalk": "^4.0.0",

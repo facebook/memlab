@@ -8,6 +8,13 @@
  * @format
  */
 
+import path from 'path';
+import {PackageInfoLoader} from '@memlab/core';
+/** @internal */
+export async function registerPackage(): Promise<void> {
+  return PackageInfoLoader.registerPackage(path.join(__dirname, '..'));
+}
+
 export * from './API';
 export * from '@memlab/heap-analysis';
 export {default as BrowserInteractionResultReader} from './result-reader/BrowserInteractionResultReader';

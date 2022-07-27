@@ -25,6 +25,7 @@ import type {
   Optional,
   QuickExperiment,
   ILeakFilter,
+  IPackageInfo,
 } from './Types';
 import {setInternalValue} from './InternalValueSetter';
 
@@ -84,14 +85,20 @@ export enum ErrorHandling {
 
 /** @internal */
 export class MemLabConfig {
-  snapshotHasDetachedness: boolean;
-  specifiedEngine: boolean;
-  verbose: boolean;
-  jsEngine: string;
   _reportLeaksInTimers: boolean;
   _deviceManualOverridden: boolean;
   _timerNodes: string[];
   _timerEdges: string[];
+  _isFullRun: boolean;
+  _scenario: Optional<IScenario>;
+  _isHeadfulBrowser: boolean;
+  _browser: string;
+  _packageInfo: IPackageInfo[];
+
+  snapshotHasDetachedness: boolean;
+  specifiedEngine: boolean;
+  verbose: boolean;
+  jsEngine: string;
   targetApp: string;
   targetTab: string;
   analysisMode: string;
@@ -138,7 +145,6 @@ export class MemLabConfig {
     BrowserConnectOptions;
   openDevtoolsConsole: boolean;
   emulateDevice: Nullable<Device>;
-  _browser: string;
   addEnableGK: Set<string>;
   addDisableGK: Set<string>;
   qes: QuickExperiment[];
@@ -213,9 +219,6 @@ export class MemLabConfig {
   oversizeObjectAsLeak: boolean;
   oversizeThreshold: number;
   clusterRetainedSizeThreshold: number;
-  _isFullRun: boolean;
-  _scenario: Optional<IScenario>;
-  _isHeadfulBrowser: boolean;
   externalLeakFilter?: Optional<ILeakFilter>;
   monoRepoDir: string;
   muteConsole: boolean;
@@ -281,6 +284,8 @@ export class MemLabConfig {
     this.jsEngine = constant.defaultEngine;
     // the default browser (Chromium)
     this._browser = 'chrome';
+    // a list of package information
+    this._packageInfo = [];
     // a set of additional GKs to be enabled
     this.addEnableGK = new Set();
     // a set of additional GKs to be disabled
