@@ -93,7 +93,6 @@ export class MemLabConfig {
   _scenario: Optional<IScenario>;
   _isHeadfulBrowser: boolean;
   _browser: string;
-  _packageInfo: IPackageInfo[];
 
   snapshotHasDetachedness: boolean;
   specifiedEngine: boolean;
@@ -225,6 +224,7 @@ export class MemLabConfig {
   logUnclassifiedClusters: boolean;
   errorHandling: ErrorHandling;
   clusterStrategy: Optional<IClusterStrategy>;
+  packageInfo: IPackageInfo[];
 
   constructor(options: ConfigOption = {}) {
     // init properties, they can be configured manually
@@ -285,7 +285,7 @@ export class MemLabConfig {
     // the default browser (Chromium)
     this._browser = 'chrome';
     // a list of package information
-    this._packageInfo = [];
+    this.packageInfo = [];
     // a set of additional GKs to be enabled
     this.addEnableGK = new Set();
     // a set of additional GKs to be disabled

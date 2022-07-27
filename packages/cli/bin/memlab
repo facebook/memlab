@@ -10,5 +10,10 @@
  * @format
  */
 
-var cli = require("@memlab/cli");
-cli.run();
+var cli = require("../dist/index");
+
+// register the `@memlab/cli` package info
+// so that `memlab version` get use the info
+(cli.registerPackage()).then(() => {
+  cli.run();
+});

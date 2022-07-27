@@ -11,19 +11,15 @@
  */
 
 var path = require('path');
-var e2e = require('@memlab/e2e');
-var heapAnalysis = require('@memlab/heap-analysis');
-var api = require('@memlab/api');
 var core = require('@memlab/core');
 var cli = require("@memlab/cli");
-// require all sub-packages to register package information
+
+// register `memlab` and `@memlab/cli` package info
+// so that `memlab version` get use the info
 Promise.all([
-    core.PackageInfoLoader.registerPackage(path.join(__dirname, '..')),
-    core.registerPackage(),
-    cli.registerPackage(),
-    api.registerPackage(),
-    heapAnalysis.registerPackage(),
-    e2e.registerPackage(),
+  // register the current `memlab` package
+  core.PackageInfoLoader.registerPackage(path.join(__dirname, '..')),
+  cli.registerPackage(),
 ]).then(() => {
-    cli.run();
+  cli.run();
 });

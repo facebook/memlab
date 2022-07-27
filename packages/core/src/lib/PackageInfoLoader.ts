@@ -47,7 +47,7 @@ export class PackageInfoLoader {
     if (!PackageInfoLoader.registeredPackages.has(packageDirectory)) {
       PackageInfoLoader.registeredPackages.add(packageDirectory);
       const packageInfo = await PackageInfoLoader.loadFrom(packageDirectory);
-      config._packageInfo.push(packageInfo);
+      config.packageInfo.push(packageInfo);
     }
   }
 }
