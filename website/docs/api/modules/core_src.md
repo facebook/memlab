@@ -8,6 +8,7 @@ custom_edit_url: null
 
 ## Interfaces
 
+- [IBrowserInfo](../interfaces/core_src.IBrowserInfo.md)
 - [IHeapEdge](../interfaces/core_src.IHeapEdge.md)
 - [IHeapEdges](../interfaces/core_src.IHeapEdges.md)
 - [IHeapLocation](../interfaces/core_src.IHeapLocation.md)
@@ -23,6 +24,7 @@ custom_edit_url: null
 ### <a id="checkpageloadcallback" name="checkpageloadcallback"></a> **CheckPageLoadCallback**: (`page`: `Page`) => `Promise`<`boolean`\>
 
 Callback function to provide if the page is loaded.
+For concrete example, check out [isPageLoaded](../interfaces/core_src.IScenario.md#ispageloaded).
 
  * **Parameters**:
     * `page`: `Page` | puppeteer's [Page](https://pptr.dev/api/puppeteer.page/) object.
@@ -32,25 +34,32 @@ this callback until it returns `true`. This is an async callback, you can
 also `await` and returns `true` until some async logic is resolved.
 
  * **Source**:
-    * core/src/lib/Types.ts:752
+    * core/src/lib/Types.ts:776
 
 ___
 
 ### <a id="cookies" name="cookies"></a> **Cookies**: { `domain?`: `string` ; `name`: `string` ; `value`: `string`  }[]
 
+Data structure for holding cookies.
+For concrete example, check out [cookies](../interfaces/core_src.IScenario.md#cookies).
+
  * **Source**:
-    * core/src/lib/Types.ts:104
+    * core/src/lib/Types.ts:119
 
 ___
 
 ### <a id="edgeiterationcallback" name="edgeiterationcallback"></a> **EdgeIterationCallback**: (`edge`: [`IHeapEdge`](../interfaces/core_src.IHeapEdge.md)) => `Optional`<{ `stop`: `boolean`  }\>
 
+Executes a provided callback once for JavaScript references.
+For concrete examples, check out [forEachReference](../interfaces/core_src.IHeapNode.md#foreachreference)
+or [forEachReferrer](../interfaces/core_src.IHeapNode.md#foreachreferrer).
+
  * **Parameters**:
     * `edge`: [`IHeapEdge`](../interfaces/core_src.IHeapEdge.md)
- * **Returns**: `Optional`<{ `stop`: `boolean`  }\>
+ * **Returns**: `Optional`<{ `stop`: `boolean`  }\> | this API returns void
 
  * **Source**:
-    * core/src/lib/Types.ts:1234
+    * core/src/lib/Types.ts:1291
 
 ___
 
@@ -58,14 +67,15 @@ ___
 
 Lifecycle function callback that is invoked initially once before calling any
 leak filter function.
+For concrete example, check out [beforeLeakFilter](../interfaces/core_src.ILeakFilter.md#beforeleakfilter).
 
  * **Parameters**:
-    * `snapshot`: [`IHeapSnapshot`](../interfaces/core_src.IHeapSnapshot.md)
+    * `snapshot`: [`IHeapSnapshot`](../interfaces/core_src.IHeapSnapshot.md) | heap snapshot see [IHeapSnapshot](../interfaces/core_src.IHeapSnapshot.md)
     * `leakedNodeIds`: `HeapNodeIdSet` | the set of leaked object (node) ids.
  * **Returns**: `void`
 
  * **Source**:
-    * core/src/lib/Types.ts:328
+    * core/src/lib/Types.ts:344
 
 ___
 
@@ -73,14 +83,15 @@ ___
 
 The callback defines browser interactions which are
 used by memlab to interact with the web app under test.
+For concrete examples, check out [action](../interfaces/core_src.IScenario.md#action) or [back](../interfaces/core_src.IScenario.md#back).
 
  * **Parameters**:
-    * `page`: `Page`
+    * `page`: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page) object, which provides APIs to interact with the web browser
     * `args?`: `OperationArgs`
- * **Returns**: `Promise`<`void`\>
+ * **Returns**: `Promise`<`void`\> | no return value
 
  * **Source**:
-    * core/src/lib/Types.ts:363
+    * core/src/lib/Types.ts:386
 
 ___
 
@@ -90,6 +101,8 @@ Callback that can be used to define a logic to filter the
 leaked objects. The callback is only called for every node
 allocated but not released from the target interaction
 in the heap snapshot.
+
+For concrete examples, check out [leakFilter](../interfaces/core_src.ILeakFilter.md#leakfilter).
 
  * **Parameters**:
     * `node`: [`IHeapNode`](../interfaces/core_src.IHeapNode.md) | the node that is kept alive in the memory in the heap snapshot
@@ -106,46 +119,72 @@ function leakFilter(node, _snapshot, _leakedNodeIds) {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:353
+    * core/src/lib/Types.ts:371
 
 ___
 
-### <a id="predicator" name="predicator"></a> **Predicator**<`T`\>: (`node`: `T`) => `boolean`
+### <a id="predicator" name="predicator"></a> **Predicator**<`T`\>: (`entity`: `T`) => `boolean`
 
 #### Type parameters
 
-| Name |
-| :------ |
-| `T` |
+| Name | Description |
+| :------ | :------ |
+| `T` | the type of the entity to be checked |
+
+the predicate callback is used to decide if a
+entity of type `T`.
+For more concrete examples on where it is used,
+check out [findAnyReference](../interfaces/core_src.IHeapNode.md#findanyreference), [findAnyReferrer](../interfaces/core_src.IHeapNode.md#findanyreferrer),
+and [findReferrers](../interfaces/core_src.IHeapNode.md#findreferrers).
 
  * **Parameters**:
-    * `node`: `T`
- * **Returns**: `boolean`
+    * `entity`: `T` | the entity to be checked
+ * **Returns**: `boolean` | whether the entity passes the predicate check
 
  * **Source**:
-    * core/src/lib/Types.ts:45
+    * core/src/lib/Types.ts:113
 
 ___
 
 ### <a id="runmetainfo" name="runmetainfo"></a> **RunMetaInfo**: `Object`
 
-| Name | Type |
-| :------ | :------ |
-| `app` | `string` |
-| `browserInfo` | `IBrowserInfo` |
-| `interaction` | `string` |
-| `type` | `string` |
+This data structure holds the information about memlab run.
+You can retrieve the instance of this type through [getRunMetaInfo](../classes/api_src.BrowserInteractionResultReader.md#getrunmetainfo).
+
+| Name | Type | Description |
+| :------ | :------ | :------ |
+| `browserInfo` | [`IBrowserInfo`](../interfaces/core_src.IBrowserInfo.md) | input configuration for the browser and output data from the browser |
+| `type` | `string` | type of the memlab run |
 
  * **Source**:
-    * core/src/lib/Types.ts:809
+    * core/src/lib/Types.ts:850
 
 ## Functions
 
 ### <a id="dumpnodeheapsnapshot"></a>**dumpNodeHeapSnapshot**()
 
- * **Returns**: `string`
+Take a heap snapshot of the current program state and save it as a
+`.heapsnapshot` file under a randomly generated folder inside the system's
+temp folder.
+
+**Note**: All `.heapsnapshot` files could also be loaded by Chrome DevTools.
+
+ * **Returns**: `string` | the absolute file path to the saved `.heapsnapshot` file.
+
+* **Examples**:
+```typescript
+import type {IHeapSnapshot} from '@memlab/core';
+import {dumpNodeHeapSnapshot} from '@memlab/core';
+import {getHeapFromFile} from '@memlab/heap-analysis';
+
+(async function () {
+  const heapFile = dumpNodeHeapSnapshot();
+  const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+})();
+```
+
  * **Source**:
-    * core/src/lib/NodeHeap.ts:76
+    * core/src/lib/NodeHeap.ts:96
 
 ___
 
@@ -173,7 +212,7 @@ import {getHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/NodeHeap.ts:107
+    * core/src/lib/NodeHeap.ts:127
 
 ___
 

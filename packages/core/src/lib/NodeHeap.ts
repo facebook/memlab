@@ -73,6 +73,26 @@ export function tagObject<T extends object>(o: T, tag: string): T {
   return o;
 }
 
+/**
+ * Take a heap snapshot of the current program state and save it as a
+ * `.heapsnapshot` file under a randomly generated folder inside the system's
+ * temp folder.
+ *
+ * **Note**: All `.heapsnapshot` files could also be loaded by Chrome DevTools.
+ * @returns the absolute file path to the saved `.heapsnapshot` file.
+ *
+ * * **Examples**:
+ * ```typescript
+ * import type {IHeapSnapshot} from '@memlab/core';
+ * import {dumpNodeHeapSnapshot} from '@memlab/core';
+ * import {getHeapFromFile} from '@memlab/heap-analysis';
+ *
+ * (async function () {
+ *   const heapFile = dumpNodeHeapSnapshot();
+ *   const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+ * })();
+ * ```
+ */
 export function dumpNodeHeapSnapshot(): string {
   const file = path.join(
     fileManager.generateTmpHeapDir(),

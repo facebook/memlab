@@ -41,8 +41,6 @@ export type AnyOptions = Record<string, unknown>;
 export type UnusedOptions = Record<string, never>;
 /** @internal */
 export type Command = [string, string[], AnyOptions];
-
-export type Predicator<T> = (node: T) => boolean;
 /** @internal */
 export type HeapNodeIdSet = Set<number>;
 
@@ -101,6 +99,23 @@ export type CLIArgs = {
   'snapshot-dir': string;
 };
 
+/**
+ * the predicate callback is used to decide if a
+ * entity of type `T`.
+ * For more concrete examples on where it is used,
+ * check out {@link findAnyReference}, {@link findAnyReferrer},
+ * and {@link findReferrers}.
+ *
+ * @typeParam T - the type of the entity to be checked
+ * @param entity - the entity to be checked
+ * @returns whether the entity passes the predicate check
+ */
+export type Predicator<T> = (entity: T) => boolean;
+
+/**
+ * Data structure for holding cookies.
+ * For concrete example, check out {@link cookies}.
+ */
 export type Cookies = Array<{
   name: string;
   value: string;
@@ -321,9 +336,10 @@ export interface ILeakFilter {
 /**
  * Lifecycle function callback that is invoked initially once before calling any
  * leak filter function.
+ * For concrete example, check out {@link beforeLeakFilter}.
  *
- * @param snaphost - heap snapshot see {@link IHeapSnapshot}
- * @param leakedNodeIds - the set of leaked object (node) ids.
+ * @param snapshot heap snapshot see {@link IHeapSnapshot}
+ * @param leakedNodeIds the set of leaked object (node) ids.
  */
 export type InitLeakFilterCallback = (
   snapshot: IHeapSnapshot,
@@ -335,6 +351,8 @@ export type InitLeakFilterCallback = (
  * leaked objects. The callback is only called for every node
  * allocated but not released from the target interaction
  * in the heap snapshot.
+ *
+ * For concrete examples, check out {@link leakFilter}.
  *
  * @param node - the node that is kept alive in the memory in the heap snapshot
  * @param snapshot - the snapshot of target interaction
@@ -359,6 +377,11 @@ export type LeakFilterCallback = (
 /**
  * The callback defines browser interactions which are
  * used by memlab to interact with the web app under test.
+ * For concrete examples, check out {@link action} or {@link back}.
+ *
+ * @param page the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+ * object, which provides APIs to interact with the web browser
+ * @returns no return value
  */
 export type InteractionsCallback = (
   page: Page,
@@ -743,6 +766,7 @@ export interface IDataBuilder {
 
 /**
  * Callback function to provide if the page is loaded.
+ * For concrete example, check out {@link isPageLoaded}.
  * @param page - puppeteer's [Page](https://pptr.dev/api/puppeteer.page/) object.
  * @returns a boolean value, if it returns `true`, memlab will consider
  * the navigation completes, if it returns `false`, memlab will keep calling
@@ -799,17 +823,43 @@ export type E2EStepInfo = IE2EStepBasic & {
   metrics: Record<string, number>;
 };
 
-/** @internal */
+/**
+ * This data structure contains the input configuration for the browser and
+ * output data from the browser. You can retrieve the instance of this type
+ * through {@link RunMetaInfo}.
+ */
 export interface IBrowserInfo {
+  /**
+   * browser version
+   */
   _browserVersion: string;
+  /**
+   * configuration for puppeteer
+   */
   _puppeteerConfig: LaunchOptions;
+  /**
+   * all web console output
+   */
   _consoleMessages: string[];
 }
 
+/**
+ * This data structure holds the information about memlab run.
+ * You can retrieve the instance of this type through {@link getRunMetaInfo}.
+ */
 export type RunMetaInfo = {
+  /** @internal */
   app: string;
+  /** @internal */
   interaction: string;
+  /**
+   * type of the memlab run
+   */
   type: string;
+  /**
+   * input configuration for the browser and
+   * output data from the browser
+   */
   browserInfo: IBrowserInfo;
 };
 
@@ -1231,6 +1281,13 @@ export interface IHeapNodeBasic {
   id: number;
 }
 
+/**
+ * Executes a provided callback once for JavaScript references.
+ * For concrete examples, check out {@link forEachReference}
+ * or {@link forEachReferrer}.
+ * @param callback the callback for each JavaScript reference from a collection
+ * @returns this API returns void
+ */
 export type EdgeIterationCallback = (
   edge: IHeapEdge,
 ) => Optional<{stop: boolean}>;
