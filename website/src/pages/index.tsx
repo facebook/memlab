@@ -18,6 +18,7 @@ import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import useBaseUrl from '@docusaurus/useBaseUrl';
 import styles from './styles.module.css';
 import TerminalReplay from '../components/TerminalReplay';
+import Showcase from '../components/Showcase';
 import startAnimation from '../lib/ContainerAnimation';
 import nomralizeTypeSpeed from '../lib/TypeSpeedNormalization';
 import homePageStdouts from '../data/HomePageMainTerminal';
@@ -33,7 +34,7 @@ const features: FeatureItem[] = [
     title: 'Define Your Test',
     description: (
       <>
-        Define custom E2E test scenarios on target browser interaction:
+        Define E2E test scenarios on browser interaction:
         <CodeBlock
           language="typescript"
           code={`// test.js
@@ -80,7 +81,7 @@ $ memlab analyze -h`}
     title: 'Programming API',
     description: (
       <>
-        Support different memory analyses for the previous browser test:
+        Memory analysis for JavaScript heap snapshots:
         <CodeBlock
           language="typescript"
           code={`const {findLeaks, takeSnapshots} = require('@memlab/api');
@@ -172,6 +173,7 @@ export default function Home(): React.ReactElement {
             </div>
           </section>
         )}
+        <Showcase />
       </main>
     </Layout>
   );

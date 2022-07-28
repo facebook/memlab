@@ -39,7 +39,47 @@
   width: 100%;
 }
 
+.features h3 {
+  font-weight: 600;
+}
+
 .featureImage {
   height: 200px;
   width: 200px;
+}
+
+.showcase {
+  padding: 0 20px 80px 20px;
+}
+
+.showcaseHeading {
+  font-size: 30px;
+  line-height: 1em;
+  margin-top: 20px;
+  padding: 10px 0;
+}
+
+.showcaseHeadingColored {
+  color: var(--ifm-color-content);
+  font-weight: 600;
+}
+
+.showcaseLogos {
+  align-items: center;
+  display: flex;
+  flex-flow: row wrap;
+  justify-content: center;
+  padding: 20px;
+}
+
+.showcaseLogo {
+  align-items: center;
+  background: transparent;
+  border-radius: 8px;
+  display: flex;
+  height: 100px;
+  justify-content: center;
+  margin: 15px;
+  padding: 5px;
+  width: 100px;
 }

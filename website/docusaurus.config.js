@@ -22,7 +22,7 @@ const config = {
   projectName: 'memlab',
   onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',
-  favicon: 'img/favicon.ico',
+  favicon: 'img/meta-favicon.png',
   i18n: {
     defaultLocale: 'en',
     locales: ['en'],
@@ -81,10 +81,10 @@ const config = {
     {
       navbar: {
         title: 'memlab',
-        logo: {
-          alt: 'memlab Project Logo',
-          src: 'img/logo.png',
-        },
+        // logo: {
+        //   alt: 'memlab Project Logo',
+        //   src: 'img/logo.png',
+        // },
         items: [
           {
             type: 'doc',
@@ -180,6 +180,35 @@ const config = {
         contextualSearch: false,
       },
     },
+  customFields: {
+    showAddLogoButton: false,
+    users: [
+      {
+        caption: 'Facebook',
+        imageUrl: 'img/users/fb.png',
+        infoUrl: 'https://www.facebook.com',
+        pinned: true,
+      },
+      {
+        caption: 'Instagram',
+        imageUrl: 'img/users/instagram.svg',
+        infoUrl: 'https://www.instagram.com',
+        pinned: true,
+      },
+      {
+        caption: 'Messenger',
+        imageUrl: 'img/users/messenger.svg',
+        infoUrl: 'https://www.messenger.com',
+        pinned: true,
+      },
+      {
+        caption: 'Workplace',
+        imageUrl: 'img/users/workplace.svg',
+        infoUrl: 'https://www.workplace.com/features',
+        pinned: true,
+      },
+    ],
+  },
 };
 
 module.exports = config;
