@@ -221,6 +221,7 @@ export class MemLabConfig {
   externalLeakFilter?: Optional<ILeakFilter>;
   monoRepoDir: string;
   muteConsole: boolean;
+  includeObjectInfoInTraceReturnChain: boolean;
   logUnclassifiedClusters: boolean;
   errorHandling: ErrorHandling;
   clusterStrategy: Optional<IClusterStrategy>;
@@ -306,6 +307,11 @@ export class MemLabConfig {
     this.muteConsole = false;
     // log all leak traces, each as an unclassified cluster
     this.logUnclassifiedClusters = false;
+    // If true, the detailed JSON file of each representative
+    // trace (for visualization) will include detailed object
+    // info for each Fiber node on the return chain.
+    // This may bloat the trace size from 100KB to 50MB.
+    this.includeObjectInfoInTraceReturnChain = false;
     // by default halt the program when utils.haltOrThrow is calleds
     this.errorHandling = ErrorHandling.Halt;
   }

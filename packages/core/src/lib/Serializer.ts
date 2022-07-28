@@ -25,6 +25,7 @@ import {
   Nullable,
   Optional,
 } from './Types';
+import {EdgeIterationCallback} from '..';
 
 const REGEXP_NAME_CLEANUP = /[[]\(\)]/g;
 
@@ -138,7 +139,7 @@ function JSONifyDetachedHTMLElement(
   const propsOptions = {...options};
   propsOptions.forceJSONifyDepth = 1;
 
-  for (const edge of node.references) {
+  iterateSelectedEdges(node, (edge: IHeapEdge): Optional<{stop: boolean}> => {
     const key = JSONifyEdgeNameAndType(edge);
     if (utils.isReactFiberEdge(edge)) {
       info[key] = JSONifyNode(edge.toNode, args, fiberOptions);
@@ -147,7 +148,8 @@ function JSONifyDetachedHTMLElement(
     } else {
       info[key] = JSONifyNodeInShort(edge.toNode);
     }
-  }
+    return null;
+  });
   return info;
 }
 
@@ -172,23 +174,25 @@ const objectNodeUsefulProps: Set<string | number> = new Set(['_context']);
 
 function JSONifyNodeOneLevel(node: IHeapNode): ISerializedInfo {
   const info = Object.create(null);
-  for (const edge of node.references) {
+  iterateSelectedEdges(node, (edge: IHeapEdge): Optional<{stop: boolean}> => {
     const key = JSONifyEdgeNameAndType(edge);
     info[key] = JSONifyNodeShallow(edge.toNode);
-  }
+    return null;
+  });
   return info;
 }
 
 function JSONifyNodeShallow(node: IHeapNode): ISerializedInfo {
   const info = Object.create(null);
-  for (const edge of node.references) {
+  iterateSelectedEdges(node, (edge: IHeapEdge): Optional<{stop: boolean}> => {
     const key = JSONifyEdgeNameAndType(edge);
     if (objectNodeUsefulProps.has(edge.name_or_index)) {
       info[key] = JSONifyNodeShallow(edge.toNode);
     } else {
       info[key] = JSONifyNodeInShort(edge.toNode);
     }
-  }
+    return null;
+  });
   return info;
 }
 
@@ -200,17 +204,18 @@ const fiberNodeUsefulProps: Set<string | number> = new Set([
 
 function JSONifyFiberNodeShallow(node: IHeapNode): ISerializedInfo {
   const info = Object.create(null);
-  for (const edge of node.references) {
+  iterateSelectedEdges(node, (edge: IHeapEdge): Optional<{stop: boolean}> => {
     const key = JSONifyEdgeNameAndType(edge);
     if (
       fiberNodeUsefulProps.has(edge.name_or_index) &&
       utils.isObjectNode(edge.toNode)
     ) {
       info[key] = JSONifyNodeShallow(edge.toNode);
-      continue;
+    } else {
+      info[key] = JSONifyNodeInShort(edge.toNode);
     }
-    info[key] = JSONifyNodeInShort(edge.toNode);
-  }
+    return null;
+  });
   return info;
 }
 
@@ -240,7 +245,9 @@ function JSONifyFiberNodeReturnTrace(
     }
     const parentInfo = getNodeNameInJSON(parent, args);
     key = `${key}:  --return (property)--->  ${parentInfo}`;
-    const info = JSONifyFiberNodeShallow(parent);
+    const info = config.includeObjectInfoInTraceReturnChain
+      ? JSONifyFiberNodeShallow(parent)
+      : Object.create(null);
     trace[key] = info;
   }
   return trace;
@@ -268,13 +275,14 @@ function JSONifyFiberNode(
   }
   propsOptions.forceJSONifyDepth--;
 
-  for (const edge of node.references) {
+  iterateSelectedEdges(node, (edge: IHeapEdge): Optional<{stop: boolean}> => {
     const key = JSONifyEdgeNameAndType(edge);
     info[key] =
-      propsOptions.forceJSONifyDepth >= 1
+      propsOptions.forceJSONifyDepth && propsOptions.forceJSONifyDepth >= 1
         ? JSONifyNode(edge.toNode, args, propsOptions)
         : JSONifyNodeInShort(edge.toNode);
-  }
+    return null;
+  });
   return info;
 }
 
@@ -284,7 +292,7 @@ function JSONifyClosure(
   options: JSONifyOptions,
 ): ISerializedInfo {
   const info = Object.create(null);
-  for (const edge of node.references) {
+  iterateSelectedEdges(node, (edge: IHeapEdge): Optional<{stop: boolean}> => {
     if (
       edge.name_or_index === 'shared' ||
       edge.name_or_index === 'context' ||
@@ -293,7 +301,8 @@ function JSONifyClosure(
       const key = filterJSONPropName(edge.name_or_index);
       info[key] = JSONifyNode(edge.toNode, args, options);
     }
-  }
+    return null;
+  });
   return info;
 }
 
@@ -315,7 +324,7 @@ function JSONifyCode(
   options: JSONifyOptions,
 ): ISerializedInfo {
   const info = Object.create(null);
-  for (const edge of node.references) {
+  iterateSelectedEdges(node, (edge: IHeapEdge): Optional<{stop: boolean}> => {
     if (
       edge.name_or_index === 'name_or_scope_info' &&
       edge.toNode.name === '(function scope info)'
@@ -328,7 +337,8 @@ function JSONifyCode(
       const key = filterJSONPropName(edge.name_or_index);
       info[key] = JSONifyNode(edge.toNode, args, options);
     }
-  }
+    return null;
+  });
   return info;
 }
 
@@ -340,15 +350,34 @@ function JSONifyContext(
   const info = Object.create(null);
   const key = 'variables in scope (used by nested closures)';
   const closure_vars = (info[key] = Object.create(null));
-  for (const edge of node.references) {
+  iterateSelectedEdges(node, (edge: IHeapEdge): Optional<{stop: boolean}> => {
     const key = filterJSONPropName(edge.name_or_index);
     if (edge.type === 'context') {
       closure_vars[key] = JSONifyNodeInShort(edge.toNode);
     } else if (edge.type === '') {
       info[key] = JSONifyNode(edge.toNode, args, options);
     }
-  }
+    return null;
+  });
   return info;
+}
+
+function iterateSelectedEdges(
+  node: IHeapNode,
+  callback: EdgeIterationCallback,
+): void {
+  let edgesProcessed = 0;
+  node.forEachReference((edge: IHeapEdge) => {
+    if (edge.type === 'internal') {
+      if (edge.name_or_index === 'map' || edge.is_index) {
+        return;
+      }
+    }
+    if (edgesProcessed++ > 100) {
+      return {stop: true};
+    }
+    return callback(edge);
+  });
 }
 
 function JSONifyOrdinaryValue(
@@ -357,10 +386,7 @@ function JSONifyOrdinaryValue(
   options: JSONifyOptions,
 ): ISerializedInfo {
   const info = Object.create(null);
-  for (const edge of node.references) {
-    if (edge.name_or_index === 'map' && edge.type === 'internal') {
-      continue;
-    }
+  iterateSelectedEdges(node, (edge: IHeapEdge): Optional<{stop: boolean}> => {
     const key = JSONifyEdgeNameAndType(edge);
     const toNode = edge.toNode;
     const toNodeName = toNode.name;
@@ -380,7 +406,8 @@ function JSONifyOrdinaryValue(
     } else {
       info[key] = JSONifyNodeInShort(toNode);
     }
-  }
+    return null;
+  });
   return info;
 }
 
