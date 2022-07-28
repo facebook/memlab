@@ -23,6 +23,7 @@ import LogTraceAsClusterOption from '../../options/heap/LogTraceAsClusterOption'
 import CleanLoggerDataCommand from '../CleanLoggerDataCommand';
 import LeakFilterFileOption from '../../options/heap/leak-filter/LeakFilterFileOption';
 import LeakClusterSizeThresholdOption from '../../options/heap/LeakClusterSizeThresholdOption';
+import MLClusteringOption from '../../options/MLClusteringOption';
 
 export default class CheckLeakCommand extends BaseCommand {
   getCommandName(): string {
@@ -53,6 +54,7 @@ export default class CheckLeakCommand extends BaseCommand {
       new LeakClusterSizeThresholdOption(),
       new TraceAllObjectsOption(),
       new LogTraceAsClusterOption(),
+      new MLClusteringOption(),
     ];
   }
 

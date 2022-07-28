@@ -41,6 +41,7 @@ import info from './Console';
 import serializer from './Serializer';
 import utils from './Utils';
 import {LeakObjectFilter} from './leak-filters/LeakObjectFilter';
+import MLTraceSimilarityStrategy from '../trace-cluster/strategies/MLTraceSimilarityStrategy';
 
 class MemoryAnalyst {
   async checkLeak(): Promise<ISerializedInfo[]> {
@@ -827,6 +828,11 @@ class MemoryAnalyst {
       paths,
       snapshot,
       this.aggregateDominatorMetrics,
+      {
+        strategy: config.isMLClustering
+          ? new MLTraceSimilarityStrategy()
+          : undefined,
+      },
     );
     await this.serializeClusterUpdate(clusters);
 

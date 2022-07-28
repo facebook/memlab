@@ -35,6 +35,7 @@ memlab run --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--ignore-leak-cluster-size-below`**: ignore memory leaks with aggregated retained size smaller than the threshold
  * **`--trace-all-objects`**: dump retainer trace for all allocated objects (ignore the leak filter)
  * **`--save-trace-as-unclassified-cluster`**: dump each retainer trace as an unclassified trace cluster
+ * **`--ml-clustering`**: use machine learning algorithms for clustering leak traces (by default, traces are clustered by heuristics)
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode
@@ -60,6 +61,7 @@ memlab find-leaks
  * **`--ignore-leak-cluster-size-below`**: ignore memory leaks with aggregated retained size smaller than the threshold
  * **`--trace-all-objects`**: dump retainer trace for all allocated objects (ignore the leak filter)
  * **`--save-trace-as-unclassified-cluster`**: dump each retainer trace as an unclassified trace cluster
+ * **`--ml-clustering`**: use machine learning algorithms for clustering leak traces (by default, traces are clustered by heuristics)
  * **`--work-dir`**: set the working directory of the current run
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details

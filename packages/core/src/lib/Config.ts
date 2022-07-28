@@ -226,6 +226,7 @@ export class MemLabConfig {
   errorHandling: ErrorHandling;
   clusterStrategy: Optional<IClusterStrategy>;
   packageInfo: IPackageInfo[];
+  isMLClustering: boolean;
 
   constructor(options: ConfigOption = {}) {
     // init properties, they can be configured manually
