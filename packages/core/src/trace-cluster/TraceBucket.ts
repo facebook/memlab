@@ -29,6 +29,7 @@ import utils from '../lib/Utils';
 import {EdgeRecord, NodeRecord} from './TraceElement';
 import TraceSimilarityStrategy from './strategies/TraceSimilarityStrategy';
 import TraceAsClusterStrategy from './strategies/TraceAsClusterStrategy';
+import MLTraceSimilarityStrategy from './strategies/MLTraceSimilarityStrategy';
 
 type AggregateNodeCb = (
   ids: Set<number>,
@@ -221,7 +222,11 @@ export default class NormalizedTrace {
   }
 
   static clusterLeakTraces(leakTraces: LeakTrace[]): Record<string, string> {
-    const {allClusters} = NormalizedTrace.diffTraces(leakTraces, []);
+    const {allClusters} = NormalizedTrace.diffTraces(leakTraces, [], {
+      strategy: config.isMLClustering
+        ? new MLTraceSimilarityStrategy()
+        : undefined,
+    });
     const lastNodeFromTrace = (trace: LeakTrace) => trace[trace.length - 1];
 
     const labaledLeakTraces = allClusters.reduce<Record<string, string>>(
