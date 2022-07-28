@@ -8,6 +8,7 @@
  * @format
  */
 
+import {config} from '@memlab/core';
 import type {IClusterStrategy, LeakTrace, TraceDiff} from '../../lib/Types';
 import {distance} from './machine-learning/DistanceMatrix';
 import {cluster} from './machine-learning/HAC';
@@ -19,7 +20,11 @@ export default class MLTraceSimilarityStrategy implements IClusterStrategy {
     const vectorizer = new TfidfVectorizer({rawDocuments});
     const tfidfs = vectorizer.computeTfidfs();
     const dmatrix = distance(tfidfs);
-    const result = cluster(rawDocuments.length, dmatrix, 0.7);
+    const result = cluster(
+      rawDocuments.length,
+      dmatrix,
+      config.mlClusteringLinkageMaxDistance,
+    );
     const map = new Map<LeakTrace, LeakTrace[]>();
     for (let i = 0; i < result.length; i++) {
       const traceIdx = result[i];
