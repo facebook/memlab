@@ -1,5 +1,8 @@
 # memlab
 
+[![Licensed under the MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/facebookincubator/memlab/blob/master/LICENSE)
+[![PR's Welcome](https://img.shields.io/badge/PRs%20-welcome-brightgreen.svg)](https://github.com/facebookincubator/memlab/blob/main/CONTRIBUTING.md)
+
 memlab is an E2E testing and analysis framework for finding JavaScript memory
 leaks and optimization opportunities.
 
