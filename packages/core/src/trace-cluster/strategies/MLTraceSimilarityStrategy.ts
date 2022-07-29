@@ -8,7 +8,7 @@
  * @format
  */
 
-import {config} from '@memlab/core';
+import config from '../../lib/Config';
 import type {IClusterStrategy, LeakTrace, TraceDiff} from '../../lib/Types';
 import {distance} from './machine-learning/DistanceMatrix';
 import {cluster} from './machine-learning/HAC';
