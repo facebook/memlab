@@ -5,7 +5,6 @@
  * LICENSE file in the root directory of this source tree.
  *
  * @oncall ws_labs
- * @emails oncall+ws_labs
  * @format
  */
 
