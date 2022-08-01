@@ -10,10 +10,12 @@
  * @format
  */
 
-var cli = require("../dist/index");
+// eslint-disable-next-line no-var
+var cli = require('../dist/index');
 
 // register the `@memlab/cli` package info
 // so that `memlab version` get use the info
-(cli.registerPackage()).then(() => {
+// eslint-disable-next-line fb-www/promise-termination
+cli.registerPackage().then(() => {
   cli.run();
 });
