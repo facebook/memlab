@@ -41,3 +41,5 @@ export {default as StringAnalysis} from './plugins/StringAnalysis';
 export {default as PluginUtils} from './PluginUtils';
 /** @internal */
 export {default as heapAnalysisLoader} from './HeapAnalysisLoader';
+/** @internal */
+export {default as heapConfig} from './HeapConfig';

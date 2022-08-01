@@ -33,7 +33,7 @@ For code examples on how this options could be used, see
 or [snapshotMapReduce](heap_analysis_src.md#snapshotmapreduce).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:66
+    * heap-analysis/src/PluginUtils.ts:67
 
 ## Functions
 
@@ -79,7 +79,7 @@ class TestObject {}
 ```
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:590
+    * heap-analysis/src/PluginUtils.ts:601
 
 ___
 
@@ -104,7 +104,7 @@ import {getHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:418
+    * heap-analysis/src/PluginUtils.ts:429
 
 ___
 
@@ -151,7 +151,7 @@ The new heap analysis can also be used with [analyze](api_src.md#analyze), in th
 [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:340
+    * heap-analysis/src/PluginUtils.ts:341
 
 ___
 
@@ -198,7 +198,7 @@ The new heap analysis can also be used with [analyze](api_src.md#analyze), in th
 ascending order from [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:286
+    * heap-analysis/src/PluginUtils.ts:287
 
 ___
 
@@ -246,7 +246,7 @@ The new heap analysis can also be used with [analyze](api_src.md#analyze), in th
 ascending order from [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:394
+    * heap-analysis/src/PluginUtils.ts:395
 
 ___
 
@@ -318,4 +318,4 @@ Each heap snapshot could be non-trivial in size, loading them all at once
 may not be possible.
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:495
+    * heap-analysis/src/PluginUtils.ts:506

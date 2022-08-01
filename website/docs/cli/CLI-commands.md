@@ -259,7 +259,7 @@ memlab analyze unbound-shape
 
 #### memlab analyze string
 
-Analyze string in heap
+Find duplicated string instances in heap
 
 ```bash
 memlab analyze string 
@@ -283,6 +283,23 @@ memlab analyze unmounted-fiber-node
 
 **Options**:
  * **`--snapshot`**: set file path of the heap snapshot under analysis
+ * **`--help`**, **`-h`**: print helper text
+ * **`--verbose`**, **`-v`**: show more details
+ * **`--sc`**: set to continuous test mode
+ * **`--debug`**: enable manual debugging
+ * **`--silent`**, **`-s`**: mute all terminal output
+
+### memlab heap
+
+Interactive command to explore a single heap snapshot
+
+```bash
+memlab heap --snapshot <HEAP_SNAPSHOT_FILE>
+```
+
+**Options**:
+ * **`--snapshot`**: set file path of the heap snapshot under analysis
+ * **`--engine`**: set the JavaScript engine (default to V8)
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode

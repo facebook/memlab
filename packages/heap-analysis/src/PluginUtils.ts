@@ -22,6 +22,7 @@ import {
 
 import chalk from 'chalk';
 import {info, analysis, serializer, utils} from '@memlab/core';
+import heapConfig from './HeapConfig';
 
 const nodeNameBlockList = new Set([
   '(Startup object cache)',
@@ -394,8 +395,18 @@ function getSnapshotDirForAnalysis(
 async function loadHeapSnapshot(
   options: HeapAnalysisOptions,
 ): Promise<IHeapSnapshot> {
-  const file = getSnapshotFileForAnalysis(options);
-  return loadProcessedSnapshot({file});
+  if (heapConfig.isCliInteractiveMode) {
+    if (!heapConfig.currentHeap) {
+      const file = getSnapshotFileForAnalysis(options);
+      const heap = await loadProcessedSnapshot({file});
+      heapConfig.currentHeapFile = file;
+      heapConfig.currentHeap = heap;
+    }
+    return heapConfig.currentHeap;
+  } else {
+    const file = getSnapshotFileForAnalysis(options);
+    return loadProcessedSnapshot({file});
+  }
 }
 
 /**

@@ -17,6 +17,7 @@ import {config, info, utils} from '@memlab/core';
 import commandOrder from './lib/CommandOrder';
 import BaseCommand, {CommandCategory} from '../../BaseCommand';
 import universalOptions from '../../options/lib/UniversalOptions';
+import {heapConfig} from '@memlab/heap-analysis';
 
 type HelperOption = CLIOptions & {
   modules: Map<string, BaseCommand>;
@@ -57,7 +58,11 @@ export default class HelperCommand extends BaseCommand {
   private printCommandCategories(options: HelperOption): void {
     for (const category in CommandCategory) {
       const item = commandOrder.find(item => item.category === category);
-      const commandsToPrintFirst = item ? item.commands : [];
+      const commandsToPrintFirst = heapConfig.isCliInteractiveMode
+        ? []
+        : item
+        ? item.commands
+        : [];
       this.printCategory(
         category as CommandCategory,
         commandsToPrintFirst,
@@ -81,13 +86,13 @@ export default class HelperCommand extends BaseCommand {
     commandsToPrintFirst: BaseCommand[],
     options: HelperOption,
   ): void {
-    this.printCategoryHeader(category, options);
+    const commandsToPrint: BaseCommand[] = [];
     for (const command of commandsToPrintFirst) {
       const name = command.getCommandName();
       if (this.printedCommand.has(name)) {
         continue;
       }
-      this.printCommand(command, options.indent);
+      commandsToPrint.push(command);
       this.printedCommand.add(name);
     }
     // print other commands in this category
@@ -103,8 +108,15 @@ export default class HelperCommand extends BaseCommand {
       if (this.printedCommand.has(name)) {
         continue;
       }
-      this.printCommand(command, options.indent);
+      commandsToPrint.push(command);
       this.printedCommand.add(name);
+    }
+    if (commandsToPrint.length === 0) {
+      return;
+    }
+    this.printCategoryHeader(category, options);
+    for (const command of commandsToPrint) {
+      this.printCommand(command, options.indent);
     }
     info.topLevel('');
   }

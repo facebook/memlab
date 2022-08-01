@@ -56,7 +56,7 @@ abstract class Analysis {
     options: HeapAnalysisOptions = pluginUtils.defaultAnalysisArgs,
   ): Promise<void> {
     loadScenarioConfig();
-    return await this.process(options);
+    await this.process(options);
   }
 
   /**

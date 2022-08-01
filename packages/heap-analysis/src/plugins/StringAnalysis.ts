@@ -125,7 +125,7 @@ export default class StringAnalysis extends BaseAnalysis {
    * @internal
    */
   public getDescription(): string {
-    return 'Analyze string in heap';
+    return 'Find duplicated string instances in heap';
   }
 
   /** @internal */

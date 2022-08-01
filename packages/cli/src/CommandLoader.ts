@@ -17,10 +17,10 @@ import BaseCommand from './BaseCommand';
 import GenerateCLIDocCommand from './commands/helper/GenerateCLIDocCommand';
 
 export default class CommandLoader {
-  private isLoaded = false;
-  private OSSModules: Map<string, BaseCommand> = new Map();
-  private modules: Map<string, BaseCommand> = new Map();
-  private modulePaths: Map<string, string> = new Map();
+  protected isLoaded = false;
+  protected OSSModules: Map<string, BaseCommand> = new Map();
+  protected modules: Map<string, BaseCommand> = new Map();
+  protected modulePaths: Map<string, string> = new Map();
 
   public getModules(): Map<string, BaseCommand> {
     if (!this.isLoaded) {
@@ -42,7 +42,12 @@ export default class CommandLoader {
     this.postRegistration();
   }
 
-  private registerCommandsFromDir(modulesDir: string) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected shouldRegisterCommand(command: BaseCommand) {
+    return true;
+  }
+
+  protected registerCommandsFromDir(modulesDir: string) {
     const moduleFiles = fs.readdirSync(modulesDir);
     for (const moduleFile of moduleFiles) {
       const modulePath = path.join(modulesDir, moduleFile);
@@ -65,6 +70,9 @@ export default class CommandLoader {
       const moduleInstance = new moduleConstructor();
       if (!(moduleInstance instanceof BaseCommand)) {
         utils.haltOrThrow('loading a command that does not extend BaseCommand');
+      }
+      if (!this.shouldRegisterCommand(moduleInstance)) {
+        continue;
       }
       const commandName = moduleInstance.getCommandName();
       const loadingOssCommand =
@@ -95,7 +103,7 @@ export default class CommandLoader {
     }
   }
 
-  private postRegistration(): void {
+  protected postRegistration(): void {
     const cliDocCommand = new GenerateCLIDocCommand();
     const instance = this.modules.get(
       cliDocCommand.getCommandName(),

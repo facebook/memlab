@@ -23,20 +23,31 @@ type RunCommandOptions = {
   configFromOptions: AnyRecord;
 };
 
+type CommandDispatcherOptions = {
+  commandLoader?: CommandLoader;
+};
+
 const helperCommand = new HelperCommand();
 
-class CommandDispatcher {
+export class CommandDispatcher {
   private modules: Map<string, BaseCommand>;
-  private executedCommands: Set<string> = new Set();
-  private executingCommandStack: Array<string> = [];
+  private executedCommands: Set<string>;
+  private executingCommandStack: Array<string>;
 
-  constructor() {
+  constructor(options: CommandDispatcherOptions = {}) {
+    this.resetData();
     // auto load all command modules
-    const commandLoader = new CommandLoader();
+    const commandLoader = options.commandLoader ?? new CommandLoader();
     this.modules = commandLoader.getModules();
   }
 
+  protected resetData() {
+    this.executedCommands = new Set();
+    this.executingCommandStack = [];
+  }
+
   async dispatch(args: ParsedArgs): Promise<void> {
+    this.resetData();
     // triggered by `memlab` (without specific command)
     if (!args._ || !(args._.length >= 1)) {
       info.error('\n  command argument missing');
@@ -142,7 +153,7 @@ class CommandDispatcher {
     const subCommands = command.getSubCommands();
     for (const subCommand of subCommands) {
       if (subCommand.getCommandName() === args._[subCommandIndex]) {
-        this.runCommand(subCommand, args, runCmdOpt);
+        await this.runCommand(subCommand, args, runCmdOpt);
         return;
       }
     }
