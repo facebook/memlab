@@ -41,6 +41,8 @@ export default class HeapStringNode
       if (parentNode == null) {
         throw throwError(new Error('broken sliced string'));
       }
+      // sliced string in heap snapshot doesn't include
+      // the start index and the end index, so this may be inaccurate
       return parentNode.stringValue;
     }
 

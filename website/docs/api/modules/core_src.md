@@ -184,7 +184,7 @@ import {getHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/NodeHeap.ts:96
+    * core/src/lib/NodeHeap.ts:84
 
 ___
 
@@ -212,7 +212,7 @@ import {getHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/NodeHeap.ts:127
+    * core/src/lib/NodeHeap.ts:119
 
 ___
 
@@ -263,4 +263,4 @@ test('memory test', async () => {
 ```
 
  * **Source**:
-    * core/src/lib/NodeHeap.ts:68
+    * core/src/lib/NodeHeap.ts:59

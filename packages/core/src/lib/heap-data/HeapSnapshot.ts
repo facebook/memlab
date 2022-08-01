@@ -30,6 +30,7 @@ import info from '../Console';
 import HeapNode from './HeapNode';
 import HeapEdge from './HeapEdge';
 import {NodeDetachState, throwError} from './HeapUtils';
+import MemLabTaggedStore from './MemLabTagStore';
 
 const EMPTY_UINT8_ARRAY = new Uint8Array(0);
 const EMPTY_UINT32_ARRAY = new Uint32Array(0);
@@ -186,44 +187,7 @@ export default class HeapSnapshot implements IHeapSnapshot {
   }
 
   hasObjectWithTag(tag: string): boolean {
-    // get tagStore
-    let tagStore: Nullable<IHeapNode> = null;
-    this.nodes.forEach((node: IHeapNode) => {
-      if (node.name === 'MemLabTaggedStore' && node.type === 'object') {
-        tagStore = node;
-        return false;
-      }
-    });
-
-    if (tagStore == null) {
-      return false;
-    }
-    const store = tagStore as IHeapNode;
-
-    // get tagStore.taggedObjects
-    const taggedObjects = store.getReferenceNode('taggedObjects', 'property');
-    if (taggedObjects == null) {
-      return false;
-    }
-
-    // get taggedObjects[tag]
-    const weakSet = taggedObjects.getReferenceNode(tag, 'property');
-    if (weakSet == null) {
-      return false;
-    }
-
-    // get weakSet.table
-    const table = weakSet.getReferenceNode('table');
-    if (table == null) {
-      return false;
-    }
-
-    // check if the table has any weak reference to any object
-    const ref = table.findAnyReference(
-      (edge: IHeapEdge) =>
-        edge.type === 'weak' && edge.toNode.name !== 'system / Oddball',
-    );
-    return ref != null;
+    return MemLabTaggedStore.hasObjectWithTag(this, tag);
   }
 
   getNodeById(id: number): Nullable<HeapNode> {

@@ -8,23 +8,14 @@
  * @format
  */
 
-import type {AnyValue, IHeapSnapshot} from './Types';
+import type {IHeapSnapshot} from './Types';
 
 import fs from 'fs-extra';
 import path from 'path';
 import v8 from 'v8';
 import fileManager from './FileManager';
 import utils from './Utils';
-
-type AnyObject = Record<AnyValue, AnyValue>;
-
-class MemLabTaggedStore {
-  public taggedObjects: Record<string, WeakSet<AnyObject>>;
-  constructor() {
-    this.taggedObjects = Object.create(null);
-  }
-}
-const store = new MemLabTaggedStore();
+import MemLabTaggedStore from './heap-data/MemLabTagStore';
 
 /**
  * Tags a string marker to an object instance, which can later be checked by
@@ -66,10 +57,7 @@ const store = new MemLabTaggedStore();
  * ```
  */
 export function tagObject<T extends object>(o: T, tag: string): T {
-  if (!store.taggedObjects[tag]) {
-    store.taggedObjects[tag] = new WeakSet();
-  }
-  store.taggedObjects[tag].add(o);
+  MemLabTaggedStore.tagObject(o, tag);
   return o;
 }
 
@@ -94,10 +82,14 @@ export function tagObject<T extends object>(o: T, tag: string): T {
  * ```
  */
 export function dumpNodeHeapSnapshot(): string {
+  const randomID = `Math.random()`.replace('0.', '');
   const file = path.join(
     fileManager.generateTmpHeapDir(),
-    `nodejs.heapsnapshot`,
+    `nodejs-${randomID}.heapsnapshot`,
   );
+  if (fs.existsSync(file)) {
+    fs.removeSync(file);
+  }
   v8.writeHeapSnapshot(file);
   return file;
 }

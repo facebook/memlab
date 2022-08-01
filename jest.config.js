@@ -11,9 +11,8 @@
 
 const config = {
   verbose: true,
-  testRegex: '((.*/)?__tests__/.*)(\\.test|\\.spec)\\.(ts|tsx)?$',
+  testRegex: '((.*/)?__tests__/.*)(\\.test|\\.spec)\\.(js|jsx)?$',
   maxConcurrency: 1,
-  preset: 'ts-jest',
   testEnvironment: 'node',
 };
 
