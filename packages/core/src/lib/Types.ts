@@ -870,6 +870,13 @@ export type RunMetaInfo = {
  * {@link IHeapNode} and {@link IHeapEdge}.
  */
 export interface IHeapSnapshot {
+  /**
+   * flag indicating if the heap snapshot has included
+   * the post-processing meta data (e.g., shortest path to GC root,
+   * dominator info and retainer size etc.)
+   * @internal
+   */
+  isProcessed: boolean;
   /** @internal */
   snapshot: RawHeapSnapshot;
   /**
@@ -1820,6 +1827,13 @@ export interface IClusterStrategy {
     newLeakTraces: LeakTrace[],
     existingLeakTraces: LeakTrace[],
   ) => TraceDiff;
+}
+
+/** @internal */
+export interface IHeapConfig {
+  isCliInteractiveMode: boolean;
+  currentHeapFile: Optional<string>;
+  currentHeap: Optional<IHeapSnapshot>;
 }
 
 /** @internal */

@@ -51,6 +51,6 @@ memlab also identifies React Fiber tree and detects unmounted Fiber nodes).
 ## 3. Retainer Traces for Memory Leaks
 
 memlab generates retainer traces from GC roots to leaked objects. Sometimes
-certain interactions could trigger thoudsands of leaked objects, it would be
+certain interactions could trigger thousands of leaked objects, it would be
 overwhelming to show all the retainer traces. memlab clusters all retainer
 traces and only shows one retainer trace for each memory leak cluster.

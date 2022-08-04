@@ -8,13 +8,28 @@
  * @format
  */
 
-import {IHeapSnapshot, Optional} from '@memlab/core';
+import type {IHeapSnapshot, Optional, IHeapConfig} from '@memlab/core';
+import {config} from '@memlab/core';
 
-class HeapConfig {
+class HeapConfig implements IHeapConfig {
   public isCliInteractiveMode = false;
   public currentHeapFile: Optional<string>;
   public currentHeap: Optional<IHeapSnapshot>;
+
+  private constructor() {
+    this.currentHeap = null;
+    this.currentHeapFile = null;
+  }
+
+  private static instance: Optional<HeapConfig> = null;
+  public static getInstance(): HeapConfig {
+    if (!HeapConfig.instance) {
+      HeapConfig.instance = new HeapConfig();
+    }
+    return HeapConfig.instance;
+  }
 }
 
-const heapConfig = new HeapConfig();
+const heapConfig = HeapConfig.getInstance();
+config.heapConfig = heapConfig;
 export default heapConfig;

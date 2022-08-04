@@ -43,7 +43,9 @@ export default class GetVersionCommand extends BaseCommand {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async run(options: CLIOptions): Promise<void> {
     await this.loadDepencyPackageInfo();
-    const packages = config.packageInfo;
+    const packages = [...config.packageInfo].sort((p1, p2) =>
+      p1.name < p2.name ? 1 : -1,
+    );
     info.topLevel('');
     for (const pkg of packages) {
       const version = chalk.grey(`@${pkg.version}`);

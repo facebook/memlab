@@ -37,6 +37,7 @@ const EMPTY_UINT32_ARRAY = new Uint32Array(0);
 
 export default class HeapSnapshot implements IHeapSnapshot {
   public snapshot: RawHeapSnapshot;
+  public isProcessed = false;
   public nodes: IHeapNodes;
   public _nodeCount = -1;
   public edges: IHeapEdges;

@@ -289,11 +289,6 @@ function getSnapshotFileForAnalysis(options: HeapAnalysisOptions): string {
   if (args.snapshot) {
     return args.snapshot;
   }
-  if (config.externalSnapshotFilePaths.length > 0) {
-    return config.externalSnapshotFilePaths[
-      config.externalSnapshotFilePaths.length - 1
-    ];
-  }
   return utils.getSingleSnapshotFileForAnalysis();
 }
 

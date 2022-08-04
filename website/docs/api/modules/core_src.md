@@ -59,7 +59,7 @@ or [forEachReferrer](../interfaces/core_src.IHeapNode.md#foreachreferrer).
  * **Returns**: `Optional`<{ `stop`: `boolean`  }\> | this API returns void
 
  * **Source**:
-    * core/src/lib/Types.ts:1291
+    * core/src/lib/Types.ts:1298
 
 ___
 

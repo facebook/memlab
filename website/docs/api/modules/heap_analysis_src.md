@@ -79,7 +79,7 @@ class TestObject {}
 ```
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:601
+    * heap-analysis/src/PluginUtils.ts:596
 
 ___
 
@@ -104,7 +104,7 @@ import {getHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:429
+    * heap-analysis/src/PluginUtils.ts:424
 
 ___
 
@@ -151,7 +151,7 @@ The new heap analysis can also be used with [analyze](api_src.md#analyze), in th
 [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:341
+    * heap-analysis/src/PluginUtils.ts:336
 
 ___
 
@@ -246,7 +246,7 @@ The new heap analysis can also be used with [analyze](api_src.md#analyze), in th
 ascending order from [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:395
+    * heap-analysis/src/PluginUtils.ts:390
 
 ___
 
@@ -318,4 +318,4 @@ Each heap snapshot could be non-trivial in size, loading them all at once
 may not be possible.
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:506
+    * heap-analysis/src/PluginUtils.ts:501

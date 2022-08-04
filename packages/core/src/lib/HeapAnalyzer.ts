@@ -288,9 +288,21 @@ class MemoryAnalyst {
     let snapshotLeakedHeapNodeIdSet: HeapNodeIdSet = new Set();
     let nodeIdsInSnapshots: Array<HeapNodeIdSet> = [];
     let snapshot: IHeapSnapshot;
+
+    // if specified a heap file
     if (options.file) {
       const opt = {buildNodeIdIndex: true, verbose: true};
       snapshot = await utils.getSnapshotFromFile(options.file, opt);
+
+      // if running in interactive heap analysis mode
+    } else if (
+      config.heapConfig &&
+      config.heapConfig.isCliInteractiveMode &&
+      config.heapConfig.currentHeap
+    ) {
+      snapshot = config.heapConfig.currentHeap;
+
+      // otherwise diff heap snapshots
     } else {
       utils.checkSnapshots();
       const snapshotDiff = await this.diffSnapshots(true);
@@ -425,14 +437,17 @@ class MemoryAnalyst {
   // initialize the path finder
   preparePathFinder(snapshot: IHeapSnapshot): TraceFinder {
     const finder = new TraceFinder();
-    // shortest path for all nodes
-    finder.annotateShortestPaths(snapshot);
-    // dominator and retained size
-    finder.calculateAllNodesRetainedSizes(snapshot);
-    // mark detached Fiber nodes
-    utils.markAllDetachedFiberNode(snapshot);
-    // mark alternate Fiber nodes
-    utils.markAlternateFiberNode(snapshot);
+    if (!snapshot.isProcessed) {
+      // shortest path for all nodes
+      finder.annotateShortestPaths(snapshot);
+      // dominator and retained size
+      finder.calculateAllNodesRetainedSizes(snapshot);
+      // mark detached Fiber nodes
+      utils.markAllDetachedFiberNode(snapshot);
+      // mark alternate Fiber nodes
+      utils.markAlternateFiberNode(snapshot);
+      snapshot.isProcessed = true;
+    }
     return finder;
   }
   // summarize the page interaction and dump to the leak text summary file

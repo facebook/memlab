@@ -28,6 +28,7 @@ import type {
   IPackageInfo,
 } from './Types';
 import {setInternalValue} from './InternalValueSetter';
+import {IHeapConfig} from '..';
 
 interface BrowserLaunchArgumentOptions {
   headless?: boolean;
@@ -139,6 +140,7 @@ export class MemLabConfig {
   unclassifiedClusterDir: string;
   externalCookiesFile: Optional<string>;
 
+  heapConfig: Optional<IHeapConfig>;
   puppeteerConfig: LaunchOptions &
     BrowserLaunchArgumentOptions &
     BrowserConnectOptions;
@@ -256,6 +258,8 @@ export class MemLabConfig {
     this.useXVFB = true;
     this.specifiedEngine = false;
 
+    // set by the heap-analysis package if HeapConfig is used
+    this.heapConfig = null;
     // set puppeteer configuration
     this.puppeteerConfig = {
       headless: !this._isHeadfulBrowser,

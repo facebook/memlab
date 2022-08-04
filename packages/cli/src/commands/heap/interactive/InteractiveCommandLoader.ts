@@ -11,11 +11,13 @@
 import BaseCommand from '../../../BaseCommand';
 import CommandLoader from '../../../CommandLoader';
 import HelperCommand from '../../helper/HelperCommand';
+import GetRetainerTraceCommand from '../GetRetainerTraceCommand';
 
 import RunHeapAnalysisCommand from '../HeapAnalysisCommand';
 
 const commandToInclude = new Set<typeof BaseCommand>([
   RunHeapAnalysisCommand,
+  GetRetainerTraceCommand,
   HelperCommand,
 ]);
 

@@ -437,7 +437,7 @@ function setFiberNodeAttribute(node: Nullable<IHeapNode>, flag: HeapNodeFlag) {
   if (!node || !isFiberNode(node)) {
     return;
   }
-  // eslint-disable-next-line no-bitwise
+
   node.attributes |= flag;
 }
 
@@ -516,7 +516,6 @@ function applyToNodes(
 ): void {
   let ids = Array.from(idSet.keys());
   if (options.shuffle) {
-    // eslint-disable-next-line fb-www/unsafe-math-random
     ids.sort(() => Math.random() - 0.5);
   } else if (options.reverse) {
     ids = ids.reverse();
@@ -580,7 +579,6 @@ function loadScenario(filename: string): IScenario {
   }
   let scenario;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     scenario = require(filepath);
     scenario = checkScenarioInstance(scenario);
     if (scenario.name == null) {
@@ -610,6 +608,15 @@ async function getSnapshotFromFile(
   filename: string,
   options: AnyOptions,
 ): Promise<IHeapSnapshot> {
+  const heapConfig = config.heapConfig;
+  if (
+    heapConfig &&
+    heapConfig.currentHeapFile === filename &&
+    heapConfig.currentHeap
+  ) {
+    return heapConfig.currentHeap;
+  }
+
   info.overwrite('parsing ' + filename + ' ...');
   let ret: Nullable<IHeapSnapshot> = null;
   try {
@@ -932,7 +939,6 @@ function loadRunMetaInfo(metaFile: Optional<string> = undefined): RunMetaInfo {
   try {
     const content = fs.readFileSync(file, 'UTF-8');
     return JSON.parse(content) as RunMetaInfo;
-    // eslint-disable-next-line fb-www/no-unused-catch-bindings
   } catch (_) {
     throw haltOrThrow(
       'Run info missing. Please make sure `memlab run` is complete.',
@@ -1429,10 +1435,30 @@ function getSnapshotDirForAnalysis(): string {
 }
 
 function getSingleSnapshotFileForAnalysis(): string {
-  const path =
-    config.useExternalSnapshot && config.externalSnapshotFilePaths[0]
-      ? config.externalSnapshotFilePaths[0]
-      : getSnapshotFilePathWithTabType(/(final)|(target)|(baseline)/);
+  let path: Nullable<string> = null;
+
+  // if an external snapshot file is specified
+  if (
+    config.useExternalSnapshot &&
+    config.externalSnapshotFilePaths.length > 0
+  ) {
+    path =
+      config.externalSnapshotFilePaths[
+        config.externalSnapshotFilePaths.length - 1
+      ];
+
+    // if running in interactive heap analysis mode
+  } else if (
+    config.heapConfig &&
+    config.heapConfig.isCliInteractiveMode &&
+    config.heapConfig.currentHeapFile
+  ) {
+    path = config.heapConfig.currentHeapFile;
+
+    // search for snapshot labeled as baseline, target, or final
+  } else {
+    path = getSnapshotFilePathWithTabType(/(final)|(target)|(baseline)/);
+  }
   return resolveSnapshotFilePath(path);
 }
 
@@ -1447,7 +1473,7 @@ function getSnapshotFilePath(tab: E2EStepInfo): string {
   return config.externalSnapshotFilePaths[tab.idx - 1];
 }
 
-// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types, @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function equalOrMatch(v1: any, v2: any): boolean {
   const t1 = typeof v1;
   const t2 = typeof v2;
@@ -1604,7 +1630,6 @@ function isURLEqual(url1: string, url2: string): boolean {
   try {
     u1 = new URL(url1);
     u2 = new URL(url2);
-    // eslint-disable-next-line fb-www/no-unused-catch-bindings
   } catch (_e) {
     return false;
   }
