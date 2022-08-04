@@ -37,6 +37,7 @@ memlab run --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--save-trace-as-unclassified-cluster`**: dump each retainer trace as an unclassified trace cluster
  * **`--ml-clustering`**: use machine learning algorithms for clustering leak traces (by default, traces are clustered by heuristics)
  * **`--ml-linkage-max-dist`**: set linkage max distance value for clustering. The value should be between [0, 1] inclusive.
+ * **`--ml-clustering-max-df`**: set percentage based max document frequency for limiting the terms that appear too often
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode
@@ -64,6 +65,7 @@ memlab find-leaks
  * **`--save-trace-as-unclassified-cluster`**: dump each retainer trace as an unclassified trace cluster
  * **`--ml-clustering`**: use machine learning algorithms for clustering leak traces (by default, traces are clustered by heuristics)
  * **`--ml-linkage-max-dist`**: set linkage max distance value for clustering. The value should be between [0, 1] inclusive.
+ * **`--ml-clustering-max-df`**: set percentage based max document frequency for limiting the terms that appear too often
  * **`--work-dir`**: set the working directory of the current run
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details

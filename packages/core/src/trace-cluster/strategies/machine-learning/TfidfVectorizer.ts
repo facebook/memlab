@@ -8,6 +8,7 @@
  * @format
  */
 
+import config from '../../../lib/Config';
 import {nGram} from './Ngram';
 
 const SMOOTHING_KEY = '__smoothObjectKey';
@@ -25,9 +26,9 @@ export class TfidfVectorizer {
   documents: Record<string, number>[] = [];
   tfidfs: Record<string, number>[];
 
-  constructor({rawDocuments, maxDF = 0.8}: TfidfVectorizerProps) {
+  constructor({rawDocuments, maxDF}: TfidfVectorizerProps) {
     this.rawDocuments = rawDocuments;
-    this.maxDF = maxDF;
+    this.maxDF = maxDF ?? config.mlMaxDF;
   }
 
   computeTfidfs() {

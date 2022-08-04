@@ -228,6 +228,7 @@ export class MemLabConfig {
   packageInfo: IPackageInfo[];
   isMLClustering: boolean;
   mlClusteringLinkageMaxDistance: number;
+  mlMaxDF: number;
 
   constructor(options: ConfigOption = {}) {
     // init properties, they can be configured manually
@@ -317,6 +318,7 @@ export class MemLabConfig {
     // by default halt the program when utils.haltOrThrow is calleds
     this.errorHandling = ErrorHandling.Halt;
     this.mlClusteringLinkageMaxDistance = 0.7;
+    this.mlMaxDF = 1;
   }
 
   // initialize configurable parameters
