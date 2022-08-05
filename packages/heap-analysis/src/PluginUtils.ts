@@ -18,6 +18,7 @@ import {
   Optional,
   MemLabConfig,
   config,
+  takeNodeMinimalHeap,
 } from '@memlab/core';
 
 import chalk from 'chalk';
@@ -413,14 +414,45 @@ async function loadHeapSnapshot(
  * * **Examples**:
  * ```typescript
  * import {dumpNodeHeapSnapshot} from '@memlab/core';
- * import {getHeapFromFile} from '@memlab/heap-analysis';
+ * import {getFullHeapFromFile} from '@memlab/heap-analysis';
  *
  * (async function (){
  *   const heapFile = dumpNodeHeapSnapshot();
- *   const heap = await getHeapFromFile(heapFile);
+ *   const heap = await getFullHeapFromFile(heapFile);
  * })();
  * ```
  */
+async function getFullHeapFromFile(file: string): Promise<IHeapSnapshot> {
+  return await loadProcessedSnapshot({file});
+}
+
+/**
+ * Take a heap snapshot of the current program state
+ * and parse it as {@link IHeapSnapshot}. This
+ * API also calculates some heap analysis meta data
+ * for heap analysis. But this also means slower heap parsing
+ * comparing with {@link takeNodeMinimalHeap}.
+ *
+ * @returns heap representation with heap analysis meta data.
+ *
+ * * **Examples:**
+ * ```typescript
+ * import type {IHeapSnapshot} from '@memlab/core';
+ * import type {takeNodeFullHeap} from '@memlab/heap-analysis';
+ *
+ * (async function () {
+ *   const heap: IHeapSnapshot = await takeNodeFullHeap();
+ * })();
+ * ```
+ */
+async function takeNodeFullHeap(): Promise<IHeapSnapshot> {
+  const heap: IHeapSnapshot = await takeNodeMinimalHeap();
+  analysis.preparePathFinder(heap);
+  info.flush();
+  return heap;
+}
+
+/** @deprecated */
 async function getHeapFromFile(file: string): Promise<IHeapSnapshot> {
   return await loadProcessedSnapshot({file});
 }
@@ -565,7 +597,7 @@ function aggregateDominatorMetrics(
  * * * **Examples**:
  * ```typescript
  * import {dumpNodeHeapSnapshot} from '@memlab/core';
- * import {getHeapFromFile, getDominatorNodes} from '@memlab/heap-analysis';
+ * import {getFullHeapFromFile, getDominatorNodes} from '@memlab/heap-analysis';
  *
  * class TestObject {}
  *
@@ -575,7 +607,7 @@ function aggregateDominatorMetrics(
  *
  *   // dump the heap of this running JavaScript program
  *   const heapFile = dumpNodeHeapSnapshot();
- *   const heap = await getHeapFromFile(heapFile);
+ *   const heap = await getFullHeapFromFile(heapFile);
  *
  *   // find the heap node for TestObject
  *   let nodes = [];
@@ -637,7 +669,9 @@ export default {
   isNodeWorthInspecting,
   loadHeapSnapshot,
   getHeapFromFile,
+  getFullHeapFromFile,
   printNodeListInTerminal,
   printReferencesInTerminal,
   snapshotMapReduce,
+  takeNodeFullHeap,
 };

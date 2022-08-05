@@ -10,11 +10,11 @@
 
 import type {IHeapSnapshot, IHeapEdge} from '@memlab/core';
 import {dumpNodeHeapSnapshot} from '@memlab/core';
-import {getHeapFromFile} from '@memlab/heap-analysis';
+import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 (async function () {
   const heapFile = dumpNodeHeapSnapshot();
-  const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+  const heap: IHeapSnapshot = await getFullHeapFromFile(heapFile);
 
   // get the total number of heap references
   heap.edges.length;

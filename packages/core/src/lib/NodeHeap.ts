@@ -31,7 +31,7 @@ import MemLabTaggedStore from './heap-data/MemLabTagStore';
  * * **Examples**:
  * ```typescript
  * import type {IHeapSnapshot, AnyValue} from '@memlab/core';
- * import {config, getNodeInnocentHeap, tagObject} from '@memlab/core';
+ * import {config, takeNodeMinimalHeap, tagObject} from '@memlab/core';
  *
  * test('memory test', async () => {
  *   config.muteConsole = true;
@@ -45,7 +45,7 @@ import MemLabTaggedStore from './heap-data/MemLabTagStore';
  *
  *   o2 = null;
  *
- *   const heap: IHeapSnapshot = await getNodeInnocentHeap();
+ *   const heap: IHeapSnapshot = await takeNodeMinimalHeap();
  *
  *   // expect object with marker "memlab-mark-1" exists
  *   expect(heap.hasObjectWithTag('memlab-mark-1')).toBe(true);
@@ -73,11 +73,11 @@ export function tagObject<T extends object>(o: T, tag: string): T {
  * ```typescript
  * import type {IHeapSnapshot} from '@memlab/core';
  * import {dumpNodeHeapSnapshot} from '@memlab/core';
- * import {getHeapFromFile} from '@memlab/heap-analysis';
+ * import {getFullHeapFromFile} from '@memlab/heap-analysis';
  *
  * (async function () {
  *   const heapFile = dumpNodeHeapSnapshot();
- *   const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+ *   const heap: IHeapSnapshot = await getFullHeapFromFile(heapFile);
  * })();
  * ```
  */
@@ -102,21 +102,54 @@ export function dumpNodeHeapSnapshot(): string {
  *
  * @returns heap representation without heap analysis meta data.
  *
- * If you need to get the heap snapshot with heap analysis meta data
- * use {@link dumpNodeHeapSnapshot} and {@link getHeapFromFile},
- * for example:
+ * @deprecated
+ * @internal
+ *
+ * If you need to get the heap snapshot with heap analysis meta data, please
+ * use {@link takeNodeFullHeap}.
+ * For example:
  * ```typescript
  * import type {IHeapSnapshot} from '@memlab/core';
- * import {dumpNodeHeapSnapshot} from '@memlab/core';
- * import {getHeapFromFile} from '@memlab/heap-analysis';
+ * import {takeNodeFullHeap} from '@memlab/heap-analysis';
  *
  * (async function () {
- *   const heapFile = dumpNodeHeapSnapshot();
- *   const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+ *   const heap: IHeapSnapshot = await takeNodeFullHeap();
  * })();
  * ```
  */
 export async function getNodeInnocentHeap(): Promise<IHeapSnapshot> {
+  const file = dumpNodeHeapSnapshot();
+  const snapshot = await utils.getSnapshotFromFile(file, {
+    buildNodeIdIndex: true,
+  });
+  fs.unlink(file, () => {
+    // do nothing
+  });
+  return snapshot;
+}
+
+/**
+ * Take a heap snapshot of the current program state
+ * and parse it as {@link IHeapSnapshot}. Notice that
+ * this API does not calculate some heap analysis meta data
+ * for heap analysis. But this also means faster heap parsing.
+ *
+ * @returns heap representation without heap analysis meta data.
+ *
+ * * **Examples:**
+ * ```typescript
+ * import type {IHeapSnapshot} from '@memlab/core';
+ * import {takeNodeMinimalHeap} from '@memlab/core';
+ *
+ * (async function () {
+ *   const heap: IHeapSnapshot = await takeNodeMinimalHeap();
+ * })();
+ * ```
+ *
+ * If you need to get the heap snapshot with heap analysis meta data, please
+ * use {@link getFullHeapFromFile}.
+ */
+export async function takeNodeMinimalHeap(): Promise<IHeapSnapshot> {
   const file = dumpNodeHeapSnapshot();
   const snapshot = await utils.getSnapshotFromFile(file, {
     buildNodeIdIndex: true,

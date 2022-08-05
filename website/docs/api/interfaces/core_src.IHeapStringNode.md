@@ -12,16 +12,16 @@ and graph edges are JS references among JS heap objects.
 **`readonly`** it is not recommended to modify any `IHeapStringNode` instance
 
 * **Examples**: V8 or hermes heap snapshot can be parsed by the
-[getHeapFromFile](../modules/heap_analysis_src.md#getheapfromfile) API.
+[getFullHeapFromFile](../modules/heap_analysis_src.md#getfullheapfromfile) API.
 
 ```typescript
 import type {IHeapSnapshot, IHeapNode, IHeapStringNode} from '@memlab/core';
 import {dumpNodeHeapSnapshot} from '@memlab/core';
-import {getHeapFromFile} from '@memlab/heap-analysis';
+import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 (async function () {
   const heapFile = dumpNodeHeapSnapshot();
-  const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+  const heap: IHeapSnapshot = await getFullHeapFromFile(heapFile);
 
   // iterate over each node (heap object)
   heap.nodes.forEach((node: IHeapNode, i: number) => {

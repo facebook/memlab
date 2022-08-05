@@ -33,7 +33,7 @@ For code examples on how this options could be used, see
 or [snapshotMapReduce](heap_analysis_src.md#snapshotmapreduce).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:67
+    * heap-analysis/src/PluginUtils.ts:68
 
 ## Functions
 
@@ -50,7 +50,7 @@ of the set of input heap objects.
 * * **Examples**:
 ```typescript
 import {dumpNodeHeapSnapshot} from '@memlab/core';
-import {getHeapFromFile, getDominatorNodes} from '@memlab/heap-analysis';
+import {getFullHeapFromFile, getDominatorNodes} from '@memlab/heap-analysis';
 
 class TestObject {}
 
@@ -60,7 +60,7 @@ class TestObject {}
 
   // dump the heap of this running JavaScript program
   const heapFile = dumpNodeHeapSnapshot();
-  const heap = await getHeapFromFile(heapFile);
+  const heap = await getFullHeapFromFile(heapFile);
 
   // find the heap node for TestObject
   let nodes = [];
@@ -79,11 +79,11 @@ class TestObject {}
 ```
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:596
+    * heap-analysis/src/PluginUtils.ts:628
 
 ___
 
-### <a id="getheapfromfile"></a>**getHeapFromFile**(`file`)
+### <a id="getfullheapfromfile"></a>**getFullHeapFromFile**(`file`)
 
 Load and parse a `.heapsnapshot` file and calculate meta data like
 dominator nodes and retained sizes.
@@ -95,16 +95,28 @@ the heap
 * **Examples**:
 ```typescript
 import {dumpNodeHeapSnapshot} from '@memlab/core';
-import {getHeapFromFile} from '@memlab/heap-analysis';
+import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 (async function (){
   const heapFile = dumpNodeHeapSnapshot();
-  const heap = await getHeapFromFile(heapFile);
+  const heap = await getFullHeapFromFile(heapFile);
 })();
 ```
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:424
+    * heap-analysis/src/PluginUtils.ts:425
+
+___
+
+### <a id="getheapfromfile"></a>**getHeapFromFile**(`file`)
+
+**`deprecated`**
+
+ * **Parameters**:
+    * `file`: `string`
+ * **Returns**: `Promise`<`IHeapSnapshot`\>
+ * **Source**:
+    * heap-analysis/src/PluginUtils.ts:456
 
 ___
 
@@ -151,7 +163,7 @@ The new heap analysis can also be used with [analyze](api_src.md#analyze), in th
 [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:336
+    * heap-analysis/src/PluginUtils.ts:337
 
 ___
 
@@ -198,7 +210,7 @@ The new heap analysis can also be used with [analyze](api_src.md#analyze), in th
 ascending order from [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:287
+    * heap-analysis/src/PluginUtils.ts:288
 
 ___
 
@@ -246,7 +258,7 @@ The new heap analysis can also be used with [analyze](api_src.md#analyze), in th
 ascending order from [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:390
+    * heap-analysis/src/PluginUtils.ts:391
 
 ___
 
@@ -318,4 +330,29 @@ Each heap snapshot could be non-trivial in size, loading them all at once
 may not be possible.
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:501
+    * heap-analysis/src/PluginUtils.ts:533
+
+___
+
+### <a id="takenodefullheap"></a>**takeNodeFullHeap**()
+
+Take a heap snapshot of the current program state
+and parse it as [IHeapSnapshot](../interfaces/core_src.IHeapSnapshot.md). This
+API also calculates some heap analysis meta data
+for heap analysis. But this also means slower heap parsing
+comparing with [takeNodeMinimalHeap](core_src.md#takenodeminimalheap).
+
+ * **Returns**: `Promise`<`IHeapSnapshot`\> | heap representation with heap analysis meta data.
+
+* **Examples:**
+```typescript
+import type {IHeapSnapshot} from '@memlab/core';
+import type {takeNodeFullHeap} from '@memlab/heap-analysis';
+
+(async function () {
+  const heap: IHeapSnapshot = await takeNodeFullHeap();
+})();
+```
+
+ * **Source**:
+    * heap-analysis/src/PluginUtils.ts:448

@@ -8,7 +8,8 @@
  * @format
  */
 
-import {config} from '@memlab/core';
+import {config, IHeapSnapshot} from '@memlab/core';
+import {takeNodeFullHeap} from '..';
 import heapAnalysisLoader from '../HeapAnalysisLoader';
 
 beforeEach(() => {
@@ -18,4 +19,18 @@ beforeEach(() => {
 test('Heap analysis modules can be loaded', async () => {
   const heapAnalysisMap = heapAnalysisLoader.loadAllAnalysis();
   expect(heapAnalysisMap.size).toBeGreaterThan(0);
+});
+
+test('takeNodeFullHeap works as expected', async () => {
+  class TestClass {
+    public name = 'test';
+    public age = 183;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _v = new TestClass();
+  const heap: IHeapSnapshot = await takeNodeFullHeap();
+  const node = heap.getAnyObjectWithClassName('TestClass');
+  expect(node?.dominatorNode != null).toBe(true);
+  const size = node?.retainedSize ?? 0;
+  expect(size > 0).toBe(true);
 });

@@ -9,7 +9,7 @@
  */
 
 import type {IHeapSnapshot, Nullable} from '@memlab/core';
-import {config, getNodeInnocentHeap} from '@memlab/core';
+import {config, takeNodeMinimalHeap} from '@memlab/core';
 
 class TestObject {
   public arr1 = [1, 2, 3];
@@ -20,7 +20,7 @@ test('memory test', async () => {
   config.muteConsole = true;
   let obj: Nullable<TestObject> = new TestObject();
   // get a heap snapshot of the current program state
-  let heap: IHeapSnapshot = await getNodeInnocentHeap();
+  let heap: IHeapSnapshot = await takeNodeMinimalHeap();
 
   // call some function that may add references to obj
   // rabbitHole()
@@ -29,7 +29,7 @@ test('memory test', async () => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   obj = null;
 
-  heap = await getNodeInnocentHeap();
+  heap = await takeNodeMinimalHeap();
   // if rabbitHole does not add new references, the obj can be GCed
   expect(heap.hasObjectWithClassName('TestObject')).toBe(false);
 }, 30000);

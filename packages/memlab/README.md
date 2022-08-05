@@ -162,7 +162,7 @@ to take a heap snapshot of its own state, and write advanced memory assertions:
 ```typescript
 // save as example.test.ts
 import type {IHeapSnapshot, Nullable} from '@memlab/core';
-import {config, getNodeInnocentHeap} from '@memlab/core';
+import {config, takeNodeMinimalHeap} from '@memlab/core';
 
 class TestObject {
   public arr1 = [1, 2, 3];
@@ -174,7 +174,7 @@ test('memory test with heap assertion', async () => {
 
   let obj: Nullable<TestObject> = new TestObject();
   // get a heap snapshot of the current program state
-  let heap: IHeapSnapshot = await getNodeInnocentHeap();
+  let heap: IHeapSnapshot = await takeNodeMinimalHeap();
 
   // call some function that may add references to obj
   rabbitHole(obj)
@@ -182,7 +182,7 @@ test('memory test with heap assertion', async () => {
   expect(heap.hasObjectWithClassName('TestObject')).toBe(true);
   obj = null;
 
-  heap = await getNodeInnocentHeap();
+  heap = await takeNodeMinimalHeap();
   // if rabbitHole does not have any side effect that
   // adds new references to obj, then obj can be GCed
   expect(heap.hasObjectWithClassName('TestObject')).toBe(false);

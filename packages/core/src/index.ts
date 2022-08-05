@@ -16,6 +16,7 @@ export async function registerPackage(): Promise<void> {
 }
 
 export * from './lib/Types';
+export * from './lib/NodeHeap';
 /** @internal */
 export {default as config} from './lib/Config';
 /** @internal */
@@ -52,4 +53,3 @@ export {default as NormalizedTrace} from './trace-cluster/TraceBucket';
 export {default as EvaluationMetric} from './trace-cluster/EvalutationMetric';
 /** @internal */
 export * from './lib/PackageInfoLoader';
-export * from './lib/NodeHeap';

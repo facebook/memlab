@@ -9,7 +9,7 @@
  */
 
 import type {IHeapSnapshot} from '@memlab/core';
-import {getNodeInnocentHeap} from '@memlab/core';
+import {takeNodeMinimalHeap} from '@memlab/core';
 
 class TestObject {
   public arr1 = [1, 2, 3];
@@ -20,7 +20,7 @@ class TestObject {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const obj = new TestObject();
   // get a heap snapshot of the current program state
-  const heap: IHeapSnapshot = await getNodeInnocentHeap();
+  const heap: IHeapSnapshot = await takeNodeMinimalHeap();
 
   const node = heap.getAnyObjectWithClassName('TestObject');
   console.log(node?.name);

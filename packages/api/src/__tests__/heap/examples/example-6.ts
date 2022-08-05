@@ -10,14 +10,14 @@
 
 import type {IHeapSnapshot} from '@memlab/core';
 import {dumpNodeHeapSnapshot} from '@memlab/core';
-import {getHeapFromFile} from '@memlab/heap-analysis';
+import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 (async function () {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const object = {'memlab-test-heap-property': 'memlab-test-heap-value'};
 
   const heapFile = dumpNodeHeapSnapshot();
-  const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+  const heap: IHeapSnapshot = await getFullHeapFromFile(heapFile);
 
   // should be true
   console.log(heap.hasObjectWithPropertyName('memlab-test-heap-property'));

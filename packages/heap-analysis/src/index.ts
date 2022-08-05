@@ -18,11 +18,14 @@ export async function registerPackage(): Promise<void> {
 import PluginUtils from './PluginUtils';
 export const {
   getDominatorNodes,
+  /** @deprecated */
   getHeapFromFile,
+  getFullHeapFromFile,
   getSnapshotDirForAnalysis,
   getSnapshotFileForAnalysis,
   loadHeapSnapshot,
   snapshotMapReduce,
+  takeNodeFullHeap,
 } = PluginUtils;
 
 export type {HeapAnalysisOptions} from './PluginUtils';

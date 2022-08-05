@@ -15,7 +15,7 @@ import {
   getSnapshotFileForAnalysis,
   loadHeapSnapshot,
   BaseAnalysis,
-  getHeapFromFile,
+  getFullHeapFromFile,
   getDominatorNodes,
 } from '../index';
 
@@ -70,9 +70,9 @@ test('analyzeSnapshotFromFile works as expected', async () => {
   expect(called).toBe(true);
 });
 
-test('getHeapFromFile works as expected', async () => {
+test('getFullHeapFromFile works as expected', async () => {
   const heapFile = dumpNodeHeapSnapshot();
-  const heap = await getHeapFromFile(heapFile);
+  const heap = await getFullHeapFromFile(heapFile);
   expect(heap.nodes.length > 0).toBe(true);
 });
 
@@ -85,7 +85,7 @@ test('getDominatorNodes works as expected', async () => {
 
   // dump the heap of this running JavaScript program
   const heapFile = dumpNodeHeapSnapshot();
-  const heap = await getHeapFromFile(heapFile);
+  const heap = await getFullHeapFromFile(heapFile);
 
   // find the heap node for TestObject
   const nodes: IHeapNode[] = [];

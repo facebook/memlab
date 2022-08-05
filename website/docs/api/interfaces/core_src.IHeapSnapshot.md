@@ -23,11 +23,11 @@ array provides API to query and traverse all heap references.
 ```typescript
 import type {IHeapSnapshot, IHeapEdge} from '@memlab/core';
 import {dumpNodeHeapSnapshot} from '@memlab/core';
-import {getHeapFromFile} from '@memlab/heap-analysis';
+import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 (async function () {
   const heapFile = dumpNodeHeapSnapshot();
-  const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+  const heap: IHeapSnapshot = await getFullHeapFromFile(heapFile);
 
   // get the total number of heap references
   heap.edges.length;
@@ -54,11 +54,11 @@ array provides API to query and traverse all heap objects.
 ```typescript
 import type {IHeapSnapshot, IHeapNode} from '@memlab/core';
 import {dumpNodeHeapSnapshot} from '@memlab/core';
-import {getHeapFromFile} from '@memlab/heap-analysis';
+import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 (async function () {
   const heapFile = dumpNodeHeapSnapshot();
-  const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+  const heap: IHeapSnapshot = await getFullHeapFromFile(heapFile);
 
   // get the total number of heap objects
   heap.nodes.length;
@@ -87,7 +87,7 @@ a specified constructor name (if there is any).
 * **Examples**:
 ```typescript
 import type {IHeapSnapshot} from '@memlab/core';
-import {getNodeInnocentHeap} from '@memlab/core';
+import {takeNodeMinimalHeap} from '@memlab/core';
 
 class TestObject {
   public arr1 = [1, 2, 3];
@@ -97,7 +97,7 @@ class TestObject {
 (async function () {
   const obj = new TestObject();
   // get a heap snapshot of the current program state
-  const heap: IHeapSnapshot = await getNodeInnocentHeap();
+  const heap: IHeapSnapshot = await takeNodeMinimalHeap();
 
   const node = heap.getAnyObjectWithClassName('TestObject');
   console.log(node?.name); // should be 'TestObject'
@@ -122,11 +122,11 @@ to get an [IHeapNode](core_src.IHeapNode.md) associated with the id.
 ```typescript
 import type {IHeapSnapshot} from '@memlab/core';
 import {dumpNodeHeapSnapshot} from '@memlab/core';
-import {getHeapFromFile} from '@memlab/heap-analysis';
+import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 (async function () {
   const heapFile = dumpNodeHeapSnapshot();
-  const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+  const heap: IHeapSnapshot = await getFullHeapFromFile(heapFile);
 
   const node = heap.getNodeById(351);
   node?.id; // should be 351
@@ -151,7 +151,7 @@ a specified constructor name.
 ```typescript
 // save as example.test.ts
 import type {IHeapSnapshot, Nullable} from '@memlab/core';
-import {config, getNodeInnocentHeap} from '@memlab/core';
+import {config, takeNodeMinimalHeap} from '@memlab/core';
 
 class TestObject {
   public arr1 = [1, 2, 3];
@@ -163,7 +163,7 @@ test('memory test with heap assertion', async () => {
 
   let obj: Nullable<TestObject> = new TestObject();
   // get a heap snapshot of the current program state
-  let heap: IHeapSnapshot = await getNodeInnocentHeap();
+  let heap: IHeapSnapshot = await takeNodeMinimalHeap();
 
   // call some function that may add references to obj
   rabbitHole(obj)
@@ -171,7 +171,7 @@ test('memory test with heap assertion', async () => {
   expect(heap.hasObjectWithClassName('TestObject')).toBe(true);
   obj = null;
 
-  heap = await getNodeInnocentHeap();
+  heap = await takeNodeMinimalHeap();
   // if rabbitHole does not have any side effect that
   // adds new references to obj, then obj can be GCed
   expect(heap.hasObjectWithClassName('TestObject')).toBe(false);
@@ -197,14 +197,14 @@ a specified property name.
 ```typescript
 import type {IHeapSnapshot} from '@memlab/core';
 import {dumpNodeHeapSnapshot} from '@memlab/core';
-import {getHeapFromFile} from '@memlab/heap-analysis';
+import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 (async function () {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const object = {'memlab-test-heap-property': 'memlab-test-heap-value'};
 
   const heapFile = dumpNodeHeapSnapshot();
-  const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+  const heap: IHeapSnapshot = await getFullHeapFromFile(heapFile);
 
   // should be true
   console.log(heap.hasObjectWithPropertyName('memlab-test-heap-property'));
@@ -230,7 +230,7 @@ The `tagObject` API does not modify the object instance in any way
 
 ```typescript
 import type {IHeapSnapshot, AnyValue} from '@memlab/core';
-import {config, getNodeInnocentHeap, tagObject} from '@memlab/core';
+import {config, takeNodeMinimalHeap, tagObject} from '@memlab/core';
 
 test('memory test', async () => {
   config.muteConsole = true;
@@ -244,7 +244,7 @@ test('memory test', async () => {
 
   o2 = null;
 
-  const heap: IHeapSnapshot = await getNodeInnocentHeap();
+  const heap: IHeapSnapshot = await takeNodeMinimalHeap();
 
   // expect object with marker "memlab-mark-1" exists
   expect(heap.hasObjectWithTag('memlab-mark-1')).toBe(true);

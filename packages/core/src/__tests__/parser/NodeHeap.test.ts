@@ -10,7 +10,7 @@
 
 import type {AnyValue, Nullable} from '../../lib/Types';
 import config from '../../lib/Config';
-import {getNodeInnocentHeap, tagObject} from '../../lib/NodeHeap';
+import {takeNodeMinimalHeap, tagObject} from '../../lib/NodeHeap';
 
 beforeEach(() => {
   config.isTest = true;
@@ -23,7 +23,7 @@ test(
   async () => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const object = {'memlab-test-heap-property': 'memlab-test-heap-value'};
-    const heap = await getNodeInnocentHeap();
+    const heap = await takeNodeMinimalHeap();
     expect(heap.hasObjectWithPropertyName('memlab-test-heap-property')).toBe(
       true,
     );
@@ -39,7 +39,7 @@ test(
     };
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     object = null;
-    const heap = await getNodeInnocentHeap();
+    const heap = await takeNodeMinimalHeap();
     expect(heap.hasObjectWithPropertyName('memlab-test-heap-property')).toBe(
       false,
     );
@@ -67,7 +67,7 @@ test(
     }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const object = buildTest();
-    const heap = await getNodeInnocentHeap();
+    const heap = await takeNodeMinimalHeap();
     expect(heap.hasObjectWithClassName('TestClass1')).toBe(true);
     expect(heap.hasObjectWithClassName('TestClass2')).toBe(true);
   },
@@ -94,7 +94,7 @@ test(
     }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const object = buildTest();
-    const heap = await getNodeInnocentHeap();
+    const heap = await takeNodeMinimalHeap();
     expect(heap.hasObjectWithClassName('TestClass3')).toBe(true);
     expect(heap.hasObjectWithClassName('TestClass4')).toBe(false);
   },
@@ -109,7 +109,7 @@ test(
     tagObject(o1, 'memlab-mark-1');
     tagObject(o2, 'memlab-mark-2');
     o2 = null;
-    const heap = await getNodeInnocentHeap();
+    const heap = await takeNodeMinimalHeap();
     expect(heap.hasObjectWithTag('memlab-mark-1')).toBe(true);
     expect(heap.hasObjectWithTag('memlab-mark-2')).toBe(false);
   },

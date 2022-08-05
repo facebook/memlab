@@ -9,7 +9,7 @@
  */
 
 import type {IHeapSnapshot, AnyValue} from '@memlab/core';
-import {config, getNodeInnocentHeap, tagObject} from '@memlab/core';
+import {config, takeNodeMinimalHeap, tagObject} from '@memlab/core';
 
 test('memory test', async () => {
   config.muteConsole = true;
@@ -20,7 +20,7 @@ test('memory test', async () => {
   // tag o2 with marker: "memlab-mark-2"
   tagObject(o2, 'memlab-mark-2');
   o2 = null;
-  const heap: IHeapSnapshot = await getNodeInnocentHeap();
+  const heap: IHeapSnapshot = await takeNodeMinimalHeap();
 
   // expect object with marker "memlab-mark-1" exists
   expect(heap.hasObjectWithTag('memlab-mark-1')).toBe(true);

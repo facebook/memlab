@@ -18,6 +18,10 @@ export async function registerPackage(): Promise<void> {
 export * from './API';
 export * from '@memlab/heap-analysis';
 export {default as BrowserInteractionResultReader} from './result-reader/BrowserInteractionResultReader';
-export {dumpNodeHeapSnapshot, getNodeInnocentHeap} from '@memlab/core';
+export {
+  dumpNodeHeapSnapshot,
+  getNodeInnocentHeap,
+  takeNodeMinimalHeap,
+} from '@memlab/core';
 /** @internal */
 export {config} from '@memlab/core';

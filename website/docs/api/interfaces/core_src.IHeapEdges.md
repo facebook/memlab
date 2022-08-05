@@ -16,11 +16,11 @@ array provides API to query and traverse all heap references.
 ```typescript
 import type {IHeapSnapshot, IHeapEdges} from '@memlab/core';
 import {dumpNodeHeapSnapshot} from '@memlab/core';
-import {getHeapFromFile} from '@memlab/heap-analysis';
+import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 (async function () {
   const heapFile = dumpNodeHeapSnapshot();
-  const heap: IHeapSnapshot = await getHeapFromFile(heapFile);
+  const heap: IHeapSnapshot = await getFullHeapFromFile(heapFile);
 
   const edges: IHeapEdges = heap.edges;
   edges.length;
