@@ -33,7 +33,7 @@ export default class MLTraceSimilarityStrategy implements IClusterStrategy {
       if (!map.has(repTrace)) {
         map.set(repTrace, [repTrace]);
       }
-      // to please lint
+      // to please linter
       map.get(repTrace)?.push(trace);
     }
 

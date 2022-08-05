@@ -321,7 +321,11 @@ export class MemLabConfig {
     this.includeObjectInfoInTraceReturnChain = false;
     // by default halt the program when utils.haltOrThrow is calleds
     this.errorHandling = ErrorHandling.Halt;
+    // by default use clustering based on heurastics
+    this.isMLClustering = false;
+    // linkage max distance for caclulating distances among clusters
     this.mlClusteringLinkageMaxDistance = 0.7;
+    // TF/IDF maximum document frequency
     this.mlMaxDF = 1;
   }
 

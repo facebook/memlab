@@ -17,13 +17,13 @@ const condensedIndex = (n: number, i: number, j: number): number => {
   return n * i - (i * (i + 1)) / 2 + (j - i - 1);
 };
 
-const getRootLabel = (array: number[], idx: number): number => {
+function getRootLabel(array: Uint32Array, idx: number): number {
   let rootIdx = idx;
   while (array[rootIdx] !== rootIdx) {
     rootIdx = array[rootIdx];
   }
   return rootIdx;
-};
+}
 
 /**
  *
@@ -46,9 +46,7 @@ export const cluster = (
   let traceBIdx = -1;
   let currentMin = Number.MAX_SAFE_INTEGER;
   let distanceBetweenTraces: number;
-  const labels = Array(nDocs)
-    .fill(0)
-    .map((_, idx) => idx);
+  const labels = new Uint32Array(nDocs).map((_, idx) => idx);
 
   for (let k = 0; k < nDocs - 1; k++) {
     traceBIdx = -1;
@@ -87,7 +85,7 @@ export const cluster = (
         }
       }
 
-      // to make sure we found a two mutual traces whose distance is smallest.
+      // make sure that traceA and traceB are closest to each other
       if (
         chainLength > 1 &&
         traceBIdx !== -1 &&
