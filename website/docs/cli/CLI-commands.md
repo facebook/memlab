@@ -163,6 +163,23 @@ memlab analyze global-variable
  * **`--debug`**: enable manual debugging
  * **`--silent`**, **`-s`**: mute all terminal output
 
+#### memlab analyze object
+
+Get properties inside an object
+
+```bash
+memlab analyze object 
+```
+
+**Options**:
+ * **`--snapshot`**: set file path of the heap snapshot under analysis
+ * **`--node-id`**: set heap node ID
+ * **`--help`**, **`-h`**: print helper text
+ * **`--verbose`**, **`-v`**: show more details
+ * **`--sc`**: set to continuous test mode
+ * **`--debug`**: enable manual debugging
+ * **`--silent`**, **`-s`**: mute all terminal output
+
 #### memlab analyze object-fanout
 
 Get objects with the most out-going references in heap

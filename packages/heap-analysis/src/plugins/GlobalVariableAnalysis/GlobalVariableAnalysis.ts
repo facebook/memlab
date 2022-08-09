@@ -68,7 +68,6 @@ class GlobalVariableAnalysis extends BaseAnalysis {
 
   /** @internal */
   private getGlobalVariables(snapshot: IHeapSnapshot): IHeapEdge[] {
-    // rank heap objects based on fanout
     const ret: IHeapEdge[] = [];
     const processNode = (node: IHeapNode) => {
       if (!node.name.startsWith('Window ')) {

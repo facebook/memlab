@@ -215,6 +215,7 @@ function getHeapObjectString(node: IHeapNode): string {
   );
 }
 
+const MAX_NUM_OF_EDGES_TO_PRINT = 50;
 function getReferenceString(edge: IHeapEdge): string {
   const edgeName = chalk.green(edge.name_or_index);
   const objectInfo = getHeapObjectString(edge.toNode);
@@ -228,9 +229,44 @@ function printReferencesInTerminal(
 ): void {
   const dot = chalk.grey('· ');
   const indent = options.indent || '';
+  let n = 0;
   for (const edge of edgeList) {
+    if (!config.verbose && n >= MAX_NUM_OF_EDGES_TO_PRINT) {
+      break;
+    }
+    ++n;
     const refStr = getReferenceString(edge);
     info.topLevel(`${indent}${dot}${refStr}`);
+  }
+  if (n < edgeList.length) {
+    info.lowLevel(`${edgeList.length - n} more references...`);
+  }
+}
+
+function getReferrerString(edge: IHeapEdge): string {
+  const edgeName = chalk.green(edge.name_or_index);
+  const objectInfo = getHeapObjectString(edge.fromNode);
+
+  return ` ${objectInfo} --${edgeName}--> `;
+}
+
+function printReferrersInTerminal(
+  edgeList: IHeapEdge[],
+  options: AnyOptions & PrintNodeOption = {},
+): void {
+  const dot = chalk.grey('· ');
+  const indent = options.indent || '';
+  let n = 0;
+  for (const edge of edgeList) {
+    if (!config.verbose && n >= MAX_NUM_OF_EDGES_TO_PRINT) {
+      break;
+    }
+    ++n;
+    const refStr = getReferrerString(edge);
+    info.topLevel(`${indent}${dot}${refStr}`);
+  }
+  if (n < edgeList.length) {
+    info.lowLevel(`${edgeList.length - n} more referrers...`);
   }
 }
 
@@ -672,6 +708,7 @@ export default {
   getFullHeapFromFile,
   printNodeListInTerminal,
   printReferencesInTerminal,
+  printReferrersInTerminal,
   snapshotMapReduce,
   takeNodeFullHeap,
 };
