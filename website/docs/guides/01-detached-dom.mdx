@@ -96,21 +96,32 @@ interactions (navigations) `memlab` performed as specified in our scenario file.
 **Part-3**: Detailed representative *leak trace* for each leak cluster
 
 :::note
-A *leak trace* is an object reference chain from the GC root to a leaked object.
+A *leak trace* is an object reference chain from the GC root (the entry objects in a heap graph from which garbage collectors traverse the heap) to a leaked object.
 The trace shows why and how a leaked object is still kept alive in memory.
 Breaking the reference chain means the leaked object will no longer be reachable
 from the GC root, and therefore can be garbage collected.
 
-By following the leak trace one step at a time, you will be able to find a
+By following the leak trace one step at a time from the native Window (i.e. the GC root) downward, you will be able to find a
 reference that should be set to `null` (but it wasn't due to a bug).
 :::
-
-  * `leakedObjects` - this shows that `leakedObjects` was a property of
+  * `map` - This is the V8 HiddenClass (V8 uses this internally to store meta information about the shape of an object and a reference to its prototype - see more [here](https://v8.dev/blog/fast-properties#hiddenclasses-and-descriptorarrays)) of the object being accessed - for the most part this is a V8 implementation detail and can be ignored.
+  * `prototype` - This is the instance of the `Window` class.
+  * `leakedObjects` - This shows that `leakedObjects` was a property of the
     `Window` object with size `148.5KB` pointing to an `Array` object.
-    Since it is overwhelming to show all 1024 leak traces,
-    `memlab` only prints one represantative leak trace.
+  * `0` - This shows that a detached `HTMLDIVElement` (i.e. a DOM element that is not currently connected to the DOM tree) is stored as the first element of the `leakedObjects` array (Since it is overwhelming to show all 1024 leak traces,
+    `memlab` only prints one representative leak trace. i.e. property 0 instead of properties 0->1023)
+    
     In short, the leak trace path from `window` object to leaked object is:
 ```
 [window](object) -> leakedObjects(property) -> [Array](object)
   -> 0(element) -> [Detached HTMLDIVElement](native)
+```
+
+which matches the leaking code in the example: 
+
+```javascript
+window.leakedObjects = [];
+for (let i = 0; i < 1024; i++) {
+    window.leakedObjects.push(document.createElement('div'));
+}
 ```
