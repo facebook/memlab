@@ -1,6 +1,6 @@
 {
   "name": "@memlab/api",
-  "version": "1.0.6",
+  "version": "1.0.9",
   "license": "MIT",
   "description": "memlab API",
   "author": "Liang Gong <lgong@fb.com>",

@@ -1,6 +1,6 @@
 {
   "name": "@memlab/cli",
-  "version": "1.0.7",
+  "version": "1.0.9",
   "license": "MIT",
   "description": "command line interface for memlab",
   "author": "Liang Gong <lgong@fb.com>",
