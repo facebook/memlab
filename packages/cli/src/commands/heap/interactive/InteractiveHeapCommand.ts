@@ -44,19 +44,43 @@ export default class InteractiveHeapCommand extends BaseCommand {
     return [new SnapshotFileOption(), new JSEngineOption()];
   }
 
+  private exitAttempt = 0;
   private printPromptInfo(): void {
     info.topLevel(
       `Heap Snapshot Loaded: ${chalk.grey(heapConfig.currentHeapFile)}`,
     );
   }
 
-  private startInteractiveCLI() {
-    const rl = readline.createInterface({
+  private quit(exitCode = 1) {
+    this.exitAttempt = 0;
+    info.topLevel('');
+    process.exit(exitCode);
+  }
+
+  private initPrompt(): readline.Interface {
+    return readline.createInterface({
       input: process.stdin,
       output: process.stdout,
-      prompt: 'memlab > ',
+      prompt: chalk.gray('[') + chalk.green('memlab') + chalk.gray(']') + '$ ',
     });
+  }
 
+  private setupInterruptHandle(rl: readline.Interface): void {
+    // exit when user type Ctrl + C
+    rl.on('SIGINT', () => {
+      if (this.exitAttempt > 0) {
+        this.quit();
+      }
+      this.exitAttempt++;
+      setTimeout(() => {
+        this.exitAttempt--;
+      }, 5000);
+      info.topLevel('Type Ctrl + C again to exit');
+      rl.prompt();
+    });
+  }
+
+  private setupCommandHandle(rl: readline.Interface): void {
     // the interactive cli only supports a subset of memlab commands
     const dispatcher = new CommandDispatcher({
       commandLoader: new InteractiveCommandLoader(),
@@ -64,27 +88,43 @@ export default class InteractiveHeapCommand extends BaseCommand {
     // do not halt execution when running the interactive command
     config.errorHandling = ErrorHandling.Throw;
 
-    // start the interactive prompt
-    this.printPromptInfo();
-    rl.prompt();
     // start interpreting interactive commands
     rl.on('line', async line => {
+      let command = '';
       try {
         // "memlab <command>" -> "<command>"
-        const command = line.trim().startsWith('memlab ')
-          ? line.substring('memlab '.length)
-          : line;
-        const args = command.match(/("[^"]+")|('[^']+')|(\S+)/g) as string[];
-        const parsedArgs = minimist(args);
-        await dispatcher.dispatch(parsedArgs);
+        command = line.trim().startsWith('memlab ')
+          ? line.substring('memlab '.length).trim()
+          : line.trim();
+        if (command === 'exit' || command === 'quit') {
+          this.quit(0);
+        }
+        if (command.length > 0) {
+          const args = command.match(/("[^"]+")|('[^']+')|(\S+)/g) as string[];
+          const parsedArgs = minimist(args);
+          await dispatcher.dispatch(parsedArgs);
+        }
       } catch (ex) {
         const error = utils.getError(ex);
         info.topLevel(error.message);
       }
-      info.topLevel('');
-      this.printPromptInfo();
+      if (command.length > 0) {
+        info.topLevel('');
+        this.printPromptInfo();
+      }
       rl.prompt();
     });
+  }
+
+  private startInteractiveCLI() {
+    // set up the interactive prompt
+    const rl = this.initPrompt();
+    this.setupInterruptHandle(rl);
+    this.setupCommandHandle(rl);
+
+    // start prompt
+    this.printPromptInfo();
+    rl.prompt();
   }
 
   async run(options: CLIOptions): Promise<void> {
