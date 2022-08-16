@@ -53,3 +53,5 @@ export {default as NormalizedTrace} from './trace-cluster/TraceBucket';
 export {default as EvaluationMetric} from './trace-cluster/EvalutationMetric';
 /** @internal */
 export * from './lib/PackageInfoLoader';
+/** @internal */
+export {default as SequentialClustering} from './trace-cluster/fb-internal/SequentialClustering';

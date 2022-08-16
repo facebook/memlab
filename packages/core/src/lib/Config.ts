@@ -231,6 +231,9 @@ export class MemLabConfig {
   isMLClustering: boolean;
   mlClusteringLinkageMaxDistance: number;
   mlMaxDF: number;
+  isSequentialClustering: boolean;
+  seqClusteringSplitCount: number;
+  seqClusteringIsRandomChunks: boolean;
 
   constructor(options: ConfigOption = {}) {
     // init properties, they can be configured manually
@@ -327,6 +330,10 @@ export class MemLabConfig {
     this.mlClusteringLinkageMaxDistance = 0.7;
     // TF/IDF maximum document frequency
     this.mlMaxDF = 1;
+    this.isSequentialClustering = false;
+    // split the sample leak traces into 4 smaller ones by default.
+    this.seqClusteringSplitCount = 4;
+    this.seqClusteringIsRandomChunks = false;
   }
 
   // initialize configurable parameters

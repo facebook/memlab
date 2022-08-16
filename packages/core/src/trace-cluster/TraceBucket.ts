@@ -227,6 +227,13 @@ export default class NormalizedTrace {
         ? new MLTraceSimilarityStrategy()
         : undefined,
     });
+
+    return NormalizedTrace.clusteredLeakTracesToRecord(allClusters);
+  }
+
+  static clusteredLeakTracesToRecord(
+    allClusters: LeakTrace[][],
+  ): Record<string, string> {
     const lastNodeFromTrace = (trace: LeakTrace) => trace[trace.length - 1];
 
     const labaledLeakTraces = allClusters.reduce<Record<string, string>>(
