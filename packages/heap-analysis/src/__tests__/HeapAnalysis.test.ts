@@ -16,21 +16,31 @@ beforeEach(() => {
   config.isTest = true;
 });
 
-test('Heap analysis modules can be loaded', async () => {
-  const heapAnalysisMap = heapAnalysisLoader.loadAllAnalysis();
-  expect(heapAnalysisMap.size).toBeGreaterThan(0);
-});
+const timeout = 5 * 60 * 1000;
 
-test('takeNodeFullHeap works as expected', async () => {
-  class TestClass {
-    public name = 'test';
-    public age = 183;
-  }
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _v = new TestClass();
-  const heap: IHeapSnapshot = await takeNodeFullHeap();
-  const node = heap.getAnyObjectWithClassName('TestClass');
-  expect(node?.dominatorNode != null).toBe(true);
-  const size = node?.retainedSize ?? 0;
-  expect(size > 0).toBe(true);
-});
+test(
+  'Heap analysis modules can be loaded',
+  async () => {
+    const heapAnalysisMap = heapAnalysisLoader.loadAllAnalysis();
+    expect(heapAnalysisMap.size).toBeGreaterThan(0);
+  },
+  timeout,
+);
+
+test(
+  'takeNodeFullHeap works as expected',
+  async () => {
+    class TestClass {
+      public name = 'test';
+      public age = 183;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _v = new TestClass();
+    const heap: IHeapSnapshot = await takeNodeFullHeap();
+    const node = heap.getAnyObjectWithClassName('TestClass');
+    expect(node?.dominatorNode != null).toBe(true);
+    const size = node?.retainedSize ?? 0;
+    expect(size > 0).toBe(true);
+  },
+  timeout,
+);
