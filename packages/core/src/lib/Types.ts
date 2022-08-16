@@ -1372,6 +1372,11 @@ export interface IHeapNode extends IHeapNodeBasic {
    */
   referrers: IHeapEdge[];
   /**
+   * returns true if the heap node has been set an incoming edge
+   * which leads to the parent node on the shortest path to GC root.
+   */
+  hasPathEdge: boolean;
+  /**
    * The incoming edge which leads to the parent node
    * on the shortest path to GC root.
    */

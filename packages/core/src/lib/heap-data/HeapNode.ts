@@ -239,6 +239,11 @@ export default class HeapNode implements IHeapNode {
     }
   }
 
+  get hasPathEdge(): boolean {
+    const heapSnapshot = this.heapSnapshot;
+    return heapSnapshot._nodeIdxHasPathEdge[this.idx] !== 0;
+  }
+
   get pathEdge(): Nullable<HeapEdge> {
     const heapSnapshot = this.heapSnapshot;
     if (heapSnapshot._nodeIdxHasPathEdge[this.idx] === 0) {

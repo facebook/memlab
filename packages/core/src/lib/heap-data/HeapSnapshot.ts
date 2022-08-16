@@ -123,7 +123,7 @@ export default class HeapSnapshot implements IHeapSnapshot {
       forEachTraceable(cb) {
         for (let i = 0; i < this.length; i++) {
           const node = this.get(i) as IHeapNode;
-          if (!node.pathEdge) {
+          if (!node.hasPathEdge) {
             continue;
           }
           const ret = cb(node, i);

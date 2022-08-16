@@ -8,8 +8,6 @@
  * @format
  */
 
-/* eslint-disable no-bitwise */
-
 import type {
   AnyOptions,
   HeapNodeIdSet,
@@ -127,14 +125,16 @@ class TraceFinder {
     const node = snapshot.nodes.get(ROOT_NODE_INDEX) as IHeapNode;
 
     for (const edge of node.references) {
-      if (edge.type === 'element') {
-        if (utils.isDocumentDOMTreesRoot(edge.toNode)) {
+      const toNode = edge.toNode;
+      const type = edge.type;
+      if (type === 'element') {
+        if (utils.isDocumentDOMTreesRoot(toNode)) {
           continue;
         }
-      } else if (edge.type === 'shortcut') {
+      } else if (type === 'shortcut') {
         continue;
       }
-      const childNodeIndex = edge.toNode.nodeIndex;
+      const childNodeIndex = toNode.nodeIndex;
       nodesToVisit[nodesToVisitLength++] = childNodeIndex;
       flags[childNodeIndex] |= flag;
     }
@@ -385,7 +385,7 @@ class TraceFinder {
         let newDominatorIndex = emptySlot;
         let isOrphanNode = true;
         const node = nodes.get(nodeIndex) as IHeapNode;
-        for (const edge of node.referrers) {
+        node.forEachReferrer((edge: IHeapEdge) => {
           const referrerEdgeType = edge.type;
           const referrerNodeIndex = edge.fromNode.nodeIndex;
           if (
@@ -395,7 +395,7 @@ class TraceFinder {
               ROOT_NODE_INDEX,
             )
           ) {
-            continue;
+            return;
           }
           isOrphanNode = false;
           const referrerNodeFlag = flags[referrerNodeIndex] & flag;
@@ -407,10 +407,10 @@ class TraceFinder {
             nodeFlag &&
             !referrerNodeFlag
           ) {
-            continue;
+            return;
           }
           if (!this.shouldTraverseEdge(edge)) {
-            continue;
+            return;
           }
           let referrerPostOrderIndex =
             nodeIndex2PostOrderIndex[referrerNodeIndex];
@@ -429,10 +429,11 @@ class TraceFinder {
             }
             // no need to check any further if reaching the root node
             if (newDominatorIndex === rootPostOrderedIndex) {
-              break;
+              return {stop: true};
             }
           }
-        }
+        });
+
         // set root node as the dominator of orphan nodes
         if (isOrphanNode) {
           newDominatorIndex = rootPostOrderedIndex;
@@ -496,14 +497,13 @@ class TraceFinder {
   }
 
   shouldIgnoreEdgeInTraceFinding(edge: IHeapEdge): boolean {
-    if (!edge || !edge.toNode || !edge.fromNode) {
-      return true;
-    }
+    const fromNode = edge.fromNode;
+    const toNode = edge.toNode;
     return (
       config.hideBrowserLeak &&
-      (utils.isBlinkRootNode(edge.fromNode) ||
-        utils.isPendingActivityNode(edge.fromNode)) &&
-      utils.isDetachedDOMNode(edge.toNode)
+      (utils.isBlinkRootNode(fromNode) ||
+        utils.isPendingActivityNode(fromNode)) &&
+      utils.isDetachedDOMNode(toNode)
     );
   }
 
@@ -516,35 +516,26 @@ class TraceFinder {
 
   // remove edges that are already part of reported leaked paths
   isBlockListedEdge(edge: IHeapEdge): boolean {
-    if (!edge) {
-      return false;
-    }
-    const isStrName = typeof edge.name_or_index === 'string';
+    const nameOrIndex = edge.name_or_index;
     if (
       !config.traverseDevToolsConsole &&
       edge.type === 'internal' &&
-      isStrName &&
-      String(edge.name_or_index).indexOf('DevTools console') >= 0
+      typeof nameOrIndex === 'string' &&
+      nameOrIndex.indexOf('DevTools console') >= 0
     ) {
       return true;
     }
-    if (config.edgeNameBlockList.has(String(edge.name_or_index))) {
+    if (config.edgeNameBlockList.has(String(nameOrIndex))) {
       return true;
     }
     return false;
   }
 
   isLessPreferableEdge(edge: IHeapEdge): boolean {
-    if (!edge) {
-      return false;
-    }
     return config.edgeNameGreyList.has(String(edge.name_or_index));
   }
 
   isLessPreferableNode(node: IHeapNode): boolean {
-    if (!node) {
-      return false;
-    }
     return config.nodeNameGreyList.has(node.name);
   }
 
@@ -556,12 +547,15 @@ class TraceFinder {
   }
 
   calculateAllNodesRetainedSizes(snapshot: IHeapSnapshot): void {
-    info.overwrite('calculating dominators and retained sizes...');
+    info.overwrite('calculating dominators and retained sizes .');
     // step 1: build post order index
     const flags = new Uint32Array(snapshot.nodes.length);
+    info.overwrite('calculating dominators and retained sizes ..');
     this.flagReachableNodesFromWindow(snapshot, flags, PAGE_OBJECT_FLAG);
+    info.overwrite('calculating dominators and retained sizes ...');
     const postOrderInfo = this.buildPostOrderIndex(snapshot, flags);
     // step 2: build dominator relations
+    info.overwrite('calculating dominators and retained sizes .');
     const dominatorInfo = this.calculateDominatorNodesFromPostOrder(
       snapshot.nodes,
       snapshot.edges,
@@ -569,12 +563,14 @@ class TraceFinder {
       flags,
     );
     // step 3: calculate retained sizes
+    info.overwrite('calculating dominators and retained sizes ..');
     const retainedSizes = this.calculateRetainedSizesFromDominatorNodes(
       snapshot.nodes,
       dominatorInfo,
       postOrderInfo,
     );
     // step 4: assign retained sizes and dominators to nodes
+    info.overwrite('calculating dominators and retained sizes ...');
     for (let i = 0; i < retainedSizes.length; i++) {
       const node = snapshot.nodes.get(i) as IHeapNode;
       node.retainedSize = retainedSizes[i];
@@ -608,8 +604,9 @@ class TraceFinder {
         const node = curQueue.pop() as IHeapNode;
         visited[node.nodeIndex] = 1;
         for (const edge of node.references) {
+          const toNode = edge.toNode;
           // skip nodes that already have a parent
-          if (edge.toNode.pathEdge) {
+          if (toNode.hasPathEdge) {
             continue;
           }
           if (!this.shouldTraverseEdge(edge, traverseOption)) {
@@ -627,31 +624,32 @@ class TraceFinder {
           // postpone traversing edges and nodes that are less preferable
           if (
             this.isLessPreferableEdge(edge) ||
-            this.isLessPreferableNode(edge.toNode)
+            this.isLessPreferableNode(toNode)
           ) {
             postponeQueue.push(edge);
           } else {
-            edge.toNode.pathEdge = edge;
-            nextQueue.push(edge.toNode);
+            toNode.pathEdge = edge;
+            nextQueue.push(toNode);
           }
-          queued[edge.toNode.nodeIndex] = 1;
+          queued[toNode.nodeIndex] = 1;
         }
       }
       // if no other preferable traces available
       // traverse the postpone queue
       while (nextQueue.length === 0 && postponeQueue.length > 0) {
         const edge = postponeQueue.pop() as IHeapEdge;
-        if (edge.toNode.pathEdge) {
+        const toNode = edge.toNode;
+        if (toNode.hasPathEdge) {
           continue;
         }
-        edge.toNode.pathEdge = edge;
-        nextQueue.push(edge.toNode);
+        toNode.pathEdge = edge;
+        nextQueue.push(toNode);
       }
       // if no other preferable traces available
       // consider the low priority root nodes
       while (nextQueue.length === 0 && lowPriRootLists.length > 0) {
         const root = lowPriRootLists.pop() as IHeapNode;
-        if (root.pathEdge) {
+        if (root.hasPathEdge) {
           continue;
         }
         nextQueue.push(root);
@@ -664,12 +662,12 @@ class TraceFinder {
     _snapshot: IHeapSnapshot,
     node: Nullable<IHeapNode>,
   ): Optional<LeakTracePathItem> {
-    if (!node || !node.pathEdge) {
+    if (!node || !node.hasPathEdge) {
       return null;
     }
     let path: LeakTracePathItem = {node};
-    while (node && node.pathEdge) {
-      const edge: IHeapEdge = node.pathEdge;
+    while (node && node.hasPathEdge) {
+      const edge: IHeapEdge = node.pathEdge as IHeapEdge;
       path = {node: edge.fromNode, edge, next: path};
       node = edge.fromNode;
     }

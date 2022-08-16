@@ -51,7 +51,7 @@ For more information on what a dominator node is, please check out
 [this doc](https://developer.chrome.com/docs/devtools/memory-problems/memory-101/#dominators).
 
  * **Source**:
-    * core/src/lib/Types.ts:1397
+    * core/src/lib/Types.ts:1402
 
 ___
 
@@ -62,6 +62,16 @@ native, and JS references).
 
  * **Source**:
     * core/src/lib/Types.ts:1361
+
+___
+
+### <a id="haspathedge" name="haspathedge"></a> **hasPathEdge**: `boolean`
+
+returns true if the heap node has been set an incoming edge
+which leads to the parent node on the shortest path to GC root.
+
+ * **Source**:
+    * core/src/lib/Types.ts:1378
 
 ___
 
@@ -80,7 +90,7 @@ check if this a string node (normal string node, concatenated string node
 or sliced string node)
 
  * **Source**:
-    * core/src/lib/Types.ts:1409
+    * core/src/lib/Types.ts:1414
 
 ___
 
@@ -103,7 +113,7 @@ source location information of this heap object (if it is recorded by
 the heap snapshot).
 
  * **Source**:
-    * core/src/lib/Types.ts:1402
+    * core/src/lib/Types.ts:1407
 
 ___
 
@@ -123,7 +133,7 @@ ___
 index of this heap object inside the `node.snapshot.nodes` pseudo array
 
  * **Source**:
-    * core/src/lib/Types.ts:1382
+    * core/src/lib/Types.ts:1387
 
 ___
 
@@ -133,7 +143,7 @@ The incoming edge which leads to the parent node
 on the shortest path to GC root.
 
  * **Source**:
-    * core/src/lib/Types.ts:1378
+    * core/src/lib/Types.ts:1383
 
 ___
 
@@ -165,7 +175,7 @@ could be released if this object is released). For difference between
 [this doc](https://developer.chrome.com/docs/devtools/memory-problems/memory-101/#object_sizes).
 
  * **Source**:
-    * core/src/lib/Types.ts:1389
+    * core/src/lib/Types.ts:1394
 
 ___
 
@@ -196,7 +206,7 @@ get the string value of the JS string heap object associated with
 this `IHeapStringNode` instance in heap
 
  * **Source**:
-    * core/src/lib/Types.ts:1661
+    * core/src/lib/Types.ts:1666
 
 ___
 
@@ -233,7 +243,7 @@ const reference = node.findAnyReference((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1468
+    * core/src/lib/Types.ts:1473
 
 ___
 
@@ -257,7 +267,7 @@ const referrer = node.findAnyReferrer((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1485
+    * core/src/lib/Types.ts:1490
 
 ___
 
@@ -281,7 +291,7 @@ const referrers = node.findReferrers((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1502
+    * core/src/lib/Types.ts:1507
 
 ___
 
@@ -306,7 +316,7 @@ node.forEachReference((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1433
+    * core/src/lib/Types.ts:1438
 
 ___
 
@@ -331,7 +341,7 @@ node.forEachReferrer((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1451
+    * core/src/lib/Types.ts:1456
 
 ___
 
@@ -352,7 +362,7 @@ const reference = node.getAnyReferrer('ref', 'property');
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1557
+    * core/src/lib/Types.ts:1562
 
 ___
 
@@ -378,7 +388,7 @@ const n2 = node.getAnyReferrer('ref', 'property')?.fromNode;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1580
+    * core/src/lib/Types.ts:1585
 
 ___
 
@@ -399,7 +409,7 @@ const reference = node.getReference('map', 'hidden');
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1517
+    * core/src/lib/Types.ts:1522
 
 ___
 
@@ -424,7 +434,7 @@ const hiddenClassNode2 = node.getReference('map', 'hidden')?.toNode;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1539
+    * core/src/lib/Types.ts:1544
 
 ___
 
@@ -451,7 +461,7 @@ const nodes2 = node.getReferrers('ref', 'property')
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1620
+    * core/src/lib/Types.ts:1625
 
 ___
 
@@ -473,7 +483,7 @@ const referrers = node.getReferrers('ref', 'property');
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1599
+    * core/src/lib/Types.ts:1604
 
 ___
 
@@ -485,4 +495,4 @@ inside the string node.
 
  * **Returns**: `Nullable`<[`IHeapStringNode`](core_src.IHeapStringNode.md)\>
  * **Source**:
-    * core/src/lib/Types.ts:1415
+    * core/src/lib/Types.ts:1420

@@ -86,6 +86,12 @@ export class NodeRecord implements IHeapNode {
   findReferrers(): IHeapEdge[] {
     throw new Error('NodeRecord.findReferrers is not implemented');
   }
+  set hasPathEdge(f: boolean) {
+    throw new Error('NodeRecord.hasPathEdge cannot be assigned');
+  }
+  get hasPathEdge(): boolean {
+    throw new Error('NodeRecord.hasPathEdge cannot be read');
+  }
   set pathEdge(r: IHeapEdge) {
     throw new Error('NodeRecord.pathEdge cannot be assigned');
   }

@@ -138,10 +138,10 @@ function isDetachedDOMNode(
   node: Optional<IHeapNode>,
   args: AnyOptions = {},
 ): boolean {
-  if (!node || typeof node.name !== 'string') {
+  let name = null;
+  if (!node || typeof (name = node.name) !== 'string') {
     return false;
   }
-  const name = node.name;
   if (isFiberNode(node)) {
     return false;
   }
@@ -1510,7 +1510,8 @@ function isMeaningfulNode(node: IHeapNode): boolean {
   if (!node) {
     return false;
   }
-  if (config.nodeNameBlockList.has(node.name)) {
+  const nodeName = node.name;
+  if (config.nodeNameBlockList.has(nodeName)) {
     return false;
   }
   if (isFiberNode(node)) {
@@ -1522,13 +1523,13 @@ function isMeaningfulNode(node: IHeapNode): boolean {
 
   // More details in https://github.com/ChromeDevTools/devtools-frontend
   // under front_end/heap_snapshot_worker/HeapSnapshot.ts
-  if (node.name === 'system / NativeContext') {
+  if (nodeName === 'system / NativeContext') {
     return false;
   }
-  if (node.name === 'system / SourcePositionTableWithFrameCache') {
+  if (nodeName === 'system / SourcePositionTableWithFrameCache') {
     return false;
   }
-  if (node.name === '(map descriptors)') {
+  if (nodeName === '(map descriptors)') {
     return false;
   }
   if (node.type === 'code') {
@@ -1555,47 +1556,52 @@ function isMeaningfulEdge(
   if (source.id === node.id) {
     return false;
   }
+  const edgeNameOrIndex = edge.name_or_index;
   if (
-    typeof edge.name_or_index === 'string' &&
-    config.edgeNameBlockList.has(edge.name_or_index)
+    typeof edgeNameOrIndex === 'string' &&
+    config.edgeNameBlockList.has(edgeNameOrIndex)
   ) {
     return false;
   }
+  const edgeType = edge.type;
   // shortcut edge may be meaningful edges
   // --forceUpdate (variable)--->  [native_bind]
   // --bound_argument_0 (shortcut)--->  [FiberNode]
-  if (edge.type === 'weak' /* || edge.type === 'shortcut' */) {
+  if (edgeType === 'weak' /* || edge.type === 'shortcut' */) {
     return false;
   }
   if (options.excludeWeakMapEdge && isWeakMapEdgeToKey(edge)) {
     return false;
   }
-  if (options.visited && options.visited[node.nodeIndex]) {
+  const nodeIndex = node.nodeIndex;
+  if (options.visited && options.visited[nodeIndex]) {
     return false;
   }
-  if (options.queued && options.queued[node.nodeIndex]) {
+  if (options.queued && options.queued[nodeIndex]) {
     return false;
   }
-  if (!options.includeString && node.type === 'string') {
+  const nodeType = node.type;
+  if (!options.includeString && nodeType === 'string') {
     return false;
   }
-  if (edge.type === 'internal' && edge.name_or_index === 'code') {
+  if (edgeType === 'internal' && edgeNameOrIndex === 'code') {
     return false;
   }
 
   // More details about the following three special cases are available
   // in https://github.com/ChromeDevTools/devtools-frontend
   // under front_end/heap_snapshot_worker/HeapSnapshot.ts
-  if (edge.type === 'hidden' && edge.name_or_index === 'sloppy_function_map') {
+  if (edgeType === 'hidden' && edgeNameOrIndex === 'sloppy_function_map') {
     return false;
   }
-  if (edge.type === 'hidden' && node.name === 'system / NativeContext') {
+  const nodeName = node.name;
+  if (edgeType === 'hidden' && nodeName === 'system / NativeContext') {
     return false;
   }
   // In v8, (map descriptors) are fixed-length descriptors arrays used
   // to hold JS descriptors.
-  if (node.type === 'array' && node.name === '(map descriptors)') {
-    const index = edge.name_or_index;
+  if (edgeType === 'array' && nodeName === '(map descriptors)') {
+    const index = edgeNameOrIndex;
     // only elements at particular indexes of (map descriptors) are holding
     // representative references to objects.
     if (index >= 2 || (typeof index === 'number' && index % 3 === 1)) {
@@ -1609,12 +1615,14 @@ function isMeaningfulEdge(
   if (config.jsEngine === 'hermes' && isDirectPropEdge(edge)) {
     return false;
   }
-  if (config.ignoreInternalNode && node.name.includes('InternalNode')) {
+  if (config.ignoreInternalNode && nodeName.includes('InternalNode')) {
     return false;
   }
   if (config.ignoreDevToolsConsoleLeak) {
-    const name = edge.name_or_index;
-    if (typeof name === 'string' && name.includes('DevTools console')) {
+    if (
+      typeof edgeNameOrIndex === 'string' &&
+      edgeNameOrIndex.includes('DevTools console')
+    ) {
       return false;
     }
   }
