@@ -14,7 +14,7 @@ This is a tutorial demonstrating how to detect oversized objects that are not
 released by a web app.
 
 We recommend reading
-[Detect Leaks in a Demo App](guides-detached-dom), which will walk you through
+[Detect Leaks in a Demo App](./01-detached-dom.mdx), which will walk you through
 how to interpret memlab results and debug leak traces.
 
 ## Set up the Example Web App Under Test
@@ -104,4 +104,5 @@ for example, `~/memlab/leak-filters/leak-filter-by-retained-size.js`
 memlab find-leaks --leak-filter ~/memlab/leak-filters/leak-filter-by-retained-size.js
 ```
 
-If you need more advanced filtering logic, here are [more examples](https://github.com/facebookincubator/memlab/tree/main/packages/cli/src/options/heap/leak-filter/examples/).
+If you need more advanced filtering logic, here are
+[more examples](https://github.com/facebookincubator/memlab/tree/main/packages/cli/src/options/heap/leak-filter/examples/).

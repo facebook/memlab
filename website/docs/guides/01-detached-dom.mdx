@@ -87,7 +87,7 @@ interactions (navigations) `memlab` performed as specified in our scenario file.
 **Part-2**: Overall summary of the leak trace
 
   * **`1024 leaks`** - There were 1024 leaked objects.
-    Line 12 of the [example app](docs/guides/guides-detached-dom#example-web-app-under-test)
+    Line 12 of the [example app](#set-up-the-example-web-app-under-test)
     created **1024** detached DOM objects in the `for` loop.
   * **`Retained size`** - the aggregated retained sizes of the leaked objects
     cluster is `143.3KB` (memory leaks are grouped together based on the
@@ -110,14 +110,14 @@ reference that should be set to `null` (but it wasn't due to a bug).
     `Window` object with size `148.5KB` pointing to an `Array` object.
   * `0` - This shows that a detached `HTMLDIVElement` (i.e. a DOM element that is not currently connected to the DOM tree) is stored as the first element of the `leakedObjects` array (Since it is overwhelming to show all 1024 leak traces,
     `memlab` only prints one representative leak trace. i.e. property 0 instead of properties 0->1023)
-    
+
     In short, the leak trace path from `window` object to leaked object is:
 ```
 [window](object) -> leakedObjects(property) -> [Array](object)
   -> 0(element) -> [Detached HTMLDIVElement](native)
 ```
 
-which matches the leaking code in the example: 
+which matches the leaking code in the example:
 
 ```javascript
 window.leakedObjects = [];

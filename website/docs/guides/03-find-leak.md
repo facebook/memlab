@@ -70,7 +70,7 @@ MemLab found 46 leak(s)
 ```
 
 One way to view the retainer traces in a slightly less verbose would be to apply
-[leak-filter](/docs/api/interfaces/core_src.ILeakFilter) or to use `--trace-object-size-above`.
+[leak-filter](../api/interfaces/core_src.ILeakFilter.md) or to use `--trace-object-size-above`.
 The below will only show the traces whose `retainedSize` is greater than `1MB`
 ```bash
 memlab find-leaks --trace-object-size-above 1000000

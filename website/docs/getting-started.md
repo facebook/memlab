@@ -4,8 +4,8 @@ sidebar_position: 2
 
 # Getting Started
 In this section, you will learn how to use memlab to detect a memory leak.
-Please make sure you have completed a [installation](/docs/installation) step
-in your local machine. We start with defining the scenario file where we
+Please make sure you have completed a [installation](./installation.md)
+step in your local machine. We start with defining the scenario file where we
 specify how memlab should interact with our page.
 
 
@@ -34,7 +34,7 @@ module.exports = { action, back, url };
 ```
 
 For more details, check out the
-[IScenario API doc](/docs/api/interfaces/core_src.IScenario).
+[IScenario API doc](./api/interfaces/core_src.IScenario.md).
 :::note
 Feel free to save the scenario file anywhere. We will be running memlab
 with this file shortly.
@@ -81,8 +81,8 @@ A breakdown of each step in the breadcrumb:
 - **revert(final)** - this is when we perform the back/reverse action.
   In this example, it is going back to the home page.
 
-Continue [reading here](guides/guides-detached-dom) on how to debug the
+Continue [reading here](./guides/01-detached-dom.mdx) on how to debug the
 memory leak traces reported by memlab.
 
-Click [here](/docs/how-memlab-works) if you would like to
+Click [here](./how-memlab-works.md) if you would like to
 learn how memlab detects memory leak.
