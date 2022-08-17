@@ -330,9 +330,12 @@ export class MemLabConfig {
     this.mlClusteringLinkageMaxDistance = 0.7;
     // TF/IDF maximum document frequency
     this.mlMaxDF = 1;
+    // if true, evaluating results with sequential clustering
     this.isSequentialClustering = false;
     // split the sample leak traces into 4 smaller ones by default.
     this.seqClusteringSplitCount = 4;
+    // if true, split dataset into trunks
+    // with random order for sequential clustering
     this.seqClusteringIsRandomChunks = false;
   }
 
