@@ -172,10 +172,10 @@ const config = {
       },
       algolia: {
         // The application ID provided by Algolia
-        appId: 'OLRNUAX6MR',
+        appId: 'O3G3EAJFFW',
         // Public API key: it is safe to commit it
-        apiKey: 'f7470165b69610e2eca6a903e6b7683d',
-        indexName: 'memlab doc site',
+        apiKey: 'ad4054e5f8136d8d79b1124ba77ada30',
+        indexName: 'memlab',
         contextualSearch: false,
       },
     },
