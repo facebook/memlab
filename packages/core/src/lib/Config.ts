@@ -506,11 +506,14 @@ export class MemLabConfig {
   }
 
   getAdditionalConfigInContinuousTest(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _app: string,
+    app: string,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _interaction: string,
   ): string[] {
+    if (app === 'gemini') {
+      // roll out ML clustering (for raw traces) in sandcastle
+      return ['--ml-clustering'];
+    }
     return [];
   }
 
