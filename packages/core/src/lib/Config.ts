@@ -253,7 +253,7 @@ export class MemLabConfig {
     this.targetApp = constant.unset;
     this.targetTab = constant.unset;
     this.analysisMode = constant.unset;
-    this.focusFiberNodeId = 1;
+    this.focusFiberNodeId = -1;
     this.isFB = constant.isFB;
     // assuming the Evn doesn't support Xvfb before checking
     this.machineSupportsXVFB = false;

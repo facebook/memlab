@@ -231,12 +231,15 @@ function isPendingActivityNode(node: IHeapNode): boolean {
 }
 
 function isRootNode(node: IHeapNode, opt: AnyOptions = {}): boolean {
-  if (!node || !node.name) {
+  if (!node) {
     return false;
   }
   // consider Hermes snapshot GC roots
   if (config.jsEngine === 'hermes') {
     return node.name === '(GC roots)' || node.name === '(GC Roots)';
+  }
+  if (node.id === 0 || node.id === 1) {
+    return true;
   }
   // the window object
   if (node.type === 'native' && node.name.indexOf('Window') === 0) {

@@ -325,6 +325,24 @@ memlab heap --snapshot <HEAP_SNAPSHOT_FILE>
  * **`--debug`**: enable manual debugging
  * **`--silent`**, **`-s`**: mute all terminal output
 
+### memlab view-heap
+
+Interactive command to view a single heap snapshot
+
+```bash
+memlab view-heap --snapshot <HEAP_SNAPSHOT_FILE>
+```
+
+**Options**:
+ * **`--snapshot`**: set file path of the heap snapshot under analysis
+ * **`--engine`**: set the JavaScript engine (default to V8)
+ * **`--node-id`**: set heap node ID
+ * **`--help`**, **`-h`**: print helper text
+ * **`--verbose`**, **`-v`**: show more details
+ * **`--sc`**: set to continuous test mode
+ * **`--debug`**: enable manual debugging
+ * **`--silent`**, **`-s`**: mute all terminal output
+
 
 ## MISC Commands
 
