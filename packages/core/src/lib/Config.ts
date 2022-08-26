@@ -253,7 +253,7 @@ export class MemLabConfig {
     this.targetApp = constant.unset;
     this.targetTab = constant.unset;
     this.analysisMode = constant.unset;
-    this.focusFiberNodeId = 1;
+    this.focusFiberNodeId = -1;
     this.isFB = constant.isFB;
     // assuming the Evn doesn't support Xvfb before checking
     this.machineSupportsXVFB = false;
@@ -383,9 +383,9 @@ export class MemLabConfig {
     // the # of retries when initial load fails
     this.initialLoadFailRetry = 2;
     // timeout for checking the presence of non-optional click target
-    this.presenceCheckTimeout = 120000;
+    this.presenceCheckTimeout = 2 * 60 * 1000;
     // default waiting time before exit when exception occurs during page interaction
-    this.delayBeforeExitUponException = 120 * 1000;
+    this.delayBeforeExitUponException = 2 * 60 * 1000;
 
     // Chrome window width
     this.windowWidth = windowWidth;

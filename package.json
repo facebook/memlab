@@ -6,6 +6,7 @@
   "dependencies": {
     "ansi": "^0.3.1",
     "babar": "^0.2.0",
+    "blessed": "^0.1.81",
     "chalk": "^4.0.0",
     "fs-extra": "^4.0.2",
     "minimist": "^1.2.0",
@@ -15,6 +16,7 @@
     "xvfb": "^0.4.0"
   },
   "devDependencies": {
+    "@types/blessed": "^0.1.19",
     "@types/fs-extra": "^9.0.3",
     "@types/jest": "^27.4.1",
     "@types/minimist": "^1.2.2",

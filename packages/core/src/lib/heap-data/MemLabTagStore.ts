@@ -46,7 +46,7 @@ export default class MemLabTaggedStore {
   }
 
   // tag an object with a mark
-  public static tagObject<T>(o: T, tag: string): void {
+  public static tagObject<T extends object>(o: T, tag: string): void {
     const store = MemLabTaggedStore.getInstance();
     if (!store.taggedObjects[tag]) {
       store.taggedObjects[tag] = new WeakSet();
