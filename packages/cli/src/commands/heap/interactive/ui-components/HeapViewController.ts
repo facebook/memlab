@@ -7,11 +7,16 @@
  * @format
  * @oncall ws_labs
  */
-import type {IHeapSnapshot, IHeapNode, IHeapEdge, Nullable} from '@memlab/core';
+import type {IHeapSnapshot, IHeapNode, Nullable} from '@memlab/core';
 import type ListComponent from './ListComponent';
 
 import chalk from 'chalk';
 import {utils} from '@memlab/core';
+import {
+  ComponentDataItem,
+  ComponentData,
+  getHeapObjectAt,
+} from './HeapViewUtils';
 
 type SelectHeapObjectOption = {
   noChangeInReferenceBox?: boolean;
@@ -19,54 +24,6 @@ type SelectHeapObjectOption = {
   noChangeInRetainerTraceBox?: boolean;
   noChangeInObjectPropertyBox?: boolean;
 };
-
-class ComponentDataItem {
-  stringContent?: string;
-  tag?: string;
-  referrerEdge?: IHeapEdge;
-  heapObject?: IHeapNode;
-  referenceEdge?: IHeapEdge;
-
-  static getTextForDisplay(data: ComponentDataItem): string {
-    let ret = '';
-    if (data.tag) {
-      ret += `[${data.tag}] `;
-    }
-    if (data.stringContent) {
-      ret += data.stringContent;
-    }
-    const arrowPrefix = chalk.grey('--');
-    const arrowSuffix = chalk.grey('---') + '>';
-    if (data.referrerEdge) {
-      const edgeType = chalk.grey(`(${data.referrerEdge.type})`);
-      const edgeName = data.referrerEdge.name_or_index;
-      ret += `${arrowPrefix}${edgeName}${edgeType}${arrowSuffix} `;
-    }
-    if (data.heapObject) {
-      const objectType = chalk.grey(`(${data.heapObject.type})`);
-      const objectId = chalk.grey(` @${data.heapObject.id}`);
-      const size = utils.getReadableBytes(data.heapObject.retainedSize);
-      const sizeInfo =
-        chalk.grey(' [') + chalk.bold(chalk.blue(size)) + chalk.grey(']');
-      ret +=
-        chalk.green(`[${data.heapObject.name}]`) +
-        objectType +
-        objectId +
-        sizeInfo;
-    }
-    if (data.referenceEdge) {
-      const edgeType = chalk.grey(`(${data.referenceEdge.type})`);
-      const edgeName = data.referenceEdge.name_or_index;
-      ret += ` ${arrowPrefix}${edgeName}${edgeType}${arrowSuffix} `;
-    }
-    return ret === '' ? chalk.grey('<undefinied>') : ret;
-  }
-}
-
-export class ComponentData {
-  selectedIdx = -1;
-  items: ComponentDataItem[] = [];
-}
 
 /**
  * HeapViewController managers all the data associated with each
@@ -76,6 +33,7 @@ export class ComponentData {
 export default class HeapViewController {
   private currentHeapObject: IHeapNode;
   private selectedHeapObject: IHeapNode;
+  private currentHeapObjectsInfo: ComponentDataItem[];
   private componentIdToDataMap: Map<number, ComponentData>;
   private componentIdToComponentMap: Map<number, ListComponent>;
   private heap: IHeapSnapshot;
@@ -87,9 +45,10 @@ export default class HeapViewController {
   private objectPropertyBox: ListComponent;
   private retainerTracePropertyBox: ListComponent;
 
-  constructor(heap: IHeapSnapshot, node: IHeapNode) {
+  constructor(heap: IHeapSnapshot, nodes: ComponentDataItem[]) {
     this.heap = heap;
-    this.currentHeapObject = node;
+    this.currentHeapObject = getHeapObjectAt(nodes, 0);
+    this.currentHeapObjectsInfo = nodes;
     this.componentIdToDataMap = new Map();
     this.componentIdToComponentMap = new Map();
   }
@@ -117,21 +76,13 @@ export default class HeapViewController {
     this.componentIdToDataMap.set(component.id, new ComponentData());
   }
   getReferrerBoxData(node: IHeapNode = this.selectedHeapObject): ComponentData {
-    let more = 0;
     const data = new ComponentData();
     node.forEachReferrer(ref => {
-      if (data.items.length >= 100) {
-        ++more;
-      } else {
-        const tag =
-          ref.fromNode.id === node.pathEdge?.fromNode?.id ? {tag: '<-'} : {};
-        data.items.push({heapObject: ref.fromNode, referenceEdge: ref, ...tag});
-      }
+      const tag =
+        ref.fromNode.id === node.pathEdge?.fromNode?.id ? {tag: '<-'} : {};
+      data.items.push({heapObject: ref.fromNode, referenceEdge: ref, ...tag});
       return {stop: false};
     });
-    if (more > 0) {
-      data.items.push({stringContent: ` ${more} more items...`});
-    }
     data.selectedIdx = data.items.length > 0 ? 0 : -1;
     return data;
   }
@@ -143,15 +94,19 @@ export default class HeapViewController {
   }
   getObjectBoxData(): ComponentData {
     const data = new ComponentData();
-    this.currentHeapObject.forEachReferrer(edge => {
-      for (const ref of edge.fromNode.references) {
-        const tag =
-          ref.toNode.id === this.currentHeapObject.id ? {tag: '*'} : {};
-        data.items.push({referrerEdge: ref, heapObject: ref.toNode, ...tag});
-      }
-      return {stop: true};
-    });
-    data.selectedIdx = data.items.length > 0 ? 0 : -1;
+    const index = this.currentHeapObjectsInfo.findIndex(
+      item => item.heapObject?.id === this.currentHeapObject.id,
+    );
+    if (index >= 0) {
+      data.selectedIdx = index;
+    } else {
+      data.selectedIdx = 0;
+      this.currentHeapObjectsInfo.unshift({
+        tag: 'Chosen',
+        heapObject: this.currentHeapObject,
+      });
+    }
+    data.items = this.currentHeapObjectsInfo;
     return data;
   }
 
@@ -162,18 +117,10 @@ export default class HeapViewController {
   }
   getReferenceBoxData(): ComponentData {
     const data = new ComponentData();
-    let more = 0;
     this.selectedHeapObject.forEachReference(ref => {
-      if (data.items.length >= 100) {
-        ++more;
-      } else {
-        data.items.push({referrerEdge: ref, heapObject: ref.toNode});
-      }
+      data.items.push({referrerEdge: ref, heapObject: ref.toNode});
       return {stop: false};
     });
-    if (more > 0) {
-      data.items.push({stringContent: ` ${more} more items...`});
-    }
     data.selectedIdx = data.items.length > 0 ? 0 : -1;
     return data;
   }
@@ -282,26 +229,16 @@ export default class HeapViewController {
   public setCurrentHeapObject(node: IHeapNode): void {
     this.currentHeapObject = node;
     // set parent box's data and content
-    let data;
-    this.componentIdToDataMap.set(
-      this.parentBox.id,
-      (data = this.getReferrerBoxData(this.currentHeapObject)),
-    );
+    const parentBoxData = this.getReferrerBoxData(this.currentHeapObject);
+    this.componentIdToDataMap.set(this.parentBox.id, parentBoxData);
     this.parentBox.setContent(this.getContent(this.parentBox.id));
-    this.parentBox.selectIndex(data.selectedIdx);
+    this.parentBox.selectIndex(parentBoxData.selectedIdx);
 
     // set object box's data and content
-    this.componentIdToDataMap.set(this.objectBox.id, this.getObjectBoxData());
+    const objectBoxData = this.getObjectBoxData();
+    this.componentIdToDataMap.set(this.objectBox.id, objectBoxData);
     this.objectBox.setContent(this.getContent(this.objectBox.id));
-    // select the current heap object in the object box
-    const objectBoxData = this.componentIdToDataMap.get(this.objectBox.id);
-    if (objectBoxData) {
-      const index = objectBoxData.items.findIndex(item => {
-        return item.heapObject?.id === this.currentHeapObject.id;
-      });
-      this.objectBox.selectIndex(index);
-      objectBoxData.selectedIdx = index;
-    }
+    this.objectBox.selectIndex(objectBoxData.selectedIdx);
 
     this.setSelectedHeapObject(node);
     this.focusOnComponent(this.objectBox.id);

@@ -9,7 +9,8 @@
  */
 import type {Widgets} from 'blessed';
 import type {ListCallbacks, ListItemSelectInfo} from './ListComponent';
-import type {IHeapSnapshot, IHeapNode} from '@memlab/core';
+import type {IHeapSnapshot} from '@memlab/core';
+import {ComponentDataItem, getHeapObjectAt, debounce} from './HeapViewUtils';
 
 import chalk from 'chalk';
 import blessed from 'blessed';
@@ -66,37 +67,15 @@ export default class CliScreen {
   private keyToComponent: Map<string, ListComponent>;
   private heapController: HeapViewController;
 
-  constructor(title: string, heap: IHeapSnapshot, node: IHeapNode) {
-    this.heapController = new HeapViewController(heap, node);
-    this.screen = blessed.screen({
-      smartCSR: true,
-      title: title,
-    });
-    const screen = this.screen;
-    const controller = this.heapController;
-    const callbacks = {
-      selectCallback: (
-        componentId: number,
-        index: number,
-        content: string[],
-        selectInfo: ListItemSelectInfo,
-      ) => {
-        if (selectInfo.keyName === 'enter') {
-          controller.setCurrentHeapObjectFromComponent(componentId, index);
-        } else if (
-          selectInfo.keyName === 'up' ||
-          selectInfo.keyName === 'down'
-        ) {
-          controller.setSelectedHeapObjectFromComponent(componentId, index);
-        }
-        screen.render();
-      },
-    };
+  constructor(title: string, heap: IHeapSnapshot, nodes: ComponentDataItem[]) {
+    this.heapController = new HeapViewController(heap, nodes);
+    this.screen = this.initScreen(title);
+    const callbacks = this.initCallbacks(this.heapController, this.screen);
     this.keyToComponent = new Map<string, ListComponent>();
-    this.parentObjectBox = this.initParentObjectBox(callbacks);
-    this.heapController.setParentBox(this.parentObjectBox);
     this.referrerBox = this.initReferrerBox(callbacks);
     this.heapController.setReferrerBox(this.referrerBox);
+    this.parentObjectBox = this.initParentObjectBox(callbacks);
+    this.heapController.setParentBox(this.parentObjectBox);
     this.objectBox = this.initObjectBox(callbacks);
     this.heapController.setObjectBox(this.objectBox);
     this.referenceBox = this.initReferenceBox(callbacks);
@@ -106,7 +85,43 @@ export default class CliScreen {
     this.retainerTraceBox = this.initRetainerTraceBox(callbacks);
     this.heapController.setRetainerTraceBox(this.retainerTraceBox);
     this.registerEvents();
-    this.heapController.setCurrentHeapObject(node);
+    this.heapController.setCurrentHeapObject(getHeapObjectAt(nodes, 0));
+  }
+
+  private initScreen(title: string): Widgets.Screen {
+    return blessed.screen({
+      smartCSR: true,
+      title: title,
+    });
+  }
+
+  private initCallbacks(
+    controller: HeapViewController,
+    screen: Widgets.Screen,
+  ): ListCallbacks {
+    const selectDebounce = debounce(150);
+    const selectCallback = (
+      componentId: number,
+      index: number,
+      content: string[],
+      selectInfo: ListItemSelectInfo,
+    ) => {
+      if (selectInfo.keyName === 'enter') {
+        selectDebounce(() => {
+          controller.setCurrentHeapObjectFromComponent(componentId, index);
+          screen.render();
+        });
+      } else if (selectInfo.keyName === 'up' || selectInfo.keyName === 'down') {
+        selectDebounce(() => {
+          controller.setSelectedHeapObjectFromComponent(componentId, index);
+          screen.render();
+        });
+      }
+    };
+    return {
+      selectCallback,
+      render: () => screen.render(),
+    };
   }
 
   public start(): void {
@@ -188,7 +203,7 @@ export default class CliScreen {
   private initParentObjectBox(callbacks: ListCallbacks): ListComponent {
     const box = new ListComponent([], callbacks, {
       ...this.getParentObjectBoxSize(),
-      label: this.getLabel('Referrers of [*]', this.getNextFocusKey()),
+      label: this.getLabel('Referrers of Current', this.getNextFocusKey()),
     });
     this.screen.append(box.element);
     this.addComponentToFocusKeyMap(box);
@@ -198,8 +213,10 @@ export default class CliScreen {
   private getParentObjectBoxSize(): ComponentSizeInfo {
     return {
       width: Math.floor(positionToNumber(this.screen.width) / 3),
-      height: Math.floor(positionToNumber(this.screen.height) / 2),
-      top: 0,
+      height:
+        positionToNumber(this.screen.height) -
+        Math.floor(positionToNumber(this.screen.height) / 2),
+      top: Math.floor(positionToNumber(this.screen.height) / 2),
       left: 0,
     };
   }
@@ -217,10 +234,8 @@ export default class CliScreen {
   private getReferrerBoxSize(): ComponentSizeInfo {
     return {
       width: Math.floor(positionToNumber(this.screen.width) / 3),
-      height:
-        positionToNumber(this.screen.height) -
-        Math.floor(positionToNumber(this.screen.height) / 2),
-      top: Math.floor(positionToNumber(this.screen.height) / 2),
+      height: Math.floor(positionToNumber(this.screen.height) / 2),
+      top: 0,
       left: 0,
     };
   }

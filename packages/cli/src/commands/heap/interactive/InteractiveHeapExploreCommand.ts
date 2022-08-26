@@ -8,13 +8,8 @@
  * @oncall ws_labs
  */
 
-import type {
-  CLIOptions,
-  IHeapNode,
-  IHeapSnapshot,
-  Optional,
-  Nullable,
-} from '@memlab/core';
+import type {CLIOptions, IHeapSnapshot, Optional} from '@memlab/core';
+import type {ComponentDataItem} from './ui-components/HeapViewUtils';
 
 import fs from 'fs-extra';
 import BaseCommand, {CommandCategory} from '../../../BaseCommand';
@@ -68,59 +63,55 @@ export default class InteractiveHeapViewCommand extends BaseCommand {
     return heap;
   }
 
-  private getNodeToFocus(heap: IHeapSnapshot): Nullable<IHeapNode> {
-    let node = this.getAnyDetachedNode(heap);
-    if (node) {
-      return node;
-    }
-    node = this.getNodeWithLargestRetainedSize(heap);
-    if (node) {
-      return node;
-    }
-    return heap.nodes.get(heap.nodes.length - 1);
+  private getNodesToFocus(heap: IHeapSnapshot): ComponentDataItem[] {
+    const nodes = this.getNodesWithLargestRetainedSize(heap);
+    nodes.push(...this.getDetachedNodes(heap));
+    return nodes;
   }
 
-  private getAnyDetachedNode(heap: IHeapSnapshot): Nullable<IHeapNode> {
-    let ret: Nullable<IHeapNode> = null;
+  private getDetachedNodes(heap: IHeapSnapshot): ComponentDataItem[] {
+    const ret: ComponentDataItem[] = [];
     heap.nodes.forEach(node => {
       if (utils.isDetachedDOMNode(node) || utils.isDetachedFiberNode(node)) {
-        ret = node;
-        return false;
+        ret.push({tag: 'Detached', heapObject: node});
       }
     });
     return ret;
   }
 
-  private getNodeWithLargestRetainedSize(
+  private getNodesWithLargestRetainedSize(
     heap: IHeapSnapshot,
-  ): Nullable<IHeapNode> {
-    let ret: Nullable<IHeapNode> = null;
-    let size = 0;
+  ): ComponentDataItem[] {
+    const sizeThreshold = 2 * 1024 * 1024; // 2MB
+    const ret: ComponentDataItem[] = [];
     heap.nodes.forEach(node => {
-      if (node.retainedSize >= size && !utils.isRootNode(node)) {
-        size = node.retainedSize;
-        ret = node;
+      if (node.retainedSize >= sizeThreshold && !utils.isRootNode(node)) {
+        ret.push({
+          tag: `${utils.getReadableBytes(node.retainedSize)}`,
+          heapObject: node,
+        });
       }
     });
     return ret;
   }
 
   // get heap node to focus on
-  private getHeapNode(heap: IHeapSnapshot): IHeapNode {
-    let node: Optional<IHeapNode> = null;
+  private getHeapNodes(heap: IHeapSnapshot): ComponentDataItem[] {
     if (config.focusFiberNodeId >= 0) {
-      node = heap.getNodeById(config.focusFiberNodeId);
+      const node = heap.getNodeById(config.focusFiberNodeId);
+      if (node) {
+        return [{heapObject: node}];
+      }
     }
-    if (!node) {
-      node = this.getNodeToFocus(heap);
-    }
-    if (!node) {
+
+    const nodes = this.getNodesToFocus(heap);
+    if (nodes.length === 0) {
       throw utils.haltOrThrow(
         'please specify a heap node ' +
           `via --${new HeapNodeIdOption().getOptionName()}`,
       );
     }
-    return node;
+    return nodes;
   }
 
   async run(options: CLIOptions): Promise<void> {
@@ -129,7 +120,7 @@ export default class InteractiveHeapViewCommand extends BaseCommand {
     fs.emptyDirSync(reportOutDir);
 
     const heap = await this.getHeap(options);
-    const node = this.getHeapNode(heap);
-    new CliScreen('memlab heap viewer', heap, node).start();
+    const nodes = this.getHeapNodes(heap);
+    new CliScreen('memlab heap viewer', heap, nodes).start();
   }
 }

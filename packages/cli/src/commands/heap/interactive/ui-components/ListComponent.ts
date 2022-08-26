@@ -34,6 +34,7 @@ export type ListCallbacks = {
   ) => void;
   updateContent?: (oldContent: string[], newContent: string[]) => void;
   getFocus?: () => void;
+  render?: () => void;
 };
 
 /**
@@ -48,6 +49,10 @@ export default class ListComponent {
   private content: string[] = [];
   private callbacks: ListCallbacks;
   private horizonScrollPositionMap: Map<number, number>;
+  private displayedItems: number;
+  private moreEntryIndex = -1;
+  private static readonly ListContentLimit = 100;
+  private static readonly loadMore = 20;
 
   private static nextComponentId = 0;
   private static nextId(): number {
@@ -87,39 +92,64 @@ export default class ListComponent {
     this.registerKeys();
   }
 
+  // render the whole screen
+  private render(): void {
+    if (this.callbacks.render) {
+      this.callbacks.render();
+    }
+  }
+
+  private static createEntryForMore(more: number): string {
+    const key = chalk.inverse('enter');
+    return chalk.grey(` ${more} more ... (select and ${key} to load)`);
+  }
+
   protected registerKeys() {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
     this.element.on(
       'keypress',
       (char: string, key: Widgets.Events.IKeyEventArg) => {
-        const content = this.content;
+        const content = self.content;
+
+        // if selecting "More"
+        if (
+          key.name === 'enter' &&
+          content.length > 0 &&
+          self.listIndex >= 0 &&
+          self.listIndex === self.moreEntryIndex
+        ) {
+          self.loadMoreContent();
+          return;
+        }
 
         // move selection down
-        if (key.name === 'down' && this.listIndex < content.length - 1) {
-          this.element.select(++this.listIndex);
-          this.selectUpdate(this.listIndex, content, {
+        if (key.name === 'down' && self.listIndex < self.displayedItems - 1) {
+          self.element.select(++self.listIndex);
+          self.selectUpdate(self.listIndex, content, {
             keyName: key.name,
           });
 
           // move selection up
-        } else if (key.name === 'up' && this.listIndex > 0) {
-          this.element.select(--this.listIndex);
-          this.selectUpdate(this.listIndex, content, {
+        } else if (key.name === 'up' && self.listIndex > 0) {
+          self.element.select(--self.listIndex);
+          self.selectUpdate(self.listIndex, content, {
             keyName: key.name,
           });
 
           // hit enter to select the current heap object
         } else if (key.name === 'enter') {
-          this.selectUpdate(this.listIndex, content, {
+          self.selectUpdate(self.listIndex, content, {
             keyName: key.name,
           });
 
           // scroll left
         } else if (key.name === 'left') {
-          this.scrollLeft();
+          self.scrollLeft();
 
           // scroll right
         } else if (key.name === 'right') {
-          this.scrollRight();
+          self.scrollRight();
         }
       },
     );
@@ -183,6 +213,12 @@ export default class ListComponent {
   }
 
   public selectIndex(index: number): void {
+    while (
+      this.displayedItems <= index &&
+      this.displayedItems < this.content.length
+    ) {
+      this.loadMoreContent();
+    }
     this.listIndex = index;
     this.element.select(index);
   }
@@ -190,13 +226,63 @@ export default class ListComponent {
   public setContent(content: string[]): void {
     const oldContent = this.content;
     this.element.clearItems();
+    this.displayedItems = 0;
+    this.moreEntryIndex = -1;
+    this.listIndex = 0;
     // push list items into the list
-    for (const l of content) {
-      this.element.pushItem(l as unknown as Widgets.BlessedElement);
+    for (let i = 0; i < content.length; ++i) {
+      if (this.displayedItems >= ListComponent.ListContentLimit) {
+        break;
+      }
+      this.element.pushItem(content[i] as unknown as Widgets.BlessedElement);
+      ++this.displayedItems;
     }
     this.content = content;
     this.horizonScrollPositionMap.clear();
+    this.insertDisplayMoreEntry();
     this.updateContent(oldContent, this.content);
+  }
+
+  public loadMoreContent(): void {
+    if (this.moreEntryIndex < 0) {
+      return;
+    }
+    const curIndex = this.listIndex;
+    this.removeDisplayMoreEntry();
+    let idx = this.displayedItems;
+    const limit = Math.min(
+      this.displayedItems + ListComponent.loadMore,
+      this.content.length,
+    );
+    while (idx < limit) {
+      this.element.pushItem(
+        this.content[idx++] as unknown as Widgets.BlessedElement,
+      );
+    }
+    this.displayedItems = limit;
+    this.insertDisplayMoreEntry();
+    this.selectIndex(curIndex);
+    this.render();
+  }
+
+  private removeDisplayMoreEntry(): void {
+    this.element.spliceItem(this.displayedItems - 1, 1);
+    this.moreEntryIndex = -1;
+    --this.displayedItems;
+    --this.listIndex;
+  }
+
+  // insert the display more entry
+  private insertDisplayMoreEntry(): void {
+    if (this.displayedItems < this.content.length) {
+      this.element.pushItem(
+        ListComponent.createEntryForMore(
+          this.content.length - this.displayedItems,
+        ) as unknown as Widgets.BlessedElement,
+      );
+      ++this.displayedItems;
+      this.moreEntryIndex = this.displayedItems - 1;
+    }
   }
 
   // function to be overridden
