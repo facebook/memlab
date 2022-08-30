@@ -159,13 +159,13 @@ export default class HeapViewController {
     data.items.push({
       stringContent: this.getKeyValuePairString(
         '# of references',
-        utils.getReadableBytes(node.edge_count),
+        node.edge_count,
       ),
     });
     data.items.push({
       stringContent: this.getKeyValuePairString(
         '# of referrers',
-        utils.getReadableBytes(node.referrers.length),
+        node.referrers.length,
       ),
     });
     if (node.dominatorNode) {
@@ -174,11 +174,35 @@ export default class HeapViewController {
         heapObject: node.dominatorNode,
       });
     }
+    // inject additional node information
+    if (node.isString) {
+      const stringNode = node.toStringNode();
+      if (stringNode) {
+        const value = this.getReadableString(stringNode.stringValue);
+        data.items.push({
+          stringContent: this.getKeyValuePairString('string value', value),
+        });
+      }
+    }
+    if (node.type === 'number') {
+      data.items.push({
+        stringContent: this.getKeyValuePairString(
+          'numeric value',
+          utils.getNumberNodeValue(node) ?? '<error>',
+        ),
+      });
+    }
     data.selectedIdx = data.items.length > 0 ? 0 : -1;
     return data;
   }
 
-  private getKeyValuePairString(key: string, value: string): string {
+  private getReadableString(value: string): string {
+    return value.length > 300
+      ? value.substring(0, 300) + chalk.grey('...')
+      : value;
+  }
+
+  private getKeyValuePairString(key: string, value: string | number): string {
     return key + chalk.grey(': ') + chalk.green(value);
   }
 
