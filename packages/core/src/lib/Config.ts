@@ -245,7 +245,7 @@ export class MemLabConfig {
   private initInternalConfigs() {
     // DO NOT SET PARAMETER HERE
     this._isFullRun = false;
-    this._reportLeaksInTimers = false;
+    this._reportLeaksInTimers = true;
     this._deviceManualOverridden = false;
     this._timerNodes = ['Pending activities'];
     this._timerEdges = [];
@@ -519,7 +519,7 @@ export class MemLabConfig {
   public static getInstance(): MemLabConfig {
     if (!MemLabConfig.instance) {
       const config = new MemLabConfig();
-      // do not consider objects kept alive by timers as leaks
+      // consider objects kept alive by timers as leaks
       config.reportLeaksInTimers = true;
       // assign configuration to console manager
       info.setConfig(config);
@@ -621,18 +621,15 @@ export class MemLabConfig {
     return path.join(this.browserDir, this.browser);
   }
 
-  set reportLeaksInTimers(flag: boolean) {
-    if (typeof flag !== 'boolean') {
-      return;
-    }
-    if (flag) {
+  set reportLeaksInTimers(shouldReport: boolean) {
+    if (shouldReport) {
       this.removeFromSet(this.nodeNameBlockList, this._timerNodes);
       this.removeFromSet(this.edgeNameBlockList, this._timerEdges);
     } else {
       this.addToSet(this.nodeNameBlockList, this._timerNodes);
       this.addToSet(this.edgeNameBlockList, this._timerEdges);
     }
-    this._reportLeaksInTimers = flag;
+    this._reportLeaksInTimers = shouldReport;
   }
   get reportLeaksInTimers(): boolean {
     return this._reportLeaksInTimers;

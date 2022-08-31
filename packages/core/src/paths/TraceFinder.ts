@@ -499,12 +499,22 @@ class TraceFinder {
   shouldIgnoreEdgeInTraceFinding(edge: IHeapEdge): boolean {
     const fromNode = edge.fromNode;
     const toNode = edge.toNode;
-    return (
+    const isDetachedNode = utils.isDetachedDOMNode(toNode);
+    if (
       config.hideBrowserLeak &&
-      (utils.isBlinkRootNode(fromNode) ||
-        utils.isPendingActivityNode(fromNode)) &&
-      utils.isDetachedDOMNode(toNode)
-    );
+      utils.isBlinkRootNode(fromNode) &&
+      isDetachedNode
+    ) {
+      return true;
+    }
+    if (
+      !config.reportLeaksInTimers &&
+      utils.isPendingActivityNode(fromNode) &&
+      isDetachedNode
+    ) {
+      return true;
+    }
+    return false;
   }
 
   shouldTraverseEdge(edge: IHeapEdge, options: AnyOptions = {}): boolean {

@@ -12,6 +12,27 @@ import type {Nullable, IHeapEdge, IHeapNode} from '@memlab/core';
 import chalk from 'chalk';
 import {utils} from '@memlab/core';
 
+const lessUsefulEdgeTypeForDebugging = new Set([
+  'internal',
+  'hidden',
+  'shortcut',
+  'weak',
+]);
+function isUsefulEdgeForDebugging(edge: IHeapEdge): boolean {
+  return !lessUsefulEdgeTypeForDebugging.has(edge.type);
+}
+
+const lessUsefulObjectTypeForDebugging = new Set([
+  'native',
+  'hidden',
+  'array',
+  'code',
+  'synthetic',
+]);
+function isUsefulObjectForDebugging(object: IHeapNode): boolean {
+  return !lessUsefulObjectTypeForDebugging.has(object.type);
+}
+
 export class ComponentDataItem {
   stringContent?: string;
   tag?: string;
@@ -21,6 +42,23 @@ export class ComponentDataItem {
   type?: string;
 
   static getTextForDisplay(data: ComponentDataItem): string {
+    const content = ComponentDataItem.getTextContent(data);
+    if (data.referrerEdge && isUsefulEdgeForDebugging(data.referrerEdge)) {
+      return content;
+    }
+    if (data.referenceEdge && isUsefulEdgeForDebugging(data.referenceEdge)) {
+      return content;
+    }
+    if (data.heapObject && isUsefulObjectForDebugging(data.heapObject)) {
+      return content;
+    }
+    if (!data.referenceEdge && !data.heapObject && !data.referrerEdge) {
+      return content;
+    }
+    return chalk.grey(content);
+  }
+
+  private static getTextContent(data: ComponentDataItem): string {
     let ret = '';
     if (data.tag) {
       ret += `[${data.tag}] `;
@@ -42,7 +80,11 @@ export class ComponentDataItem {
       const sizeInfo =
         chalk.grey(' [') + chalk.bold(chalk.blue(size)) + chalk.grey(']');
       ret +=
-        chalk.green(`[${data.heapObject.name}]`) +
+        chalk.green('[') +
+        (isUsefulObjectForDebugging(data.heapObject)
+          ? chalk.green(data.heapObject.name)
+          : chalk.bold(chalk.grey(data.heapObject.name))) +
+        chalk.green(']') +
         objectType +
         objectId +
         sizeInfo;
