@@ -196,15 +196,12 @@ export default class CliScreen {
     return `${this.currentFocuseKey}`;
   }
 
-  private getLabel(text: string, key: string): string {
-    return `${text}` + chalk.grey(` (press ${chalk.inverse(key)} to focus)`);
-  }
-
   private initParentObjectBox(callbacks: ListCallbacks): ListComponent {
     const box = new ListComponent([], callbacks, {
       ...this.getParentObjectBoxSize(),
-      label: this.getLabel('Referrers of Current', this.getNextFocusKey()),
     });
+    box.setFocusKey(this.getNextFocusKey());
+    box.setLabel('Referrers of Current');
     this.screen.append(box.element);
     this.addComponentToFocusKeyMap(box);
     return box;
@@ -224,8 +221,9 @@ export default class CliScreen {
   private initReferrerBox(callbacks: ListCallbacks): ListComponent {
     const box = new ListComponent([], callbacks, {
       ...this.getReferrerBoxSize(),
-      label: this.getLabel('Referrers', this.getNextFocusKey()),
     });
+    box.setFocusKey(this.getNextFocusKey());
+    box.setLabel('Referrers');
     this.screen.append(box.element);
     this.addComponentToFocusKeyMap(box);
     return box;
@@ -243,8 +241,9 @@ export default class CliScreen {
   private initObjectBox(callbacks: ListCallbacks): ListComponent {
     const box = new ListComponent([], callbacks, {
       ...this.getObjectBoxSize(),
-      label: this.getLabel('Objects', this.getNextFocusKey()),
     });
+    box.setFocusKey(this.getNextFocusKey());
+    box.setLabel('Objects');
     this.screen.append(box.element);
     this.addComponentToFocusKeyMap(box);
     return box;
@@ -262,8 +261,9 @@ export default class CliScreen {
   private initObjectPropertyBox(callbacks: ListCallbacks): ListComponent {
     const box = new ListComponent([], callbacks, {
       ...this.getObjectPropertyBoxSize(),
-      label: this.getLabel('Object Detail', this.getNextFocusKey()),
     });
+    box.setFocusKey(this.getNextFocusKey());
+    box.setLabel('Objects Detail');
     this.screen.append(box.element);
     this.addComponentToFocusKeyMap(box);
     return box;
@@ -283,8 +283,9 @@ export default class CliScreen {
   private initReferenceBox(callbacks: ListCallbacks): ListComponent {
     const box = new ListComponent([], callbacks, {
       ...this.getReferenceBoxSize(),
-      label: this.getLabel('References', this.getNextFocusKey()),
     });
+    box.setFocusKey(this.getNextFocusKey());
+    box.setLabel('References');
     this.screen.append(box.element);
     this.addComponentToFocusKeyMap(box);
     return box;
@@ -304,8 +305,9 @@ export default class CliScreen {
   private initRetainerTraceBox(callbacks: ListCallbacks): ListComponent {
     const box = new ListComponent([], callbacks, {
       ...this.getRetainerTraceBoxSize(),
-      label: this.getLabel('Retainer Trace', this.getNextFocusKey()),
     });
+    box.setFocusKey(this.getNextFocusKey());
+    box.setLabel('Retainer Trace');
     this.screen.append(box.element);
     this.addComponentToFocusKeyMap(box);
     return box;

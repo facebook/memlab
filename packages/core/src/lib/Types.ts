@@ -1297,7 +1297,7 @@ export interface IHeapNodeBasic {
  */
 export type EdgeIterationCallback = (
   edge: IHeapEdge,
-) => Optional<{stop: boolean}>;
+) => Optional<{stop: boolean}> | void;
 
 /**
  * An `IHeapNode` instance represents a JS heap object in a heap snapshot.

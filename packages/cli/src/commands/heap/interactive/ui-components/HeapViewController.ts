@@ -192,6 +192,18 @@ export default class HeapViewController {
         ),
       });
     }
+    if (node.type === 'closure') {
+      const contextNode = node.getReferenceNode('context', 'internal');
+      if (contextNode) {
+        contextNode.forEachReference(edge => {
+          data.items.push({
+            tag: chalk.grey('Scope Variable'),
+            referrerEdge: edge,
+            heapObject: edge.toNode,
+          });
+        });
+      }
+    }
     data.selectedIdx = data.items.length > 0 ? 0 : -1;
     return data;
   }
@@ -234,6 +246,7 @@ export default class HeapViewController {
   public setCurrentHeapObjectFromComponent(
     componentId: number,
     itemIndex: number,
+    options: {skipFocus?: boolean} = {},
   ): void {
     const data = this.componentIdToDataMap.get(componentId);
     if (!data) {
@@ -247,10 +260,13 @@ export default class HeapViewController {
     if (!heapObject) {
       return;
     }
-    this.setCurrentHeapObject(heapObject);
+    this.setCurrentHeapObject(heapObject, options);
   }
 
-  public setCurrentHeapObject(node: IHeapNode): void {
+  public setCurrentHeapObject(
+    node: IHeapNode,
+    options: {skipFocus?: boolean} = {},
+  ): void {
     this.currentHeapObject = node;
     // set parent box's data and content
     const parentBoxData = this.getReferrerBoxData(this.currentHeapObject);
@@ -265,13 +281,18 @@ export default class HeapViewController {
     this.objectBox.selectIndex(objectBoxData.selectedIdx);
 
     this.setSelectedHeapObject(node);
-    this.focusOnComponent(this.objectBox.id);
+    if (!options.skipFocus) {
+      this.focusOnComponent(this.objectBox.id);
+    }
   }
 
   focusOnComponent(componentId: number): void {
     for (const component of this.componentIdToComponentMap.values()) {
       if (component.id === componentId) {
         component.focus();
+        const data = this.componentIdToDataMap.get(componentId);
+        const selectIndex = (data && data.selectedIdx) ?? -1;
+        this.setSelectedHeapObjectFromComponent(componentId, selectIndex);
       } else {
         component.loseFocus();
       }
@@ -322,6 +343,7 @@ export default class HeapViewController {
       this.componentIdToDataMap.set(this.referrerBox.id, data);
       this.referrerBox.setContent(this.getContent(this.referrerBox.id));
       this.referrerBox.selectIndex(data.selectedIdx);
+      this.referrerBox.setLabel(`Referrers of @${node.id}`);
     }
     // set reference box's data and content
     if (!options.noChangeInReferenceBox) {
@@ -329,6 +351,7 @@ export default class HeapViewController {
       this.componentIdToDataMap.set(this.referenceBox.id, data);
       this.referenceBox.setContent(this.getContent(this.referenceBox.id));
       this.referenceBox.selectIndex(data.selectedIdx);
+      this.referenceBox.setLabel(`References of @${node.id}`);
     }
     // set object property box's data and content
     if (!options.noChangeInObjectPropertyBox) {
@@ -338,6 +361,7 @@ export default class HeapViewController {
         this.getContent(this.objectPropertyBox.id),
       );
       this.objectPropertyBox.selectIndex(data.selectedIdx);
+      this.objectPropertyBox.setLabel(`Detail of @${node.id}`);
     }
     // set retainer trace box's data and content
     if (!options.noChangeInRetainerTraceBox) {
@@ -347,6 +371,7 @@ export default class HeapViewController {
         this.getContent(this.retainerTracePropertyBox.id),
       );
       this.retainerTracePropertyBox.selectIndex(data.selectedIdx);
+      this.retainerTracePropertyBox.setLabel(`Retainer Trace of @${node.id}`);
     }
   }
 }

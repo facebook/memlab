@@ -19,7 +19,7 @@ export type ListComponentOption = {
   height: number;
   left: number;
   top: number;
-  label: string;
+  label?: string;
 };
 
 export type ListItemSelectInfo = {
@@ -52,6 +52,7 @@ export default class ListComponent {
   private horizonScrollPositionMap: Map<number, number>;
   private displayedItems: number;
   private moreEntryIndex = -1;
+  private focusKey = '';
   private static readonly ListContentLimit = 100;
   private static readonly loadMore = 20;
 
@@ -206,11 +207,19 @@ export default class ListComponent {
   public focus(): void {
     this.element.focus();
     this.element.style.border.fg = 'white';
+    this.element.style.selected = {
+      bg: 'grey',
+      bold: true,
+    };
     this.getFocus();
   }
 
   public loseFocus(): void {
     this.element.style.border.fg = 'grey';
+    this.element.style.selected = {
+      bg: 'black',
+      bold: false,
+    };
   }
 
   public selectIndex(index: number): void {
@@ -222,6 +231,16 @@ export default class ListComponent {
     }
     this.listIndex = index;
     this.element.select(index);
+  }
+
+  public setFocusKey(key: string): void {
+    this.focusKey = key;
+  }
+
+  public setLabel(label: string): void {
+    const componentLabel =
+      label + chalk.grey(` (press ${chalk.inverse(this.focusKey)} to focus)`);
+    this.element.setLabel(componentLabel);
   }
 
   public setContent(content: string[]): void {

@@ -48,7 +48,7 @@ For concrete example, check out [cookies](../interfaces/core_src.IScenario.md#co
 
 ___
 
-### <a id="edgeiterationcallback" name="edgeiterationcallback"></a> **EdgeIterationCallback**: (`edge`: [`IHeapEdge`](../interfaces/core_src.IHeapEdge.md)) => `Optional`<{ `stop`: `boolean`  }\>
+### <a id="edgeiterationcallback" name="edgeiterationcallback"></a> **EdgeIterationCallback**: (`edge`: [`IHeapEdge`](../interfaces/core_src.IHeapEdge.md)) => `Optional`<{ `stop`: `boolean`  }\> \| `void`
 
 Executes a provided callback once for JavaScript references.
 For concrete examples, check out [forEachReference](../interfaces/core_src.IHeapNode.md#foreachreference)
@@ -56,7 +56,7 @@ or [forEachReferrer](../interfaces/core_src.IHeapNode.md#foreachreferrer).
 
  * **Parameters**:
     * `edge`: [`IHeapEdge`](../interfaces/core_src.IHeapEdge.md)
- * **Returns**: `Optional`<{ `stop`: `boolean`  }\> | this API returns void
+ * **Returns**: `Optional`<{ `stop`: `boolean`  }\> \| `void` | this API returns void
 
  * **Source**:
     * core/src/lib/Types.ts:1298
