@@ -192,6 +192,10 @@ export default class HeapViewController {
       data.items.push({referrerEdge: ref, heapObject: ref.toNode});
       return {stop: false};
     });
+    data.items.sort(
+      (i1, i2) =>
+        (i2.heapObject?.retainedSize ?? 0) - (i1.heapObject?.retainedSize ?? 0),
+    );
     data.selectedIdx = data.items.length > 0 ? 0 : -1;
     return data;
   }

@@ -54,7 +54,7 @@ export default class ListComponent {
   private moreEntryIndex = -1;
   private focusKey = '';
   private static readonly ListContentLimit = 100;
-  private static readonly loadMore = 20;
+  private static readonly loadMore = 100;
 
   private static nextComponentId = 0;
   private static nextId(): number {
@@ -72,7 +72,7 @@ export default class ListComponent {
     // init list element
     this.element = blessed.list({
       ...options,
-      tags: true,
+      tags: false,
       scrollable: true,
       keys: true,
       border: {
