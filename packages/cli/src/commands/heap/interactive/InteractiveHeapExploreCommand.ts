@@ -8,7 +8,13 @@
  * @oncall ws_labs
  */
 
-import type {CLIOptions, IHeapSnapshot, Optional} from '@memlab/core';
+import type {
+  CLIOptions,
+  IHeapSnapshot,
+  IHeapNode,
+  Optional,
+  Nullable,
+} from '@memlab/core';
 import type {ComponentDataItem} from './ui-components/HeapViewUtils';
 
 import fs from 'fs-extra';
@@ -71,11 +77,34 @@ export default class InteractiveHeapViewCommand extends BaseCommand {
 
   private getDetachedNodes(heap: IHeapSnapshot): ComponentDataItem[] {
     const ret: ComponentDataItem[] = [];
+    const idSet = new Set<number>();
+    const idToNodeMap = new Map<number, IHeapNode>();
     heap.nodes.forEach(node => {
       if (utils.isDetachedDOMNode(node) || utils.isDetachedFiberNode(node)) {
-        ret.push({tag: 'Detached', heapObject: node});
+        idSet.add(node.id);
+        idToNodeMap.set(node.id, node);
       }
     });
+    // get a minimal set of objects to represent all the detached DOM elements
+    const dominatorIds = utils.getConditionalDominatorIds(
+      idSet,
+      heap,
+      () => true,
+    );
+    dominatorIds.forEach(id => {
+      let node: Nullable<IHeapNode> = null;
+      if (idToNodeMap.has(id)) {
+        node = idToNodeMap.get(id) as IHeapNode;
+      } else {
+        node = heap.getNodeById(id) as IHeapNode;
+      }
+      ret.push({tag: 'Detached', heapObject: node});
+    });
+    ret.sort(
+      (item1, item2) =>
+        (item2.heapObject?.retainedSize ?? 0) -
+        (item1.heapObject?.retainedSize ?? 0),
+    );
     return ret;
   }
 

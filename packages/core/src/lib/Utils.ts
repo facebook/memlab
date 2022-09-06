@@ -230,6 +230,18 @@ function isPendingActivityNode(node: IHeapNode): boolean {
   return node.type === 'synthetic' && node.name === 'Pending activities';
 }
 
+// check the node against a curated list of known HTML Elements
+// the list may be incomplete
+function isDOMNodeIncomplete(node: IHeapNode): boolean {
+  let name = node.name;
+  const pattern = /^HTML.*Element$/;
+  const detachedPrefix = 'Detached ';
+  if (name.startsWith(detachedPrefix)) {
+    name = name.substring(detachedPrefix.length);
+  }
+  return pattern.test(name);
+}
+
 function isRootNode(node: IHeapNode, opt: AnyOptions = {}): boolean {
   if (!node) {
     return false;
@@ -397,7 +409,7 @@ function getNodesIdSet(snapshot: IHeapSnapshot): Set<number> {
   return set;
 }
 
-// given a set of nodes S, return a subset S' where
+// given a set of nodes S, return a minimal subset S' where
 // no nodes are dominated by nodes in S
 function getConditionalDominatorIds(
   ids: Set<number>,
@@ -405,10 +417,12 @@ function getConditionalDominatorIds(
   condCb: (node: IHeapNode) => boolean,
 ): Set<number> {
   const dominatorIds: Set<number> = new Set();
+  const fullDominatorIds: Set<number> = new Set();
   // set all node ids
   applyToNodes(ids, snapshot, node => {
     if (condCb(node)) {
       dominatorIds.add(node.id);
+      fullDominatorIds.add(node.id);
     }
   });
   // traverse the dominators and remove the node
@@ -420,7 +434,7 @@ function getConditionalDominatorIds(
       if (visited.has(cur.id)) {
         break;
       }
-      if (dominatorIds.has(cur.id)) {
+      if (fullDominatorIds.has(cur.id)) {
         dominatorIds.delete(node.id);
         break;
       }
@@ -1960,6 +1974,7 @@ export default {
   isDetachedDOMNode,
   isDirectPropEdge,
   isDocumentDOMTreesRoot,
+  isDOMNodeIncomplete,
   isEssentialEdge,
   isFiberNode,
   isFiberNodeDeletionsEdge,

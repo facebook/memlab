@@ -361,7 +361,7 @@ export default class HeapViewController {
         this.getContent(this.objectPropertyBox.id),
       );
       this.objectPropertyBox.selectIndex(data.selectedIdx);
-      this.objectPropertyBox.setLabel(`Detail of @${node.id}`);
+      this.objectPropertyBox.setLabel(`Object: @${node.id}`);
     }
     // set retainer trace box's data and content
     if (!options.noChangeInRetainerTraceBox) {

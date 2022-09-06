@@ -40,6 +40,7 @@ class GlobalVariableAnalysis extends BaseAnalysis {
     const node = snapshot.getNodeById(nodeId);
     if (!node) {
       info.error(`Object @${nodeId} is not found.`);
+      info.lowLevel(`Specify an object by --node-id`);
       return;
     }
     // print object info

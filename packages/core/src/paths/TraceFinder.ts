@@ -548,6 +548,13 @@ class TraceFinder {
   }
 
   isLessPreferableEdge(edge: IHeapEdge): boolean {
+    // pending activities -> DOM element is less preferrable
+    if (
+      utils.isPendingActivityNode(edge.fromNode) &&
+      utils.isDOMNodeIncomplete(edge.toNode)
+    ) {
+      return true;
+    }
     return config.edgeNameGreyList.has(String(edge.name_or_index));
   }
 
