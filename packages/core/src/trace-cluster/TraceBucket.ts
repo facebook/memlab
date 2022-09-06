@@ -291,12 +291,18 @@ export default class NormalizedTrace {
     const {allClusters} = NormalizedTrace.diffTraces(traces, [], option);
     // construct TraceCluster from clustering result
     let clusters: TraceCluster[] = allClusters.map((traces: LeakTrace[]) => {
-      const cluster = {
-        path: traceToPathMap.get(traces[0]),
+      const representativeTrace = traces[0];
+      const cluster: TraceCluster = {
+        path: traceToPathMap.get(representativeTrace),
         count: traces.length,
         snapshot,
         retainedSize: 0,
       };
+      // add representative object id if there is one
+      const lastNode = representativeTrace[representativeTrace.length - 1];
+      if ('id' in lastNode) {
+        cluster.id = lastNode.id;
+      }
       traces.forEach((trace: LeakTrace) => {
         NormalizedTrace.addLeakedNodeToCluster(
           cluster,
@@ -312,8 +318,6 @@ export default class NormalizedTrace {
     });
     clusters = NormalizedTrace.filterClusters(clusters);
     clusters.sort((c1, c2) => (c2.retainedSize ?? 0) - (c1.retainedSize ?? 0));
-
-    info.midLevel(`MemLab found ${clusters.length} leak(s)`);
     return clusters;
   }
 

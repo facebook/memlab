@@ -9,21 +9,21 @@
  */
 
 import type {
+  BaseOption,
   CLIOptions,
   IHeapSnapshot,
   IHeapNode,
   Optional,
-  Nullable,
 } from '@memlab/core';
 import type {ComponentDataItem} from './ui-components/HeapViewUtils';
+import type {ObjectCategory} from './ui-components/HeapViewController';
 
 import fs from 'fs-extra';
+import {fileManager, utils, config} from '@memlab/core';
+import {heapConfig, loadHeapSnapshot} from '@memlab/heap-analysis';
 import BaseCommand, {CommandCategory} from '../../../BaseCommand';
-import {BaseOption, utils, config} from '@memlab/core';
 import SnapshotFileOption from '../../../options/heap/SnapshotFileOption';
 import JSEngineOption from '../../../options/heap/JSEngineOption';
-import {fileManager} from '@memlab/core';
-import {heapConfig, loadHeapSnapshot} from '@memlab/heap-analysis';
 import CliScreen from './ui-components/CliScreen';
 import HeapNodeIdOption from '../../../options/HeapNodeIdOption';
 
@@ -69,20 +69,23 @@ export default class InteractiveHeapViewCommand extends BaseCommand {
     return heap;
   }
 
-  private getNodesToFocus(heap: IHeapSnapshot): ComponentDataItem[] {
+  private async getNodesToFocus(heap: IHeapSnapshot): Promise<ObjectCategory> {
+    const ret: ObjectCategory = new Map();
     const nodes = this.getNodesWithLargestRetainedSize(heap);
-    nodes.push(...this.getDetachedNodes(heap));
-    return nodes;
+    ret.set('large-object', nodes);
+    const detachedNodes = await this.getDetachedNodes(heap);
+    ret.set('detached', detachedNodes);
+    return ret;
   }
 
-  private getDetachedNodes(heap: IHeapSnapshot): ComponentDataItem[] {
+  private async getDetachedNodes(
+    heap: IHeapSnapshot,
+  ): Promise<ComponentDataItem[]> {
     const ret: ComponentDataItem[] = [];
     const idSet = new Set<number>();
-    const idToNodeMap = new Map<number, IHeapNode>();
     heap.nodes.forEach(node => {
       if (utils.isDetachedDOMNode(node) || utils.isDetachedFiberNode(node)) {
         idSet.add(node.id);
-        idToNodeMap.set(node.id, node);
       }
     });
     // get a minimal set of objects to represent all the detached DOM elements
@@ -92,19 +95,11 @@ export default class InteractiveHeapViewCommand extends BaseCommand {
       () => true,
     );
     dominatorIds.forEach(id => {
-      let node: Nullable<IHeapNode> = null;
-      if (idToNodeMap.has(id)) {
-        node = idToNodeMap.get(id) as IHeapNode;
-      } else {
-        node = heap.getNodeById(id) as IHeapNode;
+      const node = heap.getNodeById(id);
+      if (node) {
+        ret.push({tag: 'Detached', heapObject: node});
       }
-      ret.push({tag: 'Detached', heapObject: node});
     });
-    ret.sort(
-      (item1, item2) =>
-        (item2.heapObject?.retainedSize ?? 0) -
-        (item1.heapObject?.retainedSize ?? 0),
-    );
     return ret;
   }
 
@@ -125,22 +120,29 @@ export default class InteractiveHeapViewCommand extends BaseCommand {
   }
 
   // get heap node to focus on
-  private getHeapNodes(heap: IHeapSnapshot): ComponentDataItem[] {
+  private async getHeapNodes(heap: IHeapSnapshot): Promise<ObjectCategory> {
     if (config.focusFiberNodeId >= 0) {
       const node = heap.getNodeById(config.focusFiberNodeId);
       if (node) {
-        return [{heapObject: node}];
+        const map: ObjectCategory = new Map();
+        map.set('Chosen', [
+          {
+            tag: 'Chosen',
+            heapObject: node,
+          },
+        ]);
+        return map;
       }
     }
 
-    const nodes = this.getNodesToFocus(heap);
-    if (nodes.length === 0) {
+    const category = await this.getNodesToFocus(heap);
+    if (category.size === 0) {
       throw utils.haltOrThrow(
         'please specify a heap node ' +
           `via --${new HeapNodeIdOption().getOptionName()}`,
       );
     }
-    return nodes;
+    return category;
   }
 
   async run(options: CLIOptions): Promise<void> {
@@ -149,7 +151,7 @@ export default class InteractiveHeapViewCommand extends BaseCommand {
     fs.emptyDirSync(reportOutDir);
 
     const heap = await this.getHeap(options);
-    const nodes = this.getHeapNodes(heap);
+    const nodes = await this.getHeapNodes(heap);
     new CliScreen('memlab heap viewer', heap, nodes).start();
   }
 }

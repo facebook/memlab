@@ -12,7 +12,6 @@ import type {ListCallbacks, ListItemSelectInfo} from './ListComponent';
 import type {IHeapSnapshot} from '@memlab/core';
 import {ComponentDataItem, getHeapObjectAt, debounce} from './HeapViewUtils';
 
-import chalk from 'chalk';
 import blessed from 'blessed';
 import ListComponent from './ListComponent';
 import HeapViewController from './HeapViewController';
@@ -33,7 +32,7 @@ type ComponentSizeInfo = {
  * all the UI components in CLI.
  *
  * Screen Layout:
- * ┌─Referrers of [*] ─┐┌─Objects ──────────┐┌─References ───────┐
+ * ┌─Referrers ────────┐┌─Clustered Objects ┐┌─References ───────┐
  * │                   ││                   ││                   │
  * │                   ││                   ││                   │
  * │                   ││                   ││                   │
@@ -43,7 +42,7 @@ type ComponentSizeInfo = {
  * │                   ││                   ││                   │
  * │                   ││                   ││                   │
  * └───────────────────┘│                   ││                   │
- * ┌─Referrers ────────┐│                   ││                   │
+ * ┌─Objects ──────────┐│                   ││                   │
  * │                   ││                   ││                   │
  * │                   │└───────────────────┘│                   │
  * │                   │┌─Object Detail ────┐│                   │
@@ -57,7 +56,7 @@ type ComponentSizeInfo = {
 export default class CliScreen {
   private screen: Widgets.Screen;
   private objectBox: ListComponent;
-  private parentObjectBox: ListComponent;
+  private clusteredObjectBox: ListComponent;
   private referrerBox: ListComponent;
   private referenceBox: ListComponent;
   private objectPropertyBox: ListComponent;
@@ -67,17 +66,21 @@ export default class CliScreen {
   private keyToComponent: Map<string, ListComponent>;
   private heapController: HeapViewController;
 
-  constructor(title: string, heap: IHeapSnapshot, nodes: ComponentDataItem[]) {
-    this.heapController = new HeapViewController(heap, nodes);
+  constructor(
+    title: string,
+    heap: IHeapSnapshot,
+    objectCategory: Map<string, ComponentDataItem[]>,
+  ) {
+    this.heapController = new HeapViewController(heap, objectCategory);
     this.screen = this.initScreen(title);
     const callbacks = this.initCallbacks(this.heapController, this.screen);
     this.keyToComponent = new Map<string, ListComponent>();
     this.referrerBox = this.initReferrerBox(callbacks);
     this.heapController.setReferrerBox(this.referrerBox);
-    this.parentObjectBox = this.initParentObjectBox(callbacks);
-    this.heapController.setParentBox(this.parentObjectBox);
     this.objectBox = this.initObjectBox(callbacks);
     this.heapController.setObjectBox(this.objectBox);
+    this.clusteredObjectBox = this.initClusteredObjectBox(callbacks);
+    this.heapController.setClusteredBox(this.clusteredObjectBox);
     this.referenceBox = this.initReferenceBox(callbacks);
     this.heapController.setReferenceBox(this.referenceBox);
     this.objectPropertyBox = this.initObjectPropertyBox(callbacks);
@@ -85,6 +88,20 @@ export default class CliScreen {
     this.retainerTraceBox = this.initRetainerTraceBox(callbacks);
     this.heapController.setRetainerTraceBox(this.retainerTraceBox);
     this.registerEvents();
+    this.setFirstObjectAsCurrrent(objectCategory);
+  }
+
+  private setFirstObjectAsCurrrent(
+    objectCategory: Map<string, ComponentDataItem[]>,
+  ) {
+    const keys = Array.from(objectCategory.keys());
+    if (keys.length === 0) {
+      return;
+    }
+    const nodes = objectCategory.get(keys[0]);
+    if (!nodes || nodes.length === 0) {
+      return;
+    }
     this.heapController.setCurrentHeapObject(getHeapObjectAt(nodes, 0));
   }
 
@@ -138,8 +155,8 @@ export default class CliScreen {
     screen.on('resize', () => {
       // all boxes/lists needs to resize
       this.updateComponentSize(
-        this.parentObjectBox,
-        this.getParentObjectBoxSize(),
+        this.clusteredObjectBox,
+        this.getClusteredObjectBoxSize(),
       );
       this.updateComponentSize(this.referrerBox, this.getReferrerBoxSize());
       this.updateComponentSize(this.objectBox, this.getObjectBoxSize());
@@ -196,25 +213,23 @@ export default class CliScreen {
     return `${this.currentFocuseKey}`;
   }
 
-  private initParentObjectBox(callbacks: ListCallbacks): ListComponent {
+  private initClusteredObjectBox(callbacks: ListCallbacks): ListComponent {
     const box = new ListComponent([], callbacks, {
-      ...this.getParentObjectBoxSize(),
+      ...this.getClusteredObjectBoxSize(),
     });
     box.setFocusKey(this.getNextFocusKey());
-    box.setLabel('Referrers of Current');
+    box.setLabel('Clustered Objects');
     this.screen.append(box.element);
     this.addComponentToFocusKeyMap(box);
     return box;
   }
 
-  private getParentObjectBoxSize(): ComponentSizeInfo {
+  private getClusteredObjectBoxSize(): ComponentSizeInfo {
     return {
       width: Math.floor(positionToNumber(this.screen.width) / 3),
-      height:
-        positionToNumber(this.screen.height) -
-        Math.floor(positionToNumber(this.screen.height) / 2),
-      top: Math.floor(positionToNumber(this.screen.height) / 2),
-      left: 0,
+      height: Math.floor((2 * positionToNumber(this.screen.height)) / 3),
+      top: 0,
+      left: Math.floor(positionToNumber(this.screen.width) / 3),
     };
   }
 
@@ -252,9 +267,11 @@ export default class CliScreen {
   private getObjectBoxSize(): ComponentSizeInfo {
     return {
       width: Math.floor(positionToNumber(this.screen.width) / 3),
-      height: Math.floor((2 * positionToNumber(this.screen.height)) / 3),
-      top: 0,
-      left: Math.floor(positionToNumber(this.screen.width) / 3),
+      height:
+        positionToNumber(this.screen.height) -
+        Math.floor(positionToNumber(this.screen.height) / 2),
+      top: Math.floor(positionToNumber(this.screen.height) / 2),
+      left: 0,
     };
   }
 

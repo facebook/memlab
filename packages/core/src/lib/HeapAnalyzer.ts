@@ -849,6 +849,7 @@ class MemoryAnalyst {
           : undefined,
       },
     );
+    info.midLevel(`MemLab found ${clusters.length} leak(s)`);
     await this.serializeClusterUpdate(clusters);
 
     if (config.logUnclassifiedClusters) {
@@ -864,6 +865,53 @@ class MemoryAnalyst {
     return {
       paths: clusters.map(c => c.path),
     };
+  }
+
+  /**
+   * Given a set of heap object ids, cluster them based on the similarity
+   * of their retainer traces and return a
+   * @param leakedNodeIds
+   * @param snapshot
+   * @returns
+   */
+  clusterHeapObjects(
+    objectIds: HeapNodeIdSet,
+    snapshot: IHeapSnapshot,
+  ): TraceCluster[] {
+    const finder = this.preparePathFinder(snapshot);
+
+    const paths: LeakTracePathItem[] = [];
+    let i = 0;
+
+    // analysis for each node
+    utils.applyToNodes(
+      objectIds,
+      snapshot,
+      node => {
+        if (++i % 11 === 0) {
+          info.overwrite(`progress: ${i} / ${objectIds.size} @${node.id}`);
+        }
+        // BFS search for path from the leaked node to GC roots
+        const p = finder.getPathToGCRoots(snapshot, node);
+        if (p) {
+          paths.push(p);
+        }
+      },
+      {reverse: true},
+    );
+
+    // cluster traces from the current run
+    const clusters = NormalizedTrace.clusterPaths(
+      paths,
+      snapshot,
+      this.aggregateDominatorMetrics,
+      {
+        strategy: config.isMLClustering
+          ? new MLTraceSimilarityStrategy()
+          : undefined,
+      },
+    );
+    return clusters;
   }
 
   async serializeClusterUpdate(

@@ -64,6 +64,7 @@ export class ComponentDataItem {
   heapObject?: IHeapNode;
   referenceEdge?: IHeapEdge;
   type?: string;
+  details?: Map<string, string>;
 
   static getTextForDisplay(data: ComponentDataItem): string {
     const content = ComponentDataItem.getTextContent(data);

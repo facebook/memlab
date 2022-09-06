@@ -11,7 +11,7 @@ import type {IHeapSnapshot, IHeapNode, Nullable} from '@memlab/core';
 import type ListComponent from './ListComponent';
 
 import chalk from 'chalk';
-import {utils} from '@memlab/core';
+import {utils, analysis} from '@memlab/core';
 import {
   ComponentDataItem,
   ComponentData,
@@ -23,7 +23,10 @@ type SelectHeapObjectOption = {
   noChangeInReferrerBox?: boolean;
   noChangeInRetainerTraceBox?: boolean;
   noChangeInObjectPropertyBox?: boolean;
+  componentDataItem?: ComponentDataItem;
 };
+
+export type ObjectCategory = Map<string, ComponentDataItem[]>;
 
 /**
  * HeapViewController managers all the data associated with each
@@ -34,23 +37,85 @@ export default class HeapViewController {
   private currentHeapObject: IHeapNode;
   private selectedHeapObject: IHeapNode;
   private currentHeapObjectsInfo: ComponentDataItem[];
+  private currentClusteredObjectsInfo: ComponentDataItem[];
   private componentIdToDataMap: Map<number, ComponentData>;
   private componentIdToComponentMap: Map<number, ListComponent>;
   private heap: IHeapSnapshot;
 
-  private parentBox: ListComponent;
+  private clusteredBox: ListComponent;
   private referrerBox: ListComponent;
   private objectBox: ListComponent;
   private referenceBox: ListComponent;
   private objectPropertyBox: ListComponent;
   private retainerTracePropertyBox: ListComponent;
 
-  constructor(heap: IHeapSnapshot, nodes: ComponentDataItem[]) {
+  constructor(heap: IHeapSnapshot, objectCategory: ObjectCategory) {
     this.heap = heap;
-    this.currentHeapObject = getHeapObjectAt(nodes, 0);
-    this.currentHeapObjectsInfo = nodes;
+    this.currentHeapObjectsInfo =
+      this.getFlattenHeapObjectsInfo(objectCategory);
+    this.currentClusteredObjectsInfo =
+      this.getFlattenClusteredObjectsInfo(objectCategory);
+    this.currentHeapObject = getHeapObjectAt(this.currentHeapObjectsInfo, 0);
     this.componentIdToDataMap = new Map();
     this.componentIdToComponentMap = new Map();
+  }
+
+  private getFlattenHeapObjectsInfo(
+    objectCategory: ObjectCategory,
+  ): ComponentDataItem[] {
+    let ret: ComponentDataItem[] = [];
+    for (const category of objectCategory.keys()) {
+      const nodes = objectCategory.get(category) as ComponentDataItem[];
+      ret = [...ret, ...nodes];
+    }
+    return ret;
+  }
+
+  private getFlattenClusteredObjectsInfo(
+    objectCategory: ObjectCategory,
+  ): ComponentDataItem[] {
+    let ret: ComponentDataItem[] = [];
+    for (const category of objectCategory.keys()) {
+      let nodes = objectCategory.get(category) as ComponentDataItem[];
+      if (this.shouldClusterCategory(category)) {
+        nodes = this.clusterComponentDataItems(nodes);
+      }
+      ret = [...ret, ...nodes];
+    }
+    return ret;
+  }
+
+  private shouldClusterCategory(category: string): boolean {
+    return category === 'detached';
+  }
+
+  private clusterComponentDataItems(
+    nodes: ComponentDataItem[],
+  ): ComponentDataItem[] {
+    const ret: ComponentDataItem[] = [];
+    const nodeIds = new Set<number>(
+      nodes
+        .filter(node => node.heapObject)
+        .map(node => node.heapObject?.id ?? -1),
+    );
+    const clusters = analysis.clusterHeapObjects(nodeIds, this.heap);
+    clusters.forEach(cluster => {
+      const id = cluster.id ?? -1;
+      let node: Nullable<IHeapNode> = null;
+      node = this.heap.getNodeById(id) as IHeapNode;
+      const details = new Map<string, string>();
+      if (cluster.count) {
+        details.set('# of clusters', `${cluster.count}`);
+      }
+      if (cluster.retainedSize) {
+        details.set(
+          'aggregated retained size',
+          `${utils.getReadableBytes(cluster.retainedSize)}`,
+        );
+      }
+      ret.push({tag: 'Cluster', heapObject: node, details});
+    });
+    return ret;
   }
 
   getContent(componentId: number): string[] {
@@ -64,10 +129,16 @@ export default class HeapViewController {
     return ret;
   }
 
-  setParentBox(component: ListComponent) {
+  setClusteredBox(component: ListComponent) {
     this.componentIdToComponentMap.set(component.id, component);
-    this.parentBox = component;
+    this.clusteredBox = component;
     this.componentIdToDataMap.set(component.id, new ComponentData());
+  }
+  getClusteredBoxData(): ComponentData {
+    const data = new ComponentData();
+    data.selectedIdx = 0;
+    data.items = this.currentClusteredObjectsInfo;
+    return data;
   }
 
   setReferrerBox(component: ListComponent) {
@@ -131,7 +202,9 @@ export default class HeapViewController {
     this.componentIdToDataMap.set(component.id, new ComponentData());
   }
 
-  getObjectPropertyData(): ComponentData {
+  getObjectPropertyData(
+    options: {details?: Map<string, string>} = {},
+  ): ComponentData {
     const data = new ComponentData();
     const node = this.selectedHeapObject;
 
@@ -174,6 +247,13 @@ export default class HeapViewController {
         heapObject: node.dominatorNode,
       });
     }
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
+    options.details?.forEach((value, key) =>
+      data.items.push({
+        stringContent: self.getKeyValuePairString(key, value),
+      }),
+    );
     // inject additional node information
     if (node.isString) {
       const stringNode = node.toStringNode();
@@ -269,10 +349,10 @@ export default class HeapViewController {
   ): void {
     this.currentHeapObject = node;
     // set parent box's data and content
-    const parentBoxData = this.getReferrerBoxData(this.currentHeapObject);
-    this.componentIdToDataMap.set(this.parentBox.id, parentBoxData);
-    this.parentBox.setContent(this.getContent(this.parentBox.id));
-    this.parentBox.selectIndex(parentBoxData.selectedIdx);
+    const clusteredBoxData = this.getClusteredBoxData();
+    this.componentIdToDataMap.set(this.clusteredBox.id, clusteredBoxData);
+    this.clusteredBox.setContent(this.getContent(this.clusteredBox.id));
+    this.clusteredBox.selectIndex(clusteredBoxData.selectedIdx);
 
     // set object box's data and content
     const objectBoxData = this.getObjectBoxData();
@@ -328,6 +408,7 @@ export default class HeapViewController {
       noChangeInReferrerBox,
       noChangeInRetainerTraceBox,
       noChangeInObjectPropertyBox,
+      componentDataItem: item,
     });
   }
 
@@ -355,7 +436,10 @@ export default class HeapViewController {
     }
     // set object property box's data and content
     if (!options.noChangeInObjectPropertyBox) {
-      const data = this.getObjectPropertyData();
+      const propertyOption = options?.componentDataItem?.details
+        ? {details: options.componentDataItem.details}
+        : {};
+      const data = this.getObjectPropertyData(propertyOption);
       this.componentIdToDataMap.set(this.objectPropertyBox.id, data);
       this.objectPropertyBox.setContent(
         this.getContent(this.objectPropertyBox.id),
