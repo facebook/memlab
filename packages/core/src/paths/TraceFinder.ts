@@ -538,6 +538,12 @@ class TraceFinder {
     if (config.edgeNameBlockList.has(String(nameOrIndex))) {
       return true;
     }
+    if (config.nodeNameBlockList.has(edge.toNode.name)) {
+      return true;
+    }
+    if (config.nodeNameBlockList.has(edge.fromNode.name)) {
+      return true;
+    }
     return false;
   }
 

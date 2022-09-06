@@ -18,8 +18,29 @@ const lessUsefulEdgeTypeForDebugging = new Set([
   'shortcut',
   'weak',
 ]);
+const reactEdgeNames = new Set([
+  'alternate',
+  'firstEffect',
+  'lastEffect',
+  'concurrentQueues',
+  'child',
+  'return',
+  'sibling',
+]);
 function isUsefulEdgeForDebugging(edge: IHeapEdge): boolean {
-  return !lessUsefulEdgeTypeForDebugging.has(edge.type);
+  if (lessUsefulEdgeTypeForDebugging.has(edge.type)) {
+    return false;
+  }
+  const edgeStr = `${edge.name_or_index}`;
+  if (reactEdgeNames.has(edgeStr)) {
+    if (utils.isFiberNode(edge.fromNode) || utils.isFiberNode(edge.toNode)) {
+      return false;
+    }
+  }
+  if (edgeStr.startsWith('__reactProps$')) {
+    return false;
+  }
+  return true;
 }
 
 const lessUsefulObjectTypeForDebugging = new Set([
@@ -30,7 +51,10 @@ const lessUsefulObjectTypeForDebugging = new Set([
   'synthetic',
 ]);
 function isUsefulObjectForDebugging(object: IHeapNode): boolean {
-  return !lessUsefulObjectTypeForDebugging.has(object.type);
+  if (lessUsefulObjectTypeForDebugging.has(object.type)) {
+    return false;
+  }
+  return !utils.isFiberNode(object);
 }
 
 export class ComponentDataItem {
@@ -124,6 +148,71 @@ export function getHeapObjectAt(
     throw utils.haltOrThrow('index is outside of nodes range');
   }
   return nodes[index].heapObject as IHeapNode;
+}
+
+// eslint-disable-next-line no-control-regex
+const colorBegin = /^\u001b\[(\d+)m/;
+// eslint-disable-next-line no-control-regex
+const colorEnd = /^\u001b\](\d+)m/;
+
+function stripColorCodeIfAny(input: string): {
+  str: string;
+  code: number;
+  isBegin: boolean;
+} {
+  const matchBegin = input.match(colorBegin);
+  const matchEnd = input.match(colorEnd);
+  const match = matchBegin || matchEnd;
+  if (!match) {
+    return {str: input, code: -1, isBegin: false};
+  }
+  const isBegin = !!matchBegin;
+  const code = parseInt(match[1], 10);
+  const str = input.substring(match[0].length);
+  return {str, code, isBegin};
+}
+
+function toColorControlChar(code: number, isBegin: boolean): string {
+  const colorSpecialChar = '\u001b';
+  return colorSpecialChar + (isBegin ? '[' : ']') + code + 'm';
+}
+export function substringWithColor(input: string, begin: number): string {
+  const codeQueue = [];
+  let curIndex = 0;
+  let curStr = input;
+  while (curIndex < begin) {
+    // enqueue all control characters
+    let strip;
+    do {
+      strip = stripColorCodeIfAny(curStr);
+      curStr = strip.str;
+      if (strip.code >= 0) {
+        // pop if control begin meets control ends
+        const last = codeQueue[codeQueue.length - 1];
+        if (
+          !last ||
+          last.code !== strip.code ||
+          strip.isBegin === true ||
+          last.isBegin === false
+        ) {
+          codeQueue.push({code: strip.code, isBegin: strip.isBegin});
+        } else {
+          codeQueue.pop();
+        }
+      }
+    } while (strip.code >= 0);
+    // strip one actual content character
+    curStr = curStr.substring(1);
+    ++curIndex;
+  }
+  // prepend control characters
+  while (codeQueue.length > 0) {
+    const last = codeQueue.pop();
+    if (last) {
+      curStr = toColorControlChar(last?.code, last?.isBegin) + curStr;
+    }
+  }
+  return curStr;
 }
 
 export type DebounceCallback = () => void;

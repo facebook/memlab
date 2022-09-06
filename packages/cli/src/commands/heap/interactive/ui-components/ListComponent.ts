@@ -12,6 +12,7 @@ import type {Widgets} from 'blessed';
 import blessed from 'blessed';
 import chalk from 'chalk';
 import stringWidth from 'string-width';
+import {substringWithColor} from './HeapViewUtils';
 
 export type ListComponentOption = {
   width: number;
@@ -168,7 +169,7 @@ export default class ListComponent {
       return;
     }
     this.horizonScrollPositionMap.set(this.listIndex, --offset);
-    let newContent = selectedContent.substring(offset) as unknown;
+    let newContent = substringWithColor(selectedContent, offset) as unknown;
     if (offset > 0) {
       newContent = chalk.grey('...') + newContent;
     }
@@ -190,7 +191,7 @@ export default class ListComponent {
       offset = this.horizonScrollPositionMap.get(this.listIndex) ?? 0;
     }
     this.horizonScrollPositionMap.set(this.listIndex, ++offset);
-    let newContent = selectedContent.substring(offset) as unknown;
+    let newContent = substringWithColor(selectedContent, offset) as unknown;
     if (offset > 0) {
       newContent = chalk.grey('...') + newContent;
     }
