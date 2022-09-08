@@ -32,8 +32,8 @@ git clone git@github.com:facebookincubator/memlab.git
 ```
 
 ### 2. Run the Example App
-Once you have a repo in your local machine, run the following commands
-from the root directory of memlab project:
+Once you have cloned the repo on your local machine, run the following commands
+from the root directory of the Memlab project:
 
 ```bash
 npm install && npm run build
@@ -109,7 +109,7 @@ reference that should be set to `null` (but it wasn't due to a bug).
   * `leakedObjects` - This shows that `leakedObjects` was a property of the
     `Window` object with size `148.5KB` pointing to an `Array` object.
   * `0` - This shows that a detached `HTMLDIVElement` (i.e. a DOM element that is not currently connected to the DOM tree) is stored as the first element of the `leakedObjects` array (Since it is overwhelming to show all 1024 leak traces,
-    `memlab` only prints one representative leak trace. i.e. property 0 instead of properties 0->1023)
+    Memlab only prints one representative leak trace. i.e. property 0 instead of properties 0->1023)
 
     In short, the leak trace path from `window` object to leaked object is:
 ```
