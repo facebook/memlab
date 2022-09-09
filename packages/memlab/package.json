@@ -1,6 +1,6 @@
 {
   "name": "memlab",
-  "version": "1.1.25",
+  "version": "1.1.27",
   "license": "MIT",
   "description": "memlab is a framework that analyzes memory and finds memory leaks in JavaScript applications.",
   "main": "dist/index.js",
@@ -26,11 +26,11 @@
     "snapshot"
   ],
   "dependencies": {
-    "@memlab/cli": "^1.0.7",
-    "@memlab/api": "^1.0.6",
-    "@memlab/core": "^1.1.6",
-    "@memlab/e2e": "^1.0.7",
-    "@memlab/heap-analysis": "^1.0.5",
+    "@memlab/cli": "^1.0.11",
+    "@memlab/api": "^1.0.11",
+    "@memlab/core": "^1.1.10",
+    "@memlab/e2e": "^1.0.11",
+    "@memlab/heap-analysis": "^1.0.9",
     "ansi": "^0.3.1",
     "babar": "^0.2.0",
     "chalk": "^4.0.0",
