@@ -161,13 +161,12 @@ const config = {
           },
         ],
         logo: {
-          alt: 'Facebook Open Source Logo',
+          alt: 'Meta Open Source Logo',
           src: 'img/oss_logo.png',
           href: 'https://opensource.facebook.com',
         },
-        // Please do not remove the credits, help to publicize Docusaurus :)
         copyright: `Copyright © ${new Date().getFullYear()}
-          Facebook, Inc. Built with Docusaurus.`,
+          Meta Platforms, Inc. Built with Docusaurus.`,
       },
       algolia: {
         // The application ID provided by Algolia
