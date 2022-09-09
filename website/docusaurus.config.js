@@ -123,7 +123,7 @@ const config = {
               },
               {
                 label: 'Twitter',
-                href: '/under-construction',
+                href: 'https://twitter.com/memlabjs',
               },
             ],
           },
@@ -132,7 +132,6 @@ const config = {
             items: [
               {
                 label: 'GitHub',
-                // need to update with our repo url
                 href: 'https://github.com/facebookincubator/memlab',
               },
             ],
