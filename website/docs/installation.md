@@ -15,7 +15,7 @@ please use Git Bash.
 :::
 
 ## Commands
-To check if the installation complete, run `memlab help` in your console,
+To check if the installation completed, run `memlab help` in your console,
 you should see helper text as follows (view the documentation
 for each command [here](./cli/CLI-commands.md)):
 ```
