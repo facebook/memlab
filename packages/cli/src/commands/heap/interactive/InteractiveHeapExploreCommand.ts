@@ -12,7 +12,6 @@ import type {
   BaseOption,
   CLIOptions,
   IHeapSnapshot,
-  IHeapNode,
   Optional,
 } from '@memlab/core';
 import type {ComponentDataItem} from './ui-components/HeapViewUtils';
@@ -26,6 +25,7 @@ import SnapshotFileOption from '../../../options/heap/SnapshotFileOption';
 import JSEngineOption from '../../../options/heap/JSEngineOption';
 import CliScreen from './ui-components/CliScreen';
 import HeapNodeIdOption from '../../../options/HeapNodeIdOption';
+import MLClusteringOption from '../../../options/MLClusteringOption';
 
 export default class InteractiveHeapViewCommand extends BaseCommand {
   getCommandName(): string {
@@ -49,6 +49,7 @@ export default class InteractiveHeapViewCommand extends BaseCommand {
       new SnapshotFileOption(),
       new JSEngineOption(),
       new HeapNodeIdOption(),
+      new MLClusteringOption(),
     ];
   }
 
