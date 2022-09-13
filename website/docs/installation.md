@@ -6,9 +6,13 @@ npm install -g memlab
 
 ## Prequisites
 
-- [Node.js](https://nodejs.org/) version 14 or above
+- [Node.js](https://nodejs.org/) version 16 or above
 - [Npm](https://docs.npmjs.com/)
 
+:::note
+To build from the [Git respository](https://github.com/facebookincubator/memlab) on Windows,
+please use Git Bash.
+:::
 
 ## Commands
 To check if the installation complete, run `memlab help` in your console,

@@ -212,6 +212,8 @@ For other APIs check out the
 
 ## Development
 
+Use node version 16 or above. To build on Windows, please use Git Bash.
+
 First build the project as follows:
 
 ```bash
