@@ -12,7 +12,7 @@ specify how memlab should interact with our page.
 ## Write a Test Scenario
 A scenario file is a `js` file that exports functions to provide details about
 how to navigate to and interact with your page. Now let's copy the following
-example and save it as `~/memlab/scenraio.js` file somewhere we can find later.
+example and save it as `~/memlab/scenario.js` file somewhere we can find later.
 
 ```javascript
 // initial page load's url
