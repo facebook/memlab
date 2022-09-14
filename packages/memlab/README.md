@@ -4,6 +4,7 @@ memlab is an E2E testing and analysis framework for finding JavaScript memory
 leaks and optimization opportunities.
 
 Online Resources:
+* [Meta Engineering Blog Post](https://engineering.fb.com/2022/09/12/open-source/memlab/)
 * [Official Website and Demo](https://facebookincubator.github.io/memlab)
 * [Documentation](https://facebookincubator.github.io/memlab/docs/intro)
 

@@ -10,6 +10,7 @@ leaks and optimization opportunities.
 Online Resources:
 * [Official Website and Demo](https://facebookincubator.github.io/memlab)
 * [Documentation](https://facebookincubator.github.io/memlab/docs/intro)
+* [Meta Engineering Blog Post](https://engineering.fb.com/2022/09/12/open-source/memlab/)
 
 Features:
  * **Browser memory leak detection** - Write test scenario with puppeteer API,

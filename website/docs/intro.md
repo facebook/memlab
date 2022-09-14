@@ -45,3 +45,6 @@ Trying out memlab:
 - [Install the npm package](./installation.md) and read the
   [Getting Started](./getting-started.md) section
 - Use the node.js [APIs](./api/index.md)
+
+Read this [engineering blog post](https://engineering.fb.com/2022/09/12/open-source/memlab/)
+on how MemLab is used at Meta.
