@@ -88,7 +88,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:524
+    * core/src/lib/Types.ts:553
 
 ___
 
@@ -117,7 +117,7 @@ Check out [this page](/docs/how-memlab-works) on why
 memlab needs to undo/revert the `action` callback.
 
  * **Source**:
-    * core/src/lib/Types.ts:548
+    * core/src/lib/Types.ts:577
 
 ___
 
@@ -149,7 +149,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:625
+    * core/src/lib/Types.ts:654
 
 ___
 
@@ -189,7 +189,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:598
+    * core/src/lib/Types.ts:627
 
 ___
 
@@ -236,7 +236,41 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:667
+    * core/src/lib/Types.ts:696
+
+___
+
+### <a id="setup" name="setup"></a> `Optional` **setup**: [`InteractionsCallback`](../modules/core_src.md#interactionscallback)
+
+`setup` is the callback function that will be called only once
+after the initial page load. This callback can be used to log in
+if you have to (we recommend using [cookies](core_src.IScenario.md#cookies))
+or to prepare data before the [action](core_src.IScenario.md#action) call.
+
+* **Parameters**:
+  * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+    object, which provides APIs to interact with the web browser
+
+* **Examples**:
+```typescript
+const scenario = {
+  url: () => 'https://www.npmjs.com/',
+  setup: async (page) => {
+    // log in or prepare data for the interaction
+  },
+  action: async (page) => {
+    await page.click('a[href="/link"]');
+  },
+  back: async (page) => {
+    await page.click('a[href="/back"]');
+  },
+}
+
+module.exports = scenario;
+```
+
+ * **Source**:
+    * core/src/lib/Types.ts:508
 
 ## Methods
 
@@ -292,7 +326,7 @@ module.exports = {
 
  * **Returns**: `number`
  * **Source**:
-    * core/src/lib/Types.ts:563
+    * core/src/lib/Types.ts:592
 
 ___
 

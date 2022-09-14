@@ -137,7 +137,10 @@ export default class E2EInteractionManager {
 
       await maybeWaitForConsoleInput(i + 1);
 
-      const opArgs = {isPageLoaded: visitPlan.isPageLoaded};
+      const opArgs = {
+        isPageLoaded: visitPlan.isPageLoaded,
+        scenario: visitPlan.scenario,
+      };
       await applyAsyncWithRetry(
         this.getPageStatistics,
         this,
@@ -262,6 +265,11 @@ export default class E2EInteractionManager {
     // inject marker, which checks if the page is reloaded
     if (tabInfo.idx === 1) {
       await injectPageReloadChecker(this.page);
+      // call setup callback if the scenario has one
+      const setup = opArgs.scenario?.setup;
+      if (setup) {
+        await setup(this.page);
+      }
     } else {
       await checkPageReload(this.page);
     }

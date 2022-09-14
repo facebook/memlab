@@ -478,6 +478,35 @@ export interface IScenario {
    */
   url: () => string;
   /**
+   * `setup` is the callback function that will be called only once
+   * after the initial page load. This callback can be used to log in
+   * if you have to (we recommend using {@link cookies})
+   * or to prepare data before the {@link action} call.
+   *
+   * * **Parameters**:
+   *   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+   *     object, which provides APIs to interact with the web browser
+   *
+   * * **Examples**:
+   * ```typescript
+   * const scenario = {
+   *   url: () => 'https://www.npmjs.com/',
+   *   setup: async (page) => {
+   *     // log in or prepare data for the interaction
+   *   },
+   *   action: async (page) => {
+   *     await page.click('a[href="/link"]');
+   *   },
+   *   back: async (page) => {
+   *     await page.click('a[href="/back"]');
+   *   },
+   * }
+   *
+   * module.exports = scenario;
+   * ```
+   */
+  setup?: InteractionsCallback;
+  /**
    * `action` is the callback function that defines the interaction
    * where you want to trigger memory leaks after the initial page load.
    * All JS objects in browser allocated by the browser interactions triggered
@@ -519,7 +548,7 @@ export interface IScenario {
    * }
    *
    * module.exports = scenario;
-   ```
+   * ```
    */
   action?: InteractionsCallback;
   /**
@@ -788,11 +817,13 @@ export interface IE2EScenarioVisitPlan {
   numOfWarmup: number;
   dataBuilder: Optional<IDataBuilder>;
   isPageLoaded?: CheckPageLoadCallback;
+  scenario?: IScenario;
 }
 
 /** @internal */
 export type OperationArgs = {
   isPageLoaded?: CheckPageLoadCallback;
+  scenario?: Optional<IScenario>;
   showProgress?: boolean;
   failedURLs?: AnyRecord;
   pageHistoryLength?: number[];

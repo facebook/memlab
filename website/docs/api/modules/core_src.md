@@ -34,7 +34,7 @@ this callback until it returns `true`. This is an async callback, you can
 also `await` and returns `true` until some async logic is resolved.
 
  * **Source**:
-    * core/src/lib/Types.ts:776
+    * core/src/lib/Types.ts:805
 
 ___
 
@@ -59,7 +59,7 @@ or [forEachReferrer](../interfaces/core_src.IHeapNode.md#foreachreferrer).
  * **Returns**: `Optional`<{ `stop`: `boolean`  }\> \| `void` | this API returns void
 
  * **Source**:
-    * core/src/lib/Types.ts:1298
+    * core/src/lib/Types.ts:1329
 
 ___
 
@@ -157,7 +157,7 @@ You can retrieve the instance of this type through [getRunMetaInfo](../classes/a
 | `type` | `string` | type of the memlab run |
 
  * **Source**:
-    * core/src/lib/Types.ts:850
+    * core/src/lib/Types.ts:881
 
 ## Functions
 

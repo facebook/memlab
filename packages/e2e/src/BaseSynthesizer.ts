@@ -173,7 +173,7 @@ class BaseSynthesizer implements IE2EScenarioSynthesizer {
   }
 
   // get the URL of the target app
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/explicit-module-boundary-types
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   getBaseURL(_options: AnyOptions = {}) {
     return 'https://www.facebook.com';
   }
@@ -184,7 +184,7 @@ class BaseSynthesizer implements IE2EScenarioSynthesizer {
   }
 
   // get URL parameters
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/explicit-module-boundary-types
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   getURLParameters(_options: AnyOptions = {}) {
     return '';
   }
@@ -433,6 +433,7 @@ class BaseSynthesizer implements IE2EScenarioSynthesizer {
       numOfWarmup: this.getActualNumberOfWarmup(),
       dataBuilder: null,
       isPageLoaded: scenario.isPageLoaded ?? this.getPageLoadChecker(),
+      scenario,
     };
   }
 
