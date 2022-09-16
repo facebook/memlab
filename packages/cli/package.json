@@ -1,6 +1,6 @@
 {
   "name": "@memlab/cli",
-  "version": "1.0.11",
+  "version": "1.0.14",
   "license": "MIT",
   "description": "command line interface for memlab",
   "author": "Liang Gong <lgong@fb.com>",
@@ -15,7 +15,9 @@
   ],
   "main": "dist/index.js",
   "files": [
-    "dist"
+    "dist",
+    "bin",
+    "LICENSE"
   ],
   "bin": {
     "memlab": "bin/memlab.js"
@@ -56,6 +58,7 @@
     "directory": "packages/cli"
   },
   "scripts": {
+    "preinstall": "node bin/preinstall",
     "build-pkg": "tsc",
     "publish-patch": "npm version patch --force && npm publish",
     "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"

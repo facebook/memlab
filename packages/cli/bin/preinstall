@@ -1,0 +1,23 @@
+#!/usr/bin/env node
+
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * @format
+ * @oncall ws_labs
+ */
+
+const path = require("path");
+const fs = require("fs");
+if (process.platform !== "win32") {
+  const memlabFile = path.join(__dirname, "../bin/memlab.js");
+  const content = fs.readFileSync(memlabFile, "UTF-8");
+  fs.writeFileSync(
+    memlabFile,
+    content.replace("#!/usr/bin/env node", "#!/usr/bin/env -S node"),
+    "UTF-8"
+  );
+}
