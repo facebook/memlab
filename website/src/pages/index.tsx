@@ -71,7 +71,7 @@ $ memlab analyze string
 $ memlab analyze unbound-object
 # Get shapes with unbound growth
 $ memlab analyze unbound-shape
-# discover more memory analyses
+# Discover more memory analyses
 $ memlab analyze -h`}
         />
       </>
