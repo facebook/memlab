@@ -82,7 +82,7 @@ export function tagObject<T extends object>(o: T, tag: string): T {
  * ```
  */
 export function dumpNodeHeapSnapshot(): string {
-  const randomID = `Math.random()`.replace('0.', '');
+  const randomID = `${Math.random()}`.replace('0.', '');
   const file = path.join(
     fileManager.generateTmpHeapDir(),
     `nodejs-${randomID}.heapsnapshot`,
