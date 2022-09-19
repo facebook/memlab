@@ -17,7 +17,8 @@
   "types": "dist/index.d.ts",
   "files": [
     "dist",
-    "static"
+    "static",
+    "LICENSE"
   ],
   "dependencies": {
     "@memlab/core": "^1.1.10",

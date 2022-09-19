@@ -24,7 +24,8 @@
   },
   "files": [
     "dist",
-    "static"
+    "static",
+    "LICENSE"
   ],
   "engines": {
     "node": ">= 12.6.0"
