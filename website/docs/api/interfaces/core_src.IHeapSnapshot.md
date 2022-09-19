@@ -80,7 +80,7 @@ Search for the heap and get one of the JS object instances with
 a specified constructor name (if there is any).
 
  * **Parameters**:
-    * `className`: `string` | The contructor name of the object instance
+    * `className`: `string` | The constructor name of the object instance
  * **Returns**: `Nullable`<[`IHeapNode`](core_src.IHeapNode.md)\> | a handle pointing to any one of the object instances, returns
          `null` if no such object exists in the heap.
 
@@ -144,7 +144,7 @@ Search for the heap and check if there is any JS object instance with
 a specified constructor name.
 
  * **Parameters**:
-    * `className`: `string` | The contructor name of the object instance
+    * `className`: `string` | The constructor name of the object instance
  * **Returns**: `boolean` | `true` if there is at least one such object in the heap
 
 * **Examples**: you can write a jest unit test with memory assertions:

@@ -987,7 +987,7 @@ export interface IHeapSnapshot {
   /**
    * Search for the heap and check if there is any JS object instance with
    * a specified constructor name.
-   * @param className The contructor name of the object instance
+   * @param className The constructor name of the object instance
    * @returns `true` if there is at least one such object in the heap
    *
    * * **Examples**: you can write a jest unit test with memory assertions:
@@ -1026,7 +1026,7 @@ export interface IHeapSnapshot {
   /**
    * Search for the heap and get one of the JS object instances with
    * a specified constructor name (if there is any).
-   * @param className The contructor name of the object instance
+   * @param className The constructor name of the object instance
    * @returns a handle pointing to any one of the object instances, returns
    *          `null` if no such object exists in the heap.
    *
