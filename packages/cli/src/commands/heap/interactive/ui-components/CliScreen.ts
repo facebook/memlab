@@ -9,7 +9,7 @@
  */
 import type {Widgets} from 'blessed';
 import type {ListCallbacks, ListItemSelectInfo} from './ListComponent';
-import type {IHeapSnapshot} from '@memlab/core';
+import type {IHeapSnapshot, Optional} from '@memlab/core';
 import {ComponentDataItem, getHeapObjectAt, debounce} from './HeapViewUtils';
 
 import blessed from 'blessed';
@@ -98,11 +98,16 @@ export default class CliScreen {
     if (keys.length === 0) {
       return;
     }
-    const nodes = objectCategory.get(keys[0]);
-    if (!nodes || nodes.length === 0) {
-      return;
+    let nodes: Optional<ComponentDataItem[]>;
+    for (const key of keys) {
+      nodes = objectCategory.get(key);
+      if (nodes && nodes.length > 0) {
+        break;
+      }
     }
-    this.heapController.setCurrentHeapObject(getHeapObjectAt(nodes, 0));
+    if (nodes && nodes.length > 0) {
+      this.heapController.setCurrentHeapObject(getHeapObjectAt(nodes, 0));
+    }
   }
 
   private initScreen(title: string): Widgets.Screen {
