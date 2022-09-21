@@ -22,7 +22,7 @@ import {
 } from '@memlab/core';
 
 import chalk from 'chalk';
-import {info, analysis, serializer, utils} from '@memlab/core';
+import {info, analysis, serializer, utils, TraceFinder} from '@memlab/core';
 import heapConfig from './HeapConfig';
 
 const nodeNameBlockList = new Set([
@@ -694,14 +694,55 @@ function filterOutLargestObjects(
   return largeObjects;
 }
 
+function calculateRetainedSizes(snapshot: IHeapSnapshot): void {
+  const finder = new TraceFinder();
+  // dominator and retained size
+  finder.calculateAllNodesRetainedSizes(snapshot);
+}
+
+function isCollectObject(node: IHeapNode): boolean {
+  if (node.type !== 'object') {
+    return false;
+  }
+  return (
+    node.name === 'Map' ||
+    node.name === 'Set' ||
+    node.name === 'WeakMap' ||
+    node.name === 'WeakSet'
+  );
+}
+
+function getCollectionFanout(node: IHeapNode): number {
+  if (node.type !== 'object') {
+    return 0;
+  }
+  if (node.name === 'Array') {
+    return node.edge_count;
+  } else if (
+    node.name === 'Map' ||
+    node.name === 'Set' ||
+    node.name === 'WeakMap' ||
+    node.name === 'WeakSet'
+  ) {
+    const table = node.getReferenceNode('table');
+    if (table) {
+      return table.edge_count;
+    }
+  }
+  return 0;
+}
+
 export default {
   aggregateDominatorMetrics,
+  calculateRetainedSizes,
   defaultAnalysisArgs,
   filterOutLargestObjects,
+  getCollectionFanout,
   getDominatorNodes,
   getObjectOutgoingEdgeCount,
   getSnapshotDirForAnalysis,
   getSnapshotFileForAnalysis,
+  isCollectObject,
   isNodeWorthInspecting,
   loadHeapSnapshot,
   getHeapFromFile,

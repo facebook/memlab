@@ -46,7 +46,10 @@ export default class ShapeUnboundGrowthAnalysis extends BaseAnalysis {
 
   /** @internal */
   public getDescription(): string {
-    return 'Get shapes with unbound growth';
+    return (
+      'Get shapes with unbound growth ' +
+      '(a class of objects with growing aggregated retained size)'
+    );
   }
 
   /** @internal */

@@ -55,3 +55,5 @@ export {default as EvaluationMetric} from './trace-cluster/EvalutationMetric';
 export * from './lib/PackageInfoLoader';
 /** @internal */
 export {default as SequentialClustering} from './trace-cluster/SequentialClustering';
+/** @internal */
+export {default as TraceFinder} from './paths/TraceFinder';

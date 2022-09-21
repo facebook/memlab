@@ -62,4 +62,4 @@ ___
 
  * **Returns**: `ShapeSummary`[]
  * **Source**:
-    * heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:66
+    * heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:69

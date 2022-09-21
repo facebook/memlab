@@ -22,7 +22,10 @@ class ObjectUnboundGrowthAnalysis extends BaseAnalysis {
 
   /** @internal */
   getDescription(): string {
-    return 'Check unbound object growth';
+    return (
+      'Check unbound object growth ' +
+      '(a single object with growing retained size)'
+    );
   }
 
   /** @internal */

@@ -699,22 +699,25 @@ type UnboundedObjectInfo = {
   node: IHeapNode;
   type: string;
   history: number[];
+  historyNumberFormatter?: (n: number) => string;
 };
 
 function summarizeUnboundedObjects(
   unboundedObjects: UnboundedObjectInfo[],
   options: SummarizeOptions = {},
 ): string {
-  const sizeSep = options.color ? chalk.grey(' > ') : ' > ';
+  const historySeparator = options.color ? chalk.grey(' > ') : ' > ';
   const prefix = options.color ? chalk.grey('· ') : '· ';
   const opt = {compact: true, ...options};
   return unboundedObjects
     .map(item => {
       const id = options.color ? chalk.grey(`@${item.id}`) : `@${item.id}`;
       const name = summarizeNodeShape(item.node, opt);
+      const formatter =
+        item.historyNumberFormatter ?? utils.getReadableBytes.bind(utils);
       return (
         `${prefix}${name} [${item.type}](${id}):  ` +
-        item.history.map(v => utils.getReadableBytes(v)).join(sizeSep)
+        item.history.map(v => formatter(v)).join(historySeparator)
       );
     })
     .join('\n');

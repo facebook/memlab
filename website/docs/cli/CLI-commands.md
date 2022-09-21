@@ -115,6 +115,22 @@ memlab analyze <PLUGIN_NAME> [PLUGIN_OPTIONS]
  * **`--debug`**: enable manual debugging
  * **`--silent`**, **`-s`**: mute all terminal output
 
+#### memlab analyze unbound-collection
+
+Check unbound collection growth (e.g., Map with growing number of entries)
+
+```bash
+memlab analyze unbound-collection 
+```
+
+**Options**:
+ * **`--snapshot-dir`**: set directory path containing all heap snapshots under analysis
+ * **`--help`**, **`-h`**: print helper text
+ * **`--verbose`**, **`-v`**: show more details
+ * **`--sc`**: set to continuous test mode
+ * **`--debug`**: enable manual debugging
+ * **`--silent`**, **`-s`**: mute all terminal output
+
 #### memlab analyze collections-with-stale
 
 Analyze collections holding stale objects
@@ -246,7 +262,7 @@ memlab analyze object-size
 
 #### memlab analyze unbound-object
 
-Check unbound object growth
+Check unbound object growth (a single object with growing retained size)
 
 ```bash
 memlab analyze unbound-object 
@@ -262,7 +278,7 @@ memlab analyze unbound-object
 
 #### memlab analyze unbound-shape
 
-Get shapes with unbound growth
+Get shapes with unbound growth (a class of objects with growing aggregated retained size)
 
 ```bash
 memlab analyze unbound-shape 
