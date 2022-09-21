@@ -407,7 +407,7 @@ export type InteractionsCallback = (
  * ```
  *
  * The test scenario instance can also be passed to the
- * [`run` API](../modules/api_src#run) exported by `@memlab/api`.
+ * {@link run} API exported by `@memlab/api`.
  * ```typescript
  * const {run} = require('@memlab/api');
  *
