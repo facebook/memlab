@@ -1,3 +1,8 @@
+/**
+ * (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
+ *
+ * @oncall ws_labs
+ */
 // @nolint
 // memlab/packages/e2e/static/example/scenario/detached-dom.js
 /**
