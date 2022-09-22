@@ -150,7 +150,8 @@ async function checkPageReload(page: Page): Promise<void> {
   if (flag !== 1) {
     utils.haltOrThrow(
       'The page is reloaded. MemLab cannot analyze heap across page reloads. ' +
-        'Please remove window.reload() calls or disable any reload logic.',
+        'Please remove window.reload() calls, page.goto() calls, ' +
+        'or any reload logic.',
     );
   }
 }
