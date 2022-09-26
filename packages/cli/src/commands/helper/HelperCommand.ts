@@ -164,11 +164,31 @@ export default class HelperCommand extends BaseCommand {
       0,
     );
     for (const optionText of optionsText) {
-      const header = chalk.green(optionText.header);
-      const prefix = utils.repeat(' ', headerLength - optionText.header.length);
-      const msg = `${indent}${prefix}${header}  ${optionText.desc}`;
+      const msg = this.formatOptionText(optionText, indent, headerLength);
       info.topLevel(`\n${msg}`);
     }
+  }
+
+  private formatOptionText(
+    optionText: {header: string; desc: string},
+    indent: string,
+    headerLength: number,
+  ): string {
+    const header = chalk.green(optionText.header);
+    const prefix = utils.repeat(' ', headerLength - optionText.header.length);
+    const headerString = `${indent}${prefix}${header} `;
+    const headerStringWidth = stringWidth(headerString);
+    const maxWidth = Math.min(process.stdout.columns, 150);
+    const descMaxWidth = maxWidth - headerStringWidth;
+    let descString = optionText.desc.substring(0, descMaxWidth);
+    let descStringRemain = optionText.desc.substring(descMaxWidth);
+    while (descStringRemain.length > 0) {
+      descString += '\n';
+      descString += utils.repeat(' ', headerStringWidth);
+      descString += descStringRemain.substring(0, descMaxWidth);
+      descStringRemain = descStringRemain.substring(descMaxWidth);
+    }
+    return `${headerString}${descString}`;
   }
 
   private printCommand(
