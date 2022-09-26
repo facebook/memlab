@@ -29,6 +29,7 @@ memlab run --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--local-puppeteer`**: enable remote browser instance debugging via local puppeteer
  * **`--scenario`**: set file path loading test scenario
  * **`--device`**: set the device type to emulate
+ * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
  * **`--leak-filter`**: specify a definition JS file for leak filter
  * **`--trace-object-size-above`**: objects with retained size (bytes) bigger than the threshold will be considered as leaks
@@ -440,6 +441,7 @@ memlab measure --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--local-puppeteer`**: enable remote browser instance debugging via local puppeteer
  * **`--scenario`**: set file path loading test scenario
  * **`--device`**: set the device type to emulate
+ * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
  * **`--work-dir`**: set the working directory of the current run
  * **`--help`**, **`-h`**: print helper text
@@ -470,6 +472,7 @@ memlab warmup --scenario /tmp/test-scenario.js
  * **`--local-puppeteer`**: enable remote browser instance debugging via local puppeteer
  * **`--scenario`**: set file path loading test scenario
  * **`--device`**: set the device type to emulate
+ * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
  * **`--skip-warmup`**: skip warming up web server
  * **`--work-dir`**: set the working directory of the current run
@@ -538,6 +541,7 @@ memlab snapshot --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--local-puppeteer`**: enable remote browser instance debugging via local puppeteer
  * **`--scenario`**: set file path loading test scenario
  * **`--device`**: set the device type to emulate
+ * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
  * **`--work-dir`**: set the working directory of the current run
  * **`--help`**, **`-h`**: print helper text
@@ -563,6 +567,7 @@ memlab warmup-and-snapshot
  * **`--local-puppeteer`**: enable remote browser instance debugging via local puppeteer
  * **`--scenario`**: set file path loading test scenario
  * **`--device`**: set the device type to emulate
+ * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
  * **`--skip-warmup`**: skip warming up web server
  * **`--full`**: take heap snapshot for every step in E2E interaction

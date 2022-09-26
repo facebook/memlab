@@ -27,6 +27,7 @@ import RunningModeOption from '../options/e2e/RunningModeOption';
 import RemoteBrowserDebugOption from '../options/e2e/RemoteBrowserDebugOption';
 import ScenarioFileOption from '../options/e2e/ScenarioFileOption';
 import SetDeviceOption from '../options/e2e/SetDeviceOption';
+import SetUserAgentOption from '../options/e2e/SetUserAgentOption';
 import DisableXvfbOption from '../options/e2e/DisableXvfbOption';
 import NumberOfRunsOption from '../options/NumberOfRunsOption';
 import HeadfulBrowserOption from '../options/e2e/HeadfulBrowserOption';
@@ -68,6 +69,7 @@ export default class RunMeasureCommand extends BaseCommand {
       new RemoteBrowserDebugOption(),
       new ScenarioFileOption(),
       new SetDeviceOption(),
+      new SetUserAgentOption(),
       new DisableXvfbOption(),
     ];
   }

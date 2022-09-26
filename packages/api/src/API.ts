@@ -322,7 +322,7 @@ async function setupPage(page: Page, options: APIOptions = {}): Promise<void> {
     await page.emulate(config.emulateDevice);
   }
 
-  if (config.defaultUserAgent) {
+  if (config.defaultUserAgent && config.defaultUserAgent !== 'default') {
     await page.setUserAgent(config.defaultUserAgent);
   }
 
