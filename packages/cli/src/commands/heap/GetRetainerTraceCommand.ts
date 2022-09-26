@@ -15,7 +15,7 @@ import BaseCommand, {CommandCategory} from '../../BaseCommand';
 import {BaseOption, analysis, utils} from '@memlab/core';
 import SnapshotFileOption from '../../options/heap/SnapshotFileOption';
 import JSEngineOption from '../../options/heap/JSEngineOption';
-import HeapNodeIdOption from '../../options/HeapNodeIdOption';
+import HeapNodeIdOption from '../../options/heap/HeapNodeIdOption';
 import SnapshotDirectoryOption from '../../options/heap/SnapshotDirectoryOption';
 import {fileManager} from '@memlab/core';
 

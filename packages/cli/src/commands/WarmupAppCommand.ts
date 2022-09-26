@@ -14,16 +14,16 @@ import {BaseOption} from '@memlab/core';
 import BaseCommand from '../BaseCommand';
 import {warmup} from '@memlab/api';
 import InitDirectoryCommand from './InitDirectoryCommand';
-import AppOption from '../options/AppOption';
-import InteractionOption from '../options/InteractionOption';
-import RunningModeOption from '../options/RunningModeOption';
-import RemoteBrowserDebugOption from '../options/RemoteBrowserDebugOption';
-import ScenarioFileOption from '../options/ScenarioFileOption';
-import SetDeviceOption from '../options/SetDeviceOption';
-import DisableXvfbOption from '../options/DisableXvfbOption';
-import SkipWarmupOption from '../options/SkipWarmupOption';
+import AppOption from '../options/e2e/AppOption';
+import InteractionOption from '../options/e2e/InteractionOption';
+import RunningModeOption from '../options/e2e/RunningModeOption';
+import RemoteBrowserDebugOption from '../options/e2e/RemoteBrowserDebugOption';
+import ScenarioFileOption from '../options/e2e/ScenarioFileOption';
+import SetDeviceOption from '../options/e2e/SetDeviceOption';
+import DisableXvfbOption from '../options/e2e/DisableXvfbOption';
+import SkipWarmupOption from '../options/e2e/SkipWarmupOption';
 import CheckXvfbSupportCommand from './snapshot/CheckXvfbSupportCommand';
-import HeadfulBrowserOption from '../options/HeadfulBrowserOption';
+import HeadfulBrowserOption from '../options/e2e/HeadfulBrowserOption';
 
 export default class FBWarmupAppCommand extends BaseCommand {
   getCommandName(): string {

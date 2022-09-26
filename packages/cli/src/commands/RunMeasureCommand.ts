@@ -15,21 +15,21 @@ import InitDirectoryCommand from './InitDirectoryCommand';
 import {modes, config, BaseOption} from '@memlab/core';
 import CleanRunDataCommand from './CleanRunDataCommand';
 import {runPageInteractionFromCLI} from './snapshot/Snapshot';
-import AppOption from '../options/AppOption';
-import FullExecutionOption from '../options/FullExecutionOption';
-import InteractionOption from '../options/InteractionOption';
-import SkipScreenshotOption from '../options/SkipScreenshotOption';
-import SkipSnapshotOption from '../options/SkipSnapshotOption';
-import SkipGCOption from '../options/SkipGCOption';
-import SkipScrollOption from '../options/SkipScrollOption';
-import SkipExtraOperationOption from '../options/SkipExtraOperationOption';
-import RunningModeOption from '../options/RunningModeOption';
-import RemoteBrowserDebugOption from '../options/RemoteBrowserDebugOption';
-import ScenarioFileOption from '../options/ScenarioFileOption';
-import SetDeviceOption from '../options/SetDeviceOption';
-import DisableXvfbOption from '../options/DisableXvfbOption';
+import AppOption from '../options/e2e/AppOption';
+import FullExecutionOption from '../options/e2e/FullExecutionOption';
+import InteractionOption from '../options/e2e/InteractionOption';
+import SkipScreenshotOption from '../options/e2e/SkipScreenshotOption';
+import SkipSnapshotOption from '../options/e2e/SkipSnapshotOption';
+import SkipGCOption from '../options/e2e/SkipGCOption';
+import SkipScrollOption from '../options/e2e/SkipScrollOption';
+import SkipExtraOperationOption from '../options/e2e/SkipExtraOperationOption';
+import RunningModeOption from '../options/e2e/RunningModeOption';
+import RemoteBrowserDebugOption from '../options/e2e/RemoteBrowserDebugOption';
+import ScenarioFileOption from '../options/e2e/ScenarioFileOption';
+import SetDeviceOption from '../options/e2e/SetDeviceOption';
+import DisableXvfbOption from '../options/e2e/DisableXvfbOption';
 import NumberOfRunsOption from '../options/NumberOfRunsOption';
-import HeadfulBrowserOption from '../options/HeadfulBrowserOption';
+import HeadfulBrowserOption from '../options/e2e/HeadfulBrowserOption';
 
 export default class RunMeasureCommand extends BaseCommand {
   getCommandName(): string {

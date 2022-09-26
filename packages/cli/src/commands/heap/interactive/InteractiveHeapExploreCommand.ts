@@ -24,7 +24,7 @@ import BaseCommand, {CommandCategory} from '../../../BaseCommand';
 import SnapshotFileOption from '../../../options/heap/SnapshotFileOption';
 import JSEngineOption from '../../../options/heap/JSEngineOption';
 import CliScreen from './ui-components/CliScreen';
-import HeapNodeIdOption from '../../../options/HeapNodeIdOption';
+import HeapNodeIdOption from '../../../options/heap/HeapNodeIdOption';
 import MLClusteringOption from '../../../options/MLClusteringOption';
 
 export default class InteractiveHeapViewCommand extends BaseCommand {
