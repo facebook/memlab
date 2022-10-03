@@ -25,6 +25,7 @@ import E2EUtils from './lib/E2EUtils';
 import {utils, info, serializer, browserInfo, config} from '@memlab/core';
 import interactUtils from './lib/operations/InteractionUtils';
 import defaultTestPlanner, {TestPlanner} from './lib/operations/TestPlanner';
+import NetworkManager from './NetworkManager';
 
 type SingleOp = E2EOperation | InteractionsCallback;
 type Ops = SingleOp | SingleOp[];
@@ -57,14 +58,17 @@ export default class E2EInteractionManager {
   private page: Page;
   private pageHistoryLength: number[] = [];
   private evalFuncAfterInitLoad: AnyFunction | null = null;
+  private networkManager: NetworkManager;
 
   constructor(page: Page) {
     this.page = page;
+    this.networkManager = new NetworkManager(page);
   }
 
   public async getCDPSession(): Promise<CDPSession> {
     if (!this.cdpsession) {
       this.cdpsession = await this.page.target().createCDPSession();
+      this.networkManager.setCDPSession(this.cdpsession);
     }
     return this.cdpsession;
   }
@@ -101,6 +105,12 @@ export default class E2EInteractionManager {
   }
 
   private async beforeInteractions(): Promise<void> {
+    if (config.instrumentJS) {
+      const session = await this.getCDPSession();
+      this.networkManager.setCDPSession(session);
+      await this.networkManager.interceptScript();
+    }
+
     if (config.verbose) {
       const browserVersion = await this.page.browser().version();
       info.lowLevel(`Browser version: ${browserVersion}`);

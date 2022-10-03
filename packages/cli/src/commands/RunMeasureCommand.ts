@@ -32,6 +32,7 @@ import DisableXvfbOption from '../options/e2e/DisableXvfbOption';
 import NumberOfRunsOption from '../options/NumberOfRunsOption';
 import HeadfulBrowserOption from '../options/e2e/HeadfulBrowserOption';
 import DisableWebSecurityOption from '../options/e2e/DisableWebSecurityOption';
+import EnableJSRewriteOption from '../options/e2e/EnableJSRewriteOption';
 
 export default class RunMeasureCommand extends BaseCommand {
   getCommandName(): string {
@@ -73,6 +74,7 @@ export default class RunMeasureCommand extends BaseCommand {
       new SetUserAgentOption(),
       new DisableXvfbOption(),
       new DisableWebSecurityOption(),
+      new EnableJSRewriteOption(),
     ];
   }
 

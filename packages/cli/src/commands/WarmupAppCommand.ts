@@ -26,6 +26,7 @@ import SkipWarmupOption from '../options/e2e/SkipWarmupOption';
 import CheckXvfbSupportCommand from './snapshot/CheckXvfbSupportCommand';
 import HeadfulBrowserOption from '../options/e2e/HeadfulBrowserOption';
 import DisableWebSecurityOption from '../options/e2e/DisableWebSecurityOption';
+import EnableJSRewriteOption from '../options/e2e/EnableJSRewriteOption';
 
 export default class FBWarmupAppCommand extends BaseCommand {
   getCommandName(): string {
@@ -60,6 +61,7 @@ export default class FBWarmupAppCommand extends BaseCommand {
       new DisableXvfbOption(),
       new DisableWebSecurityOption(),
       new SkipWarmupOption(),
+      new EnableJSRewriteOption(),
     ];
   }
 

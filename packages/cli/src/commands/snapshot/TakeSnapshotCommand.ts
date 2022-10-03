@@ -32,6 +32,7 @@ import CheckXvfbSupportCommand from './CheckXvfbSupportCommand';
 import HeadfulBrowserOption from '../../options/e2e/HeadfulBrowserOption';
 import SetUserAgentOption from '../../options/e2e/SetUserAgentOption';
 import DisableWebSecurityOption from '../../options/e2e/DisableWebSecurityOption';
+import EnableJSRewriteOption from '../../options/e2e/EnableJSRewriteOption';
 
 export default class TakeSnapshotCommand extends BaseCommand {
   getCommandName(): string {
@@ -76,6 +77,7 @@ export default class TakeSnapshotCommand extends BaseCommand {
       new SetUserAgentOption(),
       new DisableXvfbOption(),
       new DisableWebSecurityOption(),
+      new EnableJSRewriteOption(),
     ];
   }
 

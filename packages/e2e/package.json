@@ -30,9 +30,14 @@
     "puppeteer": "^13.5.1",
     "string-width": "^4.2.0",
     "util.promisify": "^1.1.1",
-    "xvfb": "^0.4.0"
+    "xvfb": "^0.4.0",
+    "@babel/parser": "^7.16.4",
+    "@babel/traverse": "^7.16.3",
+    "@babel/generator": "^7.16.0",
+    "@babel/template": "^7.16.0"
   },
   "devDependencies": {
+    "@types/babel": "^7.16.0",
     "@types/fs-extra": "^9.0.3",
     "@types/jest": "^27.4.1",
     "@types/minimist": "^1.2.2",
