@@ -1,9 +1,9 @@
 /**
- * (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
+ * @nolint
  * @oncall ws_labs
  */
-/* @nolint */
 
 function url() {
   return 'http://localhost:3000/';
@@ -19,4 +19,4 @@ async function back(page) {
   await page.click('a[href="/"]');
 }
 
-module.exports = { action, back, url };
+module.exports = {action, back, url};

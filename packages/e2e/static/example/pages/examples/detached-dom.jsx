@@ -1,10 +1,14 @@
-// @nolint
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @nolint
+ * @oncall ws_labs
+ */
 
 import Link from 'next/link';
 import React from 'react';
 
 export default function DetachedDom() {
-
   const addNewItem = () => {
     if (!window.leakedObjects) {
       window.leakedObjects = [];
@@ -12,7 +16,9 @@ export default function DetachedDom() {
     for (let i = 0; i < 1024; i++) {
       window.leakedObjects.push(document.createElement('div'));
     }
-    console.log('Detached DOMs are created. Please check Memory tab in devtools')
+    console.log(
+      'Detached DOMs are created. Please check Memory tab in devtools',
+    );
   };
 
   return (

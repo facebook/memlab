@@ -1,9 +1,10 @@
 /**
- * (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
+ * @nolint
  * @oncall ws_labs
  */
-// @nolint
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,

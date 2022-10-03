@@ -1,4 +1,10 @@
-// @nolint
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @nolint
+ * @oncall ws_labs
+ */
+
 import Link from 'next/link';
 import React, {useEffect} from 'react';
 
@@ -21,7 +27,7 @@ export default function OversizedObject() {
       <div className="row">
         <Link href="/">Go back</Link>
       </div>
-      <br/>
+      <br />
       <div className="row">
         Object<code>bigArray</code>is leaked. Please check <code>Memory</code>{' '}
         tab in devtools

@@ -1,4 +1,9 @@
-/* @nolint */
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * @nolint
+ * @oncall ws_labs
+ */
 
 function url() {
   return 'http://localhost:3000/';
@@ -20,4 +25,4 @@ function leakFilter(node, _snapshot, _leakedNodeIds) {
   return node.retainedSize > 1000 * 1000;
 }
 
-module.exports = { action, back, leakFilter, url };
+module.exports = {action, back, leakFilter, url};

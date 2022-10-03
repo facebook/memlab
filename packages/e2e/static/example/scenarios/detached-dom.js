@@ -1,15 +1,16 @@
 /**
- * (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
+ * @nolint
  * @oncall ws_labs
  */
-// @nolint
+
 // memlab/packages/e2e/static/example/scenario/detached-dom.js
 /**
  * The initial `url` of the scenario we would like to run.
  */
 function url() {
-  return "http://localhost:3000/examples/detached-dom";
+  return 'http://localhost:3000/examples/detached-dom';
 }
 
 /**
@@ -21,7 +22,7 @@ function url() {
  */
 async function action(page) {
   const elements = await page.$x(
-    "//button[contains(., 'Create detached DOMs')]"
+    "//button[contains(., 'Create detached DOMs')]",
   );
   const [button] = elements;
   if (button) {
@@ -42,4 +43,4 @@ async function back(page) {
   await page.click('a[href="/"]');
 }
 
-module.exports = { action, back, url };
+module.exports = {action, back, url};
