@@ -31,6 +31,7 @@ memlab run --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--device`**: set the device type to emulate
  * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
+ * **`--disable-web-security`**: disable web security in Chromium to enable cross domain requests; web security is enabled by default
  * **`--leak-filter`**: specify a definition JS file for leak filter
  * **`--trace-object-size-above`**: objects with retained size (bytes) bigger than the threshold will be considered as leaks
  * **`--ignore-leak-cluster-size-below`**: ignore memory leaks with aggregated retained size smaller than the threshold
@@ -443,6 +444,7 @@ memlab measure --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--device`**: set the device type to emulate
  * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
+ * **`--disable-web-security`**: disable web security in Chromium to enable cross domain requests; web security is enabled by default
  * **`--work-dir`**: set the working directory of the current run
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
@@ -474,6 +476,7 @@ memlab warmup --scenario /tmp/test-scenario.js
  * **`--device`**: set the device type to emulate
  * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
+ * **`--disable-web-security`**: disable web security in Chromium to enable cross domain requests; web security is enabled by default
  * **`--skip-warmup`**: skip warming up web server
  * **`--work-dir`**: set the working directory of the current run
  * **`--help`**, **`-h`**: print helper text
@@ -543,6 +546,7 @@ memlab snapshot --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--device`**: set the device type to emulate
  * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
+ * **`--disable-web-security`**: disable web security in Chromium to enable cross domain requests; web security is enabled by default
  * **`--work-dir`**: set the working directory of the current run
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
@@ -569,6 +573,7 @@ memlab warmup-and-snapshot
  * **`--device`**: set the device type to emulate
  * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
+ * **`--disable-web-security`**: disable web security in Chromium to enable cross domain requests; web security is enabled by default
  * **`--skip-warmup`**: skip warming up web server
  * **`--full`**: take heap snapshot for every step in E2E interaction
  * **`--skip-snapshot`**: skip taking heap snapshots

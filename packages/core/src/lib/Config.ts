@@ -93,6 +93,7 @@ export class MemLabConfig {
   _isFullRun: boolean;
   _scenario: Optional<IScenario>;
   _isHeadfulBrowser: boolean;
+  _disableWebSecurity: boolean;
   _browser: string;
 
   snapshotHasDetachedness: boolean;
@@ -250,6 +251,7 @@ export class MemLabConfig {
     this._timerNodes = ['Pending activities'];
     this._timerEdges = [];
     this._isHeadfulBrowser = false;
+    this._disableWebSecurity = false;
     this.targetApp = constant.unset;
     this.targetTab = constant.unset;
     this.analysisMode = constant.unset;
@@ -615,6 +617,28 @@ export class MemLabConfig {
 
   get isHeadfulBrowser(): boolean {
     return this._isHeadfulBrowser;
+  }
+
+  set disableWebSecurity(disable: boolean) {
+    this._disableWebSecurity = disable;
+    const args = this.puppeteerConfig.args as string[];
+    const flag = '--disable-web-security';
+    const index = args.indexOf(flag);
+    if (disable) {
+      // add the flag
+      if (index < 0) {
+        args.push(flag);
+      }
+    } else {
+      // remove the flag
+      if (index >= 0) {
+        args.splice(index, 1);
+      }
+    }
+  }
+
+  get disableWebSecurity(): boolean {
+    return this._disableWebSecurity;
   }
 
   get browserBinaryPath(): string {

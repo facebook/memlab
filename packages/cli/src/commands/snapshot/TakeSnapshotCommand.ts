@@ -31,6 +31,7 @@ import InitDirectoryCommand from '../InitDirectoryCommand';
 import CheckXvfbSupportCommand from './CheckXvfbSupportCommand';
 import HeadfulBrowserOption from '../../options/e2e/HeadfulBrowserOption';
 import SetUserAgentOption from '../../options/e2e/SetUserAgentOption';
+import DisableWebSecurityOption from '../../options/e2e/DisableWebSecurityOption';
 
 export default class TakeSnapshotCommand extends BaseCommand {
   getCommandName(): string {
@@ -74,6 +75,7 @@ export default class TakeSnapshotCommand extends BaseCommand {
       new SetDeviceOption(),
       new SetUserAgentOption(),
       new DisableXvfbOption(),
+      new DisableWebSecurityOption(),
     ];
   }
 

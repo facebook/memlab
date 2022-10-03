@@ -31,6 +31,7 @@ import SetUserAgentOption from '../options/e2e/SetUserAgentOption';
 import DisableXvfbOption from '../options/e2e/DisableXvfbOption';
 import NumberOfRunsOption from '../options/NumberOfRunsOption';
 import HeadfulBrowserOption from '../options/e2e/HeadfulBrowserOption';
+import DisableWebSecurityOption from '../options/e2e/DisableWebSecurityOption';
 
 export default class RunMeasureCommand extends BaseCommand {
   getCommandName(): string {
@@ -71,6 +72,7 @@ export default class RunMeasureCommand extends BaseCommand {
       new SetDeviceOption(),
       new SetUserAgentOption(),
       new DisableXvfbOption(),
+      new DisableWebSecurityOption(),
     ];
   }
 
