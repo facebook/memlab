@@ -5,15 +5,13 @@
  * LICENSE file in the root directory of this source tree.
  *
  * @format
- * @oncall ws_labs
+ * @oncall web_perf_infra
  */
 
 import type {AnyValue, IHeapNode, IHeapSnapshot} from '@memlab/core';
 
 import {config, utils} from '@memlab/core';
 import {isExpectedSnapshot} from './lib/HeapParserTestUtils';
-
-/* eslint-disable @typescript-eslint/ban-ts-comment */
 
 declare global {
   interface Window {
