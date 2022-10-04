@@ -6,7 +6,7 @@
  *
  * @format
  * @lightSyntaxTransform
- * @oncall ws_labs
+ * @oncall web_perf_infra
  */
 
 'use strict';
