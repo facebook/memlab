@@ -7,7 +7,7 @@
  * @format
  * @oncall mitigation_infra
  */
- import type {
+import type {
   ArrowFunctionExpression,
   ClassMethod,
   File,
