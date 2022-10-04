@@ -10,13 +10,13 @@
  import type {
   ArrowFunctionExpression,
   ClassMethod,
+  File,
   FunctionDeclaration,
   FunctionExpression,
   ObjectMethod,
 } from '@babel/types';
 import type {NodePath} from '@babel/traverse';
 import type {ParseResult} from '@babel/parser';
-import type {File} from '@babel/types';
 import type {RewriteScriptOption} from '../ScriptRewriteManager';
 
 import traverse from '@babel/traverse';
