@@ -6,7 +6,7 @@
  *
  * @format
  * @lightSyntaxTransform
- * @oncall ws_labs
+ * @oncall mitigation_infra
  */
 import type {
   AnyOptions,

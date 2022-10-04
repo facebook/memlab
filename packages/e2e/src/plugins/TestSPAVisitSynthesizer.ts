@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  *
  * @format
- * @oncall ws_labs
+ * @oncall web_perf_infra
  */
 
 import type {
@@ -21,7 +21,7 @@ import ClickOperation from '../lib/operations/ClickOperation';
 import interactUtils from '../lib/operations/InteractionUtils';
 
 export default class TestSPAVisitSynthesizer extends BaseSynthesizer {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/explicit-module-boundary-types
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   getBaseURL(_options: AnyOptions = {}) {
     const indexFile = path.join(
       __dirname,
