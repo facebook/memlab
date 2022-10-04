@@ -8,7 +8,7 @@
  * @oncall ws_labs
  */
 
-import type {Nullable} from '@memlab/core';
+import type {AnyValue, Nullable} from '@memlab/core';
 import type {Page, CDPSession} from 'puppeteer';
 import type {RewriteScriptOption} from './instrumentation/ScriptRewriteManager';
 
@@ -66,11 +66,14 @@ export default class NetworkManager {
 
     await session.send('Network.enable');
     await session.send('Network.setRequestInterception', {
-      patterns: patterns.map(pattern => ({
-        urlPattern: pattern,
-        resourceType: 'Script',
-        interceptionStage: 'HeadersReceived',
-      })),
+      patterns: patterns.map(
+        pattern =>
+          ({
+            urlPattern: pattern,
+            resourceType: 'Script',
+            interceptionStage: 'HeadersReceived',
+          } as AnyValue),
+      ),
     });
 
     session.on(

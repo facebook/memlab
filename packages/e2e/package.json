@@ -37,7 +37,8 @@
     "@babel/template": "^7.16.0"
   },
   "devDependencies": {
-    "@types/babel": "^7.16.0",
+    "@babel/types": "^7.16.0",
+    "@types/babel-core": "^6.25.7",
     "@types/fs-extra": "^9.0.3",
     "@types/jest": "^27.4.1",
     "@types/minimist": "^1.2.2",
