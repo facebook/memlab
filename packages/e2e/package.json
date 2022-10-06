@@ -50,7 +50,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/facebookincubator/memlab.git",
+    "url": "git+https://github.com/facebook/memlab.git",
     "directory": "packages/e2e"
   },
   "scripts": {
@@ -59,7 +59,7 @@
     "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
   },
   "bugs": {
-    "url": "https://github.com/facebookincubator/memlab/issues"
+    "url": "https://github.com/facebook/memlab/issues"
   },
-  "homepage": "https://github.com/facebookincubator/memlab#readme"
+  "homepage": "https://github.com/facebook/memlab#readme"
 }

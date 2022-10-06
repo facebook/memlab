@@ -70,10 +70,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/facebookincubator/memlab.git"
+    "url": "git+https://github.com/facebook/memlab.git"
   },
   "bugs": {
-    "url": "https://github.com/facebookincubator/memlab/issues"
+    "url": "https://github.com/facebook/memlab/issues"
   },
-  "homepage": "https://github.com/facebookincubator/memlab#readme"
+  "homepage": "https://github.com/facebook/memlab#readme"
 }

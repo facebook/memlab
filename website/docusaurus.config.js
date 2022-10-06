@@ -15,9 +15,9 @@ const config = {
   title: 'memlab',
   tagline:
     'Analyzes JavaScript heap and finds memory leaks in browser and node.js',
-  url: 'https://facebookincubator.github.io/',
+  url: 'https://facebook.github.io/',
   baseUrl: '/memlab/',
-  organizationName: 'facebookincubator',
+  organizationName: 'facebook',
   projectName: 'memlab',
   onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',
@@ -62,12 +62,11 @@ const config = {
         docs: {
           breadcrumbs: false,
           sidebarPath: require.resolve('./sidebars.js'),
-          editUrl:
-            'https://github.com/facebookincubator/memlab/blob/main/website',
+          editUrl: 'https://github.com/facebook/memlab/blob/main/website',
         },
         blog: {
           showReadingTime: true,
-          editUrl: 'https://github.com/facebookincubator/memlab/website/blog',
+          editUrl: 'https://github.com/facebook/memlab/website/blog',
         },
         theme: {
           customCss: require.resolve('./src/css/custom.css'),
@@ -92,7 +91,7 @@ const config = {
             label: 'Docs',
           },
           {
-            href: 'https://github.com/facebookincubator/memlab',
+            href: 'https://github.com/facebook/memlab',
             label: 'GitHub',
             position: 'right',
           },
@@ -132,7 +131,7 @@ const config = {
             items: [
               {
                 label: 'GitHub',
-                href: 'https://github.com/facebookincubator/memlab',
+                href: 'https://github.com/facebook/memlab',
               },
             ],
           },

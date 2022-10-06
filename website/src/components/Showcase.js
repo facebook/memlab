@@ -5,12 +5,12 @@
  * LICENSE file in the root directory of this source tree.
  *
  * @format
- * @oncall ws_labs
+ * @oncall web_perf_infra
  */
 
 import styles from '../pages/styles.module.css';
+import Logo from './Logo';
 import Link from '@docusaurus/Link';
-import useBaseUrl from '@docusaurus/useBaseUrl';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import classnames from 'classnames';
 import React from 'react';
@@ -20,15 +20,12 @@ const Showcase = () => {
   const {users} = siteConfig.customFields;
   const showcase = users.map((user, i) => {
     return (
-      <a key={i} className={styles.showcaseLogo} href={user.infoUrl}>
-        <img
-          src={
-            // eslint-disable-next-line fb-www/react-hooks
-            useBaseUrl(user.imageUrl)
-          }
-          title={user.caption}
-        />
-      </a>
+      <Logo
+        i={i}
+        infoUrl={user.infoUrl}
+        imageUrl={user.imageUrl}
+        caption={user.caption}
+      />
     );
   });
 
@@ -49,7 +46,7 @@ const Showcase = () => {
               'button button--primary button--outline',
               styles.button,
             )}
-            href="https://github.com/facebookincubator/memlab/edit/main/website/docusaurus.config.js">
+            href="https://github.com/facebook/memlab/edit/main/website/docusaurus.config.js">
             Add your company/project here
           </Link>
         </div>

@@ -1,8 +1,8 @@
 
 ## npm packages
 
-[![Licensed under the MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/facebookincubator/memlab/blob/master/LICENSE)
-[![PR's Welcome](https://img.shields.io/badge/PRs%20-welcome-brightgreen.svg)](https://github.com/facebookincubator/memlab/blob/main/CONTRIBUTING.md)
+[![Licensed under the MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/facebook/memlab/blob/master/LICENSE)
+[![PR's Welcome](https://img.shields.io/badge/PRs%20-welcome-brightgreen.svg)](https://github.com/facebook/memlab/blob/main/CONTRIBUTING.md)
 
 This GitHub repo hosts the code for the following npm packages:
  * [memlab](https://www.npmjs.com/package/memlab) - All memlab features packed

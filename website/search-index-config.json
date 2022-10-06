@@ -1,16 +1,16 @@
 {
   "index_name": "memlab doc site",
   "start_urls": [
-    "https://facebookincubator.github.io/memlab/docs/intro",
-    "https://facebookincubator.github.io/memlab/docs/installation",
-    "https://facebookincubator.github.io/memlab/docs/getting-started",
-    "https://facebookincubator.github.io/memlab/docs/cli/CLI-commands",
-    "https://facebookincubator.github.io/memlab/docs/guides/guides-detached-dom",
-    "https://facebookincubator.github.io/memlab/docs/guides/guides-detect-oversized-object",
-    "https://facebookincubator.github.io/memlab/docs/guides/guides-find-leaks",
-    "https://facebookincubator.github.io/memlab/docs/guides/integration-and-file-structure",
-    "https://facebookincubator.github.io/memlab/docs/how-memlab-works",
-    "https://facebookincubator.github.io/memlab/docs/api/"
+    "https://facebook.github.io/memlab/docs/intro",
+    "https://facebook.github.io/memlab/docs/installation",
+    "https://facebook.github.io/memlab/docs/getting-started",
+    "https://facebook.github.io/memlab/docs/cli/CLI-commands",
+    "https://facebook.github.io/memlab/docs/guides/guides-detached-dom",
+    "https://facebook.github.io/memlab/docs/guides/guides-detect-oversized-object",
+    "https://facebook.github.io/memlab/docs/guides/guides-find-leaks",
+    "https://facebook.github.io/memlab/docs/guides/integration-and-file-structure",
+    "https://facebook.github.io/memlab/docs/how-memlab-works",
+    "https://facebook.github.io/memlab/docs/api/"
   ],
   "stop_urls": [],
   "selectors": {

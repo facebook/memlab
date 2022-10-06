@@ -1,15 +1,15 @@
 # memlab
 
-[![Licensed under the MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/facebookincubator/memlab/blob/master/LICENSE)
-[![PR's Welcome](https://img.shields.io/badge/PRs%20-welcome-brightgreen.svg)](https://github.com/facebookincubator/memlab/blob/main/CONTRIBUTING.md)
+[![Licensed under the MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/facebook/memlab/blob/master/LICENSE)
+[![PR's Welcome](https://img.shields.io/badge/PRs%20-welcome-brightgreen.svg)](https://github.com/facebook/memlab/blob/main/CONTRIBUTING.md)
 [![npm version](https://img.shields.io/npm/v/memlab.svg?style=flat)](https://www.npmjs.com/package/memlab)
 
 memlab is an E2E testing and analysis framework for finding JavaScript memory
 leaks and optimization opportunities.
 
 Online Resources:
-* [Official Website and Demo](https://facebookincubator.github.io/memlab)
-* [Documentation](https://facebookincubator.github.io/memlab/docs/intro)
+* [Official Website and Demo](https://facebook.github.io/memlab)
+* [Documentation](https://facebook.github.io/memlab/docs/intro)
 * [Meta Engineering Blog Post](https://engineering.fb.com/2022/09/12/open-source/memlab/)
 
 Features:
@@ -36,7 +36,7 @@ npm install -g memlab
 ### Find Memory Leaks
 
 To find memory leaks in Google Maps, you can create a
-[scenario file](https://facebookincubator.github.io/memlab/docs/api/interfaces/core_src.IScenario) defining how
+[scenario file](https://facebook.github.io/memlab/docs/api/interfaces/core_src.IScenario) defining how
 to interact with the Google Maps, let's name it `test-google-maps.js`:
 
 ```javascript
@@ -71,7 +71,7 @@ memlab will print memory leak results showing one representative
 retainer trace for each cluster of leaked objects.
 
 **Retainer traces**: This is the result from
-[an example website](https://facebookincubator.github.io/memlab/docs/guides/guides-find-leaks),
+[an example website](https://facebook.github.io/memlab/docs/guides/guides-find-leaks),
 the retainer trace is an object reference chain from the GC root to a leaked
 object. The trace shows why and how a leaked object is still kept alive in
 memory. Breaking the reference chain means the leaked object will no longer
@@ -114,7 +114,7 @@ You can optionally specify a specific heap object with the object's id: `--node-
 ![heap-view](./website/static/img/heap-view.png)
 
 **Self-defined leak detector**: If you want to use a self-defined leak detector, add a `filterLeak` callback
-([doc](https://facebookincubator.github.io/memlab/docs/api/interfaces/core_src.IScenario/#-optional-beforeleakfilter-initleakfiltercallback))
+([doc](https://facebook.github.io/memlab/docs/api/interfaces/core_src.IScenario/#-optional-beforeleakfilter-initleakfiltercallback))
 in the scenario file. `filterLeak` will be called for every unreleased heap
 object (`node`) allocated by the target interaction.
 
@@ -127,7 +127,7 @@ function filterLeak(node, heap) {
 
 `heap` is the graph representation of the final JavaScript heap snapshot.
 For more details, view the
-[doc site](https://facebookincubator.github.io/memlab/docs/api/interfaces/core_src.IHeapSnapshot).
+[doc site](https://facebook.github.io/memlab/docs/api/interfaces/core_src.IHeapSnapshot).
 
 ### Heap Analysis and Investigation
 
@@ -143,7 +143,7 @@ memlab analyze unbound-object --snapshot-dir <DIR_OF_SNAPSHOT_FILES>
 ```
 
 Use `memlab analyze` to view all built-in memory analyses.
-For extension, view the [doc site](https://facebookincubator.github.io/memlab).
+For extension, view the [doc site](https://facebook.github.io/memlab).
 
 View retainer trace of a particular object:
 ```bash
@@ -209,7 +209,7 @@ test('memory test with heap assertion', async () => {
 ```
 
 For other APIs check out the
-[API documentation](https://facebookincubator.github.io/memlab/docs/api/interfaces/core_src.IHeapSnapshot#hasobjectwithclassnameclassname).
+[API documentation](https://facebook.github.io/memlab/docs/api/interfaces/core_src.IHeapSnapshot#hasobjectwithclassnameclassname).
 
 ## Development
 
