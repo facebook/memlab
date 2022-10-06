@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  *
  * @format
- * @oncall mitigation_infra
+ * @oncall web_perf_infra
  */
 
 import type {Page, Browser} from 'puppeteer';

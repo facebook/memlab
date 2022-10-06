@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  *
  * @format
- * @oncall ws_labs
+ * @oncall web_perf_infra
  */
 // @ts-check
 // Note: type annotations allow type checking and IDEs autocompletion

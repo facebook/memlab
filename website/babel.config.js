@@ -6,7 +6,7 @@
  *
  * @format
  * @nolint
- * @oncall ws_labs
+ * @oncall web_perf_infra
  */
 
 module.exports = {

@@ -2,7 +2,7 @@
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * @nolint
- * @oncall ws_labs
+ * @oncall web_perf_infra
  */
 
 /** @type {import('next').NextConfig} */
