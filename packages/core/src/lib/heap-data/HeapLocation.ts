@@ -11,7 +11,7 @@
 
 'use strict';
 
-import type {IHeapLocation} from '../Types';
+import type {IHeapLocation, IHeapNode, Nullable} from '../Types';
 import type HeapSnapshot from './HeapSnapshot';
 
 export default class HeapLocation implements IHeapLocation {
@@ -19,6 +19,17 @@ export default class HeapLocation implements IHeapLocation {
 
   get snapshot(): HeapSnapshot {
     return this.heapSnapshot;
+  }
+
+  get node(): Nullable<IHeapNode> {
+    const heapSnapshot = this.heapSnapshot;
+    const locations = heapSnapshot.snapshot.locations;
+    const locationFieldsCount = heapSnapshot._locationFieldsCount;
+    const objectIndex =
+      locations[
+        this.idx * locationFieldsCount + heapSnapshot._locationObjectIndexOffset
+      ];
+    return heapSnapshot.nodes.get(objectIndex);
   }
 
   get script_id(): number {

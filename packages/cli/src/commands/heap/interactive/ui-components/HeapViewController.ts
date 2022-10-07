@@ -251,6 +251,22 @@ export default class HeapViewController {
         heapObject: node.dominatorNode,
       });
     }
+    // if the node has associated location info
+    const location = node.location;
+    if (location) {
+      data.items.push({
+        stringContent: this.getKeyValuePairString(
+          'script id',
+          location.script_id,
+        ),
+      });
+      data.items.push({
+        stringContent: this.getKeyValuePairString('line', location.line),
+      });
+      data.items.push({
+        stringContent: this.getKeyValuePairString('column', location.column),
+      });
+    }
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     options.details?.forEach((value, key) =>

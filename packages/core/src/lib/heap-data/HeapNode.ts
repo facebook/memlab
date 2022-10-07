@@ -317,7 +317,7 @@ export default class HeapNode implements IHeapNode {
   get location(): Nullable<HeapLocation> {
     const heapSnapshot = this.heapSnapshot;
     const locationIdx = heapSnapshot._nodeIdx2LocationIdx[this.idx];
-    if (locationIdx === undefined) {
+    if (locationIdx == null) {
       return null;
     }
     return new HeapLocation(heapSnapshot, locationIdx);

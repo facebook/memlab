@@ -1157,6 +1157,10 @@ export interface IHeapLocation {
    */
   snapshot: IHeapSnapshot;
   /**
+   * get the heap object this location this location represents
+   */
+  node: Nullable<IHeapNode>;
+  /**
    * get the script ID of the source file
    */
   script_id: number;
