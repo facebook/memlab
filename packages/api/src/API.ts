@@ -309,7 +309,7 @@ function getConfigFromRunOptions(options: RunOptions): MemLabConfig {
   if (options.workDir) {
     fileManager.initDirs(config, {workDir: options.workDir});
   } else {
-    config = MemLabConfig.resetConfigWithTranscientDir();
+    config = MemLabConfig.resetConfigWithTransientDir();
   }
   config.isFullRun = !!options.snapshotForEachStep;
   return config;

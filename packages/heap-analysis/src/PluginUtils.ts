@@ -555,7 +555,7 @@ async function loadProcessedSnapshot(
  * const analysis = new ExampleAnalysis();
  * // snapshotDir includes a series of .heapsnapshot files recorded by
  * // memlab or saved manually from Chrome, those files will be loaded
- * // in alphanumerically asceneding order
+ * // in alphanumerically ascending order
  * await analysis.analyzeSnapshotsInDirectory(snapshotDir);
  * ```
  * The new heap analysis can also be used with {@link analyze}, in that case

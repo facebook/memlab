@@ -34,7 +34,7 @@ test(
 );
 
 test(
-  'Does not capture transcient object',
+  'Does not capture transient object',
   async () => {
     class TestObject {
       public arr1 = [1, 2, 3];

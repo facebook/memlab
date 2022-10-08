@@ -78,7 +78,7 @@ export default class CommandLoader {
       const loadingOssCommand =
         !fileManager.isWithinInternalDirectory(modulePath);
 
-      // reigster OSS commands
+      // register OSS commands
       if (loadingOssCommand) {
         this.OSSModules.set(commandName, moduleInstance);
       }
