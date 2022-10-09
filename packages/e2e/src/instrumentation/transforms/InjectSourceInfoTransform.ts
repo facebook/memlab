@@ -24,7 +24,7 @@ import template from '@babel/template';
 
 import BaseAstTransform from '../BaseAstTransform';
 
-export default class InjectSourceInfoTranform extends BaseAstTransform {
+export default class InjectSourceInfoTransform extends BaseAstTransform {
   public async transform(
     ast: ParseResult<File>,
     options: RewriteScriptOption = {},
