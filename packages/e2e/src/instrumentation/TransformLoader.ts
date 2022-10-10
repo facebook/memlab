@@ -10,10 +10,10 @@
 
 import type BaseAstTransform from './BaseAstTransform';
 
-import InjectSourceInfoTranform from './transforms/InjectSourceInfoTranform';
+import InjectSourceInfoTransform from './transforms/InjectSourceInfoTransform';
 
 export default class TransformLoader {
   public static loadAllTransforms(): BaseAstTransform[] {
-    return [new InjectSourceInfoTranform()];
+    return [new InjectSourceInfoTransform()];
   }
 }

@@ -534,9 +534,9 @@ export class MemLabConfig {
     return MemLabConfig.instance;
   }
 
-  public static resetConfigWithTranscientDir(): MemLabConfig {
+  public static resetConfigWithTransientDir(): MemLabConfig {
     const config = MemLabConfig.getInstance();
-    fileManager.initDirs(config, {transcient: true});
+    fileManager.initDirs(config, {transient: true});
     return config;
   }
 

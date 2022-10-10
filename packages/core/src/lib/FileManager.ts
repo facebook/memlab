@@ -39,7 +39,7 @@ function joinAndProcessDir(options: FileOption, ...args: AnyValue[]): string {
 export type FileOption = {
   workDir?: Optional<string>;
   clear?: boolean;
-  transcient?: boolean;
+  transient?: boolean;
 };
 
 /** @internal */
@@ -59,7 +59,7 @@ export class FileManager {
     return dirPath;
   }
 
-  private static transcientInstanceIdx = 0;
+  private static transientInstanceIdx = 0;
 
   public getWorkDir(options: FileOption = {}): string {
     // workDir options supercedes all the other options
@@ -67,9 +67,9 @@ export class FileManager {
       return path.resolve(options.workDir);
     }
 
-    // transcient options supercedes other the CLI options
-    if (options.transcient) {
-      const idx = ++FileManager.transcientInstanceIdx;
+    // transient options supercedes other the CLI options
+    if (options.transient) {
+      const idx = ++FileManager.transientInstanceIdx;
       const instanceId = `${process.pid}-${Date.now()}-${idx}`;
       const workDir = path.join(this.getTmpDir(), `memlab-${instanceId}`);
       return path.resolve(workDir);
