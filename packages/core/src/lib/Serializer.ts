@@ -31,6 +31,7 @@ const REGEXP_NAME_CLEANUP = /[[]\(\)]/g;
 
 type JSONifyOptions = {
   fiberNodeReturnTrace: Record<number, string>;
+  processedNodeId: Set<number>;
   forceJSONifyDepth?: number;
 };
 
@@ -182,17 +183,29 @@ function JSONifyNodeOneLevel(node: IHeapNode): ISerializedInfo {
   return info;
 }
 
-function JSONifyNodeShallow(node: IHeapNode): ISerializedInfo {
+// double check when you try to call JSONify methods
+// other than JSONifyNodeShallow and JSONifyNodeInShort inside this method
+// as it may trigger infinite recursion
+function JSONifyNodeShallow(
+  node: IHeapNode,
+  options: {processedNodeId?: Set<number>} = {},
+): ISerializedInfo {
   const info = Object.create(null);
+  options.processedNodeId = options.processedNodeId || new Set();
+  options.processedNodeId.add(node.id);
   iterateSelectedEdges(node, (edge: IHeapEdge): Optional<{stop: boolean}> => {
     const key = JSONifyEdgeNameAndType(edge);
-    if (objectNodeUsefulProps.has(edge.name_or_index)) {
+    if (
+      !options.processedNodeId?.has(edge.toNode.id) &&
+      objectNodeUsefulProps.has(edge.name_or_index)
+    ) {
       info[key] = JSONifyNodeShallow(edge.toNode);
     } else {
       info[key] = JSONifyNodeInShort(edge.toNode);
     }
     return null;
   });
+  options.processedNodeId.delete(node.id);
   return info;
 }
 
@@ -420,9 +433,18 @@ function JSONifyNode(
     return {};
   }
   let info: ISerializedInfo;
+  // defense against infinite recursion
+  if (options.processedNodeId.has(node.id)) {
+    info = JSONifyNodeShallow(node);
+    return info;
+  }
+  options.processedNodeId.add(node.id);
   const depths = options.forceJSONifyDepth;
   if (utils.isDetachedDOMNode(node) && depths !== 0) {
-    info = JSONifyDetachedHTMLElement(node, args, EMPTY_JSONIFY_OPTIONS);
+    info = JSONifyDetachedHTMLElement(node, args, {
+      ...EMPTY_JSONIFY_OPTIONS,
+      processedNodeId: options.processedNodeId,
+    });
   } else if (utils.isFiberNode(node) && depths !== 0) {
     info = JSONifyFiberNode(node, args, options);
   } else if (utils.shouldShowMoreInfo(node)) {
@@ -438,6 +460,7 @@ function JSONifyNode(
   } else {
     info = JSONifyOrdinaryValue(node, args, options);
   }
+  options.processedNodeId.delete(node.id);
 
   if (node.location) {
     info[`${filterJSONPropName('allocation location (extra)')}`] = {
@@ -478,7 +501,7 @@ function JSONifyPath(
   ret[`${idx++}: ${getNodeNameInJSON(path.node, args)}`] = JSONifyNode(
     path.node,
     args,
-    EMPTY_JSONIFY_OPTIONS,
+    {...EMPTY_JSONIFY_OPTIONS, processedNodeId: new Set()},
   );
   let pathItem: Optional<LeakTracePathItem> = path;
 
@@ -495,7 +518,10 @@ function JSONifyPath(
         nextNode,
         args,
       )}`
-    ] = JSONifyNode(nextNode, args, EMPTY_JSONIFY_OPTIONS);
+    ] = JSONifyNode(nextNode, args, {
+      ...EMPTY_JSONIFY_OPTIONS,
+      processedNodeId: new Set(),
+    });
     pathItem = pathItem.next;
   }
 
