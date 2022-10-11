@@ -349,7 +349,7 @@ export default class E2EInteractionManager {
       lastChunk = data.chunk;
     };
 
-    const progressHander = (data: {
+    const progressHandler = (data: {
       done: number;
       total: number;
       finished: boolean;
@@ -361,7 +361,7 @@ export default class E2EInteractionManager {
     };
 
     session.on('HeapProfiler.addHeapSnapshotChunk', dataHandler);
-    session.on('HeapProfiler.reportHeapSnapshotProgress', progressHander);
+    session.on('HeapProfiler.reportHeapSnapshotProgress', progressHandler);
 
     // start taking heap snapshot
     await session.send('HeapProfiler.takeHeapSnapshot', {
@@ -373,7 +373,7 @@ export default class E2EInteractionManager {
     session.removeListener('HeapProfiler.addHeapSnapshotChunk', dataHandler);
     session.removeListener(
       'HeapProfiler.reportHeapSnapshotProgress',
-      progressHander,
+      progressHandler,
     );
     writeStream.end();
   }
