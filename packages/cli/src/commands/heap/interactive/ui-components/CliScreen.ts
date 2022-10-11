@@ -15,6 +15,7 @@ import {ComponentDataItem, getHeapObjectAt, debounce} from './HeapViewUtils';
 import blessed from 'blessed';
 import ListComponent from './ListComponent';
 import HeapViewController from './HeapViewController';
+import chalk from 'chalk';
 
 function positionToNumber(info: string | number): number {
   return parseInt(`${info}`);
@@ -61,6 +62,7 @@ export default class CliScreen {
   private referenceBox: ListComponent;
   private objectPropertyBox: ListComponent;
   private retainerTraceBox: ListComponent;
+  private helperTextElement: Widgets.TextElement;
 
   private currentFocuseKey = 1;
   private keyToComponent: Map<string, ListComponent>;
@@ -86,6 +88,7 @@ export default class CliScreen {
     this.objectPropertyBox = this.initObjectPropertyBox(callbacks);
     this.heapController.setObjectPropertyBox(this.objectPropertyBox);
     this.retainerTraceBox = this.initRetainerTraceBox(callbacks);
+    this.helperTextElement = this.initHelperText();
     this.heapController.setRetainerTraceBox(this.retainerTraceBox);
     this.registerEvents();
     this.setFirstObjectAsCurrrent(objectCategory);
@@ -174,6 +177,7 @@ export default class CliScreen {
         this.retainerTraceBox,
         this.getRetainerTraceBoxSize(),
       );
+      this.updateElementSize(this.helperTextElement, this.getHelperTextSize());
     });
   }
 
@@ -181,10 +185,17 @@ export default class CliScreen {
     component: ListComponent,
     size: ComponentSizeInfo,
   ): void {
-    component.element.width = size.width;
-    component.element.height = size.height;
-    component.element.top = size.top;
-    component.element.left = size.left;
+    this.updateElementSize(component.element, size);
+  }
+
+  private updateElementSize(
+    element: Widgets.BlessedElement,
+    size: ComponentSizeInfo,
+  ): void {
+    element.width = size.width;
+    element.height = size.height;
+    element.top = size.top;
+    element.left = size.left;
   }
 
   private registerKeys(): void {
@@ -274,7 +285,8 @@ export default class CliScreen {
       width: Math.floor(positionToNumber(this.screen.width) / 3),
       height:
         positionToNumber(this.screen.height) -
-        Math.floor(positionToNumber(this.screen.height) / 2),
+        Math.floor(positionToNumber(this.screen.height) / 2) -
+        1,
       top: Math.floor(positionToNumber(this.screen.height) / 2),
       left: 0,
     };
@@ -296,7 +308,8 @@ export default class CliScreen {
       width: Math.floor(positionToNumber(this.screen.width) / 3),
       height:
         positionToNumber(this.screen.height) -
-        Math.floor((2 * positionToNumber(this.screen.height)) / 3),
+        Math.floor((2 * positionToNumber(this.screen.height)) / 3) -
+        1,
       top: Math.floor((2 * positionToNumber(this.screen.height)) / 3),
       left: Math.floor(positionToNumber(this.screen.width) / 3),
     };
@@ -342,9 +355,49 @@ export default class CliScreen {
         Math.floor((2 * positionToNumber(this.screen.width)) / 3),
       height:
         positionToNumber(this.screen.height) -
-        Math.floor(positionToNumber(this.screen.height) / 3),
+        Math.floor(positionToNumber(this.screen.height) / 3) -
+        1,
       top: Math.floor(positionToNumber(this.screen.height) / 3),
       left: Math.floor((2 * positionToNumber(this.screen.width)) / 3),
+    };
+  }
+
+  private getHelperTextContent(): string {
+    const keys: Record<string, string> = {
+      '↑': '', // empty description won't be displayed
+      '↓': '',
+      '←': '',
+      '→': '',
+      Enter: 'select',
+      q: 'quit',
+    };
+    const keysToFocus = Array.from(this.keyToComponent.keys());
+    const descArr = [...Object.keys(keys), ...keysToFocus].map(
+      (key: string) => {
+        const description = keys[key];
+        return description
+          ? chalk.inverse(key) + `(${description})`
+          : chalk.inverse(key);
+      },
+    );
+    return chalk.grey('Keys: ' + descArr.join(' '));
+  }
+
+  private initHelperText(): Widgets.TextElement {
+    const text = blessed.text({
+      ...this.getHelperTextSize(),
+      content: this.getHelperTextContent(),
+    });
+    this.screen.append(text);
+    return text;
+  }
+
+  private getHelperTextSize(): ComponentSizeInfo {
+    return {
+      width: positionToNumber(this.screen.width),
+      height: 1,
+      top: positionToNumber(this.screen.height) - 1,
+      left: 1,
     };
   }
 }
