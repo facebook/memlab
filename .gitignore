@@ -3,6 +3,7 @@
 **/tsconfig.tsbuildinfo
 .DS_Store
 .yarnrc
+.idea
 /chrome
 /data
 /dist/
