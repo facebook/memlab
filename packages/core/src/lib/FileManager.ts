@@ -118,6 +118,14 @@ export class FileManager {
     return path.join(this.getDataBaseDir(options), 'cur');
   }
 
+  public getWebSourceDir(options: FileOption = {}): string {
+    return path.join(this.getCurDataDir(options), 'code');
+  }
+
+  public getWebSourceMetaFile(options: FileOption = {}): string {
+    return path.join(this.getWebSourceDir(options), 'files.json');
+  }
+
   public getPersistDataDir(options: FileOption): string {
     return path.join(this.getDataBaseDir(options), 'persist');
   }
@@ -263,6 +271,7 @@ export class FileManager {
     if (!fs.existsSync(curDataDir)) {
       return;
     }
+    this.emptyDirIfExists(this.getWebSourceDir(options));
     const dataSuffix = ['.heapsnapshot', '.json', '.png'];
     const files = fs.readdirSync(curDataDir);
     for (const file of files) {
@@ -363,6 +372,10 @@ export class FileManager {
 
     const outDir = joinAndProcessDir(options, this.getDataOutDir(options));
     config.curDataDir = joinAndProcessDir(options, this.getCurDataDir(options));
+    config.webSourceDir = joinAndProcessDir(
+      options,
+      this.getWebSourceDir(options),
+    );
     config.dataBuilderDataDir = joinAndProcessDir(
       options,
       config.dataBaseDir,

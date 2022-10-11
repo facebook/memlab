@@ -8,12 +8,11 @@
  * @oncall web_perf_infra
  */
 
+import type {CDPSession, Page} from 'puppeteer';
 import type {AnyValue, Nullable} from '@memlab/core';
-import type {Page, CDPSession} from 'puppeteer';
-import type {RewriteScriptOption} from './instrumentation/ScriptRewriteManager';
 
 import {config, info} from '@memlab/core';
-import ScriptRewriteManager from './instrumentation/ScriptRewriteManager';
+import ScriptManager from './ScriptManager';
 
 // https://chromedevtools.github.io/devtools-protocol/tot/Network/#method-getResponseBodyForInterception
 type NetworkResponse = {
@@ -29,12 +28,12 @@ export default class NetworkManager {
   private cdpSession: Nullable<CDPSession> = null;
   private page: Page;
   private requestCache: Map<string, string>;
-  private scriptRewriteManager: ScriptRewriteManager;
+  private scriptManager: ScriptManager;
 
   constructor(page: Page) {
     this.page = page;
     this.requestCache = new Map();
-    this.scriptRewriteManager = new ScriptRewriteManager();
+    this.scriptManager = new ScriptManager();
   }
 
   public setCDPSession(session: CDPSession): void {
@@ -45,13 +44,6 @@ export default class NetworkManager {
     if (config.verbose) {
       info.lowLevel(msg);
     }
-  }
-
-  private async rewriteScript(
-    script: string,
-    options: RewriteScriptOption,
-  ): Promise<string> {
-    return await this.scriptRewriteManager.rewriteScript(script, options);
   }
 
   public async interceptScript(): Promise<void> {
@@ -107,9 +99,10 @@ export default class NetworkManager {
           const bodyData = response.base64Encoded
             ? atob(response.body)
             : response.body;
+          newBody = bodyData;
           try {
             if (resourceType === 'Script') {
-              newBody = await this.rewriteScript(bodyData, {
+              newBody = await this.scriptManager.rewriteScript(bodyData, {
                 url: request.url,
                 resourceType,
               });
@@ -118,10 +111,9 @@ export default class NetworkManager {
             this.networkLog(
               `Failed to process ${request.url} {interception id: ${interceptionId}}: ${e}`,
             );
-            newBody = bodyData;
           }
-
           requestCache.set(response.body, newBody as string);
+          this.scriptManager.logScript(request.url, newBody);
         }
 
         const newHeaders = [

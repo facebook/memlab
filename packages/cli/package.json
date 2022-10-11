@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@memlab/api": "^1.0.11",
-    "@memlab/core": "^1.1.10",
+    "@memlab/core": "^1.1.13",
     "@memlab/e2e": "^1.0.11",
     "@memlab/heap-analysis": "^1.0.7",
     "ansi": "^0.3.1",

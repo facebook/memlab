@@ -113,6 +113,7 @@ export class MemLabConfig {
   dataBaseDir: string;
   userDataDir: string;
   curDataDir: string;
+  webSourceDir: string;
   runMetaFile: string;
   snapshotSequenceFile: string;
   exploreResultFile: string;

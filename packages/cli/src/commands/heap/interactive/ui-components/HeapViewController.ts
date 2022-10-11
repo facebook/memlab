@@ -254,6 +254,12 @@ export default class HeapViewController {
     // if the node has associated location info
     const location = node.location;
     if (location) {
+      const url = utils.getClosureSourceUrl(node);
+      if (url) {
+        data.items.push({
+          stringContent: this.getKeyValuePairString('code link', url),
+        });
+      }
       data.items.push({
         stringContent: this.getKeyValuePairString(
           'script id',

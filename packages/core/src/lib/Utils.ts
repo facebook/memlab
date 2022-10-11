@@ -1923,6 +1923,25 @@ function getUniqueID(): string {
   return `${process.pid}-${Date.now()}-${uindex++}`;
 }
 
+// try to get the url that defines the closure function
+// this is particular to heap snapshot taken from V8 in Chromium
+function getClosureSourceUrl(node: IHeapNode): Nullable<string> {
+  if (node.type !== 'closure') {
+    return null;
+  }
+  const shared = node.getReferenceNode('shared', 'internal');
+  if (!shared) {
+    return null;
+  }
+  const debug = shared.getReferenceNode('script_or_debug_info', 'internal');
+  if (!debug) {
+    return null;
+  }
+  const urlNode = debug.getReferenceNode('name', 'internal');
+  const url = urlNode?.toStringNode()?.stringValue ?? null;
+  return url;
+}
+
 export default {
   applyToNodes,
   callAsync,
@@ -1938,6 +1957,7 @@ export default {
   extractHTMLElementNodeInfo,
   filterNodesInPlace,
   getAllDominators,
+  getClosureSourceUrl,
   getConditionalDominatorIds,
   getError,
   getEdgeByNameAndType,
