@@ -12,10 +12,11 @@ import type {ParsedArgs} from 'minimist';
 
 import fs from 'fs';
 import {BaseOption, MemLabConfig, utils} from '@memlab/core';
+import {OPTION_NAME} from "../constant";
 
 export default class TargetFileOption extends BaseOption {
   getOptionName(): string {
-    return 'target';
+    return OPTION_NAME.TARGET;
   }
 
   getDescription(): string {

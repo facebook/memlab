@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
+import {OPTION_NAME} from "../constant";
 
 export default class OversizeThresholdOption extends BaseOption {
   getOptionName(): string {
-    return 'trace-object-size-above';
+    return OPTION_NAME.TRACE_OBJECT_SIZE_ABOVE;
   }
 
   getDescription(): string {

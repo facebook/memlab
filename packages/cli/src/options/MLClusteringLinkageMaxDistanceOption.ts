@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import {MemLabConfig, utils} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
+import {OPTION_NAME} from "./constant";
 
 export default class MLClusteringLinkageMaxDistanceOption extends BaseOption {
   getOptionName(): string {
-    return 'ml-linkage-max-dist';
+    return OPTION_NAME.ML_LINKAGE_MAX_DIST;
   }
 
   getDescription(): string {

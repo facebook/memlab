@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
+import {OPTION_NAME} from "../constant";
 
 export default class DisableXvfbOption extends BaseOption {
   getOptionName(): string {
-    return 'disable-xvfb';
+    return OPTION_NAME.DISABLE_XVFB;
   }
 
   getDescription(): string {
