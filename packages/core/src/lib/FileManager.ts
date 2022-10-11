@@ -266,11 +266,11 @@ export class FileManager {
     const dataSuffix = ['.heapsnapshot', '.json', '.png'];
     const files = fs.readdirSync(curDataDir);
     for (const file of files) {
-      inner: for (const suffix of dataSuffix) {
+      for (const suffix of dataSuffix) {
         if (file.endsWith(suffix)) {
           const filepath = path.join(curDataDir, file);
           fs.unlinkSync(filepath);
-          break inner;
+          break;
         }
       }
     }

@@ -87,10 +87,10 @@ function filterOutDominators(nodeList: IHeapNode[]): IHeapNode[] {
     const visitedIds = new Set();
     let curNode: Nullable<IHeapNode> = node;
 
-    inner: while (!visitedIds.has(curNode.id)) {
+    while (!visitedIds.has(curNode.id)) {
       curNode = node.dominatorNode;
       if (!curNode || curNode.id === node.id) {
-        break inner;
+        break;
       }
       // record the size of the children node in the candidate list
       // and associate the children size with its dominator in the candidate list
@@ -103,7 +103,7 @@ function filterOutDominators(nodeList: IHeapNode[]): IHeapNode[] {
           curNode.retainedSize,
           childrenSize,
         ]);
-        break inner;
+        break;
       }
       visitedIds.add(curNode.id);
     }
