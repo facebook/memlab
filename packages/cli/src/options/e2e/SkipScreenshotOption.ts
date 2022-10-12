@@ -11,11 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
-import {OPTION_NAME} from "../constant";
+import {OptionNames} from "../constant";
 
 export default class SkipScreenshotOption extends BaseOption {
   getOptionName(): string {
-    return OPTION_NAME.SKIP_SCREENSHOT;
+    return OptionNames.SKIP_SCREENSHOT;
   }
 
   getDescription(): string {

@@ -11,11 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption, modes} from '@memlab/core';
-import {OPTION_NAME} from "../constant";
+import {OptionNames} from "../constant";
 
 export default class RunningModeOption extends BaseOption {
   getOptionName(): string {
-    return OPTION_NAME.RUN_MODE;
+    return OptionNames.RUN_MODE;
   }
 
   getDescription(): string {

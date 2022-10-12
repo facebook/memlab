@@ -1,4 +1,4 @@
-export const OPTION_NAME = {
+export const OptionNames = {
   DEBUG: 'debug',
   HELP: 'help',
   ML_LINKAGE_MAX_DIST: 'ml-linkage-max-dist',
@@ -41,7 +41,7 @@ export const OPTION_NAME = {
   SKIP_WARMUP: 'skip-warmup',
 }
 
-export const OPTION_SHORTCUT = {
+export const OptionShortcuts = {
   H: 'h',
   S: 's',
   V: 'v'

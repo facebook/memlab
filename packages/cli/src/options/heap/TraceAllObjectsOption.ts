@@ -11,11 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
-import {OPTION_NAME} from "../constant";
+import {OptionNames} from "../constant";
 
 export default class TraceAllObjectsOption extends BaseOption {
   getOptionName(): string {
-    return OPTION_NAME.TRACE_ALL_OBJECTS;
+    return OptionNames.TRACE_ALL_OBJECTS;
   }
 
   getDescription(): string {

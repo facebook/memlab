@@ -12,11 +12,11 @@ import type {ParsedArgs} from 'minimist';
 
 import fs from 'fs';
 import {BaseOption, MemLabConfig, utils} from '@memlab/core';
-import {OPTION_NAME} from "../constant";
+import {OptionNames} from "../constant";
 
 export default class SnapshotDirectoryOption extends BaseOption {
   getOptionName(): string {
-    return OPTION_NAME.SNAPSHOT_DIR;
+    return OptionNames.SNAPSHOT_DIR;
   }
 
   getDescription(): string {

@@ -11,11 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import {MemLabConfig, utils} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
-import {OPTION_NAME} from "./constant";
+import {OptionNames} from "./constant";
 
 export default class MLClusteringMaxDFOption extends BaseOption {
   getOptionName(): string {
-    return OPTION_NAME.ML_CLUSTERING_MAX_DF;
+    return OptionNames.ML_CLUSTERING_MAX_DF;
   }
 
   getDescription(): string {
