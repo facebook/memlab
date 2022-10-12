@@ -1018,6 +1018,13 @@ function isInterestingPath(p: LeakTracePathItem): boolean {
   if (config.hideBrowserLeak && styleEngineRetainsDetachedElement(p)) {
     return false;
   }
+  // if the path has pattern: Pending activitiies -> DetachedElement
+  if (
+    config.hideBrowserLeak &&
+    pendingActivitiesRetainsDetachedElementChain(p)
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -1101,6 +1108,32 @@ function styleEngineRetainsDetachedElement(path: LeakTracePathItem): boolean {
   p = p.next;
   // check if the InternalNode is pointing to a detached element
   return !!p && isDetachedDOMNode(p.node);
+}
+
+function pendingActivitiesRetainsDetachedElementChain(
+  path: LeakTracePathItem,
+): boolean {
+  let p: Optional<LeakTracePathItem> = path;
+  // find the Pending activities
+  while (p && p.node && !isPendingActivityNode(p.node)) {
+    p = p.next;
+    if (!p) {
+      return false;
+    }
+  }
+  p = p.next;
+  if (!p || !p.node) {
+    return false;
+  }
+  // all the following reference chain is detached DOM elements
+  // pointing to other detached DOM elements
+  while (p && p.node) {
+    if (!isDetachedDOMNode(p.node)) {
+      return false;
+    }
+    p = p.next;
+  }
+  return true;
 }
 
 function pathHasDetachedHTMLNode(path: LeakTracePathItem): boolean {

@@ -85,10 +85,7 @@ export default class InteractiveHeapViewCommand extends BaseCommand {
     const ret: ComponentDataItem[] = [];
     const idSet = new Set<number>();
     heap.nodes.forEach(node => {
-      // if (utils.isDetachedDOMNode(node) || utils.isDetachedFiberNode(node)) {
-      //   idSet.add(node.id);
-      // }
-      if (node.type === 'closure' && node.location) {
+      if (utils.isDetachedDOMNode(node) || utils.isDetachedFiberNode(node)) {
         idSet.add(node.id);
       }
     });
