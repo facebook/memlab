@@ -139,7 +139,7 @@ export default class E2EInteractionManager {
         info.lowLevel(new Date().toString());
       }
       const tab = visitPlan.tabsOrder[i];
-      const subUrl = tab.url.substr(tab.url.startsWith('/') ? 1 : 0);
+      const subUrl = tab.url.substring(tab.url.startsWith('/') ? 1 : 0);
       const url = `${baseURL}${subUrl}` + getURLParameter(tab, visitPlan);
       logTabProgress(i, visitPlan);
 
@@ -250,6 +250,10 @@ export default class E2EInteractionManager {
 
     // visit the URL of the first step
     if (tabInfo.idx === 1) {
+      const beforeInitLoad = opArgs.scenario?.beforeInitialPageLoad;
+      if (beforeInitLoad) {
+        await beforeInitLoad(this.page);
+      }
       await applyAsyncWithRetry(
         this.initialLoad,
         this,

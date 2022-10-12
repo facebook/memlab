@@ -39,7 +39,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:964
+    * core/src/lib/Types.ts:992
 
 ___
 
@@ -70,7 +70,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:938
+    * core/src/lib/Types.ts:966
 
 ## Methods
 
@@ -105,7 +105,7 @@ class TestObject {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1053
+    * core/src/lib/Types.ts:1081
 
 ___
 
@@ -134,7 +134,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:986
+    * core/src/lib/Types.ts:1014
 
 ___
 
@@ -180,7 +180,7 @@ test('memory test with heap assertion', async () => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1025
+    * core/src/lib/Types.ts:1053
 
 ___
 
@@ -212,7 +212,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1079
+    * core/src/lib/Types.ts:1107
 
 ___
 
@@ -256,4 +256,4 @@ test('memory test', async () => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1117
+    * core/src/lib/Types.ts:1145

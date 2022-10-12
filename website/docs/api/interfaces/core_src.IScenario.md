@@ -88,7 +88,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:553
+    * core/src/lib/Types.ts:581
 
 ___
 
@@ -117,7 +117,40 @@ Check out [this page](/docs/how-memlab-works) on why
 memlab needs to undo/revert the `action` callback.
 
  * **Source**:
-    * core/src/lib/Types.ts:577
+    * core/src/lib/Types.ts:605
+
+___
+
+### <a id="beforeinitialpageload" name="beforeinitialpageload"></a> `Optional` **beforeInitialPageLoad**: [`InteractionsCallback`](../modules/core_src.md#interactionscallback)
+
+`beforeInitialPageLoad` is the callback function that will be called only
+once before the initial page load. This callback can be used to set up
+the HTTP headers or to prepare data before loading the web page.
+
+* **Parameters**:
+  * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+    object, which provides APIs to interact with the web browser
+
+* **Examples**:
+```typescript
+const scenario = {
+  url: () => 'https://www.npmjs.com/',
+  beforeInitialPageLoad: async (page) => {
+    // before the initial page load
+  },
+  action: async (page) => {
+    await page.click('a[href="/link"]');
+  },
+  back: async (page) => {
+    await page.click('a[href="/back"]');
+  },
+}
+
+module.exports = scenario;
+```
+
+ * **Source**:
+    * core/src/lib/Types.ts:489
 
 ___
 
@@ -149,7 +182,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:654
+    * core/src/lib/Types.ts:682
 
 ___
 
@@ -189,7 +222,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:627
+    * core/src/lib/Types.ts:655
 
 ___
 
@@ -236,7 +269,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:696
+    * core/src/lib/Types.ts:724
 
 ___
 
@@ -270,7 +303,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:508
+    * core/src/lib/Types.ts:536
 
 ## Methods
 
@@ -326,7 +359,7 @@ module.exports = {
 
  * **Returns**: `number`
  * **Source**:
-    * core/src/lib/Types.ts:592
+    * core/src/lib/Types.ts:620
 
 ___
 
@@ -349,4 +382,4 @@ load. All objects allocated by the initial page load will be candidates
 for memory leak filtering.
 
  * **Source**:
-    * core/src/lib/Types.ts:479
+    * core/src/lib/Types.ts:507

@@ -460,6 +460,34 @@ export interface IScenario {
    */
   cookies?: () => Cookies;
   /**
+   * `beforeInitialPageLoad` is the callback function that will be called only
+   * once before the initial page load. This callback can be used to set up
+   * the HTTP headers or to prepare data before loading the web page.
+   *
+   * * **Parameters**:
+   *   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+   *     object, which provides APIs to interact with the web browser
+   *
+   * * **Examples**:
+   * ```typescript
+   * const scenario = {
+   *   url: () => 'https://www.npmjs.com/',
+   *   beforeInitialPageLoad: async (page) => {
+   *     // before the initial page load
+   *   },
+   *   action: async (page) => {
+   *     await page.click('a[href="/link"]');
+   *   },
+   *   back: async (page) => {
+   *     await page.click('a[href="/back"]');
+   *   },
+   * }
+   *
+   * module.exports = scenario;
+   * ```
+   */
+  beforeInitialPageLoad?: InteractionsCallback;
+  /**
    * String value of the initial url of the page.
    *
    * @returns the string value of the initial url

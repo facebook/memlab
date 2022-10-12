@@ -556,7 +556,10 @@ function checkScenarioInstance(s: AnyValue): IScenario {
     (s.repeat && typeof s.repeat !== 'function') ||
     (s.isPageLoaded && typeof s.isPageLoaded !== 'function') ||
     (s.leakFilter && typeof s.leakFilter !== 'function') ||
-    (s.beforeLeakFilter && typeof s.beforeLeakFilter !== 'function')
+    (s.beforeLeakFilter && typeof s.beforeLeakFilter !== 'function') ||
+    (s.beforeInitialPageLoad &&
+      typeof s.beforeInitialPageLoad !== 'function') ||
+    (s.setup && typeof s.setup !== 'function')
   ) {
     throw new Error('Invalid senario');
   }
