@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import {MemLabConfig, utils} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
+import {OptionNames} from './constant';
 
 export default class MLClusteringMaxDFOption extends BaseOption {
   getOptionName(): string {
-    return 'ml-clustering-max-df';
+    return OptionNames.ML_CLUSTERING_MAX_DF;
   }
 
   getDescription(): string {
@@ -22,8 +23,9 @@ export default class MLClusteringMaxDFOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (args['ml-clustering-max-df']) {
-      const clusteringMaxDFStr = args['ml-clustering-max-df'];
+    const name = this.getOptionName();
+    if (args[name]) {
+      const clusteringMaxDFStr = args[name];
       const clusteringMaxDF = parseFloat(clusteringMaxDFStr);
       if (
         !isNaN(clusteringMaxDF) &&

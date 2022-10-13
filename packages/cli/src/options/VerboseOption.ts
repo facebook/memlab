@@ -11,14 +11,15 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
+import {OptionNames, OptionShortcuts} from './constant';
 
 export default class VerboseOption extends BaseOption {
   getOptionName(): string {
-    return 'verbose';
+    return OptionNames.VERBOSE;
   }
 
   getOptionShortcut(): string | null {
-    return 'v';
+    return OptionShortcuts.V;
   }
 
   getDescription(): string {

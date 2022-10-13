@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
+import {OptionNames} from '../constant';
 
 export default class AppOption extends BaseOption {
   getOptionName(): string {
-    return 'app';
+    return OptionNames.APP;
   }
 
   getDescription(): string {
@@ -26,10 +27,10 @@ export default class AppOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (args.app) {
-      config.targetApp = Array.isArray(args.app)
-        ? args.app[args.app.length - 1]
-        : args.app;
+    const name = this.getOptionName();
+    const arg = args[name];
+    if (arg) {
+      config.targetApp = Array.isArray(arg) ? arg[arg.length - 1] : arg;
     }
   }
 }

@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
+import {OptionNames} from '../constant';
 
 export default class DisableWebSecurityOption extends BaseOption {
   getOptionName(): string {
-    return 'disable-web-security';
+    return OptionNames.DISABLE_WEB_SECURITY;
   }
 
   getDescription(): string {

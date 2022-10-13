@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
+import {OptionNames} from '../constant';
 
 export default class SkipScrollOption extends BaseOption {
   getOptionName(): string {
-    return 'skip-scroll';
+    return OptionNames.SKIP_SCROLL;
   }
 
   getDescription(): string {
@@ -22,7 +23,7 @@ export default class SkipScrollOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (args['skip-scroll']) {
+    if (args[this.getOptionName()]) {
       config.skipScroll = true;
     }
   }

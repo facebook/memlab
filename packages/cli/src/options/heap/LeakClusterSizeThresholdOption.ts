@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
+import {OptionNames} from '../constant';
 
 export default class LeakClusterSizeThresholdOption extends BaseOption {
   getOptionName(): string {
-    return 'ignore-leak-cluster-size-below';
+    return OptionNames.IGNORE_LEAK_CLUSTER_SIZE_BELOW;
   }
 
   getDescription(): string {

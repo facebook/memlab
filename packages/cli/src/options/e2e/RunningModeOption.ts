@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption, modes} from '@memlab/core';
+import {OptionNames} from '../constant';
 
 export default class RunningModeOption extends BaseOption {
   getOptionName(): string {
-    return 'run-mode';
+    return OptionNames.RUN_MODE;
   }
 
   getDescription(): string {
@@ -26,7 +27,7 @@ export default class RunningModeOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (args['run-mode']) {
+    if (args[this.getOptionName()]) {
       config.runningMode = modes.get(args['run-mode'], config);
     }
   }

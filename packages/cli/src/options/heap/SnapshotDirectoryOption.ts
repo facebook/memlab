@@ -12,10 +12,11 @@ import type {ParsedArgs} from 'minimist';
 
 import fs from 'fs';
 import {BaseOption, MemLabConfig, utils} from '@memlab/core';
+import {OptionNames} from '../constant';
 
 export default class SnapshotDirectoryOption extends BaseOption {
   getOptionName(): string {
-    return 'snapshot-dir';
+    return OptionNames.SNAPSHOT_DIR;
   }
 
   getDescription(): string {
@@ -27,10 +28,11 @@ export default class SnapshotDirectoryOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (!args['snapshot-dir']) {
+    const name = this.getOptionName();
+    if (!args[name]) {
       return;
     }
-    const dir = args['snapshot-dir'];
+    const dir = args[name];
     if (!fs.existsSync(dir)) {
       utils.haltOrThrow(`Invalid directory: ${dir}`);
     }

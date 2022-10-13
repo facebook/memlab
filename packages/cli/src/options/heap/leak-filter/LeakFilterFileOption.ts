@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption, utils} from '@memlab/core';
+import {OptionNames} from '../../constant';
 
 export default class LeakFilterFileOption extends BaseOption {
   getOptionName(): string {
-    return 'leak-filter';
+    return OptionNames.LEAK_FILTER;
   }
 
   getDescription(): string {

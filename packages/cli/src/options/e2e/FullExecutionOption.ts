@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
+import {OptionNames} from '../constant';
 
 export default class FullExecutionOption extends BaseOption {
   getOptionName(): string {
-    return 'full';
+    return OptionNames.FULL;
   }
 
   getDescription(): string {
@@ -22,7 +23,7 @@ export default class FullExecutionOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (args.full) {
+    if (args[this.getOptionName()]) {
       config.isFullRun = true;
     }
   }

@@ -11,6 +11,7 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption, constant} from '@memlab/core';
+import {OptionNames} from '../constant';
 
 const devices = constant.isFRL
   ? {}
@@ -21,7 +22,7 @@ const devices = constant.isFRL
 
 export default class SetDeviceOption extends BaseOption {
   getOptionName(): string {
-    return 'device';
+    return OptionNames.DEVICE;
   }
 
   getDescription(): string {
@@ -33,8 +34,10 @@ export default class SetDeviceOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (args.device) {
-      config.setDevice(args.device, {manualOverride: true});
+    const name = this.getOptionName();
+    const arg = args[name];
+    if (arg) {
+      config.setDevice(arg, {manualOverride: true});
     }
   }
 }

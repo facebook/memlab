@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
+import {OptionNames} from '../constant';
 
 export default class DisableXvfbOption extends BaseOption {
   getOptionName(): string {
-    return 'disable-xvfb';
+    return OptionNames.DISABLE_XVFB;
   }
 
   getDescription(): string {
@@ -22,7 +23,7 @@ export default class DisableXvfbOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (args['disable-xvfb']) {
+    if (args[this.getOptionName()]) {
       config.useXVFB = false;
     }
   }

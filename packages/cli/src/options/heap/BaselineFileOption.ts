@@ -12,10 +12,11 @@ import type {ParsedArgs} from 'minimist';
 
 import fs from 'fs';
 import {BaseOption, MemLabConfig, utils} from '@memlab/core';
+import {OptionNames} from '../constant';
 
 export default class BaselineFileOption extends BaseOption {
   getOptionName(): string {
-    return 'baseline';
+    return OptionNames.BASELINE;
   }
 
   getDescription(): string {
@@ -27,10 +28,11 @@ export default class BaselineFileOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (!args.baseline) {
+    const name = this.getOptionName();
+    if (!args[name]) {
       return;
     }
-    const file = args.baseline;
+    const file = args[name];
     if (!fs.existsSync(file)) {
       utils.haltOrThrow(`Invalid snapshot file: ${file}`);
     }

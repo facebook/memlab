@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
+import {OptionNames} from './constant';
 
 export default class MLClusteringOption extends BaseOption {
   getOptionName(): string {
-    return 'ml-clustering';
+    return OptionNames.ML_CLUSTERING;
   }
 
   getDescription(): string {
@@ -22,7 +23,8 @@ export default class MLClusteringOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (args['ml-clustering']) {
+    const name = this.getOptionName();
+    if (args[name]) {
       config.isMLClustering = true;
     }
   }

@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
+import {OptionNames} from '../constant';
 
 export default class SkipWarmupOption extends BaseOption {
   getOptionName(): string {
-    return 'skip-warmup';
+    return OptionNames.SKIP_WARMUP;
   }
 
   getDescription(): string {

@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 
 import {BaseOption, MemLabConfig, constant, utils} from '@memlab/core';
+import {OptionNames} from '../constant';
 
 export default class JSEngineOption extends BaseOption {
   getOptionName(): string {
-    return 'engine';
+    return OptionNames.ENGINE;
   }
 
   getDescription(): string {
@@ -26,10 +27,11 @@ export default class JSEngineOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (!args.engine) {
+    const name = this.getOptionName();
+    if (!args[name]) {
       return;
     }
-    config.jsEngine = args.engine;
+    config.jsEngine = args[name];
     config.specifiedEngine = true;
     if (constant.supportedEngines.indexOf(config.jsEngine) < 0) {
       utils.haltOrThrow(

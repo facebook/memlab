@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
+import {OptionNames} from '../constant';
 
 export default class SetUserAgentOption extends BaseOption {
   getOptionName(): string {
-    return 'user-agent';
+    return OptionNames.USER_AGENT;
   }
 
   getDescription(): string {

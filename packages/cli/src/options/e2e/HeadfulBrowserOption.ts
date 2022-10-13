@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
+import {OptionNames} from '../constant';
 
 export default class HeadfulBrowserOption extends BaseOption {
   getOptionName(): string {
-    return 'headful';
+    return OptionNames.HEADFUL;
   }
 
   getDescription(): string {

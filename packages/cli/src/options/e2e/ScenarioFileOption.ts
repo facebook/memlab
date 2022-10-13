@@ -12,10 +12,11 @@ import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption, utils} from '@memlab/core';
 import {E2EUtils} from '@memlab/e2e';
+import {OptionNames} from '../constant';
 
 export default class ScenarioFileOption extends BaseOption {
   getOptionName(): string {
-    return 'scenario';
+    return OptionNames.SCENARIO;
   }
 
   getDescription(): string {
@@ -27,8 +28,9 @@ export default class ScenarioFileOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (args.scenario) {
-      const scenarioFile = args.scenario as string;
+    const name = this.getOptionName();
+    if (args[name]) {
+      const scenarioFile = args[name] as string;
       // load scenario file and get target app name
       config.scenario = utils.loadScenario(scenarioFile);
       config.targetApp = E2EUtils.getScenarioAppName(config.scenario);

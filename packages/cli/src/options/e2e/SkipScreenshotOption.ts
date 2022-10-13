@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
+import {OptionNames} from '../constant';
 
 export default class SkipScreenshotOption extends BaseOption {
   getOptionName(): string {
-    return 'skip-screenshot';
+    return OptionNames.SKIP_SCREENSHOT;
   }
 
   getDescription(): string {
@@ -22,7 +23,7 @@ export default class SkipScreenshotOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (args['skip-screenshot']) {
+    if (args[this.getOptionName()]) {
       config.skipScreenshot = true;
     }
   }

@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
+import {OptionNames} from '../constant';
 
 export default class RemoteBrowserDebugOption extends BaseOption {
   getOptionName(): string {
-    return 'local-puppeteer';
+    return OptionNames.LOCAL_PUPPETEER;
   }
 
   getDescription(): string {
@@ -22,7 +23,7 @@ export default class RemoteBrowserDebugOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (args['local-puppeteer']) {
+    if (args[this.getOptionName()]) {
       config.isLocalPuppeteer = true;
     }
   }

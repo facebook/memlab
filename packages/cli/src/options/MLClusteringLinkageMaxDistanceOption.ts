@@ -11,10 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import {MemLabConfig, utils} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
+import {OptionNames} from './constant';
 
 export default class MLClusteringLinkageMaxDistanceOption extends BaseOption {
   getOptionName(): string {
-    return 'ml-linkage-max-dist';
+    return OptionNames.ML_LINKAGE_MAX_DIST;
   }
 
   getDescription(): string {
@@ -22,8 +23,9 @@ export default class MLClusteringLinkageMaxDistanceOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (args['ml-linkage-max-dist']) {
-      const linkageMaxDist = args['ml-linkage-max-dist'];
+    const name = this.getOptionName();
+    if (args[name]) {
+      const linkageMaxDist = args[name];
       const linkageMaxDistNum = parseFloat(linkageMaxDist);
       if (
         !isNaN(linkageMaxDistNum) &&
