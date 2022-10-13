@@ -11,15 +11,15 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
-import {OptionNames, OptionShortcuts} from './constant';
+import optionConstants from './lib/OptionConstant';
 
 export default class HelperOption extends BaseOption {
   getOptionName(): string {
-    return OptionNames.HELP;
+    return optionConstants.optionNames.HELP;
   }
 
   getOptionShortcut(): string {
-    return OptionShortcuts.H;
+    return optionConstants.optionShortcuts.H;
   }
 
   getDescription(): string {

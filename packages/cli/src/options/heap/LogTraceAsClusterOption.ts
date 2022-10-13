@@ -11,11 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
-import {OptionNames} from '../constant';
+import optionConstants from '../lib/OptionConstant';
 
 export default class LogTraceAsClusterOption extends BaseOption {
   getOptionName(): string {
-    return OptionNames.SAVE_TRACE_AS_UNCLASSIFIED_CLUSTER;
+    return optionConstants.optionNames.SAVE_TRACE_AS_UNCLASSIFIED_CLUSTER;
   }
 
   getDescription(): string {

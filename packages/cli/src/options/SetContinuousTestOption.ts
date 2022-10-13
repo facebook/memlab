@@ -11,11 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
-import {OptionNames} from './constant';
+import optionConstants from './lib/OptionConstant';
 
 export default class SetContinuousTestOption extends BaseOption {
   getOptionName(): string {
-    return OptionNames.SC;
+    return optionConstants.optionNames.SC;
   }
 
   getDescription(): string {
@@ -23,7 +23,10 @@ export default class SetContinuousTestOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (args[OptionNames.CONTINUS_TEST] || args[this.getOptionName()]) {
+    if (
+      args[optionConstants.optionNames.CONTINUS_TEST] ||
+      args[this.getOptionName()]
+    ) {
       config.isContinuousTest = true;
     }
   }

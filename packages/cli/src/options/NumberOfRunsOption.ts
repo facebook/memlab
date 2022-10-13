@@ -11,12 +11,12 @@
 import type {ParsedArgs} from 'minimist';
 import type {AnyRecord, MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
-import {OptionNames} from './constant';
+import optionConstants from './lib/OptionConstant';
 
 export default class NumberOfRunsOption extends BaseOption {
   public static DEFAULT_NUM_RUNS = 10;
   getOptionName(): string {
-    return OptionNames.RUN_NUM;
+    return optionConstants.optionNames.RUN_NUM;
   }
 
   getDescription(): string {

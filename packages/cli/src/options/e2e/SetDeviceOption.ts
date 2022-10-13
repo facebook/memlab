@@ -11,7 +11,7 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption, constant} from '@memlab/core';
-import {OptionNames} from '../constant';
+import optionConstants from '../lib/OptionConstant';
 
 const devices = constant.isFRL
   ? {}
@@ -22,7 +22,7 @@ const devices = constant.isFRL
 
 export default class SetDeviceOption extends BaseOption {
   getOptionName(): string {
-    return OptionNames.DEVICE;
+    return optionConstants.optionNames.DEVICE;
   }
 
   getDescription(): string {

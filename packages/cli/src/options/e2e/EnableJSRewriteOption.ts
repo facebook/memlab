@@ -11,11 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
-import {OptionNames} from '../constant';
+import optionConstants from '../lib/OptionConstant';
 
 export default class EnableJSRewriteOption extends BaseOption {
   getOptionName(): string {
-    return OptionNames.REWRITE_JS;
+    return optionConstants.optionNames.REWRITE_JS;
   }
 
   getDescription(): string {

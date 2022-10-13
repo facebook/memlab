@@ -11,11 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {AnyRecord, MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
-import {OptionNames} from './constant';
+import optionConstants from './lib/OptionConstant';
 
 export default class SetWorkingDirectoryOption extends BaseOption {
   getOptionName(): string {
-    return OptionNames.WORK_DIR;
+    return optionConstants.optionNames.WORK_DIR;
   }
 
   getDescription(): string {

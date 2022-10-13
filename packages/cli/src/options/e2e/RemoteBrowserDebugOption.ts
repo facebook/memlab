@@ -11,11 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
-import {OptionNames} from '../constant';
+import optionConstants from '../lib/OptionConstant';
 
 export default class RemoteBrowserDebugOption extends BaseOption {
   getOptionName(): string {
-    return OptionNames.LOCAL_PUPPETEER;
+    return optionConstants.optionNames.LOCAL_PUPPETEER;
   }
 
   getDescription(): string {

@@ -12,11 +12,11 @@ import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption, utils} from '@memlab/core';
 import {E2EUtils} from '@memlab/e2e';
-import {OptionNames} from '../constant';
+import optionConstants from '../lib/OptionConstant';
 
 export default class ScenarioFileOption extends BaseOption {
   getOptionName(): string {
-    return OptionNames.SCENARIO;
+    return optionConstants.optionNames.SCENARIO;
   }
 
   getDescription(): string {

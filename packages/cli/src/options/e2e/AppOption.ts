@@ -11,11 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
-import {OptionNames} from '../constant';
+import optionConstants from '../lib/OptionConstant';
 
 export default class AppOption extends BaseOption {
   getOptionName(): string {
-    return OptionNames.APP;
+    return optionConstants.optionNames.APP;
   }
 
   getDescription(): string {

@@ -11,11 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
-import {OptionNames} from '../constant';
+import optionConstants from '../lib/OptionConstant';
 
 export default class HeapNodeIdOption extends BaseOption {
   getOptionName(): string {
-    return OptionNames.NODE_ID;
+    return optionConstants.optionNames.NODE_ID;
   }
 
   getDescription(): string {

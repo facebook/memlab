@@ -11,11 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
-import {OptionNames} from './constant';
+import optionConstants from './lib/OptionConstant';
 
 export default class DebugOption extends BaseOption {
   getOptionName(): string {
-    return OptionNames.DEBUG;
+    return optionConstants.optionNames.DEBUG;
   }
 
   getDescription(): string {
@@ -23,7 +23,7 @@ export default class DebugOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (args['debug']) {
+    if (args[this.getOptionName()]) {
       config.isManualDebug = true;
     }
   }

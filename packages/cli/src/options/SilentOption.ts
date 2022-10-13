@@ -11,15 +11,15 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
-import {OptionNames, OptionShortcuts} from './constant';
+import optionConstants from './lib/OptionConstant';
 
 export default class SilentOption extends BaseOption {
   getOptionName(): string {
-    return OptionNames.SILENT;
+    return optionConstants.optionNames.SILENT;
   }
 
   getOptionShortcut(): string {
-    return OptionShortcuts.S;
+    return optionConstants.optionShortcuts.S;
   }
 
   getDescription(): string {

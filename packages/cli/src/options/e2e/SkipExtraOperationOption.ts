@@ -11,11 +11,11 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
-import {OptionNames} from '../constant';
+import optionConstants from '../lib/OptionConstant';
 
 export default class SkipExtraOperationOption extends BaseOption {
   getOptionName(): string {
-    return OptionNames.SKIP_EXTRA_OPS;
+    return optionConstants.optionNames.SKIP_EXTRA_OPS;
   }
 
   getDescription(): string {
@@ -23,7 +23,10 @@ export default class SkipExtraOperationOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (args[this.getOptionName()] || args[OptionNames.SKIP_EXTRA_OP]) {
+    if (
+      args[this.getOptionName()] ||
+      args[optionConstants.optionNames.SKIP_EXTRA_OP]
+    ) {
       config.skipExtraOps = true;
     }
   }
