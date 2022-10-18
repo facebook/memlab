@@ -10,7 +10,7 @@
 
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
-import {BaseOption, utils} from '@memlab/core';
+import {constant, utils, BaseOption} from '@memlab/core';
 import {E2EUtils} from '@memlab/e2e';
 import optionConstants from '../lib/OptionConstant';
 
@@ -34,6 +34,7 @@ export default class ScenarioFileOption extends BaseOption {
       // load scenario file and get target app name
       config.scenario = utils.loadScenario(scenarioFile);
       config.targetApp = E2EUtils.getScenarioAppName(config.scenario);
+      config.targetTab = constant.unset;
     }
   }
 }

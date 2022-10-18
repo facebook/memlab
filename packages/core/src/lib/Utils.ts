@@ -614,7 +614,10 @@ function getScenarioName(scenario: IScenario): string {
   if (!scenario.name) {
     return constant.namePrefixForScenarioFromFile;
   }
-  return constant.namePrefixForScenarioFromFile + '-' + scenario.name();
+  if (constant.namePrefixForScenarioFromFile.length > 0) {
+    return constant.namePrefixForScenarioFromFile + '-' + scenario.name();
+  }
+  return scenario.name();
 }
 
 function handleSnapshotError(e: Error): void {
