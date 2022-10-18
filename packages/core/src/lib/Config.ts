@@ -237,6 +237,7 @@ export class MemLabConfig {
   seqClusteringSplitCount: number;
   seqClusteringIsRandomChunks: boolean;
   instrumentJS: boolean;
+  interceptScript: boolean;
 
   constructor(options: ConfigOption = {}) {
     // init properties, they can be configured manually
@@ -315,7 +316,9 @@ export class MemLabConfig {
     this.snapshotHasDetachedness = false;
     // by default running in regular mode
     this.runningMode = modes.get('regular', this);
-    // intercept and rewrite JavaScript Code in browser
+    // intercept and log JavaScript Code in browser
+    this.interceptScript = false;
+    // rewrite JavaScript Code in browser
     this.instrumentJS = false;
     // external heap snapshot paths, if enabled
     this.externalSnapshotFilePaths = [];

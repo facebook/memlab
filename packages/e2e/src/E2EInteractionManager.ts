@@ -106,8 +106,10 @@ export default class E2EInteractionManager {
 
   private async beforeInteractions(): Promise<void> {
     const session = await this.getCDPSession();
-    this.networkManager.setCDPSession(session);
-    await this.networkManager.interceptScript();
+    if (config.interceptScript) {
+      this.networkManager.setCDPSession(session);
+      await this.networkManager.interceptScript();
+    }
 
     if (config.verbose) {
       const browserVersion = await this.page.browser().version();

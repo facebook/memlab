@@ -13,21 +13,19 @@ import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
 import optionConstants from '../lib/OptionConstant';
 
-export default class EnableJSRewriteOption extends BaseOption {
+export default class EnableJSInterceptOption extends BaseOption {
   getOptionName(): string {
-    return optionConstants.optionNames.REWRITE_JS;
+    return optionConstants.optionNames.LOG_SCRIPT;
   }
 
   getDescription(): string {
-    return 'enable instrument JavaScript code in browser';
+    return 'enable intercepting and logging JavaScript code in browser';
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
     if (args[this.getOptionName()]) {
       // intercept script
       config.interceptScript = true;
-      // rewrite script
-      config.instrumentJS = true;
     }
   }
 }

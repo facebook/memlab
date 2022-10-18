@@ -26,6 +26,7 @@ const optionNames = {
   INTERACTION: 'interaction',
   LEAK_FILTER: 'leak-filter',
   LOCAL_PUPPETEER: 'local-puppeteer',
+  LOG_SCRIPT: 'log-script',
   ML_CLUSTERING: 'ml-clustering',
   ML_CLUSTERING_MAX_DF: 'ml-clustering-max-df',
   ML_LINKAGE_MAX_DIST: 'ml-linkage-max-dist',
