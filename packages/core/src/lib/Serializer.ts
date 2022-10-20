@@ -361,7 +361,7 @@ function JSONifyContext(
   options: JSONifyOptions,
 ): ISerializedInfo {
   const info = Object.create(null);
-  const key = 'variables in scope (used by nested closures)';
+  const key = 'variables in defining scope (used by nested closures)';
   const closure_vars = (info[key] = Object.create(null));
   iterateSelectedEdges(node, (edge: IHeapEdge): Optional<{stop: boolean}> => {
     const key = filterJSONPropName(edge.name_or_index);
