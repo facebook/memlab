@@ -56,4 +56,8 @@ export * from './lib/PackageInfoLoader';
 /** @internal */
 export {default as SequentialClustering} from './trace-cluster/SequentialClustering';
 /** @internal */
+export {default as MultiIterationSeqClustering} from './trace-cluster/MultiIterationSeqClustering';
+/** @internal */
 export {default as TraceFinder} from './paths/TraceFinder';
+/** @internal */
+export * from './trace-cluster/ClusterUtils';

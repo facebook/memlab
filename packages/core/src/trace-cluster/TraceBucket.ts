@@ -30,6 +30,7 @@ import {EdgeRecord, NodeRecord} from './TraceElement';
 import TraceSimilarityStrategy from './strategies/TraceSimilarityStrategy';
 import TraceAsClusterStrategy from './strategies/TraceAsClusterStrategy';
 import MLTraceSimilarityStrategy from './strategies/MLTraceSimilarityStrategy';
+import {lastNodeFromTrace} from './ClusterUtils';
 
 type AggregateNodeCb = (
   ids: Set<number>,
@@ -234,8 +235,6 @@ export default class NormalizedTrace {
   static clusteredLeakTracesToRecord(
     allClusters: LeakTrace[][],
   ): Record<string, string> {
-    const lastNodeFromTrace = (trace: LeakTrace) => trace[trace.length - 1];
-
     const labaledLeakTraces = allClusters.reduce<Record<string, string>>(
       (acc, bucket) => {
         const lastNodeFromFirstTrace = lastNodeFromTrace(bucket[0]);

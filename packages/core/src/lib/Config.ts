@@ -234,7 +234,10 @@ export class MemLabConfig {
   mlClusteringLinkageMaxDistance: number;
   mlMaxDF: number;
   isSequentialClustering: boolean;
+  isMultiIterationSeqClustering: boolean;
   seqClusteringSplitCount: number;
+  multiIterSeqClusteringIteration: number;
+  multiIterSeqClusteringSampleSize: number;
   seqClusteringIsRandomChunks: boolean;
   instrumentJS: boolean;
   interceptScript: boolean;
@@ -341,8 +344,15 @@ export class MemLabConfig {
     this.mlMaxDF = 1;
     // if true, evaluating results with sequential clustering
     this.isSequentialClustering = false;
+    // if true, evaluating results with sequential
+    // clustering with multiple iterations
+    this.isMultiIterationSeqClustering = false;
     // split the sample leak traces into 4 smaller ones by default.
     this.seqClusteringSplitCount = 4;
+    // the number of iterations for multi-iteration sequential clustering
+    this.multiIterSeqClusteringIteration = 1;
+    // the number of trace samples to retain from each cluster
+    this.multiIterSeqClusteringSampleSize = Infinity;
     // if true, split dataset into trunks
     // with random order for sequential clustering
     this.seqClusteringIsRandomChunks = false;
