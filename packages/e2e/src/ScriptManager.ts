@@ -10,16 +10,19 @@
 
 import type {AnyFunction, Nullable} from '@memlab/core';
 import type {RewriteScriptOption} from './instrumentation/ScriptRewriteManager';
+import type {ClosureScope} from './code-analysis/Script';
 
 import fs from 'fs';
 import path from 'path';
 import {config, fileManager} from '@memlab/core';
+import Script from './code-analysis/Script';
 import ScriptRewriteManager from './instrumentation/ScriptRewriteManager';
 
 type ScriptInfo = {
   codePath: string;
   url: string;
   fileId: number;
+  code?: string;
 };
 
 export default class ScriptManager {
@@ -63,13 +66,29 @@ export default class ScriptManager {
       return null;
     }
     const scriptInfo = this.urlToScriptMap.get(url) as ScriptInfo;
-    let code: Nullable<string> = null;
+    if (scriptInfo.code) {
+      return scriptInfo.code;
+    }
     try {
-      code = fs.readFileSync(scriptInfo.codePath, 'UTF-8');
+      scriptInfo.code = fs.readFileSync(scriptInfo.codePath, 'UTF-8');
     } catch {
       // do nothing
     }
-    return code;
+    return scriptInfo.code ?? null;
+  }
+
+  public getClosureScopeTreeForUrl(url: string): Nullable<ClosureScope> {
+    const code = this.loadCodeForUrl(url);
+    if (code == null) {
+      return null;
+    }
+    try {
+      const script = new Script(code);
+      return script.getClosureScopeTree();
+    } catch {
+      // do nothing
+    }
+    return null;
   }
 
   public async rewriteScript(
@@ -103,7 +122,7 @@ export default class ScriptManager {
     this.urlToScriptMap.set(url, scriptInfo);
     this.scriptInfos.push(scriptInfo);
     fs.writeFile(file, code, 'UTF-8', () => {
-      // write file asynchroniously
+      // async write, do nothing here
     });
     // only write the latest version of the meta file state
     this.debounce(() => {

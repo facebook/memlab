@@ -23,3 +23,5 @@ export {default as BaseSynthesizer} from './BaseSynthesizer';
 export {default as E2EUtils} from './lib/E2EUtils';
 /** @internal */
 export {default as ScriptManager} from './ScriptManager';
+/** @internal */
+export type {ClosureScope} from './code-analysis/Script';
