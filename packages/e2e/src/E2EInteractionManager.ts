@@ -133,6 +133,9 @@ export default class E2EInteractionManager {
     await setPermissions(this.page, defaultTestPlanner.getOrigin());
     await this.beforeInteractions();
     const baseURL = utils.normalizeBaseUrl(visitPlan.baseURL);
+    if (visitPlan.pageSetup) {
+      await visitPlan.pageSetup(this.page);
+    }
 
     await this.startTrackingHeap();
     for (let i = 0; i < visitPlan.tabsOrder.length; i++) {

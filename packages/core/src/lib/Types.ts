@@ -833,6 +833,9 @@ export interface IDataBuilder {
 export type CheckPageLoadCallback = (page: Page) => Promise<boolean>;
 
 /** @internal */
+export type PageSetupCallback = (page: Page) => Promise<void>;
+
+/** @internal */
 export interface IE2EScenarioVisitPlan {
   name: string;
   appName: string;
@@ -846,6 +849,7 @@ export interface IE2EScenarioVisitPlan {
   dataBuilder: Optional<IDataBuilder>;
   isPageLoaded?: CheckPageLoadCallback;
   scenario?: IScenario;
+  pageSetup?: PageSetupCallback;
 }
 
 /** @internal */

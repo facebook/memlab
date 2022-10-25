@@ -21,6 +21,7 @@ import type {
   IE2EScenarioSynthesizer,
   CheckPageLoadCallback,
   Nullable,
+  PageSetupCallback,
 } from '@memlab/core';
 import type {Page} from 'puppeteer';
 
@@ -210,6 +211,13 @@ class BaseSynthesizer implements IE2EScenarioSynthesizer {
     };
   }
 
+  getPageSetupCallback(): PageSetupCallback {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    return async (_page: Page) => {
+      return;
+    };
+  }
+
   synthesis(
     baseline: string,
     target: string,
@@ -339,6 +347,7 @@ class BaseSynthesizer implements IE2EScenarioSynthesizer {
       numOfWarmup: this.getActualNumberOfWarmup(),
       dataBuilder: options.dataBuilder,
       isPageLoaded: this.getPageLoadChecker(),
+      pageSetup: this.getPageSetupCallback(),
     };
   }
 
@@ -368,6 +377,7 @@ class BaseSynthesizer implements IE2EScenarioSynthesizer {
       numOfWarmup: this.getActualNumberOfWarmup(),
       dataBuilder: options.dataBuilder,
       isPageLoaded: this.getPageLoadChecker(),
+      pageSetup: this.getPageSetupCallback(),
     };
   }
 
@@ -433,6 +443,7 @@ class BaseSynthesizer implements IE2EScenarioSynthesizer {
       numOfWarmup: this.getActualNumberOfWarmup(),
       dataBuilder: null,
       isPageLoaded: scenario.isPageLoaded ?? this.getPageLoadChecker(),
+      pageSetup: this.getPageSetupCallback(),
       scenario,
     };
   }
@@ -461,6 +472,7 @@ class BaseSynthesizer implements IE2EScenarioSynthesizer {
       numOfWarmup: this.getActualNumberOfWarmup(),
       dataBuilder: options.dataBuilder,
       isPageLoaded: this.getPageLoadChecker(),
+      pageSetup: this.getPageSetupCallback(),
     };
   }
 
@@ -500,6 +512,7 @@ class BaseSynthesizer implements IE2EScenarioSynthesizer {
       numOfWarmup: this.getActualNumberOfWarmup(),
       dataBuilder: options.dataBuilder,
       isPageLoaded: this.getPageLoadChecker(),
+      pageSetup: this.getPageSetupCallback(),
     };
   }
 

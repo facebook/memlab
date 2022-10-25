@@ -59,7 +59,7 @@ or [forEachReferrer](../interfaces/core_src.IHeapNode.md#foreachreferrer).
  * **Returns**: `Optional`<{ `stop`: `boolean`  }\> \| `void` | this API returns void
 
  * **Source**:
-    * core/src/lib/Types.ts:1361
+    * core/src/lib/Types.ts:1365
 
 ___
 
@@ -157,7 +157,7 @@ You can retrieve the instance of this type through [getRunMetaInfo](../classes/a
 | `type` | `string` | type of the memlab run |
 
  * **Source**:
-    * core/src/lib/Types.ts:909
+    * core/src/lib/Types.ts:913
 
 ## Functions
 
