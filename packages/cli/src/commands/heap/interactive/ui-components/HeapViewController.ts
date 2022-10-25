@@ -17,6 +17,7 @@ import {
   ComponentData,
   getHeapObjectAt,
 } from './HeapViewUtils';
+import {ScriptManager} from '@memlab/e2e';
 
 type SelectHeapObjectOption = {
   noChangeInReferenceBox?: boolean;
@@ -49,6 +50,8 @@ export default class HeapViewController {
   private objectPropertyBox: ListComponent;
   private retainerTracePropertyBox: ListComponent;
 
+  private scriptManager: ScriptManager;
+
   constructor(heap: IHeapSnapshot, objectCategory: ObjectCategory) {
     this.heap = heap;
     this.currentHeapObjectsInfo =
@@ -58,6 +61,8 @@ export default class HeapViewController {
     this.currentHeapObject = getHeapObjectAt(this.currentHeapObjectsInfo, 0);
     this.componentIdToDataMap = new Map();
     this.componentIdToComponentMap = new Map();
+    this.scriptManager = new ScriptManager();
+    this.scriptManager.loadFromFiles();
   }
 
   private getFlattenHeapObjectsInfo(

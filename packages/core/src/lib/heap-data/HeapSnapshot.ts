@@ -239,11 +239,11 @@ export default class HeapSnapshot implements IHeapSnapshot {
     const locationFieldsCount = this._locationFieldsCount;
     let locationIdx = 0;
     while (locationIdx < this._locationCount) {
-      const id =
+      const nodeIndex =
         locations[
           locationIdx * locationFieldsCount + this._locationObjectIndexOffset
         ];
-      this._nodeIdx2LocationIdx[id] = locationIdx;
+      this._nodeIdx2LocationIdx[nodeIndex] = locationIdx;
       ++locationIdx;
     }
   }

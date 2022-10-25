@@ -21,3 +21,5 @@ export {default as Xvfb} from './lib/operations/XVirtualFrameBuffer';
 export {default as E2EInteractionManager} from './E2EInteractionManager';
 export {default as BaseSynthesizer} from './BaseSynthesizer';
 export {default as E2EUtils} from './lib/E2EUtils';
+/** @internal */
+export {default as ScriptManager} from './ScriptManager';

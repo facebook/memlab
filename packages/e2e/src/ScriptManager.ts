@@ -50,15 +50,26 @@ export default class ScriptManager {
       const metaContent = fs.readFileSync(webSourceMetaFile, 'UTF-8');
       this.scriptInfos = JSON.parse(metaContent);
       for (const scriptInfo of this.scriptInfos) {
-        if (!fs.existsSync(scriptInfo.codePath)) {
-          return false;
-        }
         this.urlToScriptMap.set(scriptInfo.url, scriptInfo);
       }
     } catch {
       return false;
     }
     return true;
+  }
+
+  public loadCodeForUrl(url: string): Nullable<string> {
+    if (!this.urlToScriptMap.has(url)) {
+      return null;
+    }
+    const scriptInfo = this.urlToScriptMap.get(url) as ScriptInfo;
+    let code: Nullable<string> = null;
+    try {
+      code = fs.readFileSync(scriptInfo.codePath, 'UTF-8');
+    } catch {
+      // do nothing
+    }
+    return code;
   }
 
   public async rewriteScript(
