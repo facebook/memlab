@@ -946,9 +946,11 @@ function extractHTMLElementNodeInfo(node: IHeapNode): string {
 
 function hasOnlyWeakReferrers(node: IHeapNode): boolean {
   const referrer = node.findAnyReferrer(
+    // shortcut references are added by JS engine
+    // GC won't consider shortcut as a retaining edge
     (edge: IHeapEdge) => edge.type !== 'weak' && edge.type !== 'shortcut',
   );
-  return !!referrer;
+  return referrer == null;
 }
 
 function getRunMetaFilePath(): string {
