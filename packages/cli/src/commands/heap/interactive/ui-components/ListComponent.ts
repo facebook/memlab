@@ -125,6 +125,13 @@ export default class ListComponent {
           return;
         }
 
+        // if press 'd'
+        if (key.name === 'd' || key.name === 'D') {
+          self.selectUpdate(self.listIndex, content, {
+            keyName: key.name,
+          });
+        }
+
         // move selection down
         if (key.name === 'down' && self.listIndex < self.displayedItems - 1) {
           self.element.select(++self.listIndex);

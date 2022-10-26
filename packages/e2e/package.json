@@ -55,6 +55,7 @@
   },
   "scripts": {
     "build-pkg": "tsc",
+    "test-pkg": "jest .",
     "publish-patch": "npm version patch --force && npm publish",
     "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
   },

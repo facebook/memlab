@@ -7,17 +7,20 @@
  * @format
  * @oncall web_perf_infra
  */
-import type {IHeapSnapshot, IHeapNode, Nullable} from '@memlab/core';
+import type {WorkerOptions} from 'worker_threads';
+import type {IHeapSnapshot, IHeapNode, Nullable, IHeapEdge} from '@memlab/core';
 import type ListComponent from './ListComponent';
 
+import path from 'path';
 import chalk from 'chalk';
+import {Worker} from 'worker_threads';
 import {utils, analysis} from '@memlab/core';
+import {ScriptManager} from '@memlab/e2e';
 import {
   ComponentDataItem,
   ComponentData,
   getHeapObjectAt,
 } from './HeapViewUtils';
-import {ScriptManager} from '@memlab/e2e';
 
 type SelectHeapObjectOption = {
   noChangeInReferenceBox?: boolean;
@@ -259,12 +262,6 @@ export default class HeapViewController {
     // if the node has associated location info
     const location = node.location;
     if (location) {
-      const url = utils.getClosureSourceUrl(node);
-      if (url) {
-        data.items.push({
-          stringContent: this.getKeyValuePairString('code link', url),
-        });
-      }
       data.items.push({
         stringContent: this.getKeyValuePairString(
           'script id',
@@ -304,16 +301,20 @@ export default class HeapViewController {
       });
     }
     if (node.type === 'closure') {
-      const contextNode = node.getReferenceNode('context', 'internal');
-      if (contextNode) {
-        contextNode.forEachReference(edge => {
-          data.items.push({
-            tag: chalk.grey('Scope Variable'),
-            referrerEdge: edge,
-            heapObject: edge.toNode,
-          });
+      const url = utils.getClosureSourceUrl(node);
+      if (url) {
+        data.items.push({
+          stringContent: this.getKeyValuePairString('code link', url),
         });
       }
+      const closureVars = this.getClosureNodeScopeVarEdges(node);
+      closureVars.forEach(edge =>
+        data.items.push({
+          tag: chalk.grey('Outer Scope Var'),
+          referrerEdge: edge,
+          heapObject: edge.toNode,
+        }),
+      );
     }
     data.selectedIdx = data.items.length > 0 ? 0 : -1;
     return data;
@@ -354,24 +355,76 @@ export default class HeapViewController {
     return data;
   }
 
+  private getHeapObject(
+    componentId: number,
+    itemIndex: number,
+  ): Nullable<IHeapNode> {
+    const data = this.componentIdToDataMap.get(componentId);
+    if (!data) {
+      return null;
+    }
+    const item = data.items[itemIndex];
+    if (!item) {
+      return null;
+    }
+    const heapObject = item.heapObject;
+    if (!heapObject) {
+      return null;
+    }
+    return heapObject;
+  }
+
+  public displaySourceCode(componentId: number, itemIndex: number): void {
+    const node = this.getHeapObject(componentId, itemIndex);
+    if (node && node.type === 'closure') {
+      this.displayClosureInfo(node);
+    }
+  }
+
+  // locate and display source code of a closure node
+  // in a worker thread
+  private displayClosureInfo(node: IHeapNode): void {
+    const url = utils.getClosureSourceUrl(node);
+    if (!url) {
+      return;
+    }
+    const closureVars = this.getClosureNodeScopeVarEdges(node).map(
+      edge => `${edge.name_or_index}`,
+    );
+    const workerData = {
+      url,
+      closureVars,
+    };
+    new Worker(
+      path.join(__dirname, '..', 'worker', 'LocateClosureSourceWorker.js'),
+      {workerData} as WorkerOptions,
+    );
+  }
+
+  private getClosureNodeScopeVarEdges(node: IHeapNode): IHeapEdge[] {
+    const internalReferences = new Set(['map', 'scope_info', 'previous']);
+    const contextNode = node.getReferenceNode('context', 'internal');
+    const ret: IHeapEdge[] = [];
+    if (contextNode) {
+      contextNode.forEachReference(edge => {
+        const name = `${edge.name_or_index}`;
+        if (!internalReferences.has(name)) {
+          ret.push(edge);
+        }
+      });
+    }
+    return ret;
+  }
+
   public setCurrentHeapObjectFromComponent(
     componentId: number,
     itemIndex: number,
     options: {skipFocus?: boolean} = {},
   ): void {
-    const data = this.componentIdToDataMap.get(componentId);
-    if (!data) {
-      return;
+    const heapObject = this.getHeapObject(componentId, itemIndex);
+    if (heapObject) {
+      this.setCurrentHeapObject(heapObject, options);
     }
-    const item = data.items[itemIndex];
-    if (!item) {
-      return;
-    }
-    const heapObject = item.heapObject;
-    if (!heapObject) {
-      return;
-    }
-    this.setCurrentHeapObject(heapObject, options);
   }
 
   public setCurrentHeapObject(

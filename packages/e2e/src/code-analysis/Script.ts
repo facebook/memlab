@@ -16,6 +16,7 @@ import type {
   File,
   FunctionDeclaration,
   FunctionExpression,
+  Identifier,
   ObjectMethod,
   Program,
   SourceLocation,
@@ -30,7 +31,8 @@ import {utils} from '@memlab/core';
 export type ClosureScope = {
   functionName: Optional<string>;
   functionType: string;
-  bindings: string[];
+  variablesDefined: string[];
+  usedVariablesFromParentScope: string[];
   nestedClosures: ClosureScope[];
   loc: Optional<SourceLocation>;
 };
@@ -76,37 +78,71 @@ export default class Script {
     return JSON.stringify(loc);
   }
 
-  private findParentFunctionClosureScope(
-    locToClosureScopeMap: Map<string, ClosureScope>,
-    path: NodePath<FunctionClass>,
-  ): ClosureScope {
+  private findParentFunctionPath(
+    path: NodePath<FunctionClass | Identifier>,
+  ): Nullable<NodePath<FunctionClass | Program>> {
     let curPath = path.parentPath;
     while (curPath) {
       if (
         isFunctionType(curPath.node.type) ||
         curPath.node.type === 'Program'
       ) {
-        const parentClosureScope = locToClosureScopeMap.get(
-          this.locToStr(curPath.node.loc),
-        );
-        if (!parentClosureScope) {
-          throw utils.haltOrThrow('cannot find parent scope');
-        }
-        return parentClosureScope;
+        return curPath as NodePath<FunctionClass | Program>;
       }
       if (curPath.parentPath == null) {
         break;
       }
       curPath = curPath.parentPath;
     }
-    throw utils.haltOrThrow('cannot find parent scope');
+    return null;
+  }
+
+  private findParentFunctionClosureScope(
+    locToClosureScopeMap: Map<string, ClosureScope>,
+    path: NodePath<FunctionClass | Identifier>,
+  ): ClosureScope {
+    const parentPath = this.findParentFunctionPath(path);
+    if (!parentPath) {
+      throw utils.haltOrThrow('cannot find parent scope');
+    }
+    const parentClosureScope = locToClosureScopeMap.get(
+      this.locToStr(parentPath.node.loc),
+    );
+    if (!parentClosureScope) {
+      throw utils.haltOrThrow('cannot find parent scope');
+    }
+    return parentClosureScope;
+  }
+
+  private findGrandparentFunctionClosureScope(
+    locToClosureScopeMap: Map<string, ClosureScope>,
+    path: NodePath<FunctionClass | Identifier>,
+  ): Nullable<ClosureScope> {
+    const parentPath = this.findParentFunctionPath(path);
+    if (!parentPath) {
+      throw utils.haltOrThrow('cannot find parent scope');
+    }
+    const grandparentPath = this.findParentFunctionPath(
+      parentPath as NodePath<FunctionClass>,
+    );
+    if (!grandparentPath) {
+      return null;
+    }
+    const grandparentClosureScope = locToClosureScopeMap.get(
+      this.locToStr(grandparentPath.node.loc),
+    );
+    if (!grandparentClosureScope) {
+      throw utils.haltOrThrow('cannot find parent scope');
+    }
+    return grandparentClosureScope;
   }
 
   private buildClosureScopeTree(ast: ParseResult<File>): ClosureScope {
     const root = {
       functionName: null,
       functionType: ast.program.type,
-      bindings: [] as string[],
+      variablesDefined: [] as string[],
+      usedVariablesFromParentScope: [] as string[],
       nestedClosures: [] as ClosureScope[],
       loc: ast.program.loc,
     };
@@ -117,14 +153,15 @@ export default class Script {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
 
+    // build closure scope hierarchy
     const buildClosureScopeFromFunction = function (
       path: NodePath<FunctionClass>,
     ) {
-      // build closure scope
       const closureScope = {
         functionName: 'id' in path.node ? path.node?.id?.name : null,
         functionType: path.node.type,
-        bindings: Object.keys(path.scope.bindings),
+        variablesDefined: Object.keys(path.scope.bindings),
+        usedVariablesFromParentScope: [] as string[],
         nestedClosures: [] as ClosureScope[],
         loc: path.node.loc,
       };
@@ -136,17 +173,63 @@ export default class Script {
       );
       parentClosureScope.nestedClosures.push(closureScope);
     };
+
+    // Traverse the parent scope of the containing scope
+    // to find out if both of the conditions are true:
+    // 1. This is a var use in the containing scope
+    // 2. This is a var defined in the direct parent scope
+    //    of the containing scope
+    // If true, add the identifer name to the usedVariablesFromParentScope
+    // of the containing scope
+    const fillInVarInfo = function (path: NodePath<Identifier>) {
+      // if the identifier is a function name of a function definition
+      if (isFunctionType(path.parentPath.node.type)) {
+        return;
+      }
+      const name = path.node.name;
+      let parentPath = self.findParentFunctionPath(path);
+      let parentClosureScope = parentPath
+        ? locToClosureScopeMap.get(self.locToStr(parentPath.node.loc))
+        : null;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        if (!parentPath || !parentClosureScope) {
+          break;
+        }
+        const grandparentPath = self.findParentFunctionPath(
+          parentPath as NodePath<FunctionClass>,
+        );
+        if (!grandparentPath) {
+          break;
+        }
+        const grandparentClosureScope = locToClosureScopeMap.get(
+          self.locToStr(grandparentPath.node.loc),
+        );
+        if (!grandparentClosureScope) {
+          break;
+        }
+        if (
+          grandparentClosureScope.variablesDefined.includes(name) &&
+          !parentClosureScope.usedVariablesFromParentScope.includes(name)
+        ) {
+          parentClosureScope.usedVariablesFromParentScope.push(name);
+          break;
+        }
+        parentPath = grandparentPath;
+        parentClosureScope = grandparentClosureScope;
+      }
+    };
     traverse(ast, {
       FunctionDeclaration: buildClosureScopeFromFunction,
       FunctionExpression: buildClosureScopeFromFunction,
       ObjectMethod: buildClosureScopeFromFunction,
       ClassMethod: buildClosureScopeFromFunction,
       ArrowFunctionExpression: buildClosureScopeFromFunction,
+      Identifier: fillInVarInfo,
       Program: (path: NodePath<Program>) => {
-        root.bindings = Object.keys(path.scope.bindings);
+        root.variablesDefined = Object.keys(path.scope.bindings);
       },
     });
-
     return root;
   }
 }

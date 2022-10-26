@@ -33,6 +33,7 @@ memlab run --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
  * **`--disable-web-security`**: disable web security in Chromium to enable cross domain requests; web security is enabled by default
  * **`--rewrite-js`**: enable instrument JavaScript code in browser
+ * **`--log-script`**: enable intercepting and logging JavaScript code in browser
  * **`--leak-filter`**: specify a definition JS file for leak filter
  * **`--trace-object-size-above`**: objects with retained size (bytes) bigger than the threshold will be considered as leaks
  * **`--ignore-leak-cluster-size-below`**: ignore memory leaks with aggregated retained size smaller than the threshold
@@ -447,6 +448,7 @@ memlab measure --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
  * **`--disable-web-security`**: disable web security in Chromium to enable cross domain requests; web security is enabled by default
  * **`--rewrite-js`**: enable instrument JavaScript code in browser
+ * **`--log-script`**: enable intercepting and logging JavaScript code in browser
  * **`--work-dir`**: set the working directory of the current run
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
@@ -481,6 +483,7 @@ memlab warmup --scenario /tmp/test-scenario.js
  * **`--disable-web-security`**: disable web security in Chromium to enable cross domain requests; web security is enabled by default
  * **`--skip-warmup`**: skip warming up web server
  * **`--rewrite-js`**: enable instrument JavaScript code in browser
+ * **`--log-script`**: enable intercepting and logging JavaScript code in browser
  * **`--work-dir`**: set the working directory of the current run
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
@@ -551,6 +554,7 @@ memlab snapshot --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
  * **`--disable-web-security`**: disable web security in Chromium to enable cross domain requests; web security is enabled by default
  * **`--rewrite-js`**: enable instrument JavaScript code in browser
+ * **`--log-script`**: enable intercepting and logging JavaScript code in browser
  * **`--work-dir`**: set the working directory of the current run
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
@@ -580,6 +584,7 @@ memlab warmup-and-snapshot
  * **`--disable-web-security`**: disable web security in Chromium to enable cross domain requests; web security is enabled by default
  * **`--skip-warmup`**: skip warming up web server
  * **`--rewrite-js`**: enable instrument JavaScript code in browser
+ * **`--log-script`**: enable intercepting and logging JavaScript code in browser
  * **`--full`**: take heap snapshot for every step in E2E interaction
  * **`--skip-snapshot`**: skip taking heap snapshots
  * **`--skip-screenshot`**: skip taking screenshots

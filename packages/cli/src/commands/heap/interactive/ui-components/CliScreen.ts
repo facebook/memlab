@@ -131,7 +131,12 @@ export default class CliScreen {
       content: string[],
       selectInfo: ListItemSelectInfo,
     ) => {
-      if (selectInfo.keyName === 'enter') {
+      if (selectInfo.keyName === 'd' || selectInfo.keyName === 'D') {
+        selectDebounce(() => {
+          controller.displaySourceCode(componentId, index);
+          screen.render();
+        });
+      } else if (selectInfo.keyName === 'enter') {
         selectDebounce(() => {
           controller.setCurrentHeapObjectFromComponent(componentId, index);
           screen.render();
