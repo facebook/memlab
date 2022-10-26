@@ -1,6 +1,6 @@
 {
   "name": "@memlab/api",
-  "version": "1.0.15",
+  "version": "1.0.17",
   "license": "MIT",
   "description": "memlab API",
   "author": "Liang Gong <lgong@fb.com>",
@@ -58,7 +58,7 @@
   "scripts": {
     "build-pkg": "tsc",
     "test-pkg": "jest .",
-    "publish-patch": "npm version patch --force && npm publish",
+    "publish-patch": "npm publish",
     "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
   },
   "bugs": {

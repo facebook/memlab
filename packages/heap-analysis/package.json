@@ -1,6 +1,6 @@
 {
   "name": "@memlab/heap-analysis",
-  "version": "1.0.13",
+  "version": "1.0.15",
   "license": "MIT",
   "description": "heap analysis plugins for memlab",
   "author": "Liang Gong <lgong@fb.com>",
@@ -50,7 +50,7 @@
   "scripts": {
     "build-pkg": "tsc",
     "test-pkg": "jest .",
-    "publish-patch": "npm version patch --force && npm publish",
+    "publish-patch": "npm publish",
     "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
   },
   "bugs": {
