@@ -34,7 +34,7 @@ this callback until it returns `true`. This is an async callback, you can
 also `await` and returns `true` until some async logic is resolved.
 
  * **Source**:
-    * core/src/lib/Types.ts:833
+    * core/src/lib/Types.ts:840
 
 ___
 
@@ -44,7 +44,7 @@ Data structure for holding cookies.
 For concrete example, check out [cookies](../interfaces/core_src.IScenario.md#cookies).
 
  * **Source**:
-    * core/src/lib/Types.ts:119
+    * core/src/lib/Types.ts:126
 
 ___
 
@@ -59,7 +59,7 @@ or [forEachReferrer](../interfaces/core_src.IHeapNode.md#foreachreferrer).
  * **Returns**: `Optional`<{ `stop`: `boolean`  }\> \| `void` | this API returns void
 
  * **Source**:
-    * core/src/lib/Types.ts:1365
+    * core/src/lib/Types.ts:1372
 
 ___
 
@@ -75,7 +75,7 @@ For concrete example, check out [beforeLeakFilter](../interfaces/core_src.ILeakF
  * **Returns**: `void`
 
  * **Source**:
-    * core/src/lib/Types.ts:344
+    * core/src/lib/Types.ts:351
 
 ___
 
@@ -91,7 +91,7 @@ For concrete examples, check out [action](../interfaces/core_src.IScenario.md#ac
  * **Returns**: `Promise`<`void`\> | no return value
 
  * **Source**:
-    * core/src/lib/Types.ts:386
+    * core/src/lib/Types.ts:393
 
 ___
 
@@ -119,7 +119,7 @@ function leakFilter(node, _snapshot, _leakedNodeIds) {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:371
+    * core/src/lib/Types.ts:378
 
 ___
 
@@ -142,7 +142,7 @@ and [findReferrers](../interfaces/core_src.IHeapNode.md#findreferrers).
  * **Returns**: `boolean` | whether the entity passes the predicate check
 
  * **Source**:
-    * core/src/lib/Types.ts:113
+    * core/src/lib/Types.ts:120
 
 ___
 
@@ -157,7 +157,7 @@ You can retrieve the instance of this type through [getRunMetaInfo](../classes/a
 | `type` | `string` | type of the memlab run |
 
  * **Source**:
-    * core/src/lib/Types.ts:913
+    * core/src/lib/Types.ts:920
 
 ## Functions
 

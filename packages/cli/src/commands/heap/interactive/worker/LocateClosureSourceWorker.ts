@@ -8,48 +8,13 @@
  * @oncall web_perf_infra
  */
 
-import type {Optional} from '@memlab/core';
 import type {ClosureScope} from '@memlab/e2e';
 
 import fs from 'fs';
-import cp from 'child_process';
 import {isMainThread, workerData} from 'worker_threads';
 
-import {config, info, fileManager, utils} from '@memlab/core';
+import {fileManager, utils} from '@memlab/core';
 import {ScriptManager} from '@memlab/e2e';
-
-type ShellOptions = {
-  dir?: Optional<string>;
-  ignoreError?: Optional<boolean>;
-  disconnectStdio?: Optional<boolean>;
-};
-
-export function runShell(command: string, options: ShellOptions = {}): string {
-  const runningDir = options.dir ?? fileManager.getMonoRepoDir();
-  const execOptions = {
-    cwd: runningDir,
-    shell: '/bin/bash',
-    stdio: options.disconnectStdio
-      ? []
-      : [process.stdin, process.stdout, process.stderr],
-  };
-  let ret: Buffer | string = '';
-  try {
-    ret = cp.execSync(command, execOptions);
-  } catch (ex) {
-    if (config.verbose) {
-      if (ex instanceof Error) {
-        info.lowLevel(ex.message);
-        info.lowLevel(ex.stack ?? '');
-      }
-    }
-    if (options.ignoreError === true) {
-      return '';
-    }
-    utils.haltOrThrow(`Error when executing command: ${command}`);
-  }
-  return ret && ret.toString('UTF-8');
-}
 
 type ClosureSrcWorkerInput = {
   url: string;
@@ -83,7 +48,7 @@ async function displaySourceCode(): Promise<void> {
     const found = closureVars.reduce((acc, v) => varSet.has(v) && acc, true);
     if (found && closureScope.loc) {
       const startLine = closureScope.loc.start.line;
-      runShell(`code -g ${file}:${startLine}`, {disconnectStdio: true});
+      utils.runShell(`code -g ${file}:${startLine}`, {disconnectStdio: true});
     }
     return found;
   });

@@ -69,6 +69,13 @@ export type XvfbType = {
 };
 
 /** @internal */
+export type ShellOptions = {
+  dir?: Optional<string>;
+  ignoreError?: Optional<boolean>;
+  disconnectStdio?: Optional<boolean>;
+};
+
+/** @internal */
 export type CLIArgs = {
   verbose: boolean;
   app: string;

@@ -8,10 +8,11 @@
  * @oncall web_perf_infra
  */
 
-import type {HaltOrThrowOptions} from './Types';
+import type {HaltOrThrowOptions, ShellOptions} from './Types';
 
 import fs from 'fs';
 import path from 'path';
+import cp from 'child_process';
 import process from 'process';
 import config, {ErrorHandling} from './Config';
 import info from './Console';
@@ -1983,6 +1984,35 @@ function getClosureSourceUrl(node: IHeapNode): Nullable<string> {
   return url;
 }
 
+export function runShell(command: string, options: ShellOptions = {}): string {
+  const runningDir = options.dir ?? config.workDir ?? fileManager.getTmpDir();
+  const execOptions: cp.ExecSyncOptions = {
+    cwd: runningDir,
+    stdio: options.disconnectStdio
+      ? []
+      : [process.stdin, process.stdout, process.stderr],
+  };
+  if (process.platform !== 'win32') {
+    execOptions.shell = '/bin/bash';
+  }
+  let ret: Buffer | string = '';
+  try {
+    ret = cp.execSync(command, execOptions);
+  } catch (ex) {
+    if (config.verbose) {
+      if (ex instanceof Error) {
+        info.lowLevel(ex.message);
+        info.lowLevel(ex.stack ?? '');
+      }
+    }
+    if (options.ignoreError === true) {
+      return '';
+    }
+    utils.haltOrThrow(`Error when executing command: ${command}`);
+  }
+  return ret && ret.toString('UTF-8');
+}
+
 export default {
   applyToNodes,
   callAsync,
@@ -2076,6 +2106,7 @@ export default {
   repeat,
   resolveFilePath,
   resolveSnapshotFilePath,
+  runShell,
   setIsAlternateNode,
   setIsRegularFiberNode,
   shouldShowMoreInfo,
