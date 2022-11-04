@@ -92,7 +92,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:291
+    * core/src/lib/Types.ts:343
 
 ___
 
@@ -145,4 +145,4 @@ memlab run --scenario <SCENARIO FILE> --leak-filter <PATH TO leak-filter.js>
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:340
+    * core/src/lib/Types.ts:392

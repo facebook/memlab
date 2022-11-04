@@ -21,20 +21,20 @@ custom_edit_url: null
 
 ## Type Aliases
 
-### <a id="checkpageloadcallback" name="checkpageloadcallback"></a> **CheckPageLoadCallback**: (`page`: `Page`) => `Promise`<`boolean`\>
+### <a id="checkpageloadcallback" name="checkpageloadcallback"></a> **CheckPageLoadCallback**: (`page`: [`Page`](core_src.md#page)) => `Promise`<`boolean`\>
 
 Callback function to provide if the page is loaded.
 For concrete example, check out [isPageLoaded](../interfaces/core_src.IScenario.md#ispageloaded).
 
  * **Parameters**:
-    * `page`: `Page` | puppeteer's [Page](https://pptr.dev/api/puppeteer.page/) object.
+    * `page`: [`Page`](core_src.md#page) | puppeteer's [Page](https://pptr.dev/api/puppeteer.page/) object. To import this type, check out [Page](core_src.md#page).
  * **Returns**: `Promise`<`boolean`\> | a boolean value, if it returns `true`, memlab will consider
 the navigation completes, if it returns `false`, memlab will keep calling
 this callback until it returns `true`. This is an async callback, you can
 also `await` and returns `true` until some async logic is resolved.
 
  * **Source**:
-    * core/src/lib/Types.ts:840
+    * core/src/lib/Types.ts:899
 
 ___
 
@@ -44,7 +44,7 @@ Data structure for holding cookies.
 For concrete example, check out [cookies](../interfaces/core_src.IScenario.md#cookies).
 
  * **Source**:
-    * core/src/lib/Types.ts:126
+    * core/src/lib/Types.ts:178
 
 ___
 
@@ -59,7 +59,7 @@ or [forEachReferrer](../interfaces/core_src.IHeapNode.md#foreachreferrer).
  * **Returns**: `Optional`<{ `stop`: `boolean`  }\> \| `void` | this API returns void
 
  * **Source**:
-    * core/src/lib/Types.ts:1372
+    * core/src/lib/Types.ts:1431
 
 ___
 
@@ -75,23 +75,23 @@ For concrete example, check out [beforeLeakFilter](../interfaces/core_src.ILeakF
  * **Returns**: `void`
 
  * **Source**:
-    * core/src/lib/Types.ts:351
+    * core/src/lib/Types.ts:403
 
 ___
 
-### <a id="interactionscallback" name="interactionscallback"></a> **InteractionsCallback**: (`page`: `Page`, `args?`: `OperationArgs`) => `Promise`<`void`\>
+### <a id="interactionscallback" name="interactionscallback"></a> **InteractionsCallback**: (`page`: [`Page`](core_src.md#page), `args?`: `OperationArgs`) => `Promise`<`void`\>
 
 The callback defines browser interactions which are
 used by memlab to interact with the web app under test.
 For concrete examples, check out [action](../interfaces/core_src.IScenario.md#action) or [back](../interfaces/core_src.IScenario.md#back).
 
  * **Parameters**:
-    * `page`: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page) object, which provides APIs to interact with the web browser
+    * `page`: [`Page`](core_src.md#page) | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page) object, which provides APIs to interact with the web browser. To import this type, check out [Page](core_src.md#page).
     * `args?`: `OperationArgs`
  * **Returns**: `Promise`<`void`\> | no return value
 
  * **Source**:
-    * core/src/lib/Types.ts:393
+    * core/src/lib/Types.ts:446
 
 ___
 
@@ -119,7 +119,63 @@ function leakFilter(node, _snapshot, _leakedNodeIds) {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:378
+    * core/src/lib/Types.ts:430
+
+___
+
+### <a id="page" name="page"></a> **Page**: `PuppeteerPage`
+
+This is the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+class used by MemLab. The puppeteer `Page` class instance provides
+APIs to interact with the web browser.
+
+The puppeteer `Page` type can be incompatible across different versions.
+Your local npm-installed puppeteer version may be different from
+the puppeteer used by MemLab. This may cause some type errors, for example:
+
+```typescript
+import type {Page} from 'puppeteer';
+import type {RunOptions} from '@memlab/api';
+
+const runOptions: RunOptions = {
+  scenario: {
+    // initial page load url: Google Maps
+    url: () => {
+      return "https://www.google.com/maps/@37.386427,-122.0428214,11z";
+    },
+    // type error here if your local puppeeter version is different
+    // from the puppeteer used by MemLab
+    action: async function (page: Page) {
+      await page.click('button[aria-label="Hotels"]');
+    },
+  },
+};
+```
+
+To avoid the type error in the code example above, MemLab exports the
+puppeteer `Page` type used by MemLab so that your code can import it
+when necessary:
+
+```typescript
+import type {Page} from '@memlab/core' // import Page type from memlab
+import type {RunOptions} from 'memlab';
+
+const runOptions: RunOptions = {
+  scenario: {
+    // initial page load url: Google Maps
+    url: () => {
+      return "https://www.google.com/maps/@37.386427,-122.0428214,11z";
+    },
+    // no type error here
+    action: async function (page: Page) {
+      await page.click('button[aria-label="Hotels"]');
+    },
+  },
+};
+```
+
+ * **Source**:
+    * core/src/lib/Types.ts:159
 
 ___
 
@@ -142,7 +198,7 @@ and [findReferrers](../interfaces/core_src.IHeapNode.md#findreferrers).
  * **Returns**: `boolean` | whether the entity passes the predicate check
 
  * **Source**:
-    * core/src/lib/Types.ts:120
+    * core/src/lib/Types.ts:172
 
 ___
 
@@ -157,7 +213,7 @@ You can retrieve the instance of this type through [getRunMetaInfo](../classes/a
 | `type` | `string` | type of the memlab run |
 
  * **Source**:
-    * core/src/lib/Types.ts:920
+    * core/src/lib/Types.ts:979
 
 ## Functions
 

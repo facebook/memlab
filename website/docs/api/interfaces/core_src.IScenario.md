@@ -51,7 +51,8 @@ from the `action` callback will be candidates for memory leak filtering.
 
 * **Parameters**:
   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
-    object, which provides APIs to interact with the web browser
+    object, which provides APIs to interact with the web browser. To import
+    this type, check out [Page](../modules/core_src.md#page).
 
 * **Examples**:
 ```typescript
@@ -88,7 +89,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:588
+    * core/src/lib/Types.ts:644
 
 ___
 
@@ -99,7 +100,8 @@ back/revert the `action` callback. Think of it as an undo action.
 
 * **Parameters**:
   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
-    object, which provides APIs to interact with the web browser
+    object, which provides APIs to interact with the web browser. To import
+    this type, check out [Page](../modules/core_src.md#page).
 
 * **Examples**:
 ```typescript
@@ -117,7 +119,7 @@ Check out [this page](/docs/how-memlab-works) on why
 memlab needs to undo/revert the `action` callback.
 
  * **Source**:
-    * core/src/lib/Types.ts:612
+    * core/src/lib/Types.ts:669
 
 ___
 
@@ -129,7 +131,8 @@ the HTTP headers or to prepare data before loading the web page.
 
 * **Parameters**:
   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
-    object, which provides APIs to interact with the web browser
+    object, which provides APIs to interact with the web browser. To import
+    this type, check out [Page](../modules/core_src.md#page).
 
 * **Examples**:
 ```typescript
@@ -150,7 +153,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:496
+    * core/src/lib/Types.ts:550
 
 ___
 
@@ -182,7 +185,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:689
+    * core/src/lib/Types.ts:747
 
 ___
 
@@ -197,7 +200,8 @@ connections for at least 500ms.
 
 * **Parameters**:
   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
-    object, which provides APIs to interact with the web browser
+    object, which provides APIs to interact with the web browser. To import
+    this type, check out [Page](../modules/core_src.md#page).
 * **Returns**: a boolean value, if it returns `true`, memlab will consider
   the navigation completes, if it returns `false`, memlab will keep calling
   this callback until it returns `true`. This is an async callback, you can
@@ -222,7 +226,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:662
+    * core/src/lib/Types.ts:720
 
 ___
 
@@ -269,7 +273,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:731
+    * core/src/lib/Types.ts:789
 
 ___
 
@@ -282,7 +286,8 @@ or to prepare data before the [action](core_src.IScenario.md#action) call.
 
 * **Parameters**:
   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
-    object, which provides APIs to interact with the web browser
+    object, which provides APIs to interact with the web browser. To import
+    this type, check out [Page](../modules/core_src.md#page).
 
 * **Examples**:
 ```typescript
@@ -303,7 +308,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:543
+    * core/src/lib/Types.ts:598
 
 ## Methods
 
@@ -338,7 +343,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:468
+    * core/src/lib/Types.ts:521
 
 ___
 
@@ -359,7 +364,7 @@ module.exports = {
 
  * **Returns**: `number`
  * **Source**:
-    * core/src/lib/Types.ts:627
+    * core/src/lib/Types.ts:684
 
 ___
 
@@ -382,4 +387,4 @@ load. All objects allocated by the initial page load will be candidates
 for memory leak filtering.
 
  * **Source**:
-    * core/src/lib/Types.ts:514
+    * core/src/lib/Types.ts:568

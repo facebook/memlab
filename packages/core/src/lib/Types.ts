@@ -10,7 +10,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import {ParsedArgs} from 'minimist';
-import type {LaunchOptions, Page} from 'puppeteer';
+import type {LaunchOptions, Page as PuppeteerPage} from 'puppeteer';
 import type {ErrorHandling, MemLabConfig} from './Config';
 
 /** @internal */
@@ -105,6 +105,58 @@ export type CLIArgs = {
   'local-puppeteer': boolean;
   'snapshot-dir': string;
 };
+
+/**
+ * This is the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+ * class used by MemLab. The puppeteer `Page` class instance provides
+ * APIs to interact with the web browser.
+ *
+ * The puppeteer `Page` type can be incompatible across different versions.
+ * Your local npm-installed puppeteer version may be different from
+ * the puppeteer used by MemLab. This may cause some type errors, for example:
+ *
+ * ```typescript
+ * import type {Page} from 'puppeteer';
+ * import type {RunOptions} from '@memlab/api';
+ *
+ * const runOptions: RunOptions = {
+ *   scenario: {
+ *     // initial page load url: Google Maps
+ *     url: () => {
+ *       return "https://www.google.com/maps/@37.386427,-122.0428214,11z";
+ *     },
+ *     // type error here if your local puppeeter version is different
+ *     // from the puppeteer used by MemLab
+ *     action: async function (page: Page) {
+ *       await page.click('button[aria-label="Hotels"]');
+ *     },
+ *   },
+ * };
+ * ```
+ *
+ * To avoid the type error in the code example above, MemLab exports the
+ * puppeteer `Page` type used by MemLab so that your code can import it
+ * when necessary:
+ *
+ * ```typescript
+ * import type {Page} from '@memlab/core' // import Page type from memlab
+ * import type {RunOptions} from 'memlab';
+ *
+ * const runOptions: RunOptions = {
+ *   scenario: {
+ *     // initial page load url: Google Maps
+ *     url: () => {
+ *       return "https://www.google.com/maps/@37.386427,-122.0428214,11z";
+ *     },
+ *     // no type error here
+ *     action: async function (page: Page) {
+ *       await page.click('button[aria-label="Hotels"]');
+ *     },
+ *   },
+ * };
+ * ```
+ */
+export type Page = PuppeteerPage;
 
 /**
  * the predicate callback is used to decide if a
@@ -387,7 +439,8 @@ export type LeakFilterCallback = (
  * For concrete examples, check out {@link action} or {@link back}.
  *
  * @param page the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
- * object, which provides APIs to interact with the web browser
+ * object, which provides APIs to interact with the web browser.
+ * To import this type, check out {@link Page}.
  * @returns no return value
  */
 export type InteractionsCallback = (
@@ -473,7 +526,8 @@ export interface IScenario {
    *
    * * **Parameters**:
    *   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
-   *     object, which provides APIs to interact with the web browser
+   *     object, which provides APIs to interact with the web browser. To import
+   *     this type, check out {@link Page}.
    *
    * * **Examples**:
    * ```typescript
@@ -520,7 +574,8 @@ export interface IScenario {
    *
    * * **Parameters**:
    *   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
-   *     object, which provides APIs to interact with the web browser
+   *     object, which provides APIs to interact with the web browser. To import
+   *     this type, check out {@link Page}.
    *
    * * **Examples**:
    * ```typescript
@@ -549,7 +604,8 @@ export interface IScenario {
    *
    * * **Parameters**:
    *   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
-   *     object, which provides APIs to interact with the web browser
+   *     object, which provides APIs to interact with the web browser. To import
+   *     this type, check out {@link Page}.
    *
    * * **Examples**:
    * ```typescript
@@ -592,7 +648,8 @@ export interface IScenario {
    *
    * * **Parameters**:
    *   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
-   *     object, which provides APIs to interact with the web browser
+   *     object, which provides APIs to interact with the web browser. To import
+   *     this type, check out {@link Page}.
    *
    * * **Examples**:
    * ```typescript
@@ -635,7 +692,8 @@ export interface IScenario {
    *
    * * **Parameters**:
    *   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
-   *     object, which provides APIs to interact with the web browser
+   *     object, which provides APIs to interact with the web browser. To import
+   *     this type, check out {@link Page}.
    * * **Returns**: a boolean value, if it returns `true`, memlab will consider
    *   the navigation completes, if it returns `false`, memlab will keep calling
    *   this callback until it returns `true`. This is an async callback, you can
@@ -832,6 +890,7 @@ export interface IDataBuilder {
  * Callback function to provide if the page is loaded.
  * For concrete example, check out {@link isPageLoaded}.
  * @param page - puppeteer's [Page](https://pptr.dev/api/puppeteer.page/) object.
+ * To import this type, check out {@link Page}.
  * @returns a boolean value, if it returns `true`, memlab will consider
  * the navigation completes, if it returns `false`, memlab will keep calling
  * this callback until it returns `true`. This is an async callback, you can
