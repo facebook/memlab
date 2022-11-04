@@ -8,8 +8,7 @@
  * @oncall web_perf_infra
  */
 
-import type {ParseResult} from '@babel/parser';
-import type {File} from '@babel/types';
+import type {ParseResult} from '@babel/core';
 import type BaseAstTransform from './BaseAstTransform';
 
 import {parse} from '@babel/parser';
@@ -27,7 +26,7 @@ export default class ScriptRewriteManager {
     options: RewriteScriptOption = {},
   ): Promise<string> {
     // parse code
-    const ast: ParseResult<File> = parse(code, {
+    const ast: ParseResult = parse(code, {
       sourceType: 'script',
     });
     // transform ast

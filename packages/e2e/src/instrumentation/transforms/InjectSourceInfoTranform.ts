@@ -10,13 +10,12 @@
 import type {
   ArrowFunctionExpression,
   ClassMethod,
-  File,
   FunctionDeclaration,
   FunctionExpression,
   ObjectMethod,
 } from '@babel/types';
 import type {NodePath} from '@babel/traverse';
-import type {ParseResult} from '@babel/parser';
+import type {ParseResult} from '@babel/core';
 import type {RewriteScriptOption} from '../ScriptRewriteManager';
 
 import traverse from '@babel/traverse';
@@ -26,7 +25,7 @@ import BaseAstTransform from '../BaseAstTransform';
 
 export default class InjectSourceInfoTranform extends BaseAstTransform {
   public async transform(
-    ast: ParseResult<File>,
+    ast: ParseResult,
     options: RewriteScriptOption = {},
   ): Promise<void> {
     const url = options.url ?? '';

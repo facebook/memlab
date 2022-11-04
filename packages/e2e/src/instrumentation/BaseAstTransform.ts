@@ -8,15 +8,14 @@
  * @oncall web_perf_infra
  */
 
-import type {ParseResult} from '@babel/parser';
-import type {File} from '@babel/types';
+import type {ParseResult} from '@babel/core';
 import type {RewriteScriptOption} from './ScriptRewriteManager';
 
 import {utils} from '@memlab/core';
 
 export default abstract class BaseAstTransform {
   public async transform(
-    ast: ParseResult<File>,
+    ast: ParseResult,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     options: RewriteScriptOption = {},
   ): Promise<void> {

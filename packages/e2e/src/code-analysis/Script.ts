@@ -13,7 +13,6 @@ import type {Nullable, Optional} from '@memlab/core';
 import type {
   ArrowFunctionExpression,
   ClassMethod,
-  File,
   FunctionDeclaration,
   FunctionExpression,
   Identifier,
@@ -22,7 +21,7 @@ import type {
   SourceLocation,
 } from '@babel/types';
 import type {NodePath} from '@babel/traverse';
-import type {ParseResult} from '@babel/parser';
+import type {ParseResult} from '@babel/core';
 
 import traverse from '@babel/traverse';
 import {parse} from '@babel/parser';
@@ -56,7 +55,7 @@ function isFunctionType(type: string): boolean {
 
 export default class Script {
   private code: string;
-  private ast: Nullable<ParseResult<File>>;
+  private ast: Nullable<ParseResult>;
   private closureScopeTree: ClosureScope;
 
   constructor(code: string) {
@@ -137,7 +136,7 @@ export default class Script {
     return grandparentClosureScope;
   }
 
-  private buildClosureScopeTree(ast: ParseResult<File>): ClosureScope {
+  private buildClosureScopeTree(ast: ParseResult): ClosureScope {
     const root = {
       functionName: null,
       functionType: ast.program.type,
