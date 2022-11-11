@@ -8,7 +8,7 @@
  * @oncall web_perf_infra
  */
 
-import type {HaltOrThrowOptions, ShellOptions} from './Types';
+import type {HaltOrThrowOptions, HeapNodeIdSet, ShellOptions} from './Types';
 
 import fs from 'fs';
 import path from 'path';
@@ -2013,7 +2013,30 @@ export function runShell(command: string, options: ShellOptions = {}): string {
   return ret && ret.toString('UTF-8');
 }
 
+export function getRetainedSize(node: IHeapNode): number {
+  return node.retainedSize;
+}
+
+export function aggregateDominatorMetrics(
+  ids: HeapNodeIdSet,
+  snapshot: IHeapSnapshot,
+  checkNodeCb: (node: IHeapNode) => boolean,
+  nodeMetricsCb: (node: IHeapNode) => number,
+) {
+  let ret = 0;
+  const dominators = utils.getConditionalDominatorIds(
+    ids,
+    snapshot,
+    checkNodeCb,
+  );
+  utils.applyToNodes(dominators, snapshot, node => {
+    ret += nodeMetricsCb(node);
+  });
+  return ret;
+}
+
 export default {
+  aggregateDominatorMetrics,
   applyToNodes,
   callAsync,
   camelCaseToReadableString,
@@ -2039,6 +2062,7 @@ export default {
   getReadableBytes,
   getReadablePercent,
   getReadableTime,
+  getRetainedSize,
   getRunMetaFilePath,
   getScenarioName,
   getSingleSnapshotFileForAnalysis,

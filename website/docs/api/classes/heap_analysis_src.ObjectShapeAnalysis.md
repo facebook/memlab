@@ -54,4 +54,4 @@ const name = analysis.getCommandName();
 ```
 
  * **Source**:
-    * heap-analysis/src/plugins/ObjectShapeAnalysis.ts:19
+    * heap-analysis/src/plugins/ObjectShapeAnalysis.ts:28
