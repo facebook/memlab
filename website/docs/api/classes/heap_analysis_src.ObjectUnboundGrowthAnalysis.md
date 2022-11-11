@@ -54,4 +54,4 @@ const name = analysis.getCommandName();
 ```
 
  * **Source**:
-    * heap-analysis/src/plugins/ObjectUnboundGrowthAnalysis.ts:19
+    * heap-analysis/src/plugins/ObjectUnboundGrowthAnalysis.ts:33
