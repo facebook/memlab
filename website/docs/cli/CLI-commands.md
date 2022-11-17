@@ -20,7 +20,7 @@ memlab run --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
 
 **Options**:
  * **`--work-dir`**: set the working directory of the current run
- * **`--headful`**: start the browser in headful mode, but default it is headless
+ * **`--headful`**: start the browser in headful mode, by default it is headless
  * **`--full`**: take heap snapshot for every step in E2E interaction
  * **`--skip-screenshot`**: skip taking screenshots
  * **`--skip-gc`**: skip doing garbage collection in browser
@@ -430,7 +430,7 @@ memlab measure --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
 ```
 
 **Options**:
- * **`--headful`**: start the browser in headful mode, but default it is headless
+ * **`--headful`**: start the browser in headful mode, by default it is headless
  * **`--run-num`**: set number of runs
  * **`--app`**: set name for onboarded web application
  * **`--interaction`**: set name for onboarded interaction
@@ -471,7 +471,7 @@ memlab warmup --scenario /tmp/test-scenario.js
 ```
 
 **Options**:
- * **`--headful`**: start the browser in headful mode, but default it is headless
+ * **`--headful`**: start the browser in headful mode, by default it is headless
  * **`--app`**: set name for onboarded web application
  * **`--interaction`**: set name for onboarded interaction
  * **`--run-mode`**: set running mode
@@ -537,7 +537,7 @@ memlab snapshot --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
 ```
 
 **Options**:
- * **`--headful`**: start the browser in headful mode, but default it is headless
+ * **`--headful`**: start the browser in headful mode, by default it is headless
  * **`--app`**: set name for onboarded web application
  * **`--interaction`**: set name for onboarded interaction
  * **`--full`**: take heap snapshot for every step in E2E interaction
@@ -572,7 +572,7 @@ memlab warmup-and-snapshot
 
 **Options**:
  * **`--work-dir`**: set the working directory of the current run
- * **`--headful`**: start the browser in headful mode, but default it is headless
+ * **`--headful`**: start the browser in headful mode, by default it is headless
  * **`--app`**: set name for onboarded web application
  * **`--interaction`**: set name for onboarded interaction
  * **`--run-mode`**: set running mode

@@ -19,7 +19,7 @@ export default class HeadfulBrowserOption extends BaseOption {
   }
 
   getDescription(): string {
-    return 'start the browser in headful mode, but default it is headless';
+    return 'start the browser in headful mode, by default it is headless';
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
