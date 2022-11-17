@@ -8,6 +8,8 @@
  * @oncall web_perf_infra
  */
 import type {Widgets} from 'blessed';
+import type {Nullable} from '@memlab/core';
+import type HeapViewController from './HeapViewController';
 
 import blessed from 'blessed';
 import chalk from 'chalk';
@@ -24,6 +26,10 @@ export type ListComponentOption = {
 
 export type ListItemSelectInfo = {
   keyName: string;
+};
+
+export type LabelOption = {
+  nextTick?: boolean;
 };
 
 export type ListCallbacks = {
@@ -46,6 +52,8 @@ export type ListCallbacks = {
 export default class ListComponent {
   public element: Widgets.ListElement;
   public id: number;
+  private labelText = '';
+  private controller: Nullable<HeapViewController> = null;
   private listIndex = 0;
   private content: string[] = [];
   private callbacks: ListCallbacks;
@@ -92,6 +100,10 @@ export default class ListComponent {
     });
     this.setContent(content);
     this.registerKeys();
+  }
+
+  public setController(controller: HeapViewController): void {
+    this.controller = controller;
   }
 
   // render the whole screen
@@ -244,10 +256,23 @@ export default class ListComponent {
     this.focusKey = key;
   }
 
-  public setLabel(label: string): void {
-    const componentLabel =
+  public setLabel(label: string, option: LabelOption = {}): void {
+    this.labelText = label;
+    let componentLabel =
       label + chalk.grey(` (press ${chalk.inverse(this.focusKey)} to focus)`);
-    this.element.setLabel(componentLabel);
+    if (this.controller) {
+      const data = this.controller.getComponentDataById(this.id);
+      if (data) {
+        componentLabel += chalk.grey(` ${data.items.length} items`);
+      }
+    }
+    if (option.nextTick) {
+      process.nextTick(() => {
+        this.element.setLabel(componentLabel);
+      });
+    } else {
+      this.element.setLabel(componentLabel);
+    }
   }
 
   public setContent(content: string[]): void {

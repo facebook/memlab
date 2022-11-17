@@ -238,6 +238,7 @@ export default class CliScreen {
     const box = new ListComponent([], callbacks, {
       ...this.getClusteredObjectBoxSize(),
     });
+    box.setController(this.heapController);
     box.setFocusKey(this.getNextFocusKey());
     box.setLabel('Clustered Objects');
     this.screen.append(box.element);
@@ -258,6 +259,7 @@ export default class CliScreen {
     const box = new ListComponent([], callbacks, {
       ...this.getReferrerBoxSize(),
     });
+    box.setController(this.heapController);
     box.setFocusKey(this.getNextFocusKey());
     box.setLabel('Referrers');
     this.screen.append(box.element);
@@ -278,6 +280,7 @@ export default class CliScreen {
     const box = new ListComponent([], callbacks, {
       ...this.getObjectBoxSize(),
     });
+    box.setController(this.heapController);
     box.setFocusKey(this.getNextFocusKey());
     box.setLabel('Objects');
     this.screen.append(box.element);
@@ -301,6 +304,7 @@ export default class CliScreen {
     const box = new ListComponent([], callbacks, {
       ...this.getObjectPropertyBoxSize(),
     });
+    box.setController(this.heapController);
     box.setFocusKey(this.getNextFocusKey());
     box.setLabel('Objects Detail');
     this.screen.append(box.element);
@@ -324,6 +328,7 @@ export default class CliScreen {
     const box = new ListComponent([], callbacks, {
       ...this.getReferenceBoxSize(),
     });
+    box.setController(this.heapController);
     box.setFocusKey(this.getNextFocusKey());
     box.setLabel('References');
     this.screen.append(box.element);
@@ -346,6 +351,7 @@ export default class CliScreen {
     const box = new ListComponent([], callbacks, {
       ...this.getRetainerTraceBoxSize(),
     });
+    box.setController(this.heapController);
     box.setFocusKey(this.getNextFocusKey());
     box.setLabel('Retainer Trace');
     this.screen.append(box.element);

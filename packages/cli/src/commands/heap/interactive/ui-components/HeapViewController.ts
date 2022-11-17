@@ -126,6 +126,10 @@ export default class HeapViewController {
     return ret;
   }
 
+  getComponentDataById(componentId: number): Nullable<ComponentData> {
+    return this.componentIdToDataMap.get(componentId) ?? null;
+  }
+
   getContent(componentId: number): string[] {
     const ret: string[] = [];
     const data = this.componentIdToDataMap.get(componentId);
@@ -432,17 +436,23 @@ export default class HeapViewController {
     options: {skipFocus?: boolean} = {},
   ): void {
     this.currentHeapObject = node;
-    // set parent box's data and content
+    // set clustered box's data and content
     const clusteredBoxData = this.getClusteredBoxData();
     this.componentIdToDataMap.set(this.clusteredBox.id, clusteredBoxData);
     this.clusteredBox.setContent(this.getContent(this.clusteredBox.id));
     this.clusteredBox.selectIndex(clusteredBoxData.selectedIdx);
+    // must set label here again so the additional label info
+    // can render with updated component data
+    this.clusteredBox.setLabel('Clustered Objects');
 
     // set object box's data and content
     const objectBoxData = this.getObjectBoxData();
     this.componentIdToDataMap.set(this.objectBox.id, objectBoxData);
     this.objectBox.setContent(this.getContent(this.objectBox.id));
     this.objectBox.selectIndex(objectBoxData.selectedIdx);
+    // must set label here again so the additional label info
+    // can render with updated component data
+    this.objectBox.setLabel('Objects');
 
     this.setSelectedHeapObject(node);
     if (!options.skipFocus) {
