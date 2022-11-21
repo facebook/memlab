@@ -23,18 +23,22 @@ Run heap analysis for a single heap snapshot file
 
  * **Parameters**:
     * `file`: `string` | the absolute path of a `.heapsnapshot` file.
- * **Returns**: `Promise`<`void`\> | this API returns void. To get the analysis results,
-check out the documentation of the hosting heap analysis class and
-call the analysis-specific API to get results after calling this method.
+ * **Returns**: `Promise`<`AnalyzeSnapshotResult`\> | this API returns {@link AnalyzeSnapshotResult}, which contains
+the logging file of analysis console output. Alternatively, to get more
+structured analysis results, check out the documentation of the hosting
+heap analysis class and call the analysis-specific API to get results
+after calling this method.
 * **Example**:
 ```typescript
 const analysis = new StringAnalysis();
-await anaysis.analyzeSnapshotFromFile(snapshotFile);
+// analysis console output is saved in result.analysisOutputFile
+const result = await anaysis.analyzeSnapshotFromFile(snapshotFile);
+// query analysis-specific and structured results
 const stringPatterns = analysis.getTopDuplicatedStringsInCount();
 ```
 
  * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:75
+    * heap-analysis/src/BaseAnalysis.ts:79
 
 ___
 
@@ -62,4 +66,4 @@ ___
 
  * **Returns**: `IHeapNode`[]
  * **Source**:
-    * heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:45
+    * heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:47

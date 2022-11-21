@@ -8,7 +8,7 @@
  * @oncall web_perf_infra
  */
 
-import type {HeapAnalysisOptions} from '../PluginUtils';
+import type {AnalyzeSnapshotResult, HeapAnalysisOptions} from '../PluginUtils';
 import type {
   BaseOption,
   IHeapEdge,
@@ -40,7 +40,9 @@ class ObjectShapeAnalysis extends BaseAnalysis {
   }
 
   /** @internal */
-  public async analyzeSnapshotsInDirectory(directory: string): Promise<void> {
+  public async analyzeSnapshotsInDirectory(
+    directory: string,
+  ): Promise<AnalyzeSnapshotResult> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const d = directory;
     throw utils.haltOrThrow(

@@ -12,6 +12,7 @@
 
 import chalk, {Chalk} from 'chalk';
 import fs from 'fs';
+import path from 'path';
 import readline from 'readline';
 import stringWidth from 'string-width';
 import type {MemLabConfig} from './Config';
@@ -40,6 +41,7 @@ type Sections = {
 
 const stdout = process.stdout;
 const TABLE_MAX_WIDTH = 50;
+const LOG_BUFFER_LENGTH = 100;
 const prevLine = '\x1b[F';
 const eraseLine = '\x1b[K';
 const barComplete = chalk.green('\u2588');
@@ -104,6 +106,7 @@ class MemLabConsole {
   private config: MemLabConfig = {} as MemLabConfig;
   private sections: Sections;
   private log: string[] = [];
+  private logFileSet: Set<string> = new Set();
   private styles: MemlabConsoleStyles = {
     top: (msg: string): string => msg,
     high: chalk.dim.bind(chalk),
@@ -180,24 +183,41 @@ class MemLabConsole {
         .replace(/\[\d{1,3}m/g, ''),
     );
     this.log.push(...lines);
-    if (this.log.length > 20) {
-      this.flushLog();
+    if (this.log.length > LOG_BUFFER_LENGTH) {
+      this.flushLog({sync: true});
     }
   }
 
   private flushLog(options: {sync?: boolean} = {}): void {
     const str = this.log.join('\n');
-    if (str.length > 0) {
-      const file = this.config.consoleLogFile;
-      if (options.sync) {
-        fs.appendFileSync(file, str + '\n', 'UTF-8');
-      } else {
-        fs.appendFile(file, str + '\n', 'UTF-8', () => {
-          // no op
-        });
+    this.log = [];
+
+    if (str.length === 0) {
+      return;
+    }
+
+    // synchronous logging
+    if (options.sync) {
+      for (const logFile of this.logFileSet) {
+        try {
+          fs.appendFileSync(logFile, str + '\n', 'UTF-8');
+        } catch {
+          // fail silently
+        }
+      }
+    } else {
+      // async logging
+      const emptyCallback = () => {
+        // no op
+      };
+      for (const logFile of this.logFileSet) {
+        try {
+          fs.appendFile(logFile, str + '\n', 'UTF-8', emptyCallback);
+        } catch {
+          // fail silently
+        }
       }
     }
-    this.log = [];
   }
 
   private pushMsg(msg: string, options: ConsoleOptions = {}): void {
@@ -289,6 +309,16 @@ class MemLabConsole {
     if (this.config.isContinuousTest || !this.config.muteConsole) {
       console.log(msg);
     }
+  }
+
+  public registerLogFile(logFile: string): void {
+    this.flushLog({sync: true});
+    this.logFileSet.add(path.resolve(logFile));
+  }
+
+  public unregisterLogFile(logFile: string): void {
+    this.flushLog({sync: true});
+    this.logFileSet.delete(path.resolve(logFile));
   }
 
   public beginSection(name: string): void {

@@ -9,7 +9,7 @@
  */
 
 import type {IHeapSnapshot, IHeapNode} from '@memlab/core';
-import type {HeapAnalysisOptions} from '../PluginUtils';
+import type {AnalyzeSnapshotResult, HeapAnalysisOptions} from '../PluginUtils';
 
 import chalk from 'chalk';
 import {info, utils, BaseOption} from '@memlab/core';
@@ -134,7 +134,9 @@ export default class StringAnalysis extends BaseAnalysis {
   }
 
   /** @internal */
-  public async analyzeSnapshotsInDirectory(directory: string): Promise<void> {
+  public async analyzeSnapshotsInDirectory(
+    directory: string,
+  ): Promise<AnalyzeSnapshotResult> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const d = directory;
     throw utils.haltOrThrow(

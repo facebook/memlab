@@ -79,7 +79,7 @@ class TestObject {}
 ```
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:664
+    * heap-analysis/src/PluginUtils.ts:675
 
 ___
 
@@ -104,7 +104,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:461
+    * heap-analysis/src/PluginUtils.ts:472
 
 ___
 
@@ -116,7 +116,7 @@ ___
     * `file`: `string`
  * **Returns**: `Promise`<`IHeapSnapshot`\>
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:492
+    * heap-analysis/src/PluginUtils.ts:503
 
 ___
 
@@ -163,7 +163,7 @@ The new heap analysis can also be used with [analyze](api_src.md#analyze), in th
 [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:373
+    * heap-analysis/src/PluginUtils.ts:384
 
 ___
 
@@ -210,7 +210,7 @@ The new heap analysis can also be used with [analyze](api_src.md#analyze), in th
 ascending order from [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:324
+    * heap-analysis/src/PluginUtils.ts:335
 
 ___
 
@@ -258,7 +258,7 @@ The new heap analysis can also be used with [analyze](api_src.md#analyze), in th
 ascending order from [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:427
+    * heap-analysis/src/PluginUtils.ts:438
 
 ___
 
@@ -330,7 +330,7 @@ Each heap snapshot could be non-trivial in size, loading them all at once
 may not be possible.
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:569
+    * heap-analysis/src/PluginUtils.ts:580
 
 ___
 
@@ -355,4 +355,4 @@ import type {takeNodeFullHeap} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:484
+    * heap-analysis/src/PluginUtils.ts:495

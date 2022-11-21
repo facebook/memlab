@@ -142,6 +142,11 @@ export class FileManager {
     return path.join(this.getDataBaseDir(options), 'logger');
   }
 
+  // all heap analysis results generated
+  public getHeapAnalysisLogDir(options: FileOption = {}): string {
+    return path.join(this.getLoggerOutDir(options), 'heap-analysis');
+  }
+
   // all trace clusters generated from the current run
   public getTraceClustersDir(options: FileOption = {}): string {
     return path.join(this.getLoggerOutDir(options), 'trace-clusters');
@@ -267,6 +272,16 @@ export class FileManager {
     return {controlWorkDir, testWorkDir};
   }
 
+  // create a unique log file created for heap analysis output
+  public initNewHeapAnalysisLogFile(options: FileOption = {}): string {
+    const dir = this.getHeapAnalysisLogDir(options);
+    const file = path.join(dir, `analysis-${utils.getUniqueID()}-out.log`);
+    if (!fs.existsSync(file)) {
+      fs.createFileSync(file);
+    }
+    return file;
+  }
+
   public getAndInitTSCompileIntermediateDir(): string {
     const dir = path.join(this.getTmpDir(), 'memlab-code');
     this.rmDir(dir);
@@ -309,6 +324,8 @@ export class FileManager {
     this.emptyDirIfExists(this.getUnclassifiedTraceClusterDir(options));
     // all unique cluster info
     this.emptyDirIfExists(this.getUniqueTraceClusterDir(options));
+    // all heap analysis results
+    this.emptyDirIfExists(this.getHeapAnalysisLogDir(options));
   }
 
   public resetBrowserDir(): void {
@@ -399,7 +416,10 @@ export class FileManager {
       this.getPersistDataDir(options),
     );
 
+    // register the default log file
     config.consoleLogFile = path.join(config.curDataDir, 'console-log.txt');
+    info.registerLogFile(config.consoleLogFile);
+
     config.runMetaFile = this.getRunMetaFile(options);
     config.snapshotSequenceFile = this.getSnapshotSequenceMetaFile(options);
     config.browserInfoSummary = path.join(
@@ -442,6 +462,11 @@ export class FileManager {
     config.traceJsonOutDir = joinAndProcessDir(
       options,
       this.getTraceJSONDir(options),
+    );
+    // heap analysis results
+    config.heapAnalysisLogDir = joinAndProcessDir(
+      options,
+      this.getHeapAnalysisLogDir(options),
     );
     config.metricsOutDir = joinAndProcessDir(options, loggerOutDir, 'metrics');
     config.reportScreenshotFile = path.join(outDir, 'report.png');

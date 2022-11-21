@@ -10,6 +10,7 @@
 
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 
+import fs from 'fs';
 import {ShapeUnboundGrowthAnalysis, warmupAndTakeSnapshots} from '../../index';
 import {scenario, testSetup, testTimeout} from './lib/E2ETestSettings';
 
@@ -45,6 +46,7 @@ test(
       evalInBrowserAfterInitLoad: inject,
       snapshotForEachStep: true,
     });
+
     // test analysis from auto loading
     let analysis = new ShapeUnboundGrowthAnalysis();
     await analysis.run();
@@ -60,7 +62,16 @@ test(
     // test analysis from file
     const snapshotDir = result.getSnapshotFileDir();
     analysis = new ShapeUnboundGrowthAnalysis();
-    await analysis.analyzeSnapshotsInDirectory(snapshotDir);
+    const ret = await analysis.analyzeSnapshotsInDirectory(snapshotDir);
+
+    // expect the heap analysis output log file to exist and
+    // to contain the expected results
+    expect(fs.existsSync(ret.analysisOutputFile)).toBe(true);
+    expect(
+      fs.readFileSync(ret.analysisOutputFile, 'UTF-8').includes('LeakObject'),
+    ).toBe(true);
+
+    // expect the query API works
     shapeSummary = analysis.getShapesWithUnboundGrowth();
     expect(
       shapeSummary.some((summary: ShapeSummary) =>

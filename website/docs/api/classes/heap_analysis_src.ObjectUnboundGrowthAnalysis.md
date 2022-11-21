@@ -23,18 +23,22 @@ Run heap analysis for a series of heap snapshot files
 
  * **Parameters**:
     * `directory`: `string` | the absolute path of the directory holding a series of `.heapsnapshot` files, all snapshot files will be loaded and analyzed in the alphanumerically ascending order of those snapshot file names.
- * **Returns**: `Promise`<`void`\> | this API returns void. To get the analysis results,
-check out the documentation of the hosting heap analysis class and
-call the analysis-specific API to get results after calling this method.
+ * **Returns**: `Promise`<`AnalyzeSnapshotResult`\> | this API returns {@link AnalyzeSnapshotResult}, which contains
+the logging file of analysis console output. Alternatively, to get more
+structured analysis results, check out the documentation of the hosting
+heap analysis class and call the analysis-specific API to get results
+after calling this method.
 * **Example**:
 ```typescript
 const analysis = new ShapeUnboundGrowthAnalysis();
-await anaysis.analyzeSnapshotsInDirectory(snapshotDirectory);
+// analysis console output is saved in result.analysisOutputFile
+const result = await anaysis.analyzeSnapshotsInDirectory(snapshotDirectory);
+// query analysis-specific and structured results
 const shapes = analysis.getShapesWithUnboundGrowth();
 ```
 
  * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:100
+    * heap-analysis/src/BaseAnalysis.ts:114
 
 ___
 

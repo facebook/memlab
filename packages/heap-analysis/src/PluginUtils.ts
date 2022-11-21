@@ -73,6 +73,17 @@ export type HeapAnalysisOptions = {
 };
 
 /**
+ * This is the return type from calling {@link analyzeSnapshotFromFile}
+ * or {@link analyzeSnapshotsInDirectory}.
+ */
+export type AnalyzeSnapshotResult = {
+  /**
+   * file path of the console output of the heap analysis call
+   */
+  analysisOutputFile: string;
+};
+
+/**
  * filter out dominators that have a similar size, for example if
  * input is [A, B] and A is the dominator of B, then this function
  * throw away A if the size of A is close to the size of B

@@ -14,7 +14,7 @@ import type {
   IHeapSnapshot,
   IMemoryAnalystOptions,
 } from '@memlab/core';
-import type {HeapAnalysisOptions} from '../PluginUtils';
+import type {AnalyzeSnapshotResult, HeapAnalysisOptions} from '../PluginUtils';
 
 import fs from 'fs';
 import {
@@ -48,7 +48,9 @@ class ObjectUnboundGrowthAnalysis extends BaseAnalysis {
   }
 
   /** @internal */
-  public async analyzeSnapshotFromFile(file: string): Promise<void> {
+  public async analyzeSnapshotFromFile(
+    file: string,
+  ): Promise<AnalyzeSnapshotResult> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const f = file;
     throw utils.haltOrThrow(

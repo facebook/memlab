@@ -134,6 +134,7 @@ export class MemLabConfig {
   traceClusterOutDir: string;
   traceJsonOutDir: string;
   metricsOutDir: string;
+  heapAnalysisLogDir: string;
   reportScreenshotFile: string;
   newUniqueClusterDir: string;
   staleUniqueClusterDir: string;

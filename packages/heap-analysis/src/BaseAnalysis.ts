@@ -8,10 +8,10 @@
  * @oncall web_perf_infra
  */
 
-import type {AnyValue} from '@memlab/core';
-import type {HeapAnalysisOptions} from './PluginUtils';
+import type {AnyValue, BaseOption} from '@memlab/core';
+import type {AnalyzeSnapshotResult, HeapAnalysisOptions} from './PluginUtils';
 
-import {BaseOption, config, utils, constant} from '@memlab/core';
+import {config, constant, fileManager, info, utils} from '@memlab/core';
 import {defaultTestPlanner} from '@memlab/e2e';
 import pluginUtils from './PluginUtils';
 
@@ -62,24 +62,34 @@ abstract class Analysis {
   /**
    * Run heap analysis for a single heap snapshot file
    * @param file the absolute path of a `.heapsnapshot` file.
-   * @returns this API returns void. To get the analysis results,
-   * check out the documentation of the hosting heap analysis class and
-   * call the analysis-specific API to get results after calling this method.
+   * @returns this API returns {@link AnalyzeSnapshotResult}, which contains
+   * the logging file of analysis console output. Alternatively, to get more
+   * structured analysis results, check out the documentation of the hosting
+   * heap analysis class and call the analysis-specific API to get results
+   * after calling this method.
    * * **Example**:
    * ```typescript
    * const analysis = new StringAnalysis();
-   * await anaysis.analyzeSnapshotFromFile(snapshotFile);
+   * // analysis console output is saved in result.analysisOutputFile
+   * const result = await anaysis.analyzeSnapshotFromFile(snapshotFile);
+   * // query analysis-specific and structured results
    * const stringPatterns = analysis.getTopDuplicatedStringsInCount();
    * ```
    */
-  public async analyzeSnapshotFromFile(file: string): Promise<void> {
-    return this.process({
+  public async analyzeSnapshotFromFile(
+    file: string,
+  ): Promise<AnalyzeSnapshotResult> {
+    const analysisOutputFile = fileManager.initNewHeapAnalysisLogFile();
+    info.registerLogFile(analysisOutputFile);
+    await this.process({
       args: {
         _: [],
         snapshot: file,
         'snapshot-dir': '<MUST_PROVIDE_SNAPSHOT_DIR>',
       },
     });
+    info.unregisterLogFile(analysisOutputFile);
+    return {analysisOutputFile};
   }
 
   /**
@@ -87,24 +97,34 @@ abstract class Analysis {
    * @param directory the absolute path of the directory holding a series of
    * `.heapsnapshot` files, all snapshot files will be loaded and analyzed
    * in the alphanumerically ascending order of those snapshot file names.
-   * @returns this API returns void. To get the analysis results,
-   * check out the documentation of the hosting heap analysis class and
-   * call the analysis-specific API to get results after calling this method.
+   * @returns this API returns {@link AnalyzeSnapshotResult}, which contains
+   * the logging file of analysis console output. Alternatively, to get more
+   * structured analysis results, check out the documentation of the hosting
+   * heap analysis class and call the analysis-specific API to get results
+   * after calling this method.
    * * **Example**:
    * ```typescript
    * const analysis = new ShapeUnboundGrowthAnalysis();
-   * await anaysis.analyzeSnapshotsInDirectory(snapshotDirectory);
+   * // analysis console output is saved in result.analysisOutputFile
+   * const result = await anaysis.analyzeSnapshotsInDirectory(snapshotDirectory);
+   * // query analysis-specific and structured results
    * const shapes = analysis.getShapesWithUnboundGrowth();
    * ```
    */
-  public async analyzeSnapshotsInDirectory(directory: string): Promise<void> {
-    return this.process({
+  public async analyzeSnapshotsInDirectory(
+    directory: string,
+  ): Promise<AnalyzeSnapshotResult> {
+    const analysisOutputFile = fileManager.initNewHeapAnalysisLogFile();
+    info.registerLogFile(analysisOutputFile);
+    await this.process({
       args: {
         _: [],
         snapshot: '<MUST_PROVIDE_SNAPSHOT_FILE>',
         'snapshot-dir': directory,
       },
     });
+    info.unregisterLogFile(analysisOutputFile);
+    return {analysisOutputFile};
   }
 }
 

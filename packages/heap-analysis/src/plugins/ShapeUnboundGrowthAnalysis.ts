@@ -9,7 +9,7 @@
  */
 
 import type {IHeapSnapshot, Nullable} from '@memlab/core';
-import type {HeapAnalysisOptions} from '../PluginUtils';
+import type {AnalyzeSnapshotResult, HeapAnalysisOptions} from '../PluginUtils';
 
 import chalk from 'chalk';
 import {BaseOption, config, info, serializer, utils} from '@memlab/core';
@@ -58,7 +58,9 @@ export default class ShapeUnboundGrowthAnalysis extends BaseAnalysis {
   }
 
   /** @internal */
-  public async analyzeSnapshotFromFile(file: string): Promise<void> {
+  public async analyzeSnapshotFromFile(
+    file: string,
+  ): Promise<AnalyzeSnapshotResult> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const f = file;
     throw utils.haltOrThrow(
