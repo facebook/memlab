@@ -66,6 +66,30 @@ function formatTableArg(arg: AnyValue): void {
   });
 }
 
+type ExitOptions = {
+  exit?: boolean;
+  cleanup?: boolean;
+};
+
+type ExitHandler = (options: ExitOptions, exitCode: number | string) => void;
+
+function registerExitCleanup(
+  inst: MemLabConsole,
+  exitHandler: ExitHandler,
+): void {
+  const p = process;
+
+  // normal exit
+  p.on('exit', exitHandler.bind(null, {cleanup: true}));
+
+  // ctrl + c event
+  p.on('SIGINT', exitHandler.bind(null, {exit: true}));
+
+  // kill pid
+  p.on('SIGUSR1', exitHandler.bind(null, {exit: true}));
+  p.on('SIGUSR2', exitHandler.bind(null, {exit: true}));
+}
+
 interface MemlabConsoleStyles {
   top: (msg: string) => string;
   high: Chalk;
@@ -108,12 +132,17 @@ class MemLabConsole {
     const inst = new MemLabConsole();
     MemLabConsole.singleton = inst;
 
-    // clean up output
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    process.on('exit', (_code: number) => {
-      inst.flushLog();
+    const exitHandler: ExitHandler = (
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      _options: ExitOptions,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      _exitCode: number | string,
+    ) => {
+      inst.flushLog({sync: true});
       inst.clearPrevOverwriteMsg();
-    });
+    };
+    registerExitCleanup(inst, exitHandler);
+
     return inst;
   }
 
@@ -144,30 +173,35 @@ class MemLabConsole {
 
   private logMsg(msg: string): void {
     // remove control characters
-    const rawMsg = msg
-      // eslint-disable-next-line no-control-regex
-      .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
-      .replace(/\[\d{1,3}m/g, '');
-    this.log.push(rawMsg);
+    const lines = msg.split('\n').map(line =>
+      line
+        // eslint-disable-next-line no-control-regex
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
+        .replace(/\[\d{1,3}m/g, ''),
+    );
+    this.log.push(...lines);
     if (this.log.length > 20) {
       this.flushLog();
     }
   }
 
-  private flushLog(): void {
+  private flushLog(options: {sync?: boolean} = {}): void {
     const str = this.log.join('\n');
     if (str.length > 0) {
       const file = this.config.consoleLogFile;
-      fs.appendFile(file, str + '\n', 'UTF-8', () => {
-        // NOOP
-      });
+      if (options.sync) {
+        fs.appendFileSync(file, str + '\n', 'UTF-8');
+      } else {
+        fs.appendFile(file, str + '\n', 'UTF-8', () => {
+          // no op
+        });
+      }
     }
     this.log = [];
   }
 
   private pushMsg(msg: string, options: ConsoleOptions = {}): void {
-    const len = this.sections.arr.length;
-    if (this.config.isContinuousTest || len === 0) {
+    if (this.sections.arr.length === 0) {
       return;
     }
     // calculate each line's visible width
@@ -189,7 +223,9 @@ class MemLabConsole {
     if (!section || section.msgs.length === 0) {
       return;
     }
-    stdout.write(eraseLine);
+    if (!this.config.muteConsole) {
+      stdout.write(eraseLine);
+    }
     const msg = section.msgs.pop();
 
     if (!msg) {
@@ -201,8 +237,10 @@ class MemLabConsole {
       const line = lines.pop() ?? 0;
       const width = stdout.columns;
       let n = line === 0 ? 1 : Math.ceil(line / width);
-      while (n-- > 0) {
-        stdout.write(prevLine + eraseLine);
+      if (!this.config.muteConsole && !this.config.isTest) {
+        while (n-- > 0) {
+          stdout.write(prevLine + eraseLine);
+        }
       }
     }
   }
@@ -244,11 +282,13 @@ class MemLabConsole {
   }
 
   private printStr(msg: string, options: ConsoleOptions = {}): void {
-    if (this.config.isTest || this.config.muteConsole) {
+    this.pushMsg(msg, options);
+    if (this.config.isTest) {
       return;
     }
-    console.log(msg);
-    this.pushMsg(msg, options);
+    if (this.config.isContinuousTest || !this.config.muteConsole) {
+      console.log(msg);
+    }
   }
 
   public beginSection(name: string): void {
@@ -375,14 +415,16 @@ class MemLabConsole {
     msg: string,
     options: {level?: keyof MemlabConsoleStyles} = {},
   ): void {
-    if (this.config.isTest || this.config.muteConsole) {
+    const str = this.style(msg, options.level || 'low');
+    if (this.config.isContinuousTest) {
+      this.printStr(msg, {isOverwrite: false});
       return;
     }
-    if (this.config.isContinuousTest) {
-      return console.log(msg);
+    if (this.config.isTest || this.config.muteConsole) {
+      this.printStr(str, {isOverwrite: true});
+      return;
     }
     this.clearPrevOverwriteMsg();
-    const str = this.style(msg, options.level || 'low');
     this.printStr(str, {isOverwrite: true});
   }
 
