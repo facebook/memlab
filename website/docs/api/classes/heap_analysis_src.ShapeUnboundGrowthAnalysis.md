@@ -32,7 +32,7 @@ after calling this method.
 ```typescript
 const analysis = new ShapeUnboundGrowthAnalysis();
 // analysis console output is saved in result.analysisOutputFile
-const result = await anaysis.analyzeSnapshotsInDirectory(snapshotDirectory);
+const result = await analysis.analyzeSnapshotsInDirectory(snapshotDirectory);
 // query analysis-specific and structured results
 const shapes = analysis.getShapesWithUnboundGrowth();
 ```

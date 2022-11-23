@@ -71,7 +71,7 @@ abstract class Analysis {
    * ```typescript
    * const analysis = new StringAnalysis();
    * // analysis console output is saved in result.analysisOutputFile
-   * const result = await anaysis.analyzeSnapshotFromFile(snapshotFile);
+   * const result = await analysis.analyzeSnapshotFromFile(snapshotFile);
    * // query analysis-specific and structured results
    * const stringPatterns = analysis.getTopDuplicatedStringsInCount();
    * ```
@@ -106,7 +106,7 @@ abstract class Analysis {
    * ```typescript
    * const analysis = new ShapeUnboundGrowthAnalysis();
    * // analysis console output is saved in result.analysisOutputFile
-   * const result = await anaysis.analyzeSnapshotsInDirectory(snapshotDirectory);
+   * const result = await analysis.analyzeSnapshotsInDirectory(snapshotDirectory);
    * // query analysis-specific and structured results
    * const shapes = analysis.getShapesWithUnboundGrowth();
    * ```

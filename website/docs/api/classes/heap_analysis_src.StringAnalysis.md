@@ -35,7 +35,7 @@ after calling this method.
 ```typescript
 const analysis = new StringAnalysis();
 // analysis console output is saved in result.analysisOutputFile
-const result = await anaysis.analyzeSnapshotFromFile(snapshotFile);
+const result = await analysis.analyzeSnapshotFromFile(snapshotFile);
 // query analysis-specific and structured results
 const stringPatterns = analysis.getTopDuplicatedStringsInCount();
 ```
