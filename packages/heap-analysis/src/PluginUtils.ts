@@ -73,6 +73,18 @@ export type HeapAnalysisOptions = {
 };
 
 /**
+ * This is the input option for {@link analyzeSnapshotFromFile}
+ * and {@link analyzeSnapshotsInDirectory}.
+ */
+export type RunHeapAnalysisOptions = {
+  /**
+   * specify the working directory to where the intermediate, logging,
+   * and output files should be saved
+   */
+  workDir?: string;
+};
+
+/**
  * This is the return type from calling {@link analyzeSnapshotFromFile}
  * or {@link analyzeSnapshotsInDirectory}.
  */

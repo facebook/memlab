@@ -28,7 +28,11 @@ export const {
   takeNodeFullHeap,
 } = PluginUtils;
 
-export type {HeapAnalysisOptions} from './PluginUtils';
+export type {
+  AnalyzeSnapshotResult,
+  HeapAnalysisOptions,
+  RunHeapAnalysisOptions,
+} from './PluginUtils';
 export {default as BaseAnalysis} from './BaseAnalysis';
 export {default as DetachedDOMElementAnalysis} from './plugins/DetachedDOMElementAnalysis';
 export {default as GlobalVariableAnalysis} from './plugins/GlobalVariableAnalysis/GlobalVariableAnalysis';

@@ -9,7 +9,11 @@
  */
 
 import type {AnyValue, BaseOption} from '@memlab/core';
-import type {AnalyzeSnapshotResult, HeapAnalysisOptions} from './PluginUtils';
+import type {
+  AnalyzeSnapshotResult,
+  HeapAnalysisOptions,
+  RunHeapAnalysisOptions,
+} from './PluginUtils';
 
 import {config, constant, fileManager, info, utils} from '@memlab/core';
 import {defaultTestPlanner} from '@memlab/e2e';
@@ -62,6 +66,7 @@ abstract class Analysis {
   /**
    * Run heap analysis for a single heap snapshot file
    * @param file the absolute path of a `.heapsnapshot` file.
+   * @param options optional configuration for the heap analysis run
    * @returns this API returns {@link AnalyzeSnapshotResult}, which contains
    * the logging file of analysis console output. Alternatively, to get more
    * structured analysis results, check out the documentation of the hosting
@@ -75,10 +80,27 @@ abstract class Analysis {
    * // query analysis-specific and structured results
    * const stringPatterns = analysis.getTopDuplicatedStringsInCount();
    * ```
+   * Additionally, you can specify a working directory to where
+   * the intermediate, logging, and final output files will be dumped:
+   * ```typescript
+   * const analysis = new StringAnalysis();
+   * // analysis console output is saved in result.analysisOutputFile
+   * // which is inside the specified working directory
+   * const result = await analysis.analyzeSnapshotFromFile(snapshotFile, {
+   *   // if the specified directory doesn't exist, memlab will create it
+   *   workDir: '/tmp/your/work/dir',
+   * });
+   * ```
    */
   public async analyzeSnapshotFromFile(
     file: string,
+    options: RunHeapAnalysisOptions = {},
   ): Promise<AnalyzeSnapshotResult> {
+    if (options.workDir) {
+      // set and init the new work dir
+      config.defaultFileManagerOption = options;
+    }
+
     const analysisOutputFile = fileManager.initNewHeapAnalysisLogFile();
     info.registerLogFile(analysisOutputFile);
     await this.process({
@@ -97,6 +119,7 @@ abstract class Analysis {
    * @param directory the absolute path of the directory holding a series of
    * `.heapsnapshot` files, all snapshot files will be loaded and analyzed
    * in the alphanumerically ascending order of those snapshot file names.
+   * @param options optional configuration for the heap analysis run
    * @returns this API returns {@link AnalyzeSnapshotResult}, which contains
    * the logging file of analysis console output. Alternatively, to get more
    * structured analysis results, check out the documentation of the hosting
@@ -110,10 +133,27 @@ abstract class Analysis {
    * // query analysis-specific and structured results
    * const shapes = analysis.getShapesWithUnboundGrowth();
    * ```
+   * * Additionally, you can specify a working directory to where
+   * the intermediate, logging, and final output files will be dumped:
+   * ```typescript
+   * const analysis = new ShapeUnboundGrowthAnalysis();
+   * // analysis console output is saved in result.analysisOutputFile
+   * // which is inside the specified working directory
+   * const result = await analysis.analyzeSnapshotsInDirectory(snapshotDirectory, {
+   *   // if the specified directory doesn't exist, memlab will create it
+   *   workDir: '/tmp/your/work/dir',
+   * });
+   * ```
    */
   public async analyzeSnapshotsInDirectory(
     directory: string,
+    options: RunHeapAnalysisOptions = {},
   ): Promise<AnalyzeSnapshotResult> {
+    if (options.workDir) {
+      // set and init the new work dir
+      config.defaultFileManagerOption = options;
+    }
+
     const analysisOutputFile = fileManager.initNewHeapAnalysisLogFile();
     info.registerLogFile(analysisOutputFile);
     await this.process({

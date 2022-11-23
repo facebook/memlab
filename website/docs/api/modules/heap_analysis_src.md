@@ -22,6 +22,20 @@ custom_edit_url: null
 
 ## Type Aliases
 
+### <a id="analyzesnapshotresult" name="analyzesnapshotresult"></a> **AnalyzeSnapshotResult**: `Object`
+
+This is the return type from calling [analyzeSnapshotFromFile](../classes/heap_analysis_src.BaseAnalysis.md#analyzesnapshotfromfile)
+or [analyzeSnapshotsInDirectory](../classes/heap_analysis_src.BaseAnalysis.md#analyzesnapshotsindirectory).
+
+| Name | Type | Description |
+| :------ | :------ | :------ |
+| `analysisOutputFile` | `string` | file path of the console output of the heap analysis call |
+
+ * **Source**:
+    * heap-analysis/src/PluginUtils.ts:91
+
+___
+
 ### <a id="heapanalysisoptions" name="heapanalysisoptions"></a> **HeapAnalysisOptions**: `Object`
 
 This is the auto-generated arguments passed to all the `process` method
@@ -34,6 +48,20 @@ or [snapshotMapReduce](heap_analysis_src.md#snapshotmapreduce).
 
  * **Source**:
     * heap-analysis/src/PluginUtils.ts:68
+
+___
+
+### <a id="runheapanalysisoptions" name="runheapanalysisoptions"></a> **RunHeapAnalysisOptions**: `Object`
+
+This is the input option for [analyzeSnapshotFromFile](../classes/heap_analysis_src.BaseAnalysis.md#analyzesnapshotfromfile)
+and [analyzeSnapshotsInDirectory](../classes/heap_analysis_src.BaseAnalysis.md#analyzesnapshotsindirectory).
+
+| Name | Type | Description |
+| :------ | :------ | :------ |
+| `workDir?` | `string` | specify the working directory to where the intermediate, logging, and output files should be saved |
+
+ * **Source**:
+    * heap-analysis/src/PluginUtils.ts:79
 
 ## Functions
 
@@ -79,7 +107,7 @@ class TestObject {}
 ```
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:675
+    * heap-analysis/src/PluginUtils.ts:687
 
 ___
 
@@ -104,7 +132,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:472
+    * heap-analysis/src/PluginUtils.ts:484
 
 ___
 
@@ -116,7 +144,7 @@ ___
     * `file`: `string`
  * **Returns**: `Promise`<`IHeapSnapshot`\>
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:503
+    * heap-analysis/src/PluginUtils.ts:515
 
 ___
 
@@ -163,7 +191,7 @@ The new heap analysis can also be used with [analyze](api_src.md#analyze), in th
 [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:384
+    * heap-analysis/src/PluginUtils.ts:396
 
 ___
 
@@ -210,7 +238,7 @@ The new heap analysis can also be used with [analyze](api_src.md#analyze), in th
 ascending order from [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:335
+    * heap-analysis/src/PluginUtils.ts:347
 
 ___
 
@@ -258,7 +286,7 @@ The new heap analysis can also be used with [analyze](api_src.md#analyze), in th
 ascending order from [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md).
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:438
+    * heap-analysis/src/PluginUtils.ts:450
 
 ___
 
@@ -330,7 +358,7 @@ Each heap snapshot could be non-trivial in size, loading them all at once
 may not be possible.
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:580
+    * heap-analysis/src/PluginUtils.ts:592
 
 ___
 
@@ -355,4 +383,4 @@ import type {takeNodeFullHeap} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * heap-analysis/src/PluginUtils.ts:495
+    * heap-analysis/src/PluginUtils.ts:507

@@ -28,3 +28,8 @@ export const testSetup = (): void => {
   config.skipExtraOps = true;
   config.errorHandling = ErrorHandling.Throw;
 };
+
+let uindex = 1;
+export function getUniqueID(): string {
+  return `${process.pid}-${Date.now()}-${uindex++}`;
+}

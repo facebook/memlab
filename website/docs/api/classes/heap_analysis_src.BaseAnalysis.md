@@ -37,13 +37,14 @@ custom_edit_url: null
 
 ## Methods
 
-### <a id="analyzesnapshotfromfile"></a>**analyzeSnapshotFromFile**(`file`)
+### <a id="analyzesnapshotfromfile"></a>**analyzeSnapshotFromFile**(`file`, `options?`)
 
 Run heap analysis for a single heap snapshot file
 
  * **Parameters**:
     * `file`: `string` | the absolute path of a `.heapsnapshot` file.
- * **Returns**: `Promise`<`AnalyzeSnapshotResult`\> | this API returns {@link AnalyzeSnapshotResult}, which contains
+    * `options`: [`RunHeapAnalysisOptions`](../modules/heap_analysis_src.md#runheapanalysisoptions) | optional configuration for the heap analysis run
+ * **Returns**: `Promise`<[`AnalyzeSnapshotResult`](../modules/heap_analysis_src.md#analyzesnapshotresult)\> | this API returns [AnalyzeSnapshotResult](../modules/heap_analysis_src.md#analyzesnapshotresult), which contains
 the logging file of analysis console output. Alternatively, to get more
 structured analysis results, check out the documentation of the hosting
 heap analysis class and call the analysis-specific API to get results
@@ -56,19 +57,31 @@ const result = await analysis.analyzeSnapshotFromFile(snapshotFile);
 // query analysis-specific and structured results
 const stringPatterns = analysis.getTopDuplicatedStringsInCount();
 ```
+Additionally, you can specify a working directory to where
+the intermediate, logging, and final output files will be dumped:
+```typescript
+const analysis = new StringAnalysis();
+// analysis console output is saved in result.analysisOutputFile
+// which is inside the specified working directory
+const result = await analysis.analyzeSnapshotFromFile(snapshotFile, {
+  // if the specified directory doesn't exist, memlab will create it
+  workDir: '/tmp/your/work/dir',
+});
+```
 
  * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:79
+    * heap-analysis/src/BaseAnalysis.ts:95
 
 ___
 
-### <a id="analyzesnapshotsindirectory"></a>**analyzeSnapshotsInDirectory**(`directory`)
+### <a id="analyzesnapshotsindirectory"></a>**analyzeSnapshotsInDirectory**(`directory`, `options?`)
 
 Run heap analysis for a series of heap snapshot files
 
  * **Parameters**:
     * `directory`: `string` | the absolute path of the directory holding a series of `.heapsnapshot` files, all snapshot files will be loaded and analyzed in the alphanumerically ascending order of those snapshot file names.
- * **Returns**: `Promise`<`AnalyzeSnapshotResult`\> | this API returns {@link AnalyzeSnapshotResult}, which contains
+    * `options`: [`RunHeapAnalysisOptions`](../modules/heap_analysis_src.md#runheapanalysisoptions) | optional configuration for the heap analysis run
+ * **Returns**: `Promise`<[`AnalyzeSnapshotResult`](../modules/heap_analysis_src.md#analyzesnapshotresult)\> | this API returns [AnalyzeSnapshotResult](../modules/heap_analysis_src.md#analyzesnapshotresult), which contains
 the logging file of analysis console output. Alternatively, to get more
 structured analysis results, check out the documentation of the hosting
 heap analysis class and call the analysis-specific API to get results
@@ -81,9 +94,20 @@ const result = await analysis.analyzeSnapshotsInDirectory(snapshotDirectory);
 // query analysis-specific and structured results
 const shapes = analysis.getShapesWithUnboundGrowth();
 ```
+* Additionally, you can specify a working directory to where
+the intermediate, logging, and final output files will be dumped:
+```typescript
+const analysis = new ShapeUnboundGrowthAnalysis();
+// analysis console output is saved in result.analysisOutputFile
+// which is inside the specified working directory
+const result = await analysis.analyzeSnapshotsInDirectory(snapshotDirectory, {
+  // if the specified directory doesn't exist, memlab will create it
+  workDir: '/tmp/your/work/dir',
+});
+```
 
  * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:114
+    * heap-analysis/src/BaseAnalysis.ts:148
 
 ___
 
@@ -103,7 +127,7 @@ const name = analysis.getCommandName();
 ```
 
  * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:149
+    * heap-analysis/src/BaseAnalysis.ts:189
 
 ___
 
@@ -116,7 +140,7 @@ The description of this analysis will be printed by:
  * **Returns**: `string` | the description
 
  * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:161
+    * heap-analysis/src/BaseAnalysis.ts:201
 
 ___
 
@@ -127,7 +151,7 @@ override this method if you would like CLI to print the option info
  * **Returns**: `default`[] | an array of command line options
 
  * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:188
+    * heap-analysis/src/BaseAnalysis.ts:228
 
 ___
 
@@ -143,4 +167,4 @@ The analysis should support:
     * `options`: [`HeapAnalysisOptions`](../modules/heap_analysis_src.md#heapanalysisoptions) | This is the auto-generated arguments passed to all the `process` method that your self-defined heap analysis should implement. You are not supposed to construct instances of this class.
  * **Returns**: `Promise`<`any`\>
  * **Source**:
-    * heap-analysis/src/BaseAnalysis.ts:176
+    * heap-analysis/src/BaseAnalysis.ts:216

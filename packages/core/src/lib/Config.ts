@@ -8,27 +8,28 @@
  * @oncall web_perf_infra
  */
 
-import path from 'path';
-import modes from '../modes/RunningModes';
-import info from './Console';
-import constant from './Constant';
-import fileManager from './FileManager';
-
 import type {LaunchOptions, Permission} from 'puppeteer';
 import type {
   AnyFunction,
   AnyValue,
+  FileOption,
   IClusterStrategy,
   IRunningMode,
   IScenario,
+  IHeapConfig,
   Nullable,
   Optional,
   QuickExperiment,
   ILeakFilter,
   IPackageInfo,
 } from './Types';
+
+import path from 'path';
+import modes from '../modes/RunningModes';
+import info from './Console';
+import constant from './Constant';
+import fileManager, {FileManager} from './FileManager';
 import {setInternalValue} from './InternalValueSetter';
-import {IHeapConfig} from '..';
 
 interface BrowserLaunchArgumentOptions {
   headless?: boolean;
@@ -662,6 +663,19 @@ export class MemLabConfig {
 
   get browserBinaryPath(): string {
     return path.join(this.browserDir, this.browser);
+  }
+
+  // Default input option for file manager.
+  // If no other input option is provided, the file manager
+  // will generate directories and files based on this default option.
+  set defaultFileManagerOption(fileOption: FileOption) {
+    FileManager.defaultFileOption = fileOption;
+    // initialize file and directory paths
+    fileManager.initDirs(this, fileOption);
+  }
+
+  get defaultFileManagerOption(): FileOption {
+    return FileManager.defaultFileOption;
   }
 
   set reportLeaksInTimers(shouldReport: boolean) {

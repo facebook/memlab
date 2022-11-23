@@ -10,7 +10,7 @@
 
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from './Config';
-import type {AnyValue, Optional} from './Types';
+import type {AnyValue, FileOption} from './Types';
 
 import minimist from 'minimist';
 import fs from 'fs-extra';
@@ -24,7 +24,7 @@ function joinAndProcessDir(options: FileOption, ...args: AnyValue[]): string {
   const filepath = path.join(...args);
   if (!fs.existsSync(filepath)) {
     try {
-      fs.mkdirSync(filepath);
+      fs.mkdirpSync(filepath);
     } catch (ex) {
       const err = utils.getError(ex);
       if (!err.message.includes('already exists')) {
@@ -34,13 +34,6 @@ function joinAndProcessDir(options: FileOption, ...args: AnyValue[]): string {
   }
   return filepath;
 }
-
-/** @internal */
-export type FileOption = {
-  workDir?: Optional<string>;
-  clear?: boolean;
-  transient?: boolean;
-};
 
 /** @internal */
 export class FileManager {
@@ -54,14 +47,17 @@ export class FileManager {
       'memlab-' + utils.getUniqueID(),
     );
     if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath);
+      fs.mkdirpSync(dirPath);
     }
     return dirPath;
   }
 
   private static transientInstanceIdx = 0;
+  public static defaultFileOption: FileOption = {};
 
-  public getWorkDir(options: FileOption = {}): string {
+  public getWorkDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     // workDir options supercedes all the other options
     if (options.workDir) {
       return path.resolve(options.workDir);
@@ -93,12 +89,9 @@ export class FileManager {
     return path.join(this.getDefaultWorkDir(), 'chrome');
   }
 
-  public clearUserDataDir(options: FileOption): void {
-    const userDataDir = this.getUserDataDir(options);
-    this.rmDir(userDataDir);
-  }
-
-  public getDataBaseDir(options: FileOption): string {
+  public getDataBaseDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getWorkDir(options), 'data');
   }
 
@@ -110,78 +103,119 @@ export class FileManager {
     return path.join(this.getCodeDataDir(), 'cluster');
   }
 
-  public getUserDataDir(options: FileOption): string {
+  public getUserDataDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getDataBaseDir(options), 'profile');
   }
 
-  public getCurDataDir(options: FileOption): string {
+  public clearUserDataDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): void {
+    const userDataDir = this.getUserDataDir(options);
+    this.rmDir(userDataDir);
+  }
+
+  public getCurDataDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getDataBaseDir(options), 'cur');
   }
 
-  public getWebSourceDir(options: FileOption = {}): string {
+  public getWebSourceDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getCurDataDir(options), 'code');
   }
 
-  public getWebSourceMetaFile(options: FileOption = {}): string {
+  public getWebSourceMetaFile(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getWebSourceDir(options), 'files.json');
   }
 
-  public getDebugDataDir(options: FileOption = {}): string {
+  public getDebugDataDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getDataBaseDir(options), 'debug');
   }
 
-  public getDebugSourceFile(options: FileOption = {}): string {
+  public getDebugSourceFile(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getDebugDataDir(options), 'file.js');
   }
 
-  public getPersistDataDir(options: FileOption): string {
+  public getPersistDataDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getDataBaseDir(options), 'persist');
   }
 
-  public getLoggerOutDir(options: FileOption = {}): string {
+  public getLoggerOutDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getDataBaseDir(options), 'logger');
   }
 
   // all heap analysis results generated
-  public getHeapAnalysisLogDir(options: FileOption = {}): string {
+  public getHeapAnalysisLogDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getLoggerOutDir(options), 'heap-analysis');
   }
 
   // all trace clusters generated from the current run
-  public getTraceClustersDir(options: FileOption = {}): string {
+  public getTraceClustersDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getLoggerOutDir(options), 'trace-clusters');
   }
 
   // stores JSON file (with heap object and reference details for visualization)
   // of all trace clusters (each cluster has a representative trace)
-  public getTraceJSONDir(options: FileOption = {}): string {
+  public getTraceJSONDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getLoggerOutDir(options), 'trace-jsons');
   }
 
-  public getUnclassifiedTraceClusterDir(options: FileOption = {}): string {
+  public getUnclassifiedTraceClusterDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getLoggerOutDir(options), 'unclassified-clusters');
   }
 
-  public getUniqueTraceClusterDir(options: FileOption = {}): string {
+  public getUniqueTraceClusterDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getLoggerOutDir(options), 'unique-trace-clusters');
   }
 
-  public getNewUniqueTraceClusterDir(options: FileOption = {}): string {
+  public getNewUniqueTraceClusterDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getUniqueTraceClusterDir(options), 'add');
   }
 
-  public getStaleUniqueTraceClusterDir(options: FileOption = {}): string {
+  public getStaleUniqueTraceClusterDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getUniqueTraceClusterDir(options), 'delete');
   }
 
-  public getAllClusterSummaryFile(options: FileOption = {}): string {
+  public getAllClusterSummaryFile(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(
       this.getUniqueTraceClusterDir(options),
       'unique-clusters-summary.txt',
     );
   }
 
-  public getExistingUniqueTraceClusterDir(options: FileOption = {}): string {
+  public getExistingUniqueTraceClusterDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getUniqueTraceClusterDir(options), 'existing');
   }
 
@@ -190,7 +224,9 @@ export class FileManager {
     return files.map((file: string) => path.join(dir, file));
   }
 
-  public getDataOutDir(options: FileOption = {}): string {
+  public getDataOutDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getDataBaseDir(options), 'out');
   }
 
@@ -206,23 +242,33 @@ export class FileManager {
     return path.join(this.getMonoRepoDir(), 'website', 'docs');
   }
 
-  public getReportOutDir(options: FileOption = {}): string {
+  public getReportOutDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getPersistDataDir(options), 'reports');
   }
 
-  public getPreviewReportDir(options: FileOption = {}): string {
+  public getPreviewReportDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getPersistDataDir(options), 'report-preview');
   }
 
-  public getLeakSummaryFile(options: FileOption = {}): string {
+  public getLeakSummaryFile(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getDataOutDir(options), 'leaks.txt');
   }
 
-  public getRunMetaFile(options: FileOption = {}): string {
+  public getRunMetaFile(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getCurDataDir(options), 'run-meta.json');
   }
 
-  public getSnapshotSequenceMetaFile(options: FileOption = {}): string {
+  public getSnapshotSequenceMetaFile(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     return path.join(this.getCurDataDir(options), 'snap-seq.json');
   }
 
@@ -273,7 +319,9 @@ export class FileManager {
   }
 
   // create a unique log file created for heap analysis output
-  public initNewHeapAnalysisLogFile(options: FileOption = {}): string {
+  public initNewHeapAnalysisLogFile(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
     const dir = this.getHeapAnalysisLogDir(options);
     const file = path.join(dir, `analysis-${utils.getUniqueID()}-out.log`);
     if (!fs.existsSync(file)) {
@@ -285,11 +333,13 @@ export class FileManager {
   public getAndInitTSCompileIntermediateDir(): string {
     const dir = path.join(this.getTmpDir(), 'memlab-code');
     this.rmDir(dir);
-    fs.mkdirSync(dir);
+    fs.mkdirpSync(dir);
     return dir;
   }
 
-  public clearDataDirs(options: FileOption = {}): void {
+  public clearDataDirs(
+    options: FileOption = FileManager.defaultFileOption,
+  ): void {
     const curDataDir = this.getCurDataDir(options);
     if (!fs.existsSync(curDataDir)) {
       return;
@@ -315,7 +365,9 @@ export class FileManager {
     }
   }
 
-  public emptyTraceLogDataDir(options: FileOption = {}): void {
+  public emptyTraceLogDataDir(
+    options: FileOption = FileManager.defaultFileOption,
+  ): void {
     // all leak trace clusters
     this.emptyDirIfExists(this.getTraceClustersDir(options));
     // all JSON files for trace visualization
@@ -362,7 +414,7 @@ export class FileManager {
     });
   }
 
-  public rmWorkDir(options: FileOption = {}): void {
+  public rmWorkDir(options: FileOption = FileManager.defaultFileOption): void {
     try {
       this.rmDir(this.getWorkDir(options));
     } catch (e) {
@@ -376,7 +428,10 @@ export class FileManager {
     return filePath.includes(`${sep}${internalDir}${sep}`);
   }
 
-  public initDirs(config: MemLabConfig, options: FileOption = {}): void {
+  public initDirs(
+    config: MemLabConfig,
+    options: FileOption = FileManager.defaultFileOption,
+  ): void {
     config.monoRepoDir = constant.monoRepoDir;
 
     // make sure getWorkDir is called first before

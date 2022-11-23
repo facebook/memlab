@@ -54,6 +54,13 @@ export type HaltOrThrowOptions = {
 };
 
 /** @internal */
+export type FileOption = {
+  workDir?: Optional<string>;
+  clear?: boolean;
+  transient?: boolean;
+};
+
+/** @internal */
 export type CLIOptions = {
   cliArgs: ParsedArgs;
   configFromOptions?: AnyRecord;
