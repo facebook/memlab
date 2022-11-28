@@ -96,13 +96,24 @@ with readable variables, function name, and property names on objects).
 Alternatively, you can debug the leak by loading the heap snapshot taken by memlab (saved in `$(memlab get-default-work-dir)/data/cur`)
 in Chrome DevTool and search for the leaked object ID (`@182929`).
 
-**Self-defined leak detector**: If you want to use a self-defined leak detector, add a `filterLeak` callback
-([doc](https://facebook.github.io/memlab/docs/api/interfaces/core_src.IScenario/#-optional-beforeleakfilter-initleakfiltercallback))
+**View Retainer Trace Interactively**
+
+View memory issues detected by memlab based on a single JavaScript
+heap snapshot taken from Chromium, Hermes, memlab, or any node.js
+or Electron.js program:
+```bash
+memlab view-heap --snapshot <PATH TO .heapsnapshot FILE>
+```
+
+You can optionally specify a specific heap object with the object's id: `--node-id @28173` to pinpoint a specific object.
+
+**Self-defined leak detector**: If you want to use a self-defined leak detector, add a `leakFilter` callback
+([doc](https://facebook.github.io/memlab/docs/api/interfaces/core_src.IScenario/#-optional-leakfilter-leakfiltercallback))
 in the scenario file. `filterLeak` will be called for every unreleased heap
 object (`node`) allocated by the target interaction.
 
 ```javascript
-function filterLeak(node, heap) {
+function leakFilter(node, heap) {
   // ... your leak detector logic
   // return true to mark the node as a memory leak
 };

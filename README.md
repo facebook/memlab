@@ -113,13 +113,13 @@ You can optionally specify a specific heap object with the object's id: `--node-
 
 ![heap-view](./website/static/img/heap-view.png)
 
-**Self-defined leak detector**: If you want to use a self-defined leak detector, add a `filterLeak` callback
-([doc](https://facebook.github.io/memlab/docs/api/interfaces/core_src.IScenario/#-optional-beforeleakfilter-initleakfiltercallback))
+**Self-defined leak detector**: If you want to use a self-defined leak detector, add a `leakFilter` callback
+([doc](https://facebook.github.io/memlab/docs/api/interfaces/core_src.IScenario/#-optional-leakfilter-leakfiltercallback))
 in the scenario file. `filterLeak` will be called for every unreleased heap
 object (`node`) allocated by the target interaction.
 
 ```javascript
-function filterLeak(node, heap) {
+function leakFilter(node, heap) {
   // ... your leak detector logic
   // return true to mark the node as a memory leak
 };
