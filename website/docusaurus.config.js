@@ -142,19 +142,23 @@ const config = {
             items: [
               {
                 label: 'Privacy',
-                href: 'https://opensource.facebook.com/legal/privacy/',
+                href: 'https://opensource.fb.com/legal/privacy/',
+                target: '_blank',
+                rel: 'noreferrer noopener',
               },
               {
                 label: 'Terms',
-                href: 'https://opensource.facebook.com/legal/terms/',
+                href: 'https://opensource.fb.com/legal/terms/',
+                target: '_blank',
+                rel: 'noreferrer noopener',
               },
               {
                 label: 'Data Policy',
-                href: 'https://opensource.facebook.com/legal/data-policy/',
+                href: 'https://opensource.fb.com/legal/data-policy/',
               },
               {
                 label: 'Cookie Policy',
-                href: 'https://opensource.facebook.com/legal/cookie-policy/',
+                href: 'https://opensource.fb.com/legal/cookie-policy/',
               },
             ],
           },
