@@ -103,7 +103,7 @@ ___
 ### <a id="run"></a>**run**(`runOptions?`)
 
 This API runs browser interaction and find memory leaks triggered in browser
-This is equivalent to run `memlab run` in CLI.
+This is equivalent to running `memlab run` in CLI.
 This is also equivalent to warm up, and call [takeSnapshots](api_src.md#takesnapshots)
 and [findLeaks](api_src.md#findleaks).
 
@@ -131,7 +131,7 @@ ___
 ### <a id="takesnapshots"></a>**takeSnapshots**(`options?`)
 
 This API runs E2E interaction and takes heap snapshots.
-This is equivalent to run `memlab snapshot` in CLI.
+This is equivalent to running `memlab snapshot` in CLI.
 
  * **Parameters**:
     * `options`: [`RunOptions`](api_src.md#runoptions) | configure browser interaction run
@@ -156,7 +156,7 @@ ___
 ### <a id="warmupandtakesnapshots"></a>**warmupAndTakeSnapshots**(`options?`)
 
 This API warms up web server, runs E2E interaction, and takes heap snapshots.
-This is equivalent to run `memlab warmup-and-snapshot` in CLI.
+This is equivalent to running `memlab warmup-and-snapshot` in CLI.
 This is also equivalent to warm up and call [takeSnapshots](api_src.md#takesnapshots).
 
  * **Parameters**:

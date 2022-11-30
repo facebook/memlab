@@ -115,7 +115,7 @@ You can optionally specify a specific heap object with the object's id: `--node-
 
 **Self-defined leak detector**: If you want to use a self-defined leak detector, add a `leakFilter` callback
 ([doc](https://facebook.github.io/memlab/docs/api/interfaces/core_src.IScenario/#-optional-leakfilter-leakfiltercallback))
-in the scenario file. `filterLeak` will be called for every unreleased heap
+in the scenario file. `leakFilter` will be called for every unreleased heap
 object (`node`) allocated by the target interaction.
 
 ```javascript
