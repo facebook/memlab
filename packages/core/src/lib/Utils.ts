@@ -1984,7 +1984,10 @@ function getClosureSourceUrl(node: IHeapNode): Nullable<string> {
   return url;
 }
 
-export function runShell(command: string, options: ShellOptions = {}): string {
+export function runShell(
+  command: string,
+  options: ShellOptions = {},
+): Nullable<string> {
   const runningDir = options.dir ?? config.workDir ?? fileManager.getTmpDir();
   const execOptions: cp.ExecSyncOptions = {
     cwd: runningDir,
@@ -1995,7 +1998,7 @@ export function runShell(command: string, options: ShellOptions = {}): string {
   if (process.platform !== 'win32') {
     execOptions.shell = '/bin/bash';
   }
-  let ret: Buffer | string = '';
+  let ret: Nullable<Buffer | string> = null;
   try {
     ret = cp.execSync(command, execOptions);
   } catch (ex) {

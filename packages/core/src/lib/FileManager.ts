@@ -165,6 +165,13 @@ export class FileManager {
     return path.join(this.getLoggerOutDir(options), 'heap-analysis');
   }
 
+  // memlab save-heap result log file
+  public getHeapSaveLogJSONFile(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
+    return path.join(this.getHeapAnalysisLogDir(options), 'save-heap.json');
+  }
+
   // all trace clusters generated from the current run
   public getTraceClustersDir(
     options: FileOption = FileManager.defaultFileOption,
@@ -293,6 +300,7 @@ export class FileManager {
     return ret;
   }
 
+  // system default tmp dir
   public getTmpDir(): string {
     return os.tmpdir();
   }
