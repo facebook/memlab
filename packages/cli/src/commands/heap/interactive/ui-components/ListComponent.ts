@@ -94,7 +94,6 @@ export default class ListComponent {
         },
         selected: {
           bg: 'grey',
-          bold: true,
         },
       },
     });
