@@ -367,6 +367,26 @@ export class FileManager {
     }
   }
 
+  public removeSnapshotFiles(
+    options: FileOption = FileManager.defaultFileOption,
+  ) {
+    const curDataDir = this.getCurDataDir(options);
+    if (!fs.existsSync(curDataDir)) {
+      return;
+    }
+    const dataSuffix = ['.heapsnapshot'];
+    const files = fs.readdirSync(curDataDir);
+    for (const file of files) {
+      inner: for (const suffix of dataSuffix) {
+        if (file.endsWith(suffix)) {
+          const filepath = path.join(curDataDir, file);
+          fs.unlinkSync(filepath);
+          break inner;
+        }
+      }
+    }
+  }
+
   public emptyDirIfExists(dir: string): void {
     if (this.isDirectory(dir)) {
       fs.emptyDirSync(dir);

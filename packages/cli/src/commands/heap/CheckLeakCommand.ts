@@ -8,7 +8,7 @@
  * @oncall web_perf_infra
  */
 
-import type {CLIOptions} from '@memlab/core';
+import {CLIOptions, fileManager} from '@memlab/core';
 import BaseCommand, {CommandCategory} from '../../BaseCommand';
 import {BaseOption, config, analysis} from '@memlab/core';
 import BaselineFileOption from '../../options/heap/BaselineFileOption';
@@ -26,6 +26,7 @@ import LeakClusterSizeThresholdOption from '../../options/heap/LeakClusterSizeTh
 import MLClusteringOption from '../../options/MLClusteringOption';
 import MLClusteringLinkageMaxDistanceOption from '../../options/MLClusteringLinkageMaxDistanceOption';
 import MLClusteringMaxDFOption from '../../options/MLClusteringMaxDFOption';
+import CleanupSnapshotOption from '../../options/heap/CleanupSnapshotOption';
 
 export default class CheckLeakCommand extends BaseCommand {
   getCommandName(): string {
@@ -59,12 +60,16 @@ export default class CheckLeakCommand extends BaseCommand {
       new MLClusteringOption(),
       new MLClusteringLinkageMaxDistanceOption(),
       new MLClusteringMaxDFOption(),
+      new CleanupSnapshotOption(),
     ];
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async run(_options: CLIOptions): Promise<void> {
+  async run(options: CLIOptions): Promise<void> {
     config.chaseWeakMapEdge = false;
     await analysis.checkLeak();
+    const configFromOptions = options.configFromOptions ?? {};
+    if (configFromOptions['cleanUpSnapshot']) {
+      fileManager.removeSnapshotFiles();
+    }
   }
 }

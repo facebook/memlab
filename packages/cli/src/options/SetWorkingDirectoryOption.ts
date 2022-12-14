@@ -9,7 +9,7 @@
  */
 
 import type {ParsedArgs} from 'minimist';
-import type {AnyRecord, MemLabConfig} from '@memlab/core';
+import {AnyRecord, MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
 import optionConstants from './lib/OptionConstant';
 
@@ -28,8 +28,10 @@ export default class SetWorkingDirectoryOption extends BaseOption {
   ): Promise<{workDir?: string}> {
     const name = this.getOptionName();
     const ret: AnyRecord = {};
-    if (args[name]) {
-      ret.workDir = args[name];
+    const workDir = args[name];
+    if (workDir) {
+      config.defaultFileManagerOption.workDir = workDir;
+      ret.workDir = workDir;
     }
     return ret;
   }

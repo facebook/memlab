@@ -13,6 +13,7 @@ import {constant, setInternalValue} from '@memlab/core';
 const optionNames = {
   APP: 'app',
   BASELINE: 'baseline',
+  CLEAN_UP_SNAPSHOT: 'clean-up-snapshot',
   CONTINUS_TEST: 'ContinuousTest',
   DEVICE: 'device',
   DISABLE_WEB_SECURITY: 'disable-web-security',
