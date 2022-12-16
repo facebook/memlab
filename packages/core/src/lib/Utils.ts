@@ -1521,13 +1521,20 @@ function getSingleSnapshotFileForAnalysis(): string {
   return resolveSnapshotFilePath(path);
 }
 
-function getSnapshotFilePath(tab: E2EStepInfo): string {
+function getSnapshotFilePath(
+  tab: E2EStepInfo,
+  options: {workDir?: string} = {},
+): string {
+  const fileName = `s${tab.idx}.heapsnapshot`;
+  if (options.workDir) {
+    return path.join(fileManager.getCurDataDir(options), fileName);
+  }
   if (!config.useExternalSnapshot) {
-    return path.join(config.curDataDir, `s${tab.idx}.heapsnapshot`);
+    return path.join(config.curDataDir, fileName);
   }
   // if we are loading snapshot from external snapshot dir
   if (config.externalSnapshotDir) {
-    return path.join(config.externalSnapshotDir, `s${tab.idx}.heapsnapshot`);
+    return path.join(config.externalSnapshotDir, fileName);
   }
   return config.externalSnapshotFilePaths[tab.idx - 1];
 }

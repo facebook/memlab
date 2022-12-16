@@ -40,6 +40,15 @@ import NormalizedTrace from '../trace-cluster/TraceBucket';
 import {LeakObjectFilter} from './leak-filters/LeakObjectFilter';
 import MLTraceSimilarityStrategy from '../trace-cluster/strategies/MLTraceSimilarityStrategy';
 
+type DiffSnapshotsOptions = {
+  loadAllSnapshots?: boolean;
+  workDir?: string;
+};
+
+type WorkDirOptions = {
+  workDir?: string;
+};
+
 class MemoryAnalyst {
   async checkLeak(): Promise<ISerializedInfo[]> {
     memoryBarChart.plotMemoryBarChart();
@@ -62,14 +71,44 @@ class MemoryAnalyst {
     utils.checkSnapshots({snapshotDir: testSnapshotDir});
     // display control and test memory
     memoryBarChart.plotMemoryBarChart(options);
+    return this.diffMemoryLeakTraces(options);
+  }
+
+  // find all unique pattern of leaks
+  async diffMemoryLeakTraces(
+    options: DiffLeakOptions,
+  ): Promise<ISerializedInfo[]> {
+    config.dumpNodeInfo = false;
+    // diff snapshots and get control raw paths
+    let snapshotDiff = await this.diffSnapshots({
+      loadAllSnapshots: true,
+      workDir: options.controlWorkDir,
+    });
+    const controlLeakPaths = this.filterLeakPaths(
+      snapshotDiff.leakedHeapNodeIdSet,
+      snapshotDiff.snapshot,
+      {workDir: options.controlWorkDir},
+    );
+    // diff snapshots and get test raw paths
+    snapshotDiff = await this.diffSnapshots({
+      loadAllSnapshots: true,
+      workDir: options.testWorkDir,
+    });
+    const testLeakPaths = this.filterLeakPaths(
+      snapshotDiff.leakedHeapNodeIdSet,
+      snapshotDiff.snapshot,
+      {workDir: options.controlWorkDir},
+    );
+    info.topLevel(`${controlLeakPaths.length} traces from control group`);
+    info.topLevel(`${testLeakPaths.length} traces from test group`);
     return [];
   }
 
   // find all unique pattern of leaks
   async detectMemoryLeaks(): Promise<ISerializedInfo[]> {
-    const snapshotDiff = await this.diffSnapshots(true);
+    const snapshotDiff = await this.diffSnapshots({loadAllSnapshots: true});
     config.dumpNodeInfo = false;
-    const {paths} = await this.searchLeakedTraces(
+    const paths = await this.findLeakTraces(
       snapshotDiff.leakedHeapNodeIdSet,
       snapshotDiff.snapshot,
     );
@@ -104,7 +143,7 @@ class MemoryAnalyst {
       // otherwise diff heap snapshots
     } else {
       utils.checkSnapshots();
-      const snapshotDiff = await this.diffSnapshots(true);
+      const snapshotDiff = await this.diffSnapshots({loadAllSnapshots: true});
       nodeIdsInSnapshots = snapshotDiff.listOfLeakedHeapNodeIdSet;
       snapshotLeakedHeapNodeIdSet = snapshotDiff.leakedHeapNodeIdSet;
       snapshot = snapshotDiff.snapshot;
@@ -133,16 +172,20 @@ class MemoryAnalyst {
     return false;
   }
 
-  async diffSnapshots(loadAll = false): Promise<IMemoryAnalystSnapshotDiff> {
+  async diffSnapshots(
+    options: DiffSnapshotsOptions = {},
+  ): Promise<IMemoryAnalystSnapshotDiff> {
     const nodeIdsInSnapshots = [];
-    const tabsOrder = utils.loadTabsOrder();
+    const tabsOrder = utils.loadTabsOrder(
+      fileManager.getSnapshotSequenceMetaFile(options),
+    );
     // a set keeping track of node ids generated before the target snapshot
     const baselineIds = new Set();
     let collectBaselineIds = true;
 
     let targetAllocatedHeapNodeIdSet: Nullable<HeapNodeIdSet> = null;
     let leakedHeapNodeIdSet: Nullable<HeapNodeIdSet> = null;
-    const options = {verbose: true};
+    const parseSnapshotOptions = {verbose: true, workDir: options.workDir};
     let snapshot: Nullable<IHeapSnapshot> = null;
     for (let i = 0; i < tabsOrder.length; i++) {
       const tab = tabsOrder[i];
@@ -163,21 +206,28 @@ class MemoryAnalyst {
         continue;
       }
       // in quick mode, there is no need to load all snapshots
-      if (!loadAll && !tab.type) {
+      if (!options.loadAllSnapshots && !tab.type) {
         continue;
       }
 
-      const file = utils.getSnapshotFilePath(tab);
+      const file = utils.getSnapshotFilePath(tab, options);
       if (this.shouldLoadCompleteSnapshot(tabsOrder, tab)) {
         // final snapshot needs to build node index
-        const opt = {buildNodeIdIndex: true, ...options};
+        const opt = {
+          buildNodeIdIndex: true,
+          ...parseSnapshotOptions,
+          workDir: options.workDir,
+        };
         snapshot = await utils.getSnapshotFromFile(file, opt);
         // record Ids in the snapshot
         snapshot.nodes.forEach(node => {
           idsInSnapshot.add(node.id);
         });
       } else {
-        idsInSnapshot = await utils.getSnapshotNodeIdsFromFile(file, options);
+        idsInSnapshot = await utils.getSnapshotNodeIdsFromFile(
+          file,
+          parseSnapshotOptions,
+        );
         nodeIdsInSnapshots.pop();
         nodeIdsInSnapshots.push(idsInSnapshot);
       }
@@ -245,10 +295,16 @@ class MemoryAnalyst {
   }
 
   // summarize the page interaction and dump to the leak text summary file
-  private dumpPageInteractionSummary() {
-    const tabsOrder = utils.loadTabsOrder();
+  private dumpPageInteractionSummary(options: WorkDirOptions = {}) {
+    const tabsOrder = utils.loadTabsOrder(
+      fileManager.getSnapshotSequenceMetaFile(options),
+    );
     const tabsOrderStr = serializer.summarizeTabsOrder(tabsOrder);
-    fs.writeFileSync(config.exploreResultFile, tabsOrderStr, 'UTF-8');
+    fs.writeFileSync(
+      fileManager.getLeakSummaryFile(options),
+      tabsOrderStr,
+      'UTF-8',
+    );
   }
 
   // summarize the leak and print the info in console
@@ -405,9 +461,10 @@ class MemoryAnalyst {
   private printHeapAndLeakInfo(
     leakedNodeIds: HeapNodeIdSet,
     snapshot: IHeapSnapshot,
+    options: WorkDirOptions = {},
   ) {
     // write page interaction summary to the leaks text file
-    this.dumpPageInteractionSummary();
+    this.dumpPageInteractionSummary(options);
 
     // dump leak summry to console
     this.dumpLeakSummaryToConsole(leakedNodeIds, snapshot);
@@ -423,23 +480,28 @@ class MemoryAnalyst {
     trace: LeakTracePathItem,
     nodeIdInPaths: HeapNodeIdSet,
     snapshot: IHeapSnapshot,
+    options: WorkDirOptions = {},
   ) {
     if (!config.isFullRun) {
       return;
     }
     // convert the path to a string
     const pathStr = serializer.summarizePath(trace, nodeIdInPaths, snapshot);
-    fs.appendFileSync(config.exploreResultFile, `\n\n${pathStr}\n\n`, 'UTF-8');
+    fs.appendFileSync(
+      fileManager.getLeakSummaryFile(options),
+      `\n\n${pathStr}\n\n`,
+      'UTF-8',
+    );
   }
 
-  // find unique paths of leaked nodes
-  async searchLeakedTraces(
+  filterLeakPaths(
     leakedNodeIds: HeapNodeIdSet,
     snapshot: IHeapSnapshot,
-  ) {
+    options: WorkDirOptions = {},
+  ): LeakTracePathItem[] {
     const finder = this.preparePathFinder(snapshot);
 
-    this.printHeapAndLeakInfo(leakedNodeIds, snapshot);
+    this.printHeapAndLeakInfo(leakedNodeIds, snapshot, options);
 
     // get all leaked objects
     this.filterLeakedObjects(leakedNodeIds, snapshot);
@@ -466,7 +528,7 @@ class MemoryAnalyst {
         ++numOfLeakedObjects;
         paths.push(p);
 
-        this.logLeakTraceSummary(p, nodeIdInPaths, snapshot);
+        this.logLeakTraceSummary(p, nodeIdInPaths, snapshot, options);
       },
       {reverse: true},
     );
@@ -474,7 +536,16 @@ class MemoryAnalyst {
     if (config.verbose) {
       info.midLevel(`${numOfLeakedObjects} leaked objects`);
     }
+    return paths;
+  }
 
+  // find unique paths of leaked nodes
+  async findLeakTraces(
+    leakedNodeIds: HeapNodeIdSet,
+    snapshot: IHeapSnapshot,
+    options: WorkDirOptions = {},
+  ): Promise<LeakTracePathItem[]> {
+    const paths = this.filterLeakPaths(leakedNodeIds, snapshot, options);
     // cluster traces from the current run
     const clusters = NormalizedTrace.clusterPaths(
       paths,
@@ -499,9 +570,7 @@ class MemoryAnalyst {
       clusterLogger.logUnclassifiedClusters(clustersUnclassified);
     }
 
-    return {
-      paths: clusters.map(c => c.path),
-    };
+    return clusters.map(c => c.path);
   }
 
   /**
@@ -581,6 +650,7 @@ class MemoryAnalyst {
     id: number,
     pathLoaderFile: string,
     summaryFile: string,
+    options: WorkDirOptions = {},
   ) {
     info.overwrite('start analysis...');
     const finder = this.preparePathFinder(snapshot);
@@ -602,7 +672,9 @@ class MemoryAnalyst {
         path,
         pathLoaderFile,
       );
-      const tabsOrder = utils.loadTabsOrder();
+      const tabsOrder = utils.loadTabsOrder(
+        fileManager.getSnapshotSequenceMetaFile(options),
+      );
       const interactionSummary = serializer.summarizeTabsOrder(tabsOrder);
       let pathSummary = serializer.summarizePath(
         path,
