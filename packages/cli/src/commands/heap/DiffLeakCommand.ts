@@ -24,7 +24,7 @@ import MLClusteringOption from '../../options/MLClusteringOption';
 import MLClusteringLinkageMaxDistanceOption from '../../options/MLClusteringLinkageMaxDistanceOption';
 import MLClusteringMaxDFOption from '../../options/MLClusteringMaxDFOption';
 import SetControlWorkDirOption from '../../options/experiment/SetControlWorkDirOption';
-import SetTestWorkDirOption from '../../options/experiment/SetTestWorkDirOption';
+import SetTreatmentWorkDirOption from '../../options/experiment/SetTreatmentWorkDirOption';
 
 export default class CheckLeakCommand extends BaseCommand {
   getCommandName(): string {
@@ -46,7 +46,7 @@ export default class CheckLeakCommand extends BaseCommand {
   getOptions(): BaseOption[] {
     return [
       new SetControlWorkDirOption().required(),
-      new SetTestWorkDirOption().required(),
+      new SetTreatmentWorkDirOption().required(),
       new JSEngineOption(),
       new LeakFilterFileOption(),
       new OversizeThresholdOption(),
@@ -64,7 +64,7 @@ export default class CheckLeakCommand extends BaseCommand {
     // double check parameters
     if (
       !options.configFromOptions?.controlWorkDir ||
-      !options.configFromOptions?.testWorkDir
+      !options.configFromOptions?.treatmentWorkDir
     ) {
       info.error('Please specify control and test working directory');
       throw utils.haltOrThrow('No control or test working directory specified');
@@ -73,8 +73,10 @@ export default class CheckLeakCommand extends BaseCommand {
     const controlWorkDir = options.configFromOptions[
       'controlWorkDir'
     ] as string;
-    const testWorkDir = options.configFromOptions['testWorkDir'] as string;
+    const treatmentWorkDir = options.configFromOptions[
+      'treatmentWorkDir'
+    ] as string;
     // diff memory leaks
-    await analysis.diffLeakByWorkDir({controlWorkDir, testWorkDir});
+    await analysis.diffLeakByWorkDir({controlWorkDir, treatmentWorkDir});
   }
 }

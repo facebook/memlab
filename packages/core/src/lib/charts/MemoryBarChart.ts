@@ -20,7 +20,18 @@ import fileManager from '../FileManager';
 
 class MemoryBarChart {
   plotMemoryBarChart(options: PlotMemoryOptions = {}) {
-    const plotData = this.loadPlotData(options);
+    if (config.useExternalSnapshot || options.snapshotDir) {
+      return;
+    }
+    let plotData;
+    try {
+      plotData = this.loadPlotData(options);
+    } catch (ex) {
+      info.warning(
+        `plot data not load correctly: ${utils.getError(ex).message}`,
+      );
+      return;
+    }
     // normalize plot data
     const minY = 1;
     const maxY = plotData.reduce((m, v) => Math.max(m, v[1]), 0) * 1.15;
@@ -80,7 +91,7 @@ class MemoryBarChart {
 
   private loadPlotData(options: PlotMemoryOptions = {}): number[][] {
     // plot data for a single run
-    if (!options.controlWorkDir && !options.testWorkDir) {
+    if (!options.controlWorkDir && !options.treatmentWorkDir) {
       return this.loadPlotDataFromWorkDir(options);
     }
     // plot data for control and test run
@@ -88,7 +99,7 @@ class MemoryBarChart {
       workDir: options.controlWorkDir,
     });
     const testPlotData = this.loadPlotDataFromWorkDir({
-      workDir: options.testWorkDir,
+      workDir: options.treatmentWorkDir,
     });
     // merge plot data
     return this.mergePlotData([controlPlotData, testPlotData]);

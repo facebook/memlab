@@ -57,7 +57,7 @@ class CollectionUnboundGrowthAnalysis extends BaseAnalysis {
     const snapshotDir = pluginUtils.getSnapshotDirForAnalysis(options);
     const opt = snapshotDir ? {minSnapshots: 2, snapshotDir} : {};
     config.chaseWeakMapEdge = false;
-    memoryBarChart.plotMemoryBarChart();
+    memoryBarChart.plotMemoryBarChart(opt);
     utils.checkSnapshots(opt);
     await this.checkUnboundCollection(opt);
   }

@@ -13,9 +13,9 @@ import type {AnyRecord, MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
 import optionConstants from '../lib/OptionConstant';
 
-export default class SetTestWorkDirOption extends BaseOption {
+export default class SetTreatmentWorkDirOption extends BaseOption {
   getOptionName(): string {
-    return optionConstants.optionNames.TEST_WORK_DIR;
+    return optionConstants.optionNames.TREATMENT_WORK_DIR;
   }
 
   getDescription(): string {
@@ -25,11 +25,11 @@ export default class SetTestWorkDirOption extends BaseOption {
   async parse(
     config: MemLabConfig,
     args: ParsedArgs,
-  ): Promise<{testWorkDir?: string}> {
+  ): Promise<{treatmentWorkDir?: string}> {
     const name = this.getOptionName();
     const ret: AnyRecord = {};
     if (args[name]) {
-      ret.testWorkDir = args[name];
+      ret.treatmentWorkDir = args[name];
     }
     return ret;
   }

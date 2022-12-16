@@ -67,7 +67,7 @@ class ObjectUnboundGrowthAnalysis extends BaseAnalysis {
   }
 
   private async checkUnbound(options: IMemoryAnalystOptions = {}) {
-    memoryBarChart.plotMemoryBarChart();
+    memoryBarChart.plotMemoryBarChart(options);
     utils.checkSnapshots(options);
     await this.detectUnboundGrowth(options);
   }

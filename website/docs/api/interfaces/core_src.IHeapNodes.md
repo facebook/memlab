@@ -41,7 +41,7 @@ The total number of nodes in heap graph (or JS objects in heap
 snapshot).
 
  * **Source**:
-    * core/src/lib/Types.ts:1843
+    * core/src/lib/Types.ts:1850
 
 ## Methods
 
@@ -54,7 +54,7 @@ to each element in ascending order of element index.
     * `callback`: (`node`: [`IHeapNode`](core_src.IHeapNode.md), `index`: `number`) => `boolean` \| `void` | the callback does not need to return any value, if the callback returns `false` when iterating on element at index `i`, then all elements after `i` won't be iterated.
  * **Returns**: `void`
  * **Source**:
-    * core/src/lib/Types.ts:1859
+    * core/src/lib/Types.ts:1866
 
 ___
 
@@ -68,4 +68,4 @@ get an [IHeapNode](core_src.IHeapNode.md) element at the specified index
 at the specified index, otherwise it returns `null`.
 
  * **Source**:
-    * core/src/lib/Types.ts:1851
+    * core/src/lib/Types.ts:1858

@@ -859,6 +859,13 @@ export type TraceClusterMetaInfo = {
 };
 
 /** @internal */
+export type ControlTreatmentClusterResult = {
+  controlOnlyClusters: TraceCluster[];
+  treatmentOnlyClusters: TraceCluster[];
+  hybridClusters: Array<{control: TraceCluster; treatment: TraceCluster}>;
+};
+
+/** @internal */
 export interface E2EInteraction {
   kind: string;
   timeout?: number;
@@ -1943,15 +1950,15 @@ export interface IOveralLeakInfo extends Partial<IOveralHeapInfo> {
 /** @internal */
 export type DiffLeakOptions = {
   controlWorkDir: string;
-  testWorkDir: string;
+  treatmentWorkDir: string;
 };
 
 /** @internal */
 export type PlotMemoryOptions = {
   controlWorkDir?: string;
-  testWorkDir?: string;
+  treatmentWorkDir?: string;
   workDir?: string;
-};
+} & IMemoryAnalystOptions;
 
 /** @internal */
 export interface IMemoryAnalystOptions {

@@ -8,11 +8,9 @@
  * @oncall web_perf_infra
  */
 
-import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from './Config';
-import type {AnyValue, FileOption} from './Types';
+import type {AnyValue, FileOption, Nullable} from './Types';
 
-import minimist from 'minimist';
 import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
@@ -37,6 +35,8 @@ function joinAndProcessDir(options: FileOption, ...args: AnyValue[]): string {
 
 /** @internal */
 export class FileManager {
+  private memlabConfigCache: Nullable<MemLabConfig> = null;
+
   public getDefaultWorkDir(): string {
     return path.join(this.getTmpDir(), 'memlab');
   }
@@ -63,7 +63,7 @@ export class FileManager {
       return path.resolve(options.workDir);
     }
 
-    // transient options supercedes other the CLI options
+    // transient options supercedes the other CLI options
     if (options.transient) {
       const idx = ++FileManager.transientInstanceIdx;
       const instanceId = `${process.pid}-${Date.now()}-${idx}`;
@@ -72,8 +72,11 @@ export class FileManager {
     }
 
     // workDir from the CLI options
-    const argv: ParsedArgs = minimist(process.argv.slice(2));
-    const workDir = argv['work-dir'] || this.getDefaultWorkDir();
+    const workDir =
+      FileManager.defaultFileOption.workDir ||
+      // in case there is a transcient working directory generated
+      this.memlabConfigCache?.workDir ||
+      this.getDefaultWorkDir();
     return path.resolve(workDir);
   }
 
@@ -460,11 +463,16 @@ export class FileManager {
     config: MemLabConfig,
     options: FileOption = FileManager.defaultFileOption,
   ): void {
+    // cache the last processed memlab config instance
+    // the instance should be a singleton
+    this.memlabConfigCache = config;
     config.monoRepoDir = constant.monoRepoDir;
 
     // make sure getWorkDir is called first before
     // any other get file or get dir calls
     const workDir = this.getWorkDir(options);
+    // remember the current working directory
+    // especially if this is a transcient working directory
     config.workDir = joinAndProcessDir(options, workDir);
     options = {...options, workDir};
 

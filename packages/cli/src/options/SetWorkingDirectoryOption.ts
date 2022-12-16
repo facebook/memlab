@@ -30,7 +30,6 @@ export default class SetWorkingDirectoryOption extends BaseOption {
     const ret: AnyRecord = {};
     const workDir = args[name];
     if (workDir) {
-      config.defaultFileManagerOption.workDir = workDir;
       ret.workDir = workDir;
     }
     return ret;

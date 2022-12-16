@@ -18,6 +18,7 @@ import type {
   TraceCluster,
   TraceClusterDiff,
   IClusterStrategy,
+  ControlTreatmentClusterResult,
 } from '../lib/Types';
 import type {NormalizedTraceElement} from './TraceElement';
 
@@ -318,6 +319,152 @@ export default class NormalizedTrace {
     clusters = NormalizedTrace.filterClusters(clusters);
     clusters.sort((c1, c2) => (c2.retainedSize ?? 0) - (c1.retainedSize ?? 0));
     return clusters;
+  }
+
+  private static buildTraceToPathMap(
+    paths: LeakTracePathItem[],
+  ): Map<NormalizedTraceElement[], LeakTracePathItem> {
+    const traceToPathMap = new Map();
+    for (const p of paths) {
+      const trace = NormalizedTrace.pathToTrace(p, {
+        untilFirstDetachedDOMElem: true,
+      });
+      traceToPathMap.set(trace, p);
+    }
+    return traceToPathMap;
+  }
+
+  private static pushLeakPathToCluster(
+    traceToPathMap: Map<NormalizedTraceElement[], LeakTracePathItem>,
+    trace: NormalizedTraceElement[],
+    cluster: TraceCluster,
+  ): void {
+    // if this is a control path, update control cluster
+    const curPath = traceToPathMap.get(trace) as LeakTracePathItem;
+    if ((cluster.count as number) === 0) {
+      cluster.path = curPath;
+      // add representative object id if there is one
+      const lastNode = trace[trace.length - 1];
+      if ('id' in lastNode) {
+        cluster.id = lastNode.id;
+      }
+    }
+    cluster.count = (cluster.count as number) + 1;
+    NormalizedTrace.addLeakedNodeToCluster(cluster, curPath);
+  }
+
+  private static initEmptyCluster(snapshot: IHeapSnapshot): TraceCluster {
+    return {
+      path: {} as LeakTracePathItem,
+      count: 0,
+      snapshot,
+      retainedSize: 0,
+      leakedNodeIds: new Set<number>(),
+    };
+  }
+
+  static clusterControlTreatmentPaths(
+    controlPaths: LeakTracePathItem[],
+    controlSnapshot: IHeapSnapshot,
+    treatmentPaths: LeakTracePathItem[],
+    treatmentSnapshot: IHeapSnapshot,
+    aggregateDominatorMetrics: AggregateNodeCb,
+    option: {strategy?: IClusterStrategy} = {},
+  ): ControlTreatmentClusterResult {
+    const result: ControlTreatmentClusterResult = {
+      controlOnlyClusters: [],
+      treatmentOnlyClusters: [],
+      hybridClusters: [],
+    };
+    info.overwrite('Clustering leak traces');
+    if (controlPaths.length === 0 && treatmentPaths.length === 0) {
+      info.midLevel('No leaks found');
+      return result;
+    }
+    // sample paths if there are too many
+    controlPaths = this.samplePaths(controlPaths);
+    treatmentPaths = this.samplePaths(treatmentPaths);
+
+    // build control trace to control path map
+    const controlTraceToPathMap =
+      NormalizedTrace.buildTraceToPathMap(controlPaths);
+    const controlTraces = Array.from(controlTraceToPathMap.keys());
+    // build treatment trace to treatment path map
+    const treatmentTraceToPathMap =
+      NormalizedTrace.buildTraceToPathMap(treatmentPaths);
+    const treatmentTraces = Array.from(treatmentTraceToPathMap.keys());
+
+    // cluster traces from both the control group and the treatment group
+    const {allClusters} = NormalizedTrace.diffTraces(
+      [...controlTraces, ...treatmentTraces],
+      [],
+      option,
+    );
+
+    // construct TraceCluster from clustering result
+    allClusters.forEach((traces: LeakTrace[]) => {
+      const controlCluster = NormalizedTrace.initEmptyCluster(controlSnapshot);
+      const treatmentCluster =
+        NormalizedTrace.initEmptyCluster(treatmentSnapshot);
+      for (const trace of traces) {
+        const normalizedTrace = trace as NormalizedTraceElement[];
+        if (controlTraceToPathMap.has(normalizedTrace)) {
+          NormalizedTrace.pushLeakPathToCluster(
+            controlTraceToPathMap,
+            normalizedTrace,
+            controlCluster,
+          );
+        } else {
+          NormalizedTrace.pushLeakPathToCluster(
+            treatmentTraceToPathMap,
+            normalizedTrace,
+            treatmentCluster,
+          );
+        }
+      }
+      const controlClusterSize = controlCluster.count ?? 0;
+      const treatmentClusterSize = treatmentCluster.count ?? 0;
+      // calculate aggregated cluster size for control cluster
+      if (controlClusterSize > 0) {
+        this.calculateClusterRetainedSize(
+          controlCluster,
+          controlSnapshot,
+          aggregateDominatorMetrics,
+        );
+      }
+      // calculate aggregated cluster size for treatment cluster
+      if (treatmentClusterSize > 0) {
+        this.calculateClusterRetainedSize(
+          treatmentCluster,
+          treatmentSnapshot,
+          aggregateDominatorMetrics,
+        );
+      }
+      if (controlClusterSize === 0) {
+        result.treatmentOnlyClusters.push(treatmentCluster);
+      } else if (treatmentClusterSize === 0) {
+        result.controlOnlyClusters.push(controlCluster);
+      } else {
+        result.hybridClusters.push({
+          control: controlCluster,
+          treatment: treatmentCluster,
+        });
+      }
+    });
+    result.treatmentOnlyClusters.sort(
+      (c1, c2) => (c2.retainedSize ?? 0) - (c1.retainedSize ?? 0),
+    );
+    result.controlOnlyClusters.sort(
+      (c1, c2) => (c2.retainedSize ?? 0) - (c1.retainedSize ?? 0),
+    );
+    result.hybridClusters.sort(
+      (g1, g2) =>
+        (g2.control.retainedSize ?? 0) +
+        (g2.treatment.retainedSize ?? 0) -
+        (g1.control.retainedSize ?? 0) -
+        (g1.treatment.retainedSize ?? 0),
+    );
+    return result;
   }
 
   static generateUnClassifiedClusters(

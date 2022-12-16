@@ -62,14 +62,14 @@ class MemoryAnalyst {
     const controlSnapshotDir = fileManager.getCurDataDir({
       workDir: options.controlWorkDir,
     });
-    const testSnapshotDir = fileManager.getCurDataDir({
-      workDir: options.testWorkDir,
+    const treatmentSnapshotDir = fileManager.getCurDataDir({
+      workDir: options.treatmentWorkDir,
     });
     // check control working dir
     utils.checkSnapshots({snapshotDir: controlSnapshotDir});
-    // check test working dir
-    utils.checkSnapshots({snapshotDir: testSnapshotDir});
-    // display control and test memory
+    // check treatment working dir
+    utils.checkSnapshots({snapshotDir: treatmentSnapshotDir});
+    // display control and treatment memory
     memoryBarChart.plotMemoryBarChart(options);
     return this.diffMemoryLeakTraces(options);
   }
@@ -89,18 +89,38 @@ class MemoryAnalyst {
       snapshotDiff.snapshot,
       {workDir: options.controlWorkDir},
     );
-    // diff snapshots and get test raw paths
+    const controlSnapshot = snapshotDiff.snapshot;
+    // diff snapshots and get treatment raw paths
     snapshotDiff = await this.diffSnapshots({
       loadAllSnapshots: true,
-      workDir: options.testWorkDir,
+      workDir: options.treatmentWorkDir,
     });
-    const testLeakPaths = this.filterLeakPaths(
+    const treatmentLeakPaths = this.filterLeakPaths(
       snapshotDiff.leakedHeapNodeIdSet,
       snapshotDiff.snapshot,
       {workDir: options.controlWorkDir},
     );
+    const treatmentSnapshot = snapshotDiff.snapshot;
     info.topLevel(`${controlLeakPaths.length} traces from control group`);
-    info.topLevel(`${testLeakPaths.length} traces from test group`);
+    info.topLevel(`${treatmentLeakPaths.length} traces from treatment group`);
+
+    const result = NormalizedTrace.clusterControlTreatmentPaths(
+      controlLeakPaths,
+      controlSnapshot,
+      treatmentLeakPaths,
+      treatmentSnapshot,
+      utils.aggregateDominatorMetrics,
+      {
+        strategy: config.isMLClustering
+          ? new MLTraceSimilarityStrategy()
+          : undefined,
+      },
+    );
+    info.midLevel(
+      `MemLab found ${result.treatmentOnlyClusters.length} new leak(s) in the treatment group`,
+    );
+    await this.serializeClusterUpdate(result.treatmentOnlyClusters);
+    // TODO (lgong): log leak traces
     return [];
   }
 
@@ -575,7 +595,7 @@ class MemoryAnalyst {
 
   /**
    * Given a set of heap object ids, cluster them based on the similarity
-   * of their retainer traces and return a
+   * of their retainer traces
    * @param leakedNodeIds
    * @param snapshot
    * @returns
