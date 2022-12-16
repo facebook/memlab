@@ -14,9 +14,8 @@ import type {
   E2EStepInfo,
   HeapNodeIdSet,
   IHeapSnapshot,
-  IMemoryAnalystHeapNodeLeakSummary,
-  IMemoryAnalystOptions,
   IMemoryAnalystSnapshotDiff,
+  IMemoryAnalystHeapNodeLeakSummary,
   IOveralHeapInfo,
   LeakTracePathItem,
   Nullable,
@@ -24,15 +23,16 @@ import type {
   IOveralLeakInfo,
   TraceCluster,
   ISerializedInfo,
+  DiffLeakOptions,
 } from './Types';
 
 import fs from 'fs';
-import babar from 'babar';
 import config from './Config';
 import info from './Console';
 import serializer from './Serializer';
 import utils from './Utils';
 import fileManager from './FileManager';
+import memoryBarChart from './charts/MemoryBarChart';
 import clusterLogger from '../logger/LeakClusterLogger';
 import traceDetailsLogger from '../logger/LeakTraceDetailsLogger';
 import TraceFinder from '../paths/TraceFinder';
@@ -40,14 +40,9 @@ import NormalizedTrace from '../trace-cluster/TraceBucket';
 import {LeakObjectFilter} from './leak-filters/LeakObjectFilter';
 import MLTraceSimilarityStrategy from '../trace-cluster/strategies/MLTraceSimilarityStrategy';
 
-type DiffLeakOptions = {
-  controlWorkDir: string;
-  testWorkDir: string;
-};
-
 class MemoryAnalyst {
   async checkLeak(): Promise<ISerializedInfo[]> {
-    this.visualizeMemoryUsage();
+    memoryBarChart.plotMemoryBarChart();
     utils.checkSnapshots();
     return await this.detectMemoryLeaks();
   }
@@ -55,14 +50,18 @@ class MemoryAnalyst {
   async diffLeakByWorkDir(
     options: DiffLeakOptions,
   ): Promise<ISerializedInfo[]> {
+    const controlSnapshotDir = fileManager.getCurDataDir({
+      workDir: options.controlWorkDir,
+    });
+    const testSnapshotDir = fileManager.getCurDataDir({
+      workDir: options.testWorkDir,
+    });
     // check control working dir
-    utils.checkSnapshots({
-      snapshotDir: fileManager.getCurDataDir({workDir: options.controlWorkDir}),
-    });
+    utils.checkSnapshots({snapshotDir: controlSnapshotDir});
     // check test working dir
-    utils.checkSnapshots({
-      snapshotDir: fileManager.getCurDataDir({workDir: options.testWorkDir}),
-    });
+    utils.checkSnapshots({snapshotDir: testSnapshotDir});
+    // display control and test memory
+    memoryBarChart.plotMemoryBarChart(options);
     return [];
   }
 
@@ -81,59 +80,6 @@ class MemoryAnalyst {
       paths,
       config.traceJsonOutDir,
     );
-  }
-
-  visualizeMemoryUsage(options: IMemoryAnalystOptions = {}) {
-    if (config.useExternalSnapshot || options.snapshotDir) {
-      return;
-    }
-    const tabsOrder = utils.loadTabsOrder();
-    // if memory usage data is incomplete, skip the visualization
-    for (const tab of tabsOrder) {
-      if (!(tab.JSHeapUsedSize > 0)) {
-        if (config.verbose) {
-          info.error('Memory usage data incomplete');
-        }
-        return;
-      }
-    }
-    const plotData = tabsOrder.map((tab, idx) => [
-      idx + 1,
-      ((tab.JSHeapUsedSize / 100000) | 0) / 10,
-    ]);
-
-    // the graph component cannot handle an array with a single element
-    while (plotData.length < 2) {
-      plotData.push([plotData.length + 1, 0]);
-    }
-
-    // plot visual settings
-    const minY = 1;
-    const maxY = plotData.reduce((m, v) => Math.max(m, v[1]), 0) * 1.15;
-    const yFractions = 1;
-    const yLabelWidth =
-      1 +
-      Math.max(
-        minY.toFixed(yFractions).length,
-        maxY.toFixed(yFractions).length,
-      );
-    const maxWidth = process.stdout.columns - 10;
-    const idealWidth = Math.max(2 * plotData.length + 2 * yLabelWidth, 10);
-    const plotWidth = Math.min(idealWidth, maxWidth);
-
-    info.topLevel('Memory usage across all steps:');
-    info.topLevel(
-      babar(plotData, {
-        color: 'green',
-        width: plotWidth,
-        height: 10,
-        xFractions: 0,
-        yFractions,
-        minY,
-        maxY,
-      }),
-    );
-    info.topLevel('');
   }
 
   async focus(options: {file?: string} = {}) {

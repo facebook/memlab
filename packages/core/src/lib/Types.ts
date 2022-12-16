@@ -1941,6 +1941,19 @@ export interface IOveralLeakInfo extends Partial<IOveralHeapInfo> {
 }
 
 /** @internal */
+export type DiffLeakOptions = {
+  controlWorkDir: string;
+  testWorkDir: string;
+};
+
+/** @internal */
+export type PlotMemoryOptions = {
+  controlWorkDir?: string;
+  testWorkDir?: string;
+  workDir?: string;
+};
+
+/** @internal */
 export interface IMemoryAnalystOptions {
   snapshotDir?: string;
   minSnapshots?: number;

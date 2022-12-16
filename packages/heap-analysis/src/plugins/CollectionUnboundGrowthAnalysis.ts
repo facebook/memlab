@@ -17,7 +17,7 @@ import type {
 } from '@memlab/core';
 
 import fs from 'fs';
-import {analysis, config, utils, info, serializer} from '@memlab/core';
+import {config, info, memoryBarChart, serializer, utils} from '@memlab/core';
 import BaseAnalysis from '../BaseAnalysis';
 import SnapshotDirectoryOption from '../options/HeapAnalysisSnapshotDirectoryOption';
 import pluginUtils from '../PluginUtils';
@@ -57,7 +57,7 @@ class CollectionUnboundGrowthAnalysis extends BaseAnalysis {
     const snapshotDir = pluginUtils.getSnapshotDirForAnalysis(options);
     const opt = snapshotDir ? {minSnapshots: 2, snapshotDir} : {};
     config.chaseWeakMapEdge = false;
-    analysis.visualizeMemoryUsage(opt);
+    memoryBarChart.plotMemoryBarChart();
     utils.checkSnapshots(opt);
     await this.checkUnboundCollection(opt);
   }

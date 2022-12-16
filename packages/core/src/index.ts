@@ -10,13 +10,14 @@
 
 import path from 'path';
 import {PackageInfoLoader} from './lib/PackageInfoLoader';
+
+export * from './lib/Types';
+export * from './lib/NodeHeap';
+
 /** @internal */
 export async function registerPackage(): Promise<void> {
   return PackageInfoLoader.registerPackage(path.join(__dirname, '..'));
 }
-
-export * from './lib/Types';
-export * from './lib/NodeHeap';
 /** @internal */
 export {default as config} from './lib/Config';
 /** @internal */
@@ -41,6 +42,8 @@ export {default as browserInfo} from './lib/BrowserInfo';
 export {default as analysis} from './lib/HeapAnalyzer';
 /** @internal */
 export {default as constant} from './lib/Constant';
+/** @internal */
+export {default as memoryBarChart} from './lib/charts/MemoryBarChart';
 /** @internal */
 export {default as modes} from './modes/RunningModes';
 /** @internal */

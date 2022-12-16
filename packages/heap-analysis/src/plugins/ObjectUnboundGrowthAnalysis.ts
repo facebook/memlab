@@ -18,11 +18,11 @@ import type {AnalyzeSnapshotResult, HeapAnalysisOptions} from '../PluginUtils';
 
 import fs from 'fs';
 import {
-  analysis,
   config,
   info,
-  utils,
+  memoryBarChart,
   serializer,
+  utils,
   TraceFinder,
 } from '@memlab/core';
 import BaseAnalysis from '../BaseAnalysis';
@@ -67,7 +67,7 @@ class ObjectUnboundGrowthAnalysis extends BaseAnalysis {
   }
 
   private async checkUnbound(options: IMemoryAnalystOptions = {}) {
-    analysis.visualizeMemoryUsage(options);
+    memoryBarChart.plotMemoryBarChart();
     utils.checkSnapshots(options);
     await this.detectUnboundGrowth(options);
   }
