@@ -79,6 +79,33 @@ memlab find-leaks
  * **`--debug`**: enable manual debugging
  * **`--silent`**, **`-s`**: mute all terminal output
 
+### memlab diff-leaks
+
+Find new memory leaks by diffing control and test heap snapshots
+
+```bash
+memlab diff-leaks 
+```
+
+**Options**:
+ * **`--control-work-dir`**: set the working directory of the control run
+ * **`--test-work-dir`**: set the working directory of the test (treatment) run
+ * **`--engine`**: set the JavaScript engine (default to V8)
+ * **`--leak-filter`**: specify a definition JS file for leak filter
+ * **`--trace-object-size-above`**: objects with retained size (bytes) bigger than the threshold will be considered as leaks
+ * **`--ignore-leak-cluster-size-below`**: ignore memory leaks with aggregated retained size smaller than the threshold
+ * **`--trace-all-objects`**: dump retainer trace for all allocated objects (ignore the leak filter)
+ * **`--save-trace-as-unclassified-cluster`**: dump each retainer trace as an unclassified trace cluster
+ * **`--ml-clustering`**: use machine learning algorithms for clustering leak traces (by default, traces are clustered by heuristics)
+ * **`--ml-linkage-max-dist`**: set linkage max distance value for clustering. The value should be between [0, 1] inclusive.
+ * **`--ml-clustering-max-df`**: set percentage based max document frequency for limiting the terms that appear too often
+ * **`--work-dir`**: set the working directory of the current run
+ * **`--help`**, **`-h`**: print helper text
+ * **`--verbose`**, **`-v`**: show more details
+ * **`--sc`**: set to continuous test mode
+ * **`--debug`**: enable manual debugging
+ * **`--silent`**, **`-s`**: mute all terminal output
+
 ### memlab trace
 
 Report retainer trace of a specific node, use with --nodeId

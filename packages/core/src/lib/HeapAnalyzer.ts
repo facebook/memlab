@@ -28,22 +28,42 @@ import type {
 
 import fs from 'fs';
 import babar from 'babar';
-import clusterLogger from '../logger/LeakClusterLogger';
-import traceDetailsLogger from '../logger/LeakTraceDetailsLogger';
-import TraceFinder from '../paths/TraceFinder';
-import NormalizedTrace from '../trace-cluster/TraceBucket';
 import config from './Config';
 import info from './Console';
 import serializer from './Serializer';
 import utils from './Utils';
+import fileManager from './FileManager';
+import clusterLogger from '../logger/LeakClusterLogger';
+import traceDetailsLogger from '../logger/LeakTraceDetailsLogger';
+import TraceFinder from '../paths/TraceFinder';
+import NormalizedTrace from '../trace-cluster/TraceBucket';
 import {LeakObjectFilter} from './leak-filters/LeakObjectFilter';
 import MLTraceSimilarityStrategy from '../trace-cluster/strategies/MLTraceSimilarityStrategy';
+
+type DiffLeakOptions = {
+  controlWorkDir: string;
+  testWorkDir: string;
+};
 
 class MemoryAnalyst {
   async checkLeak(): Promise<ISerializedInfo[]> {
     this.visualizeMemoryUsage();
     utils.checkSnapshots();
     return await this.detectMemoryLeaks();
+  }
+
+  async diffLeakByWorkDir(
+    options: DiffLeakOptions,
+  ): Promise<ISerializedInfo[]> {
+    // check control working dir
+    utils.checkSnapshots({
+      snapshotDir: fileManager.getCurDataDir({workDir: options.controlWorkDir}),
+    });
+    // check test working dir
+    utils.checkSnapshots({
+      snapshotDir: fileManager.getCurDataDir({workDir: options.testWorkDir}),
+    });
+    return [];
   }
 
   // find all unique pattern of leaks
