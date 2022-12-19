@@ -2,10 +2,10 @@
 
 [![Licensed under the MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/facebook/memlab/blob/master/LICENSE)
 [![PR's Welcome](https://img.shields.io/badge/PRs%20-welcome-brightgreen.svg)](https://github.com/facebook/memlab/blob/main/CONTRIBUTING.md)
-[![npm version](https://img.shields.io/npm/v/memlab.svg?style=flat)](https://www.npmjs.com/package/memlab)
+[![npm version](https://img.shields.io/npm/v/memlab.svg?style=flat)](https://www.npmjs.com/package/memlab?activeTab=readme)
 
-memlab is an E2E testing and analysis framework for finding JavaScript memory
-leaks and optimization opportunities.
+memlab is an end-to-end testing and analysis framework for identifying
+JavaScript memory leaks and optimization opportunities.
 
 Online Resources:
 * [Official Website and Demo](https://facebook.github.io/memlab)
@@ -13,17 +13,17 @@ Online Resources:
 * [Meta Engineering Blog Post](https://engineering.fb.com/2022/09/12/open-source/memlab/)
 
 Features:
- * **Browser memory leak detection** - Write test scenario with puppeteer API,
-   memlab auto diffs JS heap snapshots, filters out memory leaks, and
-   aggregates results.
- * **Object-oriented heap traversing API** - Supports self-defined memory leak
-   detector and programmatically analyzing JS heap snapshots taken from
-   Chromium-based browsers, Node.js, Electron.js, and Hermes
+ * **Browser memory leak detection** - Write test scenarios with the Puppeteer
+   API, and memlab will automatically compare JavaScript heap snapshots, filter
+   out memory leaks, and aggregate the results
+ * **Object-oriented heap traversing API** - Supports the creation of
+   self-defined memory leak detector, and enables programmatic analysis JS heap
+   snapshots taken from Chromium-based browsers, Node.js, Electron.js, and Hermes
  * **Memory CLI toolbox** - Built-in toolbox and APIs for finding memory
-   optimization opportunities (not necessarily memory leaks)
- * **Memory assertions in Node.js** - Enables unit test or running node.js
-   program to take a heap snapshot of its own state, do self memory checking,
-   or write advanced memory assertions
+   optimization opportunities (not necessarily just memory leaks)
+ * **Memory assertions in Node.js** - Enables unit tests or running node.js
+   programs to take a heap snapshot of their own state, perform self memory
+   checking, or write advanced memory assertions
 
 ## CLI Usage
 
