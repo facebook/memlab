@@ -62,6 +62,35 @@ export default class NormalizedTrace {
     }
   }
 
+  static getPathLastNode(
+    p: LeakTracePathItem,
+    options: {
+      untilFirstDetachedDOMElem?: boolean;
+    } = {},
+  ): Optional<IHeapNode> {
+    const skipRest = !!options.untilFirstDetachedDOMElem;
+    const shouldSkip = (node: IHeapNode) => {
+      // only consider the trace from GC root to the first detached element
+      // NOTE: do not use utils.isDetachedDOMNode, which relies on
+      //       the fact that p.node is a HeapNode
+      return (
+        skipRest &&
+        node.name.startsWith('Detached ') &&
+        node.name !== 'Detached InternalNode'
+      );
+    };
+    let curItem: Optional<LeakTracePathItem> = p;
+    while (curItem.next) {
+      if (curItem.node) {
+        if (shouldSkip(curItem.node)) {
+          break;
+        }
+      }
+      curItem = curItem.next;
+    }
+    return curItem?.node;
+  }
+
   // convert path to leak trace
   static pathToTrace(
     p: LeakTracePathItem,
@@ -163,6 +192,12 @@ export default class NormalizedTrace {
     for (const p of paths) {
       if (Math.random() < sampleRatio) {
         ret.push(p);
+      } else {
+        // force sample objects with non-trvial self size
+        const lastNode = NormalizedTrace.getPathLastNode(p);
+        if (lastNode && lastNode.self_size >= 100000) {
+          ret.push(p);
+        }
       }
     }
     return ret;
