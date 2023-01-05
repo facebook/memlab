@@ -1,6 +1,6 @@
 {
   "name": "@memlab/heap-analysis",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "license": "MIT",
   "description": "heap analysis plugins for memlab",
   "author": "Liang Gong <lgong@fb.com>",

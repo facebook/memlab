@@ -1,6 +1,6 @@
 {
   "name": "@memlab/e2e",
-  "version": "1.0.20",
+  "version": "1.0.21",
   "license": "MIT",
   "description": "memlab browser E2E interaction libraries",
   "author": "Liang Gong <lgong@fb.com>",
