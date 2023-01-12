@@ -244,6 +244,8 @@ export class MemLabConfig {
   seqClusteringIsRandomChunks: boolean;
   instrumentJS: boolean;
   interceptScript: boolean;
+  isAnalyzingMainThread: boolean;
+  targetWorkerTitle: Nullable<string>;
 
   constructor(options: ConfigOption = {}) {
     // init properties, they can be configured manually
@@ -395,6 +397,10 @@ export class MemLabConfig {
     this.isManualDebug = false;
     // number of warmup repeat in each browser tab instance
     this.warmupRepeat = 2;
+    // by default, analyzing heap in main thread
+    this.isAnalyzingMainThread = true;
+    // target worker's title
+    this.targetWorkerTitle = null;
 
     // default waiting time when there is no page load checker callback
     this.delayWhenNoPageLoadCheck = 2000;

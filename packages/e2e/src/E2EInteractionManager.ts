@@ -11,6 +11,7 @@
 import type {Browser, CDPSession, Page, Target} from 'puppeteer';
 import type {
   AnyFunction,
+  AnyValue,
   E2EOperation,
   E2EStepInfo,
   InteractionsCallback,
@@ -68,6 +69,28 @@ export default class E2EInteractionManager {
     this.networkManager = new NetworkManager(page);
   }
 
+  public async getChosenCDPSession(): Promise<CDPSession> {
+    if (config.isAnalyzingMainThread) {
+      return this.getMainThreadCDPSession();
+    }
+    // get web worker thread target
+    const cdpSession = await this.selectCDPSession(target => {
+      const t = target as AnyValue;
+      const isWorker = t._targetInfo?.type === 'worker';
+      let isTitleMatch = true;
+      if (config.targetWorkerTitle != null) {
+        isTitleMatch = t._targetInfo?.title === config.targetWorkerTitle;
+      }
+      return isWorker && isTitleMatch;
+    });
+    if (cdpSession == null) {
+      throw utils.haltOrThrow(
+        'web worker or main thread heap under analysis not found',
+      );
+    }
+    return cdpSession;
+  }
+
   public async getMainThreadCDPSession(): Promise<CDPSession> {
     if (!this.mainThreadCdpsession) {
       this.mainThreadCdpsession = await this.page.target().createCDPSession();
@@ -76,7 +99,7 @@ export default class E2EInteractionManager {
     return this.mainThreadCdpsession;
   }
 
-  public async getCDPSession(
+  public async selectCDPSession(
     predicate: (t: Target) => boolean,
   ): Promise<Nullable<CDPSession>> {
     const targets = await this.browser.targets();
@@ -119,6 +142,7 @@ export default class E2EInteractionManager {
   }
 
   private async beforeInteractions(): Promise<void> {
+    // tracking main thread for network interception
     const session = await this.getMainThreadCDPSession();
     if (config.interceptScript) {
       this.networkManager.setCDPSession(session);
@@ -402,7 +426,7 @@ export default class E2EInteractionManager {
   private async saveHeapSnapshotToFile(file: string): Promise<void> {
     info.beginSection('heap snapshot');
     const start = Date.now();
-    const session = await this.getMainThreadCDPSession();
+    const session = await this.getChosenCDPSession();
     await this.writeSnapshotFileFromCDPSession(file, session);
     const spanMs = Date.now() - start;
     if (config.verbose) {
@@ -425,10 +449,10 @@ export default class E2EInteractionManager {
     }
 
     // force GC 6 times to release feedback_cells
-    await this.forceGC(6);
+    await this.forceMainThreadGC(6);
   }
 
-  private async forceGC(repeat = 1): Promise<void> {
+  private async forceMainThreadGC(repeat = 1): Promise<void> {
     const client = await this.getMainThreadCDPSession();
     for (let i = 0; i < repeat; i++) {
       await client.send('HeapProfiler.collectGarbage');
@@ -446,7 +470,7 @@ export default class E2EInteractionManager {
     if (!config.runningMode.shouldGetMetrics(tabInfo)) {
       return;
     }
-    await this.forceGC();
+    await this.forceMainThreadGC();
 
     // collect heap size
     const builtInMetrics = await this.page.metrics();
