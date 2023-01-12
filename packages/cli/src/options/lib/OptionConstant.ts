@@ -56,6 +56,7 @@ const optionNames = {
   USER_AGENT: 'user-agent',
   VERBOSE: 'verbose',
   WORK_DIR: 'work-dir',
+  WORKER_TITLE: 'worker',
   DEBUG: 'debug',
 };
 

@@ -34,6 +34,7 @@ memlab run --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--disable-web-security`**: disable web security in Chromium to enable cross domain requests; web security is enabled by default
  * **`--rewrite-js`**: enable instrument JavaScript code in browser
  * **`--log-script`**: enable intercepting and logging JavaScript code in browser
+ * **`--worker`**: set title of the target (worker) that needs to be selected and analyzed
  * **`--leak-filter`**: specify a definition JS file for leak filter
  * **`--trace-object-size-above`**: objects with retained size (bytes) bigger than the threshold will be considered as leaks
  * **`--ignore-leak-cluster-size-below`**: ignore memory leaks with aggregated retained size smaller than the threshold
@@ -584,6 +585,7 @@ memlab snapshot --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--disable-web-security`**: disable web security in Chromium to enable cross domain requests; web security is enabled by default
  * **`--rewrite-js`**: enable instrument JavaScript code in browser
  * **`--log-script`**: enable intercepting and logging JavaScript code in browser
+ * **`--worker`**: set title of the target (worker) that needs to be selected and analyzed
  * **`--work-dir`**: set the working directory of the current run
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
@@ -620,6 +622,7 @@ memlab warmup-and-snapshot
  * **`--skip-gc`**: skip doing garbage collection in browser
  * **`--skip-scroll`**: skip scrolling target page in browser
  * **`--skip-extra-ops`**: skip doing extra interactions (e.g., scrolling and waiting) on target and final page
+ * **`--worker`**: set title of the target (worker) that needs to be selected and analyzed
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode

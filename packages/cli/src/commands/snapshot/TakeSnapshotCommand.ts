@@ -34,6 +34,7 @@ import SetUserAgentOption from '../../options/e2e/SetUserAgentOption';
 import DisableWebSecurityOption from '../../options/e2e/DisableWebSecurityOption';
 import EnableJSRewriteOption from '../../options/e2e/EnableJSRewriteOption';
 import EnableJSInterceptOption from '../../options/e2e/EnableJSInterceptOption';
+import TargetWorkerOption from '../../options/e2e/TargetWorkerOption';
 
 export default class TakeSnapshotCommand extends BaseCommand {
   getCommandName(): string {
@@ -80,6 +81,7 @@ export default class TakeSnapshotCommand extends BaseCommand {
       new DisableWebSecurityOption(),
       new EnableJSRewriteOption(),
       new EnableJSInterceptOption(),
+      new TargetWorkerOption(),
     ];
   }
 
