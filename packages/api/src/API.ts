@@ -288,7 +288,7 @@ export async function warmup(options: APIOptions = {}): Promise<void> {
     await Promise.all(
       pages.map(async page => {
         await setupPage(page, {cache: false});
-        const interactionManager = new E2EInteractionManager(page);
+        const interactionManager = new E2EInteractionManager(page, browser);
         await interactionManager.warmupInPage();
       }),
     ).catch(err => {
@@ -378,7 +378,7 @@ export async function testInBrowser(options: APIOptions = {}): Promise<void> {
     const browser = await APIUtils.getBrowser();
     const pages = await browser.pages();
     const page = pages.length > 0 ? pages[0] : await browser.newPage();
-    interactionManager = new E2EInteractionManager(page);
+    interactionManager = new E2EInteractionManager(page, browser);
 
     if (options.evalInBrowserAfterInitLoad) {
       interactionManager.setEvalFuncAfterInitLoad(

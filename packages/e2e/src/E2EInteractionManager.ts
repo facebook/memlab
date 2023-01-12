@@ -8,16 +8,17 @@
  * @oncall web_perf_infra
  */
 
+import type {Browser, CDPSession, Page, Target} from 'puppeteer';
 import type {
   AnyFunction,
   E2EOperation,
   E2EStepInfo,
   InteractionsCallback,
+  Nullable,
   OperationArgs,
   Optional,
   MemLabConfig,
 } from '@memlab/core';
-import type {CDPSession, Page} from 'puppeteer';
 
 import fs from 'fs';
 import path from 'path';
@@ -54,27 +55,40 @@ const {
 } = E2EUtils;
 
 export default class E2EInteractionManager {
-  private cdpsession: Optional<CDPSession>;
+  private mainThreadCdpsession: Optional<CDPSession>;
   private page: Page;
+  private browser: Browser;
   private pageHistoryLength: number[] = [];
   private evalFuncAfterInitLoad: AnyFunction | null = null;
   private networkManager: NetworkManager;
 
-  constructor(page: Page) {
+  constructor(page: Page, browser: Browser) {
     this.page = page;
+    this.browser = browser;
     this.networkManager = new NetworkManager(page);
   }
 
-  public async getCDPSession(): Promise<CDPSession> {
-    if (!this.cdpsession) {
-      this.cdpsession = await this.page.target().createCDPSession();
-      this.networkManager.setCDPSession(this.cdpsession);
+  public async getMainThreadCDPSession(): Promise<CDPSession> {
+    if (!this.mainThreadCdpsession) {
+      this.mainThreadCdpsession = await this.page.target().createCDPSession();
+      this.networkManager.setCDPSession(this.mainThreadCdpsession);
     }
-    return this.cdpsession;
+    return this.mainThreadCdpsession;
+  }
+
+  public async getCDPSession(
+    predicate: (t: Target) => boolean,
+  ): Promise<Nullable<CDPSession>> {
+    const targets = await this.browser.targets();
+    const target = targets.find(predicate);
+    if (!target) {
+      return null;
+    }
+    return await target.createCDPSession();
   }
 
   public clearCDPSession(): void {
-    this.cdpsession = null;
+    this.mainThreadCdpsession = null;
   }
 
   public setEvalFuncAfterInitLoad(func: AnyFunction | null): void {
@@ -105,7 +119,7 @@ export default class E2EInteractionManager {
   }
 
   private async beforeInteractions(): Promise<void> {
-    const session = await this.getCDPSession();
+    const session = await this.getMainThreadCDPSession();
     if (config.interceptScript) {
       this.networkManager.setCDPSession(session);
       await this.networkManager.interceptScript();
@@ -341,7 +355,7 @@ export default class E2EInteractionManager {
     if (config.verbose) {
       info.lowLevel('Start tracking JS heap');
     }
-    const session = await this.getCDPSession();
+    const session = await this.getMainThreadCDPSession();
     await session.send('HeapProfiler.enable');
   }
 
@@ -388,7 +402,7 @@ export default class E2EInteractionManager {
   private async saveHeapSnapshotToFile(file: string): Promise<void> {
     info.beginSection('heap snapshot');
     const start = Date.now();
-    const session = await this.getCDPSession();
+    const session = await this.getMainThreadCDPSession();
     await this.writeSnapshotFileFromCDPSession(file, session);
     const spanMs = Date.now() - start;
     if (config.verbose) {
@@ -415,7 +429,7 @@ export default class E2EInteractionManager {
   }
 
   private async forceGC(repeat = 1): Promise<void> {
-    const client = await this.getCDPSession();
+    const client = await this.getMainThreadCDPSession();
     for (let i = 0; i < repeat; i++) {
       await client.send('HeapProfiler.collectGarbage');
       // wait for a while and let GC do the job
