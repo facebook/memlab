@@ -1,18 +1,41 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <link rel="icon" href="/favicon.ico" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta
-      name="description"
-      content="Web page for e2e tests"
-    />
-    <title>React App</title>
-    <script defer="defer" src="min.js"></script>
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
+
+<head>
+  <meta charset="utf-8" />
+  <link rel="icon" href="/favicon.ico" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="description" content="Web page for e2e tests" />
+  <title>React App</title>
+  <script>
+    // create a web worker
+    var blobURL = URL.createObjectURL(
+      new Blob(
+        [
+          '(',
+          function () {
+            function WorkerTestObject() {
+              this.idx = Math.random();
+            }
+            setInterval(() => {
+              self.holder = self.holder || [];
+              self.holder.push(new WorkerTestObject());
+            }, 5);
+          }.toString(),
+          ')()',
+        ],
+        { type: 'application/javascript' },
+      ),
+    );
+    var worker = new Worker(blobURL, {name: 'test-worker'});
+    URL.revokeObjectURL(blobURL);
+  </script>
+  <script defer="defer" src="min.js"></script>
+</head>
+
+<body>
+  <div id="root"></div>
+</body>
+
 </html>

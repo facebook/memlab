@@ -69,6 +69,13 @@ export type RunOptions = {
    * specified working directory exists.
    */
   workDir?: string;
+  /**
+   * if this field is provided, it specifies the web worker as the target
+   * for heap analysis. For example `{webWorker: null}` means analyzing
+   * the heap of the first web worker found. `{webWorker: 'workerTitle'}`
+   * means analyzing the heap of the web worker with name: `'workerTitle'`.
+   */
+  webWorker?: Optional<string>;
 };
 
 /**
@@ -310,6 +317,15 @@ function getConfigFromRunOptions(options: RunOptions): MemLabConfig {
     fileManager.initDirs(config, {workDir: options.workDir});
   } else {
     config = MemLabConfig.resetConfigWithTransientDir();
+  }
+  if ('webWorker' in options) {
+    config.isAnalyzingMainThread = false;
+    const value = options.webWorker;
+    if (typeof value === 'string') {
+      config.targetWorkerTitle = value;
+    }
+  } else {
+    config.isAnalyzingMainThread = true;
   }
   config.isFullRun = !!options.snapshotForEachStep;
   return config;
