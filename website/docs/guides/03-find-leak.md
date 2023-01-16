@@ -10,9 +10,9 @@ does not report the leaks, this tutorial shows other options to surface
 suspicious heap objects.
 
 Let's start by running the following command. Make sure to not specify any leak
-filter in the scenario file. MemLab will apply its build-in leak detectors
-which finds detached DOM elements and unmounted React Fiber nodes.
-Sometimes this may not detect any memory leaks.
+filter in the scenario file. MemLab will apply its built-in leak detectors
+which find detached DOM elements and unmounted React Fiber nodes.
+Sometimes this may not detect all (or any) memory leaks.
 
 ```bash
 memlab run --scenario ~/memlab/scenarios/unbound-object.js
