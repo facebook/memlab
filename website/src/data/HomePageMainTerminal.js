@@ -1908,9 +1908,12 @@ const stdouts = [
   {
     time: 288856,
     content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
+  {
+    time: 290464,
+    content: '#',
     timeGapFromPreviousStep: 3000,
   },
-  {time: 290464, content: '#'},
   {time: 290529, content: ' '},
   {time: 290880, content: 'n'},
   {time: 290913, content: 'o'},
