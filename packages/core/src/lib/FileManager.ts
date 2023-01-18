@@ -471,6 +471,11 @@ export class FileManager {
     // make sure getWorkDir is called first before
     // any other get file or get dir calls
     const workDir = this.getWorkDir(options);
+    // if errorWhenAbsent is set to true, make it
+    // an error when the working directory does not exist
+    if (options.errorWhenAbsent && !fs.existsSync(workDir)) {
+      throw utils.haltOrThrow(`work dir does not exist: ${workDir}`);
+    }
     // remember the current working directory
     // especially if this is a transcient working directory
     config.workDir = joinAndProcessDir(options, workDir);

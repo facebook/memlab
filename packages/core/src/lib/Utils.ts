@@ -1428,7 +1428,7 @@ function checkSnapshots(
   } else if (config.useExternalSnapshot) {
     snapshotDir = config.externalSnapshotDir || '<missing>';
   } else {
-    snapshotDir = fileManager.getCurDataDir({});
+    snapshotDir = fileManager.getCurDataDir({workDir: config.workDir});
   }
 
   if (options.snapshotDir) {

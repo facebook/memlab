@@ -26,6 +26,7 @@ import JSEngineOption from '../../../options/heap/JSEngineOption';
 import CliScreen from './ui-components/CliScreen';
 import HeapNodeIdOption from '../../../options/heap/HeapNodeIdOption';
 import MLClusteringOption from '../../../options/MLClusteringOption';
+import SetWorkingDirectoryOption from '../../../options/SetWorkingDirectoryOption';
 
 export default class InteractiveHeapViewCommand extends BaseCommand {
   getCommandName(): string {
@@ -50,6 +51,7 @@ export default class InteractiveHeapViewCommand extends BaseCommand {
       new JSEngineOption(),
       new HeapNodeIdOption(),
       new MLClusteringOption(),
+      new SetWorkingDirectoryOption(),
     ];
   }
 
@@ -148,6 +150,7 @@ export default class InteractiveHeapViewCommand extends BaseCommand {
 
   async run(options: CLIOptions): Promise<void> {
     const workDir = options.configFromOptions?.workDir as Optional<string>;
+    fileManager.initDirs(config, {workDir, errorWhenAbsent: true});
     const reportOutDir = fileManager.getReportOutDir({workDir});
     fs.emptyDirSync(reportOutDir);
 

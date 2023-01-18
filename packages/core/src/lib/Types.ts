@@ -58,6 +58,7 @@ export type FileOption = {
   workDir?: Optional<string>;
   clear?: boolean;
   transient?: boolean;
+  errorWhenAbsent?: boolean;
 };
 
 /** @internal */

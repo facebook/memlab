@@ -34,7 +34,7 @@ this callback until it returns `true`. This is an async callback, you can
 also `await` and returns `true` until some async logic is resolved.
 
  * **Source**:
-    * core/src/lib/Types.ts:913
+    * core/src/lib/Types.ts:914
 
 ___
 
@@ -44,7 +44,7 @@ Data structure for holding cookies.
 For concrete example, check out [cookies](../interfaces/core_src.IScenario.md#cookies).
 
  * **Source**:
-    * core/src/lib/Types.ts:185
+    * core/src/lib/Types.ts:186
 
 ___
 
@@ -59,7 +59,7 @@ or [forEachReferrer](../interfaces/core_src.IHeapNode.md#foreachreferrer).
  * **Returns**: `Optional`<{ `stop`: `boolean`  }\> \| `void` | this API returns void
 
  * **Source**:
-    * core/src/lib/Types.ts:1445
+    * core/src/lib/Types.ts:1446
 
 ___
 
@@ -75,7 +75,7 @@ For concrete example, check out [beforeLeakFilter](../interfaces/core_src.ILeakF
  * **Returns**: `void`
 
  * **Source**:
-    * core/src/lib/Types.ts:410
+    * core/src/lib/Types.ts:411
 
 ___
 
@@ -91,7 +91,7 @@ For concrete examples, check out [action](../interfaces/core_src.IScenario.md#ac
  * **Returns**: `Promise`<`void`\> | no return value
 
  * **Source**:
-    * core/src/lib/Types.ts:453
+    * core/src/lib/Types.ts:454
 
 ___
 
@@ -119,7 +119,7 @@ function leakFilter(node, _snapshot, _leakedNodeIds) {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:437
+    * core/src/lib/Types.ts:438
 
 ___
 
@@ -175,7 +175,7 @@ const runOptions: RunOptions = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:166
+    * core/src/lib/Types.ts:167
 
 ___
 
@@ -198,7 +198,7 @@ and [findReferrers](../interfaces/core_src.IHeapNode.md#findreferrers).
  * **Returns**: `boolean` | whether the entity passes the predicate check
 
  * **Source**:
-    * core/src/lib/Types.ts:179
+    * core/src/lib/Types.ts:180
 
 ___
 
@@ -213,7 +213,7 @@ You can retrieve the instance of this type through [getRunMetaInfo](../classes/a
 | `type` | `string` | type of the memlab run |
 
  * **Source**:
-    * core/src/lib/Types.ts:993
+    * core/src/lib/Types.ts:994
 
 ## Functions
 

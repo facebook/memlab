@@ -388,6 +388,7 @@ memlab view-heap --snapshot <HEAP_SNAPSHOT_FILE>
  * **`--engine`**: set the JavaScript engine (default to V8)
  * **`--node-id`**: set heap node ID
  * **`--ml-clustering`**: use machine learning algorithms for clustering leak traces (by default, traces are clustered by heuristics)
+ * **`--work-dir`**: set the working directory of the current run
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode
