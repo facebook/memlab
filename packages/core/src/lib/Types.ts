@@ -1637,6 +1637,24 @@ export interface IHeapNode extends IHeapNodeBasic {
    */
   findAnyReferrer: (predicate: Predicator<IHeapEdge>) => Nullable<IHeapEdge>;
   /**
+   * executes a provided predicate callback once for each JavaScript heap
+   * object (heap graph node) pointing to the hosting node
+   * (or nodes having edges to the hosting node) until the predicate
+   * returns `true`
+   * @param predicate the callback for each incoming JavaScript heap object
+   * @returns the first referring node for which the predicate returns `true`,
+   * otherwise returns `null` if no such node is found.
+   *
+   * * **Examples**:
+   * ```typescript
+   * const referrer = node.findAnyReferrerNode((node: IHeapNode) => {
+   *   // find the referring node with name "Parent"
+   *   return node.name === 'Parent';
+   * });
+   * ```
+   */
+  findAnyReferrerNode(predicate: Predicator<IHeapNode>): Nullable<IHeapNode>;
+  /**
    * executes a provided predicate callback once for each JavaScript reference
    * pointing to the hosting node (or incoming edges to the node)
    * @param predicate the callback for each incoming JavaScript reference
@@ -1653,6 +1671,24 @@ export interface IHeapNode extends IHeapNodeBasic {
    * ```
    */
   findReferrers: (predicate: Predicator<IHeapEdge>) => IHeapEdge[];
+  /**
+   * executes a provided predicate callback once for each JavaScript heap
+   * object (heap graph node) pointing to the hosting node
+   * (or nodes having edges to the hosting node)
+   * @param predicate the callback for each referrer nodes
+   * @returns an array containing all the referrer nodes for which the
+   * predicate returns `true`, otherwise returns an empty array if no such
+   * node is found.
+   *
+   * * **Examples**:
+   * ```typescript
+   * const referrerNodes = node.findReferrerNodes((node: IHeapNode) => {
+   *   // find all the referring nodes with name "Parent"
+   *   return node.name === 'Parent';
+   * });
+   * ```
+   */
+  findReferrerNodes: (predicate: Predicator<IHeapNode>) => IHeapNode[];
   /**
    * Given a JS reference's name and type, this API finds an outgoing JS
    * reference from the hosting node.

@@ -206,7 +206,7 @@ get the string value of the JS string heap object associated with
 this `IHeapStringNode` instance in heap
 
  * **Source**:
-    * core/src/lib/Types.ts:1814
+    * core/src/lib/Types.ts:1850
 
 ___
 
@@ -271,6 +271,56 @@ const referrer = node.findAnyReferrer((edge: IHeapEdge) => {
 
 ___
 
+### <a id="findanyreferrernode"></a>**findAnyReferrerNode**(`predicate`)
+
+executes a provided predicate callback once for each JavaScript heap
+object (heap graph node) pointing to the hosting node
+(or nodes having edges to the hosting node) until the predicate
+returns `true`
+
+ * **Parameters**:
+    * `predicate`: [`Predicator`](../modules/core_src.md#predicator)<[`IHeapNode`](core_src.IHeapNode.md)\> | the callback for each incoming JavaScript heap object
+ * **Returns**: `Nullable`<[`IHeapNode`](core_src.IHeapNode.md)\> | the first referring node for which the predicate returns `true`,
+otherwise returns `null` if no such node is found.
+
+* **Examples**:
+```typescript
+const referrer = node.findAnyReferrerNode((node: IHeapNode) => {
+  // find the referring node with name "Parent"
+  return node.name === 'Parent';
+});
+```
+
+ * **Source**:
+    * core/src/lib/Types.ts:1656
+
+___
+
+### <a id="findreferrernodes"></a>**findReferrerNodes**(`predicate`)
+
+executes a provided predicate callback once for each JavaScript heap
+object (heap graph node) pointing to the hosting node
+(or nodes having edges to the hosting node)
+
+ * **Parameters**:
+    * `predicate`: [`Predicator`](../modules/core_src.md#predicator)<[`IHeapNode`](core_src.IHeapNode.md)\> | the callback for each referrer nodes
+ * **Returns**: [`IHeapNode`](core_src.IHeapNode.md)[] | an array containing all the referrer nodes for which the
+predicate returns `true`, otherwise returns an empty array if no such
+node is found.
+
+* **Examples**:
+```typescript
+const referrerNodes = node.findReferrerNodes((node: IHeapNode) => {
+  // find all the referring nodes with name "Parent"
+  return node.name === 'Parent';
+});
+```
+
+ * **Source**:
+    * core/src/lib/Types.ts:1691
+
+___
+
 ### <a id="findreferrers"></a>**findReferrers**(`predicate`)
 
 executes a provided predicate callback once for each JavaScript reference
@@ -291,7 +341,7 @@ const referrers = node.findReferrers((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1655
+    * core/src/lib/Types.ts:1673
 
 ___
 
@@ -362,7 +412,7 @@ const reference = node.getAnyReferrer('ref', 'property');
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1710
+    * core/src/lib/Types.ts:1746
 
 ___
 
@@ -388,7 +438,7 @@ const n2 = node.getAnyReferrer('ref', 'property')?.fromNode;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1733
+    * core/src/lib/Types.ts:1769
 
 ___
 
@@ -409,7 +459,7 @@ const reference = node.getReference('map', 'hidden');
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1670
+    * core/src/lib/Types.ts:1706
 
 ___
 
@@ -434,7 +484,7 @@ const hiddenClassNode2 = node.getReference('map', 'hidden')?.toNode;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1692
+    * core/src/lib/Types.ts:1728
 
 ___
 
@@ -461,7 +511,7 @@ const nodes2 = node.getReferrers('ref', 'property')
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1773
+    * core/src/lib/Types.ts:1809
 
 ___
 
@@ -483,7 +533,7 @@ const referrers = node.getReferrers('ref', 'property');
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1752
+    * core/src/lib/Types.ts:1788
 
 ___
 

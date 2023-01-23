@@ -196,11 +196,35 @@ export default class HeapNode implements IHeapNode {
     return found;
   }
 
+  findAnyReferrerNode(predicate: Predicator<IHeapNode>): Nullable<IHeapNode> {
+    let found: Nullable<IHeapNode> = null;
+    this.forEachReferrer((edge: IHeapEdge) => {
+      const node = edge.fromNode;
+      if (predicate(node)) {
+        found = node;
+        return {stop: true};
+      }
+    });
+    return found;
+  }
+
   findReferrers(predicate: Predicator<IHeapEdge>): IHeapEdge[] {
     const ret: IHeapEdge[] = [];
     this.forEachReferrer((edge: IHeapEdge) => {
       if (predicate(edge)) {
         ret.push(edge);
+      }
+      return null;
+    });
+    return ret;
+  }
+
+  findReferrerNodes(predicate: Predicator<IHeapNode>): IHeapNode[] {
+    const ret: IHeapNode[] = [];
+    this.forEachReferrer((edge: IHeapEdge) => {
+      const node = edge.fromNode;
+      if (predicate(node)) {
+        ret.push(node);
       }
       return null;
     });
