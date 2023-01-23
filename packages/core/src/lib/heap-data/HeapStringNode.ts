@@ -11,7 +11,7 @@
 
 'use strict';
 
-import type {IHeapStringNode} from '../Types';
+import type {AnyRecord, IHeapStringNode} from '../Types';
 import type HeapSnapshot from './HeapSnapshot';
 
 import HeapNode from './HeapNode';
@@ -47,5 +47,11 @@ export default class HeapStringNode
     }
 
     return this.name;
+  }
+
+  protected getJSONifyableObject(): AnyRecord {
+    const rep = super.getJSONifyableObject();
+    rep.stringValue = this.stringValue;
+    return rep;
   }
 }

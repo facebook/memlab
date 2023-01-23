@@ -34,6 +34,8 @@ test(
     const heap = await takeNodeMinimalHeap();
     const testObject = heap.getAnyObjectWithClassName('TestObject');
     expect(testObject).not.toBe(null);
+    // test the number of referrers getter
+    expect(testObject?.numOfReferrers).toBeGreaterThan(0);
 
     // testObject.originalString === 'test'
     const originalString = testObject?.getReferenceNode('originalString');
@@ -55,6 +57,17 @@ test(
     expect(complexConcatString?.toStringNode()?.stringValue).toBe(
       'prefix_value_123_suffix',
     );
+
+    // test the toJSONString API
+    let strRepresentation = concatString?.toJSONString() ?? '{}';
+    let rep = JSON.parse(strRepresentation);
+    expect(rep.type).toBe('concatenated string');
+    expect(rep.stringValue).toBe(undefined);
+
+    strRepresentation = concatString?.toStringNode()?.toJSONString() ?? '{}';
+    rep = JSON.parse(strRepresentation);
+    expect(rep.type).toBe('concatenated string');
+    expect(rep.stringValue).toBe('prefix_suffix');
   },
   timeout,
 );

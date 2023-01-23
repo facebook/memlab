@@ -1520,6 +1520,11 @@ export interface IHeapNode extends IHeapNodeBasic {
    */
   referrers: IHeapEdge[];
   /**
+   * Get the number of all incoming references pointing to this heap object
+   * (including engine-internal, native, and JS references).
+   */
+  numOfReferrers: number;
+  /**
    * returns true if the heap node has been set an incoming edge
    * which leads to the parent node on the shortest path to GC root.
    */
@@ -1566,6 +1571,13 @@ export interface IHeapNode extends IHeapNodeBasic {
    * inside the string node.
    */
   toStringNode(): Nullable<IHeapStringNode>;
+  /**
+   * convert to a concise readable string output
+   * (like calling `JSON.stringify(node, ...args)`).
+   * Note: calling `JSON.stringify(node, ...args)` will not work
+   * since the string is too large and not readable
+   */
+  toJSONString(...args: Array<AnyValue>): string;
   /**
    * executes a provided callback once for each JavaScript reference in the
    * hosting node (or outgoing edges from the node)

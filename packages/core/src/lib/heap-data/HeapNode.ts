@@ -18,6 +18,8 @@ import type {
   EdgeIterationCallback,
   Predicator,
   IHeapStringNode,
+  AnyRecord,
+  AnyValue,
 } from '../Types';
 import type HeapSnapshot from './HeapSnapshot';
 
@@ -246,6 +248,14 @@ export default class HeapNode implements IHeapNode {
     return ret;
   }
 
+  get numOfReferrers(): number {
+    const heapSnapshot = this.heapSnapshot;
+    const firstRetainerIndex = heapSnapshot._firstRetainerIndex;
+    const beginIdx = firstRetainerIndex[this.idx];
+    const endIdx = firstRetainerIndex[this.idx + 1];
+    return endIdx - beginIdx;
+  }
+
   forEachReferrer(callback: EdgeIterationCallback): void {
     const heapSnapshot = this.heapSnapshot;
     const retainingEdgeIndex2EdgeIndex =
@@ -445,6 +455,25 @@ export default class HeapNode implements IHeapNode {
     return this.isString
       ? new HeapStringNode(this.heapSnapshot, this.idx)
       : null;
+  }
+
+  protected getJSONifyableObject(): AnyRecord {
+    return {
+      id: this.id,
+      name: this.name,
+      type: this.type,
+      self_size: this.self_size,
+      trace_node_id: this.trace_node_id,
+      nodeIndex: this.nodeIndex,
+      outGoingEdgeCount: this.edge_count,
+      incomingEdgeCount: this.numOfReferrers,
+      contructorName: this.constructor.name,
+    };
+  }
+
+  toJSONString(...args: Array<AnyValue>): string {
+    const rep = this.getJSONifyableObject();
+    return JSON.stringify(rep, ...args);
   }
 }
 

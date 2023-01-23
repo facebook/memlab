@@ -9,6 +9,7 @@
  */
 
 import type {
+  AnyValue,
   EdgeIterationCallback,
   IHeapEdge,
   IHeapLocation,
@@ -67,6 +68,9 @@ export class NodeRecord implements IHeapNode {
   }
   get referrers(): IHeapEdge[] {
     throw new Error('NodeRecord.referrers cannot be read');
+  }
+  get numOfReferrers(): number {
+    throw new Error('NodeRecord.numOfReferrers cannot be read');
   }
   toStringNode(): IHeapStringNode {
     throw new Error('NodeRecord.toStringNode is not implemented');
@@ -169,6 +173,22 @@ export class NodeRecord implements IHeapNode {
     _edgeType?: string,
   ): IHeapNode[] {
     throw new Error('NodeRecord.getReferrerNodes is not implemented');
+  }
+
+  toJSONString(...args: Array<AnyValue>): string {
+    const rep = {
+      id: this.id,
+      kind: this.kind,
+      name: this.name,
+      type: this.type,
+      self_size: this.self_size,
+      trace_node_id: this.trace_node_id,
+      nodeIndex: this.nodeIndex,
+      incomingEdgeCount: this.numOfReferrers,
+      contructorName: this.constructor.name,
+    };
+
+    return JSON.stringify(rep, ...args);
   }
 
   constructor(node: IHeapNode) {
