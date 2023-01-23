@@ -178,18 +178,33 @@ export default class NormalizedTrace {
     ));
   }
 
+  static getSamplePathMaxLength(paths: LeakTracePathItem[]): number {
+    const lengthArr = paths.map(p => utils.getLeakTracePathLength(p));
+    return Math.max(30, utils.getNumberAtPercentile(lengthArr, 80));
+  }
+
   static samplePaths(paths: LeakTracePathItem[]): LeakTracePathItem[] {
     const maxCount = 5000;
+    if (paths.length <= maxCount) {
+      return [...paths];
+    }
     const sampleRatio = Math.min(1, maxCount / paths.length);
     if (sampleRatio < 1) {
       info.warning('Sampling trace due to a large number of traces:');
       info.lowLevel(` Number of Traces: ${paths.length}`);
       info.lowLevel(
-        ` Sampling Ratio:   ${utils.getReadablePercent(sampleRatio)}`,
+        ` Sampling Ratio: ${utils.getReadablePercent(sampleRatio)}`,
       );
     }
     const ret = [];
+    const samplePathMaxLength = NormalizedTrace.getSamplePathMaxLength(paths);
+    if (config.verbose) {
+      info.lowLevel(` Sample Trace's Max Length: ${samplePathMaxLength}`);
+    }
     for (const p of paths) {
+      if (utils.getLeakTracePathLength(p) > samplePathMaxLength) {
+        continue;
+      }
       if (Math.random() < sampleRatio) {
         ret.push(p);
       } else {

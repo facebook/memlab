@@ -2023,11 +2023,11 @@ export function runShell(
   return ret && ret.toString('UTF-8');
 }
 
-export function getRetainedSize(node: IHeapNode): number {
+function getRetainedSize(node: IHeapNode): number {
   return node.retainedSize;
 }
 
-export function aggregateDominatorMetrics(
+function aggregateDominatorMetrics(
   ids: HeapNodeIdSet,
   snapshot: IHeapSnapshot,
   checkNodeCb: (node: IHeapNode) => boolean,
@@ -2043,6 +2043,31 @@ export function aggregateDominatorMetrics(
     ret += nodeMetricsCb(node);
   });
   return ret;
+}
+
+function getLeakTracePathLength(path: LeakTracePathItem): number {
+  let len = 0;
+  let p: Optional<LeakTracePathItem> = path;
+  while (p) {
+    p = p.next;
+    ++len;
+  }
+  return len;
+}
+
+function getNumberAtPercentile(arr: number[], percentile: number): number {
+  arr.sort(function (a, b) {
+    return a - b;
+  });
+  const index = (percentile / 100) * arr.length;
+  const indexInt = Math.floor(index);
+  if (indexInt === index) {
+    return arr[Math.floor(index)];
+  }
+  if (indexInt + 1 < arr.length) {
+    return (arr[indexInt] + arr[indexInt + 1]) / 2;
+  }
+  return arr[indexInt];
 }
 
 export default {
@@ -2067,7 +2092,9 @@ export default {
   getEdgeByNameAndType,
   getLastNodeId,
   getLeakedNode,
+  getLeakTracePathLength,
   getNodesIdSet,
+  getNumberAtPercentile,
   getNumberNodeValue,
   getReadableBytes,
   getReadablePercent,

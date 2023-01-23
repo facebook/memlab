@@ -9,6 +9,8 @@
  */
 
 import type {IClusterStrategy, LeakTrace, TraceDiff} from '../../lib/Types';
+import config from '../../lib/Config';
+import info from '../../lib/Console';
 import ClusterUtils from '../ClusterUtils';
 
 // cluster by putting similar traces together
@@ -44,6 +46,13 @@ export default class TraceSimilarityStrategy implements IClusterStrategy {
     // checking new clusters
     outer: for (let i = 0; i < newTraces.length; ++i) {
       const traceToCheck = newTraces[i];
+      // use an odd number as the divider. If we choose 10 as the divider,
+      // when updating the progress indicator, the final digit always ends
+      // with a zero, which can appear strange and not representative of
+      // the actual progress.
+      if (!config.isContinuousTest && i % 17 === 0) {
+        info.overwrite(`clustering trace: ${i} / ${newTraces.length}`);
+      }
       for (let j = 0; j < clusters.length; ++j) {
         const repTrace = clusters[j][0];
         if (TraceSimilarityStrategy.isSimilarTrace(repTrace, traceToCheck)) {
