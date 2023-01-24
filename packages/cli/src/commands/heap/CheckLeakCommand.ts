@@ -8,9 +8,10 @@
  * @oncall web_perf_infra
  */
 
-import {CLIOptions, fileManager} from '@memlab/core';
+import type {BaseOption, CLIOptions, Optional} from '@memlab/core';
+
 import BaseCommand, {CommandCategory} from '../../BaseCommand';
-import {BaseOption, config, analysis} from '@memlab/core';
+import {config, analysis, fileManager} from '@memlab/core';
 import BaselineFileOption from '../../options/heap/BaselineFileOption';
 import FinalFileOption from '../../options/heap/FinalFileOption';
 import JSEngineOption from '../../options/heap/JSEngineOption';
@@ -27,6 +28,7 @@ import MLClusteringOption from '../../options/MLClusteringOption';
 import MLClusteringLinkageMaxDistanceOption from '../../options/MLClusteringLinkageMaxDistanceOption';
 import MLClusteringMaxDFOption from '../../options/MLClusteringMaxDFOption';
 import CleanupSnapshotOption from '../../options/heap/CleanupSnapshotOption';
+import SetWorkingDirectoryOption from '../../options/SetWorkingDirectoryOption';
 
 export default class CheckLeakCommand extends BaseCommand {
   getCommandName(): string {
@@ -61,10 +63,14 @@ export default class CheckLeakCommand extends BaseCommand {
       new MLClusteringLinkageMaxDistanceOption(),
       new MLClusteringMaxDFOption(),
       new CleanupSnapshotOption(),
+      new SetWorkingDirectoryOption(),
     ];
   }
 
   async run(options: CLIOptions): Promise<void> {
+    const workDir = options.configFromOptions?.workDir as Optional<string>;
+    fileManager.initDirs(config, {workDir});
+
     config.chaseWeakMapEdge = false;
     await analysis.checkLeak();
     const configFromOptions = options.configFromOptions ?? {};

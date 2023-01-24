@@ -960,6 +960,7 @@ export interface IE2EStepBasic {
 /** @internal */
 export type E2EStepInfo = IE2EStepBasic & {
   snapshot: boolean;
+  snapshotFile?: string;
   screenshot: boolean;
   idx: number;
   JSHeapUsedSize: number;

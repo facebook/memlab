@@ -1,0 +1,19 @@
+[
+  {
+    "name": "target",
+    "url": "",
+    "snapshot": true,
+    "screenshot": false,
+    "type": "target",
+    "idx": 1
+  },
+  {
+    "name": "final",
+    "url": "",
+    "delay": 10000,
+    "snapshot": true,
+    "screenshot": false,
+    "type": "final",
+    "idx": 2
+  }
+]

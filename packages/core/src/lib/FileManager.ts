@@ -9,7 +9,7 @@
  */
 
 import type {MemLabConfig} from './Config';
-import type {AnyValue, FileOption, Nullable} from './Types';
+import type {AnyValue, E2EStepInfo, FileOption, Nullable} from './Types';
 
 import fs from 'fs-extra';
 import os from 'os';
@@ -459,6 +459,49 @@ export class FileManager {
     return filePath.includes(`${sep}${internalDir}${sep}`);
   }
 
+  public createDefaultVisitOrderMetaFile(
+    options: FileOption = FileManager.defaultFileOption,
+  ): void {
+    // if memlab/data/cur doesn't exist, return
+    const curDataDir = this.getCurDataDir(options);
+    if (!fs.existsSync(curDataDir)) {
+      return;
+    }
+    // if the snap-seq.json file exists, return
+    const snapshotSeqMetaFile = this.getSnapshotSequenceMetaFile(options);
+    if (fs.existsSync(snapshotSeqMetaFile)) {
+      return;
+    }
+    // if there is no .heapsnapshot file, return
+    const files = fs.readdirSync(curDataDir);
+    const snapshotFile = files.find(file => file.endsWith('.heapsnapshot'));
+    if (snapshotFile == null) {
+      return;
+    }
+    // If there is at least one snapshot, create a snap-seq.json file.
+    // First, get the meta file for leak detection in a single heap snapshot
+    const codeDataDir = this.getCodeDataDir();
+    const singleSnapshotMetaFile = path.join(
+      codeDataDir,
+      'visit-order-single-snapshot.json',
+    );
+    const visitOrder = JSON.parse(
+      fs.readFileSync(singleSnapshotMetaFile, 'UTF-8'),
+    ) as E2EStepInfo[];
+    // fill in snapshot file name for each entry with snapshot: true
+    visitOrder.forEach(step => {
+      if (step.snapshot === true) {
+        step.snapshotFile = snapshotFile;
+      }
+    });
+    // save the snapshot meta file
+    fs.writeFileSync(
+      snapshotSeqMetaFile,
+      JSON.stringify(visitOrder, null, 2),
+      'UTF-8',
+    );
+  }
+
   public initDirs(
     config: MemLabConfig,
     options: FileOption = FileManager.defaultFileOption,
@@ -592,6 +635,7 @@ export class FileManager {
       this.getUnclassifiedTraceClusterDir(options),
     );
     config.allClusterSummaryFile = this.getAllClusterSummaryFile(options);
+    this.createDefaultVisitOrderMetaFile(options);
   }
 }
 

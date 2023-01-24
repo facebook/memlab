@@ -1525,6 +1525,9 @@ function getSnapshotFilePath(
   tab: E2EStepInfo,
   options: {workDir?: string} = {},
 ): string {
+  if (tab.snapshotFile) {
+    return path.join(fileManager.getCurDataDir(options), tab.snapshotFile);
+  }
   const fileName = `s${tab.idx}.heapsnapshot`;
   if (options.workDir) {
     return path.join(fileManager.getCurDataDir(options), fileName);
