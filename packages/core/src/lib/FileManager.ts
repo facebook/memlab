@@ -276,10 +276,18 @@ export class FileManager {
     return path.join(this.getCurDataDir(options), 'run-meta.json');
   }
 
+  public getRunMetaExternalTemplateFile(): string {
+    return path.join(this.getCodeDataDir(), 'run-meta.json');
+  }
+
   public getSnapshotSequenceMetaFile(
     options: FileOption = FileManager.defaultFileOption,
   ): string {
     return path.join(this.getCurDataDir(options), 'snap-seq.json');
+  }
+
+  public getSnapshotSequenceExternalTemplateFile(): string {
+    return path.join(this.getCodeDataDir(), 'visit-order.json');
   }
 
   public getInputDataDir(): string {
@@ -610,12 +618,9 @@ export class FileManager {
     config.metricsOutDir = joinAndProcessDir(options, loggerOutDir, 'metrics');
     config.reportScreenshotFile = path.join(outDir, 'report.png');
 
-    const codeDataDir = this.getCodeDataDir();
-    config.externalRunMetaFile = path.join(codeDataDir, 'run-meta.json');
-    config.externalSnapshotVisitOrderFile = path.join(
-      codeDataDir,
-      'visit-order.json',
-    );
+    config.externalRunMetaFile = this.getRunMetaExternalTemplateFile();
+    config.externalSnapshotVisitOrderFile =
+      this.getSnapshotSequenceExternalTemplateFile();
 
     joinAndProcessDir(options, this.getUniqueTraceClusterDir(options));
     config.newUniqueClusterDir = joinAndProcessDir(
