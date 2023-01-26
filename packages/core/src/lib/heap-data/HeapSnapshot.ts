@@ -12,6 +12,8 @@
 'use strict';
 
 import type {
+  AnyRecord,
+  AnyValue,
   IHeapNode,
   IHeapNodes,
   IHeapEdge,
@@ -152,6 +154,17 @@ export default class HeapSnapshot implements IHeapSnapshot {
         }
       },
     };
+  }
+
+  getJSONifyableObject(): AnyRecord {
+    return {
+      ...this.snapshot.snapshot,
+    };
+  }
+
+  toJSONString(...args: Array<AnyValue>): string {
+    const rep = this.getJSONifyableObject();
+    return JSON.stringify(rep, ...args);
   }
 
   hasObjectWithClassName(className: string): boolean {
