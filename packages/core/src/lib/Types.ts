@@ -1360,6 +1360,16 @@ export interface IHeapEdge extends IHeapEdgeBasic {
    * JS heap object where this reference starts
    */
   fromNode: IHeapNode;
+  /**
+   * convert to a concise readable string output
+   * (like calling `JSON.stringify(node, ...args)`).
+   * Note: calling `JSON.stringify(node, ...args)` will not work
+   * since the string is too large and not readable.
+   *
+   * This API does not completely serialize all the information
+   * captured by the hosting object.
+   */
+  toJSONString(...args: Array<AnyValue>): string;
 }
 
 /**
@@ -1576,7 +1586,10 @@ export interface IHeapNode extends IHeapNodeBasic {
    * convert to a concise readable string output
    * (like calling `JSON.stringify(node, ...args)`).
    * Note: calling `JSON.stringify(node, ...args)` will not work
-   * since the string is too large and not readable
+   * since the string is too large and not readable.
+   *
+   * This API does not completely serialize all the information
+   * captured by the hosting object.
    */
   toJSONString(...args: Array<AnyValue>): string;
   /**

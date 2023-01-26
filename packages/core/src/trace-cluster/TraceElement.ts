@@ -233,6 +233,18 @@ export class EdgeRecord implements IHeapEdge {
     this.to_node = edge.to_node;
   }
 
+  toJSONString(...args: Array<AnyValue>): string {
+    const rep = {
+      kind: this.kind,
+      name_or_index: this.name_or_index,
+      type: this.type,
+      edgeIndex: this.edgeIndex,
+      to_node: this.to_node,
+    };
+
+    return JSON.stringify(rep, ...args);
+  }
+
   set snapshot(s: IHeapSnapshot) {
     throw new Error('EdgeRecord.snapshot cannot be assigned.');
   }

@@ -116,3 +116,21 @@ type of the JS reference, all types:
 
  * **Source**:
     * core/src/lib/Types.ts:1302
+
+## Methods
+
+### <a id="tojsonstring"></a>**toJSONString**(...`args`)
+
+convert to a concise readable string output
+(like calling `JSON.stringify(node, ...args)`).
+Note: calling `JSON.stringify(node, ...args)` will not work
+since the string is too large and not readable.
+
+This API does not completely serialize all the information
+captured by the hosting object.
+
+ * **Parameters**:
+    * `...args`: `any`[]
+ * **Returns**: `string`
+ * **Source**:
+    * core/src/lib/Types.ts:1372

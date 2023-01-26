@@ -457,7 +457,7 @@ export default class HeapNode implements IHeapNode {
       : null;
   }
 
-  protected getJSONifyableObject(): AnyRecord {
+  getJSONifyableObject(): AnyRecord {
     return {
       id: this.id,
       name: this.name,

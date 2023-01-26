@@ -49,7 +49,7 @@ export default class HeapStringNode
     return this.name;
   }
 
-  protected getJSONifyableObject(): AnyRecord {
+  getJSONifyableObject(): AnyRecord {
     const rep = super.getJSONifyableObject();
     rep.stringValue = this.stringValue;
     return rep;

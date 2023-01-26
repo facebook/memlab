@@ -11,7 +11,7 @@
 
 'use strict';
 
-import type {IHeapEdge} from '../Types';
+import type {AnyRecord, AnyValue, IHeapEdge} from '../Types';
 import type HeapSnapshot from './HeapSnapshot';
 
 import {throwError} from './HeapUtils';
@@ -82,5 +82,20 @@ export default class HeapEdge implements IHeapEdge {
     const edgeIndex2SrcNodeIndex = heapSnapshot._edgeIndex2SrcNodeIndex;
     const srcNodeIdx = edgeIndex2SrcNodeIndex[this.idx];
     return new HeapNode(heapSnapshot, srcNodeIdx);
+  }
+
+  getJSONifyableObject(): AnyRecord {
+    return {
+      name_or_index: this.name_or_index,
+      type: this.type,
+      edgeIndex: this.edgeIndex,
+      toNode: this.toNode.getJSONifyableObject(),
+      fromNode: this.fromNode.getJSONifyableObject(),
+    };
+  }
+
+  toJSONString(...args: Array<AnyValue>): string {
+    const rep = this.getJSONifyableObject();
+    return JSON.stringify(rep, ...args);
   }
 }
