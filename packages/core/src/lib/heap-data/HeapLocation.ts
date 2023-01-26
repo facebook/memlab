@@ -11,8 +11,15 @@
 
 'use strict';
 
-import type {IHeapLocation, IHeapNode, Nullable} from '../Types';
+import type {
+  AnyRecord,
+  AnyValue,
+  IHeapLocation,
+  IHeapNode,
+  Nullable,
+} from '../Types';
 import type HeapSnapshot from './HeapSnapshot';
+import type HeapNode from './HeapNode';
 
 export default class HeapLocation implements IHeapLocation {
   constructor(private heapSnapshot: HeapSnapshot, private idx: number) {}
@@ -57,5 +64,22 @@ export default class HeapLocation implements IHeapLocation {
     return locations[
       this.idx * locationFieldsCount + heapSnapshot._locationColumnOffset
     ];
+  }
+
+  getJSONifyableObject(): AnyRecord {
+    const node = this.node;
+    const jsonNode =
+      node == null ? null : (node as HeapNode).getJSONifyableObject();
+    return {
+      node: jsonNode,
+      script_id: this.script_id,
+      line: this.line,
+      column: this.column,
+    };
+  }
+
+  toJSONString(...args: Array<AnyValue>): string {
+    const rep = this.getJSONifyableObject();
+    return JSON.stringify(rep, ...args);
   }
 }

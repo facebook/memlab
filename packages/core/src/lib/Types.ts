@@ -1286,6 +1286,16 @@ export interface IHeapLocation {
    * get the column number
    */
   column: number;
+  /**
+   * convert to a concise readable string output
+   * (like calling `JSON.stringify(node, ...args)`).
+   * Note: calling `JSON.stringify(node, ...args)` will not work
+   * since the string is too large and not readable.
+   *
+   * This API does not completely serialize all the information
+   * captured by the hosting object.
+   */
+  toJSONString(...args: Array<AnyValue>): string;
 }
 
 /** @internal */

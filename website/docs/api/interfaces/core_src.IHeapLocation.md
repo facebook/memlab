@@ -80,3 +80,21 @@ get the [IHeapSnapshot](core_src.IHeapSnapshot.md) containing this location inst
 
  * **Source**:
     * core/src/lib/Types.ts:1272
+
+## Methods
+
+### <a id="tojsonstring"></a>**toJSONString**(...`args`)
+
+convert to a concise readable string output
+(like calling `JSON.stringify(node, ...args)`).
+Note: calling `JSON.stringify(node, ...args)` will not work
+since the string is too large and not readable.
+
+This API does not completely serialize all the information
+captured by the hosting object.
+
+ * **Parameters**:
+    * `...args`: `any`[]
+ * **Returns**: `string`
+ * **Source**:
+    * core/src/lib/Types.ts:1298
