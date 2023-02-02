@@ -32,7 +32,7 @@ class MemoryBarChart {
       );
       return;
     }
-    if (plotData.length === 0) {
+    if (!this.isPlotDataValid(plotData)) {
       if (config.verbose) {
         info.warning('no memory usage data to plot');
       }
@@ -65,6 +65,22 @@ class MemoryBarChart {
       }),
     );
     info.topLevel('');
+  }
+
+  private isPlotDataValid(plotData: number[][]): boolean {
+    if (plotData.length === 0) {
+      return false;
+    }
+    let isEntryValueAllZero = true;
+    for (const entry of plotData) {
+      if (entry.length !== 2) {
+        return false;
+      }
+      if (entry[1] !== 0) {
+        isEntryValueAllZero = false;
+      }
+    }
+    return !isEntryValueAllZero;
   }
 
   private loadPlotDataFromTabsOrder(tabsOrder: E2EStepInfo[]): number[][] {
