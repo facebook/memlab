@@ -18,7 +18,11 @@ import info from './Console';
 import constant from './Constant';
 import utils from './Utils';
 
-function joinAndProcessDir(options: FileOption, ...args: AnyValue[]): string {
+/** @internal */
+export function joinAndProcessDir(
+  options: FileOption,
+  ...args: AnyValue[]
+): string {
   const filepath = path.join(...args);
   if (!fs.existsSync(filepath)) {
     try {
@@ -434,6 +438,9 @@ export class FileManager {
   }
 
   public isDirectory(file: string): boolean {
+    if (!fs.existsSync(file)) {
+      return false;
+    }
     const stats = fs.statSync(file);
     return stats.isDirectory();
   }
@@ -488,6 +495,17 @@ export class FileManager {
     }
     // If there is at least one snapshot, create a snap-seq.json file.
     // First, get the meta file for leak detection in a single heap snapshot
+    this.createDefaultVisitOrderMetaFileWithSingleSnapshot(
+      options,
+      snapshotFile,
+    );
+  }
+
+  public createDefaultVisitOrderMetaFileWithSingleSnapshot(
+    options: FileOption = FileManager.defaultFileOption,
+    snapshotFile: string,
+  ) {
+    const snapshotSeqMetaFile = this.getSnapshotSequenceMetaFile(options);
     const codeDataDir = this.getCodeDataDir();
     const singleSnapshotMetaFile = path.join(
       codeDataDir,
