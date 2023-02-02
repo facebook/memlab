@@ -10,7 +10,9 @@
 
 import type {ParsedArgs} from 'minimist';
 import type {AnyRecord, MemLabConfig} from '@memlab/core';
-import {BaseOption} from '@memlab/core';
+
+import fs from 'fs';
+import {fileManager, BaseOption} from '@memlab/core';
 import optionConstants from '../lib/OptionConstant';
 
 export default class SetTreatmentWorkDirOption extends BaseOption {
@@ -29,7 +31,12 @@ export default class SetTreatmentWorkDirOption extends BaseOption {
     const name = this.getOptionName();
     const ret: AnyRecord = {};
     if (args[name]) {
-      ret.treatmentWorkDir = args[name];
+      ret.treatmentWorkDir = args[name] as string;
+      if (fs.existsSync(ret.treatmentWorkDir)) {
+        fileManager.createDefaultVisitOrderMetaFile({
+          workDir: ret.treatmentWorkDir,
+        });
+      }
     }
     return ret;
   }

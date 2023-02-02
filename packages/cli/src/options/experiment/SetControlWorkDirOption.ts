@@ -10,7 +10,9 @@
 
 import type {ParsedArgs} from 'minimist';
 import type {AnyRecord, MemLabConfig} from '@memlab/core';
-import {BaseOption} from '@memlab/core';
+
+import fs from 'fs';
+import {fileManager, BaseOption} from '@memlab/core';
 import optionConstants from '../lib/OptionConstant';
 
 export default class SetControlWorkDirOption extends BaseOption {
@@ -29,7 +31,12 @@ export default class SetControlWorkDirOption extends BaseOption {
     const name = this.getOptionName();
     const ret: AnyRecord = {};
     if (args[name]) {
-      ret.controlWorkDir = args[name];
+      ret.controlWorkDir = args[name] as string;
+      if (fs.existsSync(ret.controlWorkDir)) {
+        fileManager.createDefaultVisitOrderMetaFile({
+          workDir: ret.controlWorkDir,
+        });
+      }
     }
     return ret;
   }
