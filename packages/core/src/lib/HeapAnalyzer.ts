@@ -120,8 +120,16 @@ class MemoryAnalyst {
       `MemLab found ${result.treatmentOnlyClusters.length} new leak(s) in the treatment group`,
     );
     await this.serializeClusterUpdate(result.treatmentOnlyClusters);
-    // TODO (lgong): log leak traces
-    return [];
+
+    // serialize JSON file with detailed leak trace information
+    const treatmentOnlyPaths = result.treatmentOnlyClusters.map(c => c.path);
+    return traceDetailsLogger.logTraces(
+      snapshotDiff.leakedHeapNodeIdSet,
+      snapshotDiff.snapshot,
+      snapshotDiff.listOfLeakedHeapNodeIdSet,
+      treatmentOnlyPaths,
+      config.traceJsonOutDir,
+    );
   }
 
   // find all unique pattern of leaks
