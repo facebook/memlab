@@ -414,8 +414,8 @@ export default class NormalizedTrace {
   }
 
   static clusterControlTreatmentPaths(
-    controlPaths: LeakTracePathItem[],
-    controlSnapshot: IHeapSnapshot,
+    leakPathsFromControlRuns: LeakTracePathItem[][],
+    controlSnapshots: IHeapSnapshot[],
     treatmentPaths: LeakTracePathItem[],
     treatmentSnapshot: IHeapSnapshot,
     aggregateDominatorMetrics: AggregateNodeCb,
@@ -427,12 +427,20 @@ export default class NormalizedTrace {
       hybridClusters: [],
     };
     info.overwrite('Clustering leak traces');
-    if (controlPaths.length === 0 && treatmentPaths.length === 0) {
+    const totalControlPaths = leakPathsFromControlRuns.reduce(
+      (count, leakPaths) => count + leakPaths.length,
+      0,
+    );
+    if (totalControlPaths === 0 && treatmentPaths.length === 0) {
       info.midLevel('No leaks found');
       return result;
     }
     // sample paths if there are too many
-    controlPaths = this.samplePaths(controlPaths);
+    const flattenedLeakPathsFromControlRuns = leakPathsFromControlRuns.reduce(
+      (arr, leakPaths) => [...arr, ...leakPaths],
+      [],
+    );
+    const controlPaths = this.samplePaths(flattenedLeakPathsFromControlRuns);
     treatmentPaths = this.samplePaths(treatmentPaths);
 
     // build control trace to control path map
@@ -450,6 +458,9 @@ export default class NormalizedTrace {
       [],
       option,
     );
+
+    // pick one of the control heap snapshots
+    const controlSnapshot = controlSnapshots[0];
 
     // construct TraceCluster from clustering result
     allClusters.forEach((traces: LeakTrace[]) => {

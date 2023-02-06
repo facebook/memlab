@@ -63,20 +63,20 @@ export default class CheckLeakCommand extends BaseCommand {
     config.chaseWeakMapEdge = false;
     // double check parameters
     if (
-      !options.configFromOptions?.controlWorkDir ||
+      !options.configFromOptions?.controlWorkDirs ||
       !options.configFromOptions?.treatmentWorkDir
     ) {
       info.error('Please specify control and test working directory');
       throw utils.haltOrThrow('No control or test working directory specified');
     }
     // get parameters
-    const controlWorkDir = options.configFromOptions[
-      'controlWorkDir'
-    ] as string;
+    const controlWorkDirs = options.configFromOptions[
+      'controlWorkDirs'
+    ] as string[];
     const treatmentWorkDir = options.configFromOptions[
       'treatmentWorkDir'
     ] as string;
     // diff memory leaks
-    await analysis.diffLeakByWorkDir({controlWorkDir, treatmentWorkDir});
+    await analysis.diffLeakByWorkDir({controlWorkDirs, treatmentWorkDir});
   }
 }

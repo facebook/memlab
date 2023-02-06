@@ -59,14 +59,18 @@ class MemoryAnalyst {
   async diffLeakByWorkDir(
     options: DiffLeakOptions,
   ): Promise<ISerializedInfo[]> {
-    const controlSnapshotDir = fileManager.getCurDataDir({
-      workDir: options.controlWorkDir,
-    });
+    const controlSnapshotDirs = options.controlWorkDirs.map(controlWorkDir =>
+      fileManager.getCurDataDir({
+        workDir: controlWorkDir,
+      }),
+    );
     const treatmentSnapshotDir = fileManager.getCurDataDir({
       workDir: options.treatmentWorkDir,
     });
     // check control working dir
-    utils.checkSnapshots({snapshotDir: controlSnapshotDir});
+    controlSnapshotDirs.forEach(controlSnapshotDir =>
+      utils.checkSnapshots({snapshotDir: controlSnapshotDir}),
+    );
     // check treatment working dir
     utils.checkSnapshots({snapshotDir: treatmentSnapshotDir});
     // display control and treatment memory
@@ -79,34 +83,43 @@ class MemoryAnalyst {
     options: DiffLeakOptions,
   ): Promise<ISerializedInfo[]> {
     config.dumpNodeInfo = false;
-    // diff snapshots and get control raw paths
-    let snapshotDiff = await this.diffSnapshots({
-      loadAllSnapshots: true,
-      workDir: options.controlWorkDir,
-    });
-    const controlLeakPaths = this.filterLeakPaths(
-      snapshotDiff.leakedHeapNodeIdSet,
-      snapshotDiff.snapshot,
-      {workDir: options.controlWorkDir},
-    );
-    const controlSnapshot = snapshotDiff.snapshot;
+    // diff snapshots from control dirs and get control raw paths array
+    const controlSnapshots = [];
+    const leakPathsFromControlRuns = [];
+    for (const controlWorkDir of options.controlWorkDirs) {
+      const snapshotDiff = await this.diffSnapshots({
+        loadAllSnapshots: true,
+        workDir: controlWorkDir,
+      });
+      leakPathsFromControlRuns.push(
+        this.filterLeakPaths(
+          snapshotDiff.leakedHeapNodeIdSet,
+          snapshotDiff.snapshot,
+          {workDir: controlWorkDir},
+        ),
+      );
+      controlSnapshots.push(snapshotDiff.snapshot);
+    }
     // diff snapshots and get treatment raw paths
-    snapshotDiff = await this.diffSnapshots({
+    const snapshotDiff = await this.diffSnapshots({
       loadAllSnapshots: true,
       workDir: options.treatmentWorkDir,
     });
     const treatmentLeakPaths = this.filterLeakPaths(
       snapshotDiff.leakedHeapNodeIdSet,
       snapshotDiff.snapshot,
-      {workDir: options.controlWorkDir},
+      {workDir: options.treatmentWorkDir},
     );
     const treatmentSnapshot = snapshotDiff.snapshot;
-    info.topLevel(`${controlLeakPaths.length} traces from control group`);
+    const controlPathCounts = JSON.stringify(
+      leakPathsFromControlRuns.map(leakPaths => leakPaths.length),
+    );
+    info.topLevel(`${controlPathCounts} traces from control group`);
     info.topLevel(`${treatmentLeakPaths.length} traces from treatment group`);
 
     const result = NormalizedTrace.clusterControlTreatmentPaths(
-      controlLeakPaths,
-      controlSnapshot,
+      leakPathsFromControlRuns,
+      controlSnapshots,
       treatmentLeakPaths,
       treatmentSnapshot,
       utils.aggregateDominatorMetrics,

@@ -2022,13 +2022,13 @@ export interface IOveralLeakInfo extends Partial<IOveralHeapInfo> {
 
 /** @internal */
 export type DiffLeakOptions = {
-  controlWorkDir: string;
+  controlWorkDirs: string[];
   treatmentWorkDir: string;
 };
 
 /** @internal */
 export type PlotMemoryOptions = {
-  controlWorkDir?: string;
+  controlWorkDirs?: string[];
   treatmentWorkDir?: string;
   workDir?: string;
 } & IMemoryAnalystOptions;

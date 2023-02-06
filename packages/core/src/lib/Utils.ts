@@ -541,7 +541,9 @@ function applyToNodes(
   for (const id of ids) {
     const node = snapshot.getNodeById(id);
     if (!node) {
-      info.warning(`node @${id} is not found`);
+      if (config.verbose) {
+        info.warning(`node @${id} is not found`);
+      }
       return;
     }
     cb(node, snapshot);
