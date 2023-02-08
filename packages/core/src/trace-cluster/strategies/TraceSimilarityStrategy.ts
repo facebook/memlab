@@ -63,6 +63,7 @@ export default class TraceSimilarityStrategy implements IClusterStrategy {
       clustersToAdd.push(traceToCheck);
       clusters.push([traceToCheck]);
     }
+    info.overwrite('');
 
     return {staleClusters, clustersToAdd, allClusters: clusters};
   }
