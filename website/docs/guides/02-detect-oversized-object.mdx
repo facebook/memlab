@@ -36,7 +36,7 @@ git clone git@github.com:facebook/memlab.git
 
 ### 2. Run the Example App
 Once you have cloned the repo on your local machine, run the following commands
-from the root directory of the Memlab project:
+from the root directory of the `memlab` project:
 
 ```bash
 npm install && npm run build
@@ -63,7 +63,7 @@ This will take a few minutes.
 ```bash
 memlab run --scenario ~/memlab/scenarios/oversized-object.js
 ```
-This time Memlab didn't find any memory leaks.
+This time memlab didn't find any memory leaks.
 
 The current built-in Leak detector only considers objects
 that meet all of the following criteria to be memory leaks:
@@ -72,14 +72,14 @@ that meet all of the following criteria to be memory leaks:
  * The object is a detached DOM element or an unmounted React Fiber node.
 
 The other objects allocated by the `action` callback could be caches retained
-by the web app on purpose, so by default Memlab will not report them as leaks.
+by the web app on purpose, so by default memlab will not report them as leaks.
 
 ## Filter Out Large Objects
 
 One rule we often find useful is to check for unreleased objects with
 non-trivial sizes (for example 1MB).
 
-Memlab provides an additional `leakFilter` callback to filter
+memlab provides an additional `leakFilter` callback to filter
 out leaked objects with self-defined rules.
 
 <CodeBlock language="jsx" showLineNumbers>{OversizedScenarioWithFilter}</CodeBlock>
@@ -92,15 +92,21 @@ memlab run --scenario ~/memlab/scenarios/oversized-object.js
 
 ![memlab run result](./oversized-object.png)
 
-Looking at the leak trace we can see that the `elements` in `bigArray` are being retained because `bigArray` is retained by the `eventHandler` functions closure which is in turn retained because it is still registered as the handler for an `EventListener`. If we add a cleanup function to our effect below and run the scenario again, we can see that Memlab no longer reports any leaks.
+By examining the leak trace, we can see that the `elements` in `bigArray` are
+being retained because `bigArray` is retained by the `eventHandler`
+closure which is in turn retained because it is still registered as the handler
+for an `EventListener`. If we add a cleanup function to our `useEffect`,
+as demonstrated below, and run the scenario again, we will see that there are
+no longer any leaks reported by memlab.
 
 ```javascript
 useEffect(() => {
-    window.addEventListener('custom-click', eventHandler);
-    return () => {
-      window.removeEventListener('custom-click', eventHandler);
-    };
-  }, []);
+  window.addEventListener('custom-click', eventHandler);
+  return () => {
+    // clean up
+    window.removeEventListener('custom-click', eventHandler);
+  };
+}, []);
 ```
 
 :::note
