@@ -528,6 +528,21 @@ export class FileManager {
     );
   }
 
+  public configTargetFromRunMetaFile(
+    config: MemLabConfig,
+    options: FileOption = FileManager.defaultFileOption,
+  ): void {
+    const runMetaFile = this.getRunMetaFile(options);
+    if (!fs.existsSync(runMetaFile)) {
+      return;
+    }
+    const metaInfo = utils.loadRunMetaInfo(runMetaFile);
+    if (!metaInfo || !metaInfo.app || !metaInfo.interaction) {
+      return;
+    }
+    config.setTarget(metaInfo.app, metaInfo.interaction);
+  }
+
   public initDirs(
     config: MemLabConfig,
     options: FileOption = FileManager.defaultFileOption,

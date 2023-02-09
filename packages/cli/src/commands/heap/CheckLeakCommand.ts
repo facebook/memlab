@@ -8,7 +8,7 @@
  * @oncall web_perf_infra
  */
 
-import type {BaseOption, CLIOptions, Optional} from '@memlab/core';
+import {BaseOption, CLIOptions, Optional} from '@memlab/core';
 
 import BaseCommand, {CommandCategory} from '../../BaseCommand';
 import {config, analysis, fileManager} from '@memlab/core';
@@ -70,6 +70,7 @@ export default class CheckLeakCommand extends BaseCommand {
   async run(options: CLIOptions): Promise<void> {
     const workDir = options.configFromOptions?.workDir as Optional<string>;
     fileManager.initDirs(config, {workDir});
+    fileManager.configTargetFromRunMetaFile(config, {workDir});
 
     config.chaseWeakMapEdge = false;
     await analysis.checkLeak();
