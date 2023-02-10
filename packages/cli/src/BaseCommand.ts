@@ -103,6 +103,13 @@ export default class BaseCommand extends Command {
     throw new Error(`${className}.getDescription is not implemented`);
   }
 
+  // More detailed description or documentation about this command.
+  // This will be printed as helper text in CLI for a specific command.
+  // Documentation generator will also use the description returned here.
+  getDocumenation(): string {
+    return '';
+  }
+
   // get a sequence of commands that must be executed before
   // running this command
   getPrerequisites(): BaseCommand[] {

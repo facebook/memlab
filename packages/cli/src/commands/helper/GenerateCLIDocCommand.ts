@@ -119,13 +119,19 @@ export default class GenerateCLIDocCommand extends BaseCommand {
     indent = '',
   ): void {
     const name = command.getFullCommand();
-    const desc = utils.upperCaseFirstCharacter(command.getDescription());
+    const desc = utils.upperCaseFirstCharacter(command.getDescription().trim());
+    const cmdDoc = command.getDocumenation().trim();
 
     // write command title
     this.writeTextWithNewLine(docFile, `\n###${indent} memlab ${name}\n`);
 
     // write description
     this.writeTextWithNewLine(docFile, `${desc}\n`);
+
+    // write detailed command documentation
+    if (cmdDoc.length > 0) {
+      this.writeTextWithNewLine(docFile, `${cmdDoc}\n`);
+    }
 
     // get example
     const examples = command.getExamples();

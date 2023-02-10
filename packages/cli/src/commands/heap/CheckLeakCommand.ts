@@ -39,6 +39,15 @@ export default class CheckLeakCommand extends BaseCommand {
     return 'find memory leaks in heap snapshots';
   }
 
+  getDocumenation(): string {
+    return `There are three ways to specify inputs for the \`memlab find-leaks\` command:
+ 1. \`--baseline\`, \`--target\`, \`--final\` specifies each snapshot input individually;
+ 2. \`--snapshot-dir\` specifies the directory that holds all three heap snapshot files (MemLab will assign baseline, target, and final based on alphabetic order of the file);
+ 3. \`--work-dir\` specifies the output working directory of the \`memlab run\` or the \`memlab snapshot\` command;
+
+Please only use one of the three ways to specify the input.`;
+  }
+
   getCategory(): CommandCategory {
     return CommandCategory.COMMON;
   }

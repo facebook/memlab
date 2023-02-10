@@ -14,10 +14,16 @@ import type {BaseOption, CLIOptions, Optional} from '@memlab/core';
 import chalk from 'chalk';
 import stringWidth from 'string-width';
 import {config, info, utils} from '@memlab/core';
+import {heapConfig} from '@memlab/heap-analysis';
 import commandOrder from './lib/CommandOrder';
 import BaseCommand, {CommandCategory} from '../../BaseCommand';
 import universalOptions from '../../options/lib/UniversalOptions';
-import {heapConfig} from '@memlab/heap-analysis';
+import {
+  alignTextInBlock,
+  getBlankSpaceString,
+  READABLE_CMD_FLAG_WIDTH,
+  READABLE_TEXT_WIDTH,
+} from '../../lib/CLIUtils';
 
 type HelperOption = CLIOptions & {
   modules: Map<string, BaseCommand>;
@@ -126,7 +132,7 @@ export default class HelperCommand extends BaseCommand {
     if (options.length === 0) {
       return '';
     }
-    const width = Math.min(70, process.stdout.columns);
+    const width = Math.min(READABLE_CMD_FLAG_WIDTH, process.stdout.columns);
     let summary = '';
     let curLine = chalk.bold(`${indent}Options:`);
     for (const option of options) {
@@ -175,20 +181,15 @@ export default class HelperCommand extends BaseCommand {
     headerLength: number,
   ): string {
     const header = chalk.green(optionText.header);
-    const prefix = utils.repeat(' ', headerLength - optionText.header.length);
+    const prefix = getBlankSpaceString(headerLength - optionText.header.length);
     const headerString = `${indent}${prefix}${header} `;
     const headerStringWidth = stringWidth(headerString);
-    const maxWidth = Math.min(process.stdout.columns, 150);
-    const descMaxWidth = maxWidth - headerStringWidth;
-    let descString = optionText.desc.substring(0, descMaxWidth);
-    let descStringRemain = optionText.desc.substring(descMaxWidth);
-    while (descStringRemain.length > 0) {
-      descString += '\n';
-      descString += utils.repeat(' ', headerStringWidth);
-      descString += descStringRemain.substring(0, descMaxWidth);
-      descStringRemain = descStringRemain.substring(descMaxWidth);
-    }
-    return `${headerString}${descString}`;
+    const maxWidth = Math.min(process.stdout.columns, READABLE_TEXT_WIDTH);
+    const descString = alignTextInBlock(optionText.desc, {
+      leftIndent: headerStringWidth,
+      lineLength: maxWidth,
+    });
+    return `${headerString}${descString.substring(headerStringWidth)}`;
   }
 
   private printCommand(
@@ -198,7 +199,8 @@ export default class HelperCommand extends BaseCommand {
   ): void {
     const indent = '  ' + extraIndent;
     const name = command.getFullCommand();
-    const desc = utils.upperCaseFirstCharacter(command.getDescription());
+    const desc = utils.upperCaseFirstCharacter(command.getDescription().trim());
+    const cmdDoc = command.getDocumenation().trim();
 
     // get example
     const examples = command.getExamples();
@@ -209,6 +211,13 @@ export default class HelperCommand extends BaseCommand {
     const cmd = chalk.green(`memlab ${name}${example}`);
     let msg = `${indent}${cmd}`;
     msg += `\n${indent}${desc}`;
+
+    if (cmdDoc.length > 0) {
+      const cmdDocBlock = alignTextInBlock(cmdDoc, {
+        leftIndent: indent.length + 2,
+      });
+      msg += `\n\n${chalk.grey(cmdDocBlock)}`;
+    }
     info.topLevel(msg);
 
     // print options info
