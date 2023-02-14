@@ -211,6 +211,7 @@ class LeakClusterLogger {
       leak_trace_summary: trace.getTraceSummary(),
       interaction_vector: interactionVector,
       meta_data: JSON.stringify({
+        extraRunInfo: utils.mapToObject(config.extraRunInfoMap),
         browser_info: browserInfo,
         visit_plan: tabsOrder,
         trace_record: NormalizedTrace.pathToTrace(cluster.path),

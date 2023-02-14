@@ -11,7 +11,7 @@
 import {BaseOption, CLIOptions, Optional} from '@memlab/core';
 
 import BaseCommand, {CommandCategory} from '../../BaseCommand';
-import {config, analysis, fileManager} from '@memlab/core';
+import {analysis, config, fileManager, runInfoUtils} from '@memlab/core';
 import BaselineFileOption from '../../options/heap/BaselineFileOption';
 import FinalFileOption from '../../options/heap/FinalFileOption';
 import JSEngineOption from '../../options/heap/JSEngineOption';
@@ -79,7 +79,11 @@ Please only use one of the three ways to specify the input.`;
   async run(options: CLIOptions): Promise<void> {
     const workDir = options.configFromOptions?.workDir as Optional<string>;
     fileManager.initDirs(config, {workDir});
-    fileManager.configTargetFromRunMetaFile(config, {workDir});
+    const {runMetaInfoManager} = runInfoUtils;
+    runMetaInfoManager.setConfigFromRunMeta({
+      workDir,
+      silentFail: true,
+    });
 
     config.chaseWeakMapEdge = false;
     await analysis.checkLeak();

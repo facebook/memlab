@@ -32,6 +32,8 @@ export type Optional<T> = Nullable<T> | undefined;
 /** @internal */
 export type AnyRecord = Record<string, RecordValue>;
 /** @internal */
+export type StringRecord = Record<string, string>;
+/** @internal */
 export type AnyAyncFunction = (...args: AnyValue[]) => Promise<AnyValue>;
 /** @internal */
 export type AnyFunction = (...args: AnyValue[]) => AnyValue;
@@ -1006,6 +1008,8 @@ export type RunMetaInfo = {
    * output data from the browser
    */
   browserInfo: IBrowserInfo;
+  /** @internal */
+  extraInfo?: StringRecord;
 };
 
 /**

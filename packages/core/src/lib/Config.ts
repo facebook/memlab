@@ -144,6 +144,7 @@ export class MemLabConfig {
   dataBuilderDataDir: string;
   unclassifiedClusterDir: string;
   externalCookiesFile: Optional<string>;
+  extraRunInfoMap: Map<string, string>;
 
   heapConfig: Optional<IHeapConfig>;
   puppeteerConfig: LaunchOptions &
@@ -361,6 +362,12 @@ export class MemLabConfig {
     // if true, split dataset into trunks
     // with random order for sequential clustering
     this.seqClusteringIsRandomChunks = false;
+    // extra E2E run info (other than the fields defined in
+    // RunMetaInfo like app, interaction, browserInfo).
+    // Information saved in this map will be
+    // auto-serialized to run-meta.json when the file is saved
+    // and auto-deserialized from run-meta.json when the file is loaded
+    this.extraRunInfoMap = new Map();
   }
 
   // initialize configurable parameters

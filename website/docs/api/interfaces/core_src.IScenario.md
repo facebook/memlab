@@ -89,7 +89,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:652
+    * core/src/lib/Types.ts:654
 
 ___
 
@@ -119,7 +119,7 @@ Check out [this page](/docs/how-memlab-works) on why
 memlab needs to undo/revert the `action` callback.
 
  * **Source**:
-    * core/src/lib/Types.ts:677
+    * core/src/lib/Types.ts:679
 
 ___
 
@@ -153,7 +153,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:558
+    * core/src/lib/Types.ts:560
 
 ___
 
@@ -185,7 +185,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:755
+    * core/src/lib/Types.ts:757
 
 ___
 
@@ -226,7 +226,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:728
+    * core/src/lib/Types.ts:730
 
 ___
 
@@ -273,7 +273,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:797
+    * core/src/lib/Types.ts:799
 
 ___
 
@@ -308,7 +308,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:606
+    * core/src/lib/Types.ts:608
 
 ## Methods
 
@@ -343,7 +343,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:529
+    * core/src/lib/Types.ts:531
 
 ___
 
@@ -364,7 +364,7 @@ module.exports = {
 
  * **Returns**: `number`
  * **Source**:
-    * core/src/lib/Types.ts:692
+    * core/src/lib/Types.ts:694
 
 ___
 
@@ -387,4 +387,4 @@ load. All objects allocated by the initial page load will be candidates
 for memory leak filtering.
 
  * **Source**:
-    * core/src/lib/Types.ts:576
+    * core/src/lib/Types.ts:578

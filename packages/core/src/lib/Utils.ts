@@ -8,7 +8,12 @@
  * @oncall web_perf_infra
  */
 
-import type {HaltOrThrowOptions, HeapNodeIdSet, ShellOptions} from './Types';
+import type {
+  HaltOrThrowOptions,
+  HeapNodeIdSet,
+  ShellOptions,
+  StringRecord,
+} from './Types';
 
 import fs from 'fs';
 import path from 'path';
@@ -18,7 +23,6 @@ import config, {ErrorHandling} from './Config';
 import info from './Console';
 import constant from './Constant';
 import parser from './HeapParser';
-import browserInfo from './BrowserInfo';
 
 const memCache: Record<string, AnyValue> = Object.create(null);
 
@@ -33,7 +37,6 @@ import type {
   IScenario,
   ILeakFilter,
   LeakTracePathItem,
-  RunMetaInfo,
   RawHeapSnapshot,
   AnyValue,
   ErrorWithMessage,
@@ -968,31 +971,6 @@ function hasOnlyWeakReferrers(node: IHeapNode): boolean {
     (edge: IHeapEdge) => edge.type !== 'weak' && edge.type !== 'shortcut',
   );
   return referrer == null;
-}
-
-function getRunMetaFilePath(): string {
-  return config.useExternalSnapshot
-    ? config.externalRunMetaFile
-    : config.runMetaFile;
-}
-
-function loadRunMetaInfo(metaFile: Optional<string> = undefined): RunMetaInfo {
-  const file = metaFile || getRunMetaFilePath();
-  try {
-    const content = fs.readFileSync(file, 'UTF-8');
-    return JSON.parse(content) as RunMetaInfo;
-  } catch (_) {
-    throw haltOrThrow(
-      'Run info missing. Please make sure `memlab run` is complete.',
-    );
-  }
-}
-
-function loadTargetInfoFromRunMeta(): void {
-  const meta = loadRunMetaInfo();
-  config.targetApp = meta.app;
-  config.targetTab = meta.interaction;
-  browserInfo.load(meta.browserInfo);
 }
 
 function getSnapshotSequenceFilePath(): string {
@@ -2089,6 +2067,22 @@ function getNumberAtPercentile(arr: number[], percentile: number): number {
   return arr[indexInt];
 }
 
+function mapToObject(map: Map<string, string>): StringRecord {
+  const ret = Object.create(null);
+  map.forEach((v, k) => {
+    ret[k] = v;
+  });
+  return ret;
+}
+
+function objectToMap(object: StringRecord): Map<string, string> {
+  const ret = new Map();
+  for (const k of Object.keys(object)) {
+    ret.set(k, object[k]);
+  }
+  return ret;
+}
+
 export default {
   aggregateDominatorMetrics,
   applyToNodes,
@@ -2105,6 +2099,7 @@ export default {
   extractHTMLElementNodeInfo,
   filterNodesInPlace,
   getAllDominators,
+  getBooleanNodeValue,
   getClosureSourceUrl,
   getConditionalDominatorIds,
   getError,
@@ -2119,7 +2114,6 @@ export default {
   getReadablePercent,
   getReadableTime,
   getRetainedSize,
-  getRunMetaFilePath,
   getScenarioName,
   getSingleSnapshotFileForAnalysis,
   getSnapshotDirForAnalysis,
@@ -2173,17 +2167,17 @@ export default {
   isWeakMapEdgeToValue,
   iterateChildFiberNodes,
   iterateDescendantFiberNodes,
-  loadRunMetaInfo,
   loadLeakFilter,
   loadScenario,
   loadTabsOrder,
-  loadTargetInfoFromRunMeta,
+  mapToObject,
   markAllDetachedFiberNode,
   markAlternateFiberNode,
   memCache,
   normalizeBaseUrl,
   pathHasDetachedHTMLNode,
   pathHasEdgeWithIndex,
+  objectToMap,
   repeat,
   resolveFilePath,
   resolveSnapshotFilePath,
@@ -2194,5 +2188,4 @@ export default {
   shuffleArray,
   throwError,
   upperCaseFirstCharacter,
-  getBooleanNodeValue,
 };

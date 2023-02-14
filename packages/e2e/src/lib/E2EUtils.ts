@@ -8,7 +8,7 @@
  * @oncall web_perf_infra
  */
 
-import type {
+import {
   AnyOptions,
   AnyValue,
   E2EOperation,
@@ -17,6 +17,8 @@ import type {
   IScenario,
   Nullable,
   OperationArgs,
+  runInfoUtils,
+  RunMetaInfo,
 } from '@memlab/core';
 import type {CDPSession, Page} from 'puppeteer';
 
@@ -107,13 +109,13 @@ function logMetaData(
   // save the visiting info to disk
   serializeVisitPlan(visitPlan);
   // save the run meta info to disk
-  const runMeta = {
+  const runMeta: RunMetaInfo = {
     app: config.targetApp,
     type: visitPlan.type,
     interaction: config.targetTab,
     browserInfo,
   };
-  fs.writeFileSync(config.runMetaFile, JSON.stringify(runMeta), 'UTF-8');
+  runInfoUtils.runMetaInfoManager.saveRunMetaInfo(runMeta);
   // additional post processing of collected data
   if (opt.final) {
     config.runningMode.postProcessData(visitPlan);

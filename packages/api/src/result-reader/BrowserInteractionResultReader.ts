@@ -10,9 +10,9 @@
 
 import type {E2EStepInfo, RunMetaInfo} from '@memlab/core';
 
-import {utils} from '@memlab/core';
 import fs from 'fs-extra';
 import path from 'path';
+import {runInfoUtils, utils} from '@memlab/core';
 import BaseResultReader from './BaseResultReader';
 
 /**
@@ -130,9 +130,8 @@ export default class BrowserInteractionResultReader extends BaseResultReader {
    */
   public getRunMetaInfo(): RunMetaInfo {
     this.check();
-    const metaFile = this.fileManager.getRunMetaFile({
+    return runInfoUtils.runMetaInfoManager.loadRunMetaInfo({
       workDir: this.workDir,
     });
-    return utils.loadRunMetaInfo(metaFile);
   }
 }

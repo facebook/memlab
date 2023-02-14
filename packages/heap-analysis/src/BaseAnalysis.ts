@@ -15,14 +15,14 @@ import type {
   RunHeapAnalysisOptions,
 } from './PluginUtils';
 
-import {config, constant, fileManager, info, utils} from '@memlab/core';
+import {config, constant, fileManager, info, runInfoUtils} from '@memlab/core';
 import {defaultTestPlanner} from '@memlab/e2e';
 import pluginUtils from './PluginUtils';
 
 // Identify the target scenario and
 // add its setting to Config
 function loadScenarioConfig(): void {
-  utils.loadTargetInfoFromRunMeta();
+  runInfoUtils.runMetaInfoManager.setConfigFromRunMeta({silentFail: true});
   if (
     config.targetApp === 'external' ||
     config.targetTab.startsWith(constant.namePrefixForScenarioFromFile)

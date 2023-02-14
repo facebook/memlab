@@ -33,6 +33,8 @@ export {default as utils} from './lib/Utils';
 /** @internal */
 export {default as fileManager} from './lib/FileManager';
 /** @internal */
+export {default as runInfoUtils} from './lib/RunInfoUtils';
+/** @internal */
 export * from './lib/FileManager';
 /** @internal */
 export {default as serializer} from './lib/Serializer';
