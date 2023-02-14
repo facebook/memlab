@@ -132,6 +132,17 @@ function isDetachedFiberNode(node: IHeapNode): boolean {
   return isFiberNode(node) && isDetached(node);
 }
 
+// return true if this node is InternalNode (native)
+function isDOMInternalNode(node: Optional<IHeapNode>): boolean {
+  if (node == null) {
+    return false;
+  }
+  return (
+    node.type === 'native' &&
+    (node.name === 'InternalNode' || node.name === 'Detached InternalNode')
+  );
+}
+
 // this function returns a more general sense of DOM nodes. Specifically,
 // any detached DOM nodes (e.g., HTMLXXElement, IntersectionObserver etc.)
 // that are not internal nodes.
@@ -228,7 +239,10 @@ function isPendingActivityNode(node: IHeapNode): boolean {
   if (!node || !node.name) {
     return false;
   }
-  return node.type === 'synthetic' && node.name === 'Pending activities';
+  if (node.type !== 'synthetic' && node.type !== 'native') {
+    return false;
+  }
+  return node.name === 'Pending activities';
 }
 
 // check the node against a curated list of known HTML Elements
@@ -1134,9 +1148,9 @@ function pendingActivitiesRetainsDetachedElementChain(
     return false;
   }
   // all the following reference chain is detached DOM elements
-  // pointing to other detached DOM elements
+  // or InternalNode pointing to other detached DOM elements
   while (p && p.node) {
-    if (!isDetachedDOMNode(p.node)) {
+    if (!isDOMInternalNode(p.node) && !isDetachedDOMNode(p.node)) {
       return false;
     }
     p = p.next;
@@ -2131,6 +2145,7 @@ export default {
   isDetachedDOMNode,
   isDirectPropEdge,
   isDocumentDOMTreesRoot,
+  isDOMInternalNode,
   isDOMNodeIncomplete,
   isEssentialEdge,
   isFiberNode,
