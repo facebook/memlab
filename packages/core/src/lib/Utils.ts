@@ -248,16 +248,51 @@ function isPendingActivityNode(node: IHeapNode): boolean {
   return node.name === 'Pending activities';
 }
 
+const htmlElementRegex = /^HTML.*Element$/;
+const svgElementRegex = /^SVG.*Element$/;
+const htmlCollectionRegex = /^HTML.*Collection$/;
+const cssElementRegex = /^CSS/;
+const styleSheetRegex = /StyleSheet/;
+// special DOM element names that are not
+// included in the previous regex definitions
+const domElementSpecialNames = new Set([
+  'DOMTokenList',
+  'HTMLDocument',
+  'InternalNode',
+  'Text',
+  'XMLDocument',
+]);
 // check the node against a curated list of known HTML Elements
 // the list may be incomplete
 function isDOMNodeIncomplete(node: IHeapNode): boolean {
+  if (node.type !== 'native') {
+    return false;
+  }
   let name = node.name;
-  const pattern = /^HTML.*Element$/;
   const detachedPrefix = 'Detached ';
   if (name.startsWith(detachedPrefix)) {
     name = name.substring(detachedPrefix.length);
   }
-  return pattern.test(name);
+  return (
+    htmlElementRegex.test(name) ||
+    svgElementRegex.test(name) ||
+    cssElementRegex.test(name) ||
+    styleSheetRegex.test(name) ||
+    htmlCollectionRegex.test(name) ||
+    domElementSpecialNames.has(name)
+  );
+}
+
+function isXMLDocumentNode(node: IHeapNode): boolean {
+  return node.type === 'native' && node.name === 'XMLDocument';
+}
+
+function isHTMLDocumentNode(node: IHeapNode): boolean {
+  return node.type === 'native' && node.name === 'HTMLDocument';
+}
+
+function isDOMTextNode(node: IHeapNode): boolean {
+  return node.type === 'native' && node.name === 'Text';
 }
 
 function isRootNode(node: IHeapNode, opt: AnyOptions = {}): boolean {
@@ -1025,6 +1060,10 @@ function isInterestingPath(p: LeakTracePathItem): boolean {
   ) {
     return false;
   }
+  // if the path consists of only DOM native nodes/elements
+  if (config.hideBrowserLeak && isDOMNodeChain(p)) {
+    return false;
+  }
   return true;
 }
 
@@ -1129,6 +1168,18 @@ function pendingActivitiesRetainsDetachedElementChain(
   // or InternalNode pointing to other detached DOM elements
   while (p && p.node) {
     if (!isDOMInternalNode(p.node) && !isDetachedDOMNode(p.node)) {
+      return false;
+    }
+    p = p.next;
+  }
+  return true;
+}
+
+function isDOMNodeChain(path: LeakTracePathItem): boolean {
+  let p: Optional<LeakTracePathItem> = path;
+  // all the reference chain consists of DOM elements/nodes
+  while (p && p.node) {
+    if (!isRootNode(p.node) && !isDOMNodeIncomplete(p.node)) {
       return false;
     }
     p = p.next;
@@ -2088,9 +2139,9 @@ export default {
   applyToNodes,
   callAsync,
   camelCaseToReadableString,
+  checkIsChildOfParent,
   checkSnapshots,
   checkUninstalledLibrary,
-  checkIsChildOfParent,
   closePuppeteer,
   dumpSnapshot,
   equalOrMatch,
@@ -2102,11 +2153,11 @@ export default {
   getBooleanNodeValue,
   getClosureSourceUrl,
   getConditionalDominatorIds,
-  getError,
   getEdgeByNameAndType,
+  getError,
   getLastNodeId,
-  getLeakedNode,
   getLeakTracePathLength,
+  getLeakedNode,
   getNodesIdSet,
   getNumberAtPercentile,
   getNumberNodeValue,
@@ -2117,13 +2168,13 @@ export default {
   getScenarioName,
   getSingleSnapshotFileForAnalysis,
   getSnapshotDirForAnalysis,
-  getSnapshotFilesInDir,
+  getSnapshotFilePath,
+  getSnapshotFilePathWithTabType,
   getSnapshotFilesFromTabsOrder,
+  getSnapshotFilesInDir,
   getSnapshotFromFile,
   getSnapshotNodeIdsFromFile,
   getSnapshotSequenceFilePath,
-  getSnapshotFilePath,
-  getSnapshotFilePathWithTabType,
   getStringNodeValue,
   getToNodeByEdge,
   getUniqueID,
@@ -2134,16 +2185,18 @@ export default {
   hasReactEdges,
   isAlternateNode,
   isBlinkRootNode,
-  isDebuggableNode,
-  isDetachedFiberNode,
-  isDetachedDOMNode,
-  isDirectPropEdge,
-  isDocumentDOMTreesRoot,
   isDOMInternalNode,
   isDOMNodeIncomplete,
+  isDOMTextNode,
+  isDebuggableNode,
+  isDetachedDOMNode,
+  isDetachedFiberNode,
+  isDirectPropEdge,
+  isDocumentDOMTreesRoot,
   isEssentialEdge,
   isFiberNode,
   isFiberNodeDeletionsEdge,
+  isHTMLDocumentNode,
   isHermesInternalObject,
   isHostRoot,
   isInterestingPath,
@@ -2165,6 +2218,7 @@ export default {
   isWeakMapEdge,
   isWeakMapEdgeToKey,
   isWeakMapEdgeToValue,
+  isXMLDocumentNode,
   iterateChildFiberNodes,
   iterateDescendantFiberNodes,
   loadLeakFilter,
@@ -2175,9 +2229,9 @@ export default {
   markAlternateFiberNode,
   memCache,
   normalizeBaseUrl,
+  objectToMap,
   pathHasDetachedHTMLNode,
   pathHasEdgeWithIndex,
-  objectToMap,
   repeat,
   resolveFilePath,
   resolveSnapshotFilePath,
