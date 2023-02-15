@@ -82,6 +82,7 @@ export type XvfbType = {
 export type ShellOptions = {
   dir?: Optional<string>;
   ignoreError?: Optional<boolean>;
+  throwError?: Optional<boolean>;
   disconnectStdio?: Optional<boolean>;
 };
 

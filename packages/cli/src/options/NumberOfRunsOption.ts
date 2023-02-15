@@ -9,12 +9,20 @@
  */
 
 import type {ParsedArgs} from 'minimist';
-import type {AnyRecord, MemLabConfig} from '@memlab/core';
+import type {AnyRecord, MemLabConfig, Optional} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
 import optionConstants from './lib/OptionConstant';
 
+const DEFAULT_NUM_RUNS = 10;
+
 export default class NumberOfRunsOption extends BaseOption {
-  public static DEFAULT_NUM_RUNS = 10;
+  private defaultRunNumber = DEFAULT_NUM_RUNS;
+
+  constructor(runNumber = DEFAULT_NUM_RUNS) {
+    super();
+    this.defaultRunNumber = runNumber;
+  }
+
   getOptionName(): string {
     return optionConstants.optionNames.RUN_NUM;
   }
@@ -27,12 +35,16 @@ export default class NumberOfRunsOption extends BaseOption {
     return ['5'];
   }
 
+  static getParsedOption(configFromOptions: Optional<AnyRecord>): number {
+    const {numOfRuns} = configFromOptions ?? {};
+    const n = parseInt(`${numOfRuns}`, 10);
+    return isNaN(n) ? DEFAULT_NUM_RUNS : n;
+  }
+
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<AnyRecord> {
     const ret = Object.create(null);
     const name = this.getOptionName();
-    ret.numOfRuns = args[name]
-      ? args[name] | 0
-      : NumberOfRunsOption.DEFAULT_NUM_RUNS;
+    ret.numOfRuns = args[name] != null ? args[name] | 0 : this.defaultRunNumber;
     return ret;
   }
 }

@@ -81,9 +81,9 @@ export default class RunMeasureCommand extends BaseCommand {
   }
 
   async run(options: CLIOptions): Promise<void> {
-    const numRuns =
-      options.configFromOptions?.numOfRuns ??
-      NumberOfRunsOption.DEFAULT_NUM_RUNS;
+    const numRuns = NumberOfRunsOption.getParsedOption(
+      options.configFromOptions,
+    );
     config.runningMode = modes.get('measure', config);
     for (let i = 0; i < numRuns; ++i) {
       await runPageInteractionFromCLI();

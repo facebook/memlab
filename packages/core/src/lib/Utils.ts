@@ -2063,6 +2063,9 @@ export function runShell(
         info.lowLevel(ex.stack ?? '');
       }
     }
+    if (options.throwError) {
+      throw ex;
+    }
     if (options.ignoreError === true) {
       return '';
     }
