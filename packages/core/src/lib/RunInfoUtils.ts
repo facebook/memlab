@@ -20,7 +20,7 @@ import {setInternalValue} from './InternalValueSetter';
 export class RunMetaInfoManager {
   getRunMetaFilePath(options?: {workDir?: Optional<string>}): string {
     if (options?.workDir != null) {
-      return fileManager.getRunMetaFile({workDir: config.workDir});
+      return fileManager.getRunMetaFile({workDir: options.workDir});
     }
     if (config.useExternalSnapshot) {
       return config.externalRunMetaFile;
@@ -102,7 +102,7 @@ export class RunMetaInfoManager {
     if (meta == null) {
       return;
     }
-    if (meta?.app == null || meta?.interaction) {
+    if (meta?.app == null || meta?.interaction == null) {
       if (options?.silentFail) {
         return;
       }

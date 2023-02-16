@@ -7,11 +7,10 @@
  * @format
  * @oncall web_perf_infra
  */
+import type {BaseOption, CLIOptions} from '@memlab/core';
 
-import {CLIOptions, utils} from '@memlab/core';
-import {info} from '@memlab/core';
+import {analysis, info, config, runInfoUtils, utils} from '@memlab/core';
 import BaseCommand, {CommandCategory} from '../../BaseCommand';
-import {BaseOption, config, analysis} from '@memlab/core';
 import JSEngineOption from '../../options/heap/JSEngineOption';
 import InitDirectoryCommand from '../InitDirectoryCommand';
 import OversizeThresholdOption from '../../options/heap/OversizeThresholdOption';
@@ -76,6 +75,11 @@ export default class CheckLeakCommand extends BaseCommand {
     const treatmentWorkDir = options.configFromOptions[
       'treatmentWorkDir'
     ] as string;
+    const {runMetaInfoManager} = runInfoUtils;
+    runMetaInfoManager.setConfigFromRunMeta({
+      workDir: treatmentWorkDir,
+      silentFail: true,
+    });
     // diff memory leaks
     await analysis.diffLeakByWorkDir({controlWorkDirs, treatmentWorkDir});
   }
