@@ -49,6 +49,11 @@ type WorkDirOptions = {
   workDir?: string;
 };
 
+type GetTraceOptions = {
+  workDir?: string;
+  printConsoleOnly?: boolean;
+};
+
 class MemoryAnalyst {
   async checkLeak(): Promise<ISerializedInfo[]> {
     memoryBarChart.plotMemoryBarChart();
@@ -197,6 +202,7 @@ class MemoryAnalyst {
       config.focusFiberNodeId,
       config.viewJsonFile,
       config.singleReportSummary,
+      {printConsoleOnly: true},
     );
   }
 
@@ -691,7 +697,7 @@ class MemoryAnalyst {
     id: number,
     pathLoaderFile: string,
     summaryFile: string,
-    options: WorkDirOptions = {},
+    options: GetTraceOptions = {},
   ) {
     info.overwrite('start analysis...');
     const finder = this.preparePathFinder(snapshot);
@@ -713,10 +719,6 @@ class MemoryAnalyst {
         path,
         pathLoaderFile,
       );
-      const tabsOrder = utils.loadTabsOrder(
-        fileManager.getSnapshotSequenceMetaFile(options),
-      );
-      const interactionSummary = serializer.summarizeTabsOrder(tabsOrder);
       let pathSummary = serializer.summarizePath(
         path,
         nodeIdInPaths,
@@ -724,6 +726,13 @@ class MemoryAnalyst {
         {color: true},
       );
       info.topLevel(pathSummary);
+      if (options.printConsoleOnly) {
+        return;
+      }
+      const tabsOrder = utils.loadTabsOrder(
+        fileManager.getSnapshotSequenceMetaFile(options),
+      );
+      const interactionSummary = serializer.summarizeTabsOrder(tabsOrder);
       pathSummary = serializer.summarizePath(path, nodeIdInPaths, snapshot);
       const summary =
         `Page Interaction: \n${interactionSummary}\n\n` +
