@@ -735,6 +735,10 @@ export class MemLabConfig {
     this.defaultUserAgent = null;
   }
 
+  setRunInfo(key: string, value: string): void {
+    this.extraRunInfoMap.set(key, value);
+  }
+
   private removeFromSet(set: Set<string>, list: string[]): void {
     for (const v of list) {
       set.delete(v);
