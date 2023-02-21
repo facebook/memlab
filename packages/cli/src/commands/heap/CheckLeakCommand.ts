@@ -7,8 +7,8 @@
  * @format
  * @oncall web_perf_infra
  */
-
-import {BaseOption, CLIOptions, Optional} from '@memlab/core';
+import type {ParsedArgs} from 'minimist';
+import type {BaseOption, CLIOptions, Optional} from '@memlab/core';
 
 import BaseCommand, {CommandCategory} from '../../BaseCommand';
 import {analysis, config, fileManager, runInfoUtils} from '@memlab/core';
@@ -30,7 +30,32 @@ import MLClusteringMaxDFOption from '../../options/MLClusteringMaxDFOption';
 import CleanupSnapshotOption from '../../options/heap/CleanupSnapshotOption';
 import SetWorkingDirectoryOption from '../../options/SetWorkingDirectoryOption';
 
+export type CheckLeakCommandOptions = {
+  isMLClustering?: boolean;
+};
+
 export default class CheckLeakCommand extends BaseCommand {
+  private isMLClustering = false;
+  private isMLClusteringSettingCache = false;
+
+  protected useDefaultMLClusteringSetting(cliArgs: ParsedArgs): void {
+    if (!MLClusteringOption.hasOptionSet(cliArgs)) {
+      config.isMLClustering = this.isMLClustering;
+      this.isMLClusteringSettingCache = config.isMLClustering;
+    }
+  }
+
+  protected restoreDefaultMLClusteringSetting(cliArgs: ParsedArgs): void {
+    if (!MLClusteringOption.hasOptionSet(cliArgs)) {
+      config.isMLClustering = this.isMLClusteringSettingCache;
+    }
+  }
+
+  constructor(options: CheckLeakCommandOptions = {}) {
+    super();
+    this.isMLClustering = !!options?.isMLClustering;
+  }
+
   getCommandName(): string {
     return 'find-leaks';
   }
@@ -86,7 +111,11 @@ Please only use one of the three ways to specify the input.`;
     });
 
     config.chaseWeakMapEdge = false;
+
+    this.useDefaultMLClusteringSetting(options.cliArgs);
     await analysis.checkLeak();
+    this.restoreDefaultMLClusteringSetting(options.cliArgs);
+
     const configFromOptions = options.configFromOptions ?? {};
     if (configFromOptions['cleanUpSnapshot']) {
       fileManager.removeSnapshotFiles();

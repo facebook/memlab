@@ -22,6 +22,11 @@ export default class MLClusteringOption extends BaseOption {
     return 'use machine learning algorithms for clustering leak traces (by default, traces are clustered by heuristics)';
   }
 
+  static hasOptionSet(args: ParsedArgs): boolean {
+    const name = optionConstants.optionNames.ML_CLUSTERING;
+    return args[name] != null;
+  }
+
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
     const name = this.getOptionName();
     if (args[name]) {
