@@ -63,10 +63,15 @@ export function argsToString(args: AnyRecord): string {
     if (optionName === '_') {
       continue;
     }
-    if (args[optionName] === true) {
+    const value = args[optionName];
+    if (value === true) {
       ret += `--${optionName} `;
+    } else if (Array.isArray(value)) {
+      value.forEach(v => {
+        ret += `--${optionName}=${v} `;
+      });
     } else {
-      ret += `--${optionName}=${args[optionName]} `;
+      ret += `--${optionName}=${value} `;
     }
   }
   return ret.trim();
