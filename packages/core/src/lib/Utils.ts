@@ -146,6 +146,14 @@ function isDOMInternalNode(node: Optional<IHeapNode>): boolean {
   );
 }
 
+// return true the the nodee is a global handles node
+function isGlobalHandlesNode(node: Optional<IHeapNode>): boolean {
+  if (node == null) {
+    return false;
+  }
+  return node.name === '(Global handles)' && node.type === 'synthetic';
+}
+
 // this function returns a more general sense of DOM nodes. Specifically,
 // any detached DOM nodes (e.g., HTMLXXElement, IntersectionObserver etc.)
 // that are not internal nodes.
@@ -2067,6 +2075,7 @@ export default {
   isEssentialEdge,
   isFiberNode,
   isFiberNodeDeletionsEdge,
+  isGlobalHandlesNode,
   isHTMLDocumentNode,
   isHermesInternalObject,
   isHostRoot,
