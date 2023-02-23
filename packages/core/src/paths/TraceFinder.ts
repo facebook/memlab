@@ -555,6 +555,13 @@ class TraceFinder {
     ) {
       return true;
     }
+    // detached DOM node -> non-detached DOM node is less preferable
+    if (
+      utils.isDetachedDOMNode(edge.fromNode) &&
+      !utils.isDetachedDOMNode(edge.toNode)
+    ) {
+      return true;
+    }
     return config.edgeNameGreyList.has(String(edge.name_or_index));
   }
 

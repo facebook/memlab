@@ -39,6 +39,7 @@ import TraceFinder from '../paths/TraceFinder';
 import NormalizedTrace from '../trace-cluster/TraceBucket';
 import {LeakObjectFilter} from './leak-filters/LeakObjectFilter';
 import MLTraceSimilarityStrategy from '../trace-cluster/strategies/MLTraceSimilarityStrategy';
+import {LeakTraceFilter} from './trace-filters/LeakTraceFilter';
 
 type DiffSnapshotsOptions = {
   loadAllSnapshots?: boolean;
@@ -553,6 +554,7 @@ class MemoryAnalyst {
     // get all leaked objects
     this.filterLeakedObjects(leakedNodeIds, snapshot);
 
+    const leakTraceFilter = new LeakTraceFilter();
     const nodeIdInPaths: HeapNodeIdSet = new Set();
     const paths: LeakTracePathItem[] = [];
     let numOfLeakedObjects = 0;
@@ -568,7 +570,10 @@ class MemoryAnalyst {
         }
         // BFS search for path from the leaked node to GC roots
         const p = finder.getPathToGCRoots(snapshot, node);
-        if (!p || !utils.isInterestingPath(p)) {
+        if (
+          p == null ||
+          !leakTraceFilter.filter(p, {config, leakedNodeIds, snapshot})
+        ) {
           return;
         }
 

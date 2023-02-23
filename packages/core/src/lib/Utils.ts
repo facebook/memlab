@@ -1035,38 +1035,6 @@ function loadTabsOrder(metaFile: Optional<string> = undefined): E2EStepInfo[] {
   }
 }
 
-// if true the leak trace is will be reported
-function isInterestingPath(p: LeakTracePathItem): boolean {
-  // do not filter paths when analyzing Hermes snapshots
-  if (config.jsEngine === 'hermes') {
-    return true;
-  }
-  // if the path has pattern: Window -> [InternalNode]+ -> DetachedElement
-  if (config.hideBrowserLeak && internalNodeRetainsDetachedElement(p)) {
-    return false;
-  }
-  // if the path has pattern: ShadowRoot -> DetachedElement
-  if (config.hideBrowserLeak && shadowRootRetainsDetachedElement(p)) {
-    return false;
-  }
-  // if the path has pattern: StyleEngine -> InternalNode -> DetachedElement
-  if (config.hideBrowserLeak && styleEngineRetainsDetachedElement(p)) {
-    return false;
-  }
-  // if the path has pattern: Pending activitiies -> DetachedElement
-  if (
-    config.hideBrowserLeak &&
-    pendingActivitiesRetainsDetachedElementChain(p)
-  ) {
-    return false;
-  }
-  // if the path consists of only DOM native nodes/elements
-  if (config.hideBrowserLeak && isDOMNodeChain(p)) {
-    return false;
-  }
-  return true;
-}
-
 // return true if the heap node represents JS object or closure
 function isObjectNode(node: IHeapNode): boolean {
   if (isPlainJSObjectNode(node)) {
@@ -1085,106 +1053,6 @@ function isPlainJSObjectNode(node: IHeapNode): boolean {
   }
 
   return node.name === 'Object';
-}
-
-// check if the path has pattern:
-// Window -> [InternalNode | Text]+ -> DetachedElement
-function internalNodeRetainsDetachedElement(path: LeakTracePathItem): boolean {
-  if (!path) {
-    return false;
-  }
-  let p: Optional<LeakTracePathItem> = path;
-  // GC root is not Window
-  if (!p.node || !p.node.name.startsWith('Window')) {
-    return false;
-  }
-  p = p.next;
-  // Window is not poining to InternalNode
-  if (!p || !p.node || p.node.name !== 'InternalNode') {
-    return false;
-  }
-  // skip the rest InternalNode
-  while (p.node?.name === 'InternalNode' || p.node?.name === 'Text') {
-    p = p.next;
-    if (!p) {
-      return false;
-    }
-  }
-  // check if the node is a detached element
-  return p && isDetachedDOMNode(p.node);
-}
-
-// check if the path has pattern: ShadowRoot -> DetachedElement
-function shadowRootRetainsDetachedElement(path: LeakTracePathItem): boolean {
-  let p: Optional<LeakTracePathItem> = path;
-  // find the ShadowRoot
-  while (p && p.node && p.node.name !== 'ShadowRoot') {
-    p = p.next;
-    if (!p) {
-      return false;
-    }
-  }
-  p = p.next;
-  // check if the node is a detached element
-  return !!p && isDetachedDOMNode(p.node);
-}
-
-// check if the path has pattern: StyleEngine -> InternalNode -> DetachedElement
-function styleEngineRetainsDetachedElement(path: LeakTracePathItem): boolean {
-  let p: Optional<LeakTracePathItem> = path;
-  // find the StyleEngine
-  while (p && p.node && p.node.name !== 'StyleEngine') {
-    p = p.next;
-    if (!p) {
-      return false;
-    }
-  }
-  p = p.next;
-  // StyleEngine is not poining to InternalNode
-  if (!p || !p.node || p.node.name !== 'InternalNode') {
-    return false;
-  }
-  p = p.next;
-  // check if the InternalNode is pointing to a detached element
-  return !!p && isDetachedDOMNode(p.node);
-}
-
-function pendingActivitiesRetainsDetachedElementChain(
-  path: LeakTracePathItem,
-): boolean {
-  let p: Optional<LeakTracePathItem> = path;
-  // find the Pending activities
-  while (p && p.node && !isPendingActivityNode(p.node)) {
-    p = p.next;
-    if (!p) {
-      return false;
-    }
-  }
-  p = p.next;
-  if (!p || !p.node) {
-    return false;
-  }
-  // all the following reference chain is detached DOM elements
-  // or InternalNode pointing to other detached DOM elements
-  while (p && p.node) {
-    if (!isDOMInternalNode(p.node) && !isDetachedDOMNode(p.node)) {
-      return false;
-    }
-    p = p.next;
-  }
-  return true;
-}
-
-function isDOMNodeChain(path: LeakTracePathItem): boolean {
-  let p: Optional<LeakTracePathItem> = path;
-  // all the reference chain consists of DOM elements/nodes
-  while (p && p.node) {
-    if (!isRootNode(p.node) && !isDOMNodeIncomplete(p.node)) {
-      return false;
-    }
-    p = p.next;
-  }
-  return true;
 }
 
 function pathHasDetachedHTMLNode(path: LeakTracePathItem): boolean {
@@ -2202,7 +2070,6 @@ export default {
   isHTMLDocumentNode,
   isHermesInternalObject,
   isHostRoot,
-  isInterestingPath,
   isMeaningfulEdge,
   isMeaningfulNode,
   isNodeDominatedByDeletionsArray,
