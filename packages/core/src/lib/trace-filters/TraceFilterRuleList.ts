@@ -11,6 +11,7 @@
 import constant from '../Constant';
 import {setInternalValue} from '../InternalValueSetter';
 import {ILeakTraceFilterRule} from './BaseTraceFilter.rule';
+import {FilterAttachedDOMToDetachedDOMTraceRule} from './rules/FilterAttachedDOMToDetachedDOMTrace.rule';
 import {FilterDOMNodeChainTraceRule} from './rules/FilterDOMNodeChainTrace.rule';
 import {FilterHermesTraceRule} from './rules/FilterHermesTrace.rule';
 import {FilterInternalNodeTraceRule} from './rules/FilterInternalNodeTrace.rule';
@@ -25,6 +26,7 @@ const list: ILeakTraceFilterRule[] = [
   new FilterStyleEngineTraceRule(),
   new FilterPendingActivitiesTraceRule(),
   new FilterDOMNodeChainTraceRule(),
+  new FilterAttachedDOMToDetachedDOMTraceRule(),
 ];
 
 export default setInternalValue(list, __filename, constant.internalDir);

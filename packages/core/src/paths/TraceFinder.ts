@@ -548,17 +548,28 @@ class TraceFinder {
   }
 
   isLessPreferableEdge(edge: IHeapEdge): boolean {
+    const fromNode = edge.fromNode;
+    const toNode = edge.toNode;
     // pending activities -> DOM element is less preferrable
     if (
-      utils.isPendingActivityNode(edge.fromNode) &&
-      utils.isDOMNodeIncomplete(edge.toNode)
+      utils.isPendingActivityNode(fromNode) &&
+      utils.isDOMNodeIncomplete(toNode)
     ) {
       return true;
     }
     // detached DOM node -> non-detached DOM node is less preferable
     if (
-      utils.isDetachedDOMNode(edge.fromNode) &&
-      !utils.isDetachedDOMNode(edge.toNode)
+      utils.isDetachedDOMNode(fromNode) &&
+      utils.isDOMNodeIncomplete(toNode) &&
+      !utils.isDetachedDOMNode(toNode)
+    ) {
+      return true;
+    }
+    // non-detached DOM node -> detached DOM node is less preferable
+    if (
+      utils.isDOMNodeIncomplete(fromNode) &&
+      !utils.isDetachedDOMNode(fromNode) &&
+      utils.isDetachedDOMNode(toNode)
     ) {
       return true;
     }
