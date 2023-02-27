@@ -224,6 +224,7 @@ export default class ListComponent {
 
   public focus(): void {
     this.element.focus();
+    this.element.setFront();
     this.element.style.border.fg = 'white';
     this.element.style.selected = {
       bg: 'grey',

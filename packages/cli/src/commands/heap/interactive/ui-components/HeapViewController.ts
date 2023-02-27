@@ -45,6 +45,7 @@ export default class HeapViewController {
   private componentIdToDataMap: Map<number, ComponentData>;
   private componentIdToComponentMap: Map<number, ListComponent>;
   private heap: IHeapSnapshot;
+  private focusedComponent: ListComponent;
 
   private clusteredBox: ListComponent;
   private referrerBox: ListComponent;
@@ -66,6 +67,10 @@ export default class HeapViewController {
     this.componentIdToComponentMap = new Map();
     this.scriptManager = new ScriptManager();
     this.scriptManager.loadFromFiles();
+  }
+
+  public getFocusedComponent(): ListComponent {
+    return this.focusedComponent;
   }
 
   private getFlattenHeapObjectsInfo(
@@ -456,7 +461,7 @@ export default class HeapViewController {
 
     this.setSelectedHeapObject(node);
     if (!options.skipFocus) {
-      this.focusOnComponent(this.objectBox.id);
+      this.focusOnComponent(this.clusteredBox.id);
     }
   }
 
@@ -464,6 +469,7 @@ export default class HeapViewController {
     for (const component of this.componentIdToComponentMap.values()) {
       if (component.id === componentId) {
         component.focus();
+        this.focusedComponent = component;
         const data = this.componentIdToDataMap.get(componentId);
         const selectIndex = (data && data.selectedIdx) ?? -1;
         this.setSelectedHeapObjectFromComponent(componentId, selectIndex);

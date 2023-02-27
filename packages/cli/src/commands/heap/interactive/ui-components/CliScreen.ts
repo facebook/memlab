@@ -9,7 +9,7 @@
  */
 import type {Widgets} from 'blessed';
 import type {ListCallbacks, ListItemSelectInfo} from './ListComponent';
-import type {IHeapSnapshot, Optional} from '@memlab/core';
+import type {IHeapSnapshot, Nullable, Optional} from '@memlab/core';
 import {ComponentDataItem, getHeapObjectAt, debounce} from './HeapViewUtils';
 
 import blessed from 'blessed';
@@ -67,6 +67,7 @@ export default class CliScreen {
   private currentFocuseKey = 1;
   private keyToComponent: Map<string, ListComponent>;
   private heapController: HeapViewController;
+  private fullScreenComponent: Nullable<ListComponent> = null;
 
   constructor(
     title: string,
@@ -165,25 +166,33 @@ export default class CliScreen {
 
   private registerScreenResize(): void {
     const screen = this.screen;
-    screen.on('resize', () => {
-      // all boxes/lists needs to resize
+    screen.on('resize', this.updateAllComponentsSize.bind(this));
+  }
+
+  private updateAllComponentsSize(): void {
+    // all boxes/lists needs to resize
+    this.updateComponentSize(
+      this.clusteredObjectBox,
+      this.getClusteredObjectBoxSize(),
+    );
+    this.updateComponentSize(this.referrerBox, this.getReferrerBoxSize());
+    this.updateComponentSize(this.objectBox, this.getObjectBoxSize());
+    this.updateComponentSize(
+      this.objectPropertyBox,
+      this.getObjectPropertyBoxSize(),
+    );
+    this.updateComponentSize(this.referenceBox, this.getReferenceBoxSize());
+    this.updateComponentSize(
+      this.retainerTraceBox,
+      this.getRetainerTraceBoxSize(),
+    );
+    if (this.fullScreenComponent != null) {
       this.updateComponentSize(
-        this.clusteredObjectBox,
-        this.getClusteredObjectBoxSize(),
+        this.fullScreenComponent,
+        this.getComponentFullScreenSize(),
       );
-      this.updateComponentSize(this.referrerBox, this.getReferrerBoxSize());
-      this.updateComponentSize(this.objectBox, this.getObjectBoxSize());
-      this.updateComponentSize(
-        this.objectPropertyBox,
-        this.getObjectPropertyBoxSize(),
-      );
-      this.updateComponentSize(this.referenceBox, this.getReferenceBoxSize());
-      this.updateComponentSize(
-        this.retainerTraceBox,
-        this.getRetainerTraceBoxSize(),
-      );
-      this.updateElementSize(this.helperTextElement, this.getHelperTextSize());
-    });
+    }
+    this.updateElementSize(this.helperTextElement, this.getHelperTextSize());
   }
 
   private updateComponentSize(
@@ -206,7 +215,15 @@ export default class CliScreen {
   private registerKeys(): void {
     const screen = this.screen;
     // Quit on Escape, q, or Control-C.
-    screen.key(['escape', 'q', 'C-c'], () => process.exit(0));
+    screen.key(['escape', 'q', 'C-c'], () => {
+      if (this.fullScreenComponent != null) {
+        // exit component full screen mode
+        this.makeNoComponentFullScreen();
+      } else {
+        // quit the program
+        process.exit(0);
+      }
+    });
     const keyToComponent = this.keyToComponent;
     const heapController = this.heapController;
 
@@ -216,12 +233,31 @@ export default class CliScreen {
         // focus on the selected element
         const component = keyToComponent.get(char);
         if (component) {
+          if (component !== this.fullScreenComponent) {
+            // quit full screen mode if the component to focus
+            // is not the current full screen component
+            this.makeNoComponentFullScreen();
+          }
           heapController.focusOnComponent(component.id);
           screen.render();
         }
       }
+      // enter full screen
+      if (char === 'f') {
+        this.makeComponentFullScreen(heapController.getFocusedComponent());
+      }
     };
     screen.on('keypress', callback);
+  }
+
+  private makeComponentFullScreen(component: ListComponent): void {
+    this.fullScreenComponent = component;
+    this.updateAllComponentsSize();
+  }
+
+  private makeNoComponentFullScreen(): void {
+    this.fullScreenComponent = null;
+    this.updateAllComponentsSize();
   }
 
   private addComponentToFocusKeyMap(component: ListComponent): string {
@@ -286,6 +322,15 @@ export default class CliScreen {
     this.screen.append(box.element);
     this.addComponentToFocusKeyMap(box);
     return box;
+  }
+
+  private getComponentFullScreenSize(): ComponentSizeInfo {
+    return {
+      width: positionToNumber(this.screen.width) - 4,
+      height: positionToNumber(this.screen.height) - 5,
+      top: 2,
+      left: 2,
+    };
   }
 
   private getObjectBoxSize(): ComponentSizeInfo {
@@ -380,6 +425,7 @@ export default class CliScreen {
       '←': '',
       '→': '',
       Enter: 'select',
+      f: 'full screen',
       q: 'quit',
     };
     const keysToFocus = Array.from(this.keyToComponent.keys());
