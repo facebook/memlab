@@ -1035,7 +1035,10 @@ function getSnapshotSequenceFilePath(): string {
 // this should be called only after exploration
 function loadTabsOrder(metaFile: Optional<string> = undefined): E2EStepInfo[] {
   try {
-    const file = metaFile || getSnapshotSequenceFilePath();
+    const file =
+      metaFile != null && fs.existsSync(metaFile)
+        ? metaFile
+        : getSnapshotSequenceFilePath();
     const content = fs.readFileSync(file, 'UTF-8');
     return JSON.parse(content);
   } catch {

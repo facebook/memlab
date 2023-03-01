@@ -12,6 +12,7 @@ import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
 import optionConstants from '../lib/OptionConstant';
+import OversizeThresholdOption from './OversizeThresholdOption';
 
 export default class TraceAllObjectsOption extends BaseOption {
   getOptionName(): string {
@@ -23,8 +24,13 @@ export default class TraceAllObjectsOption extends BaseOption {
   }
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
-    if (args[this.getOptionName()]) {
-      config.oversizeObjectAsLeak = true;
+    if (!args[this.getOptionName()]) {
+      return;
+    }
+    config.oversizeObjectAsLeak = true;
+    const overSizeOptionName = new OversizeThresholdOption().getOptionName();
+    // over size option will set the oversize threshold
+    if (!args[overSizeOptionName]) {
       config.oversizeThreshold = 0;
     }
   }
