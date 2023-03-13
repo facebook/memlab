@@ -266,6 +266,12 @@ export default class NormalizedTrace {
       return traceToClusterMap.get(trace);
     };
 
+    if (config.isContinuousTest) {
+      info.lowLevel(`${staleClusters.length} stale clusters`);
+      info.lowLevel(`${clustersToAdd.length} new clusters`);
+      info.lowLevel(`${allClusters.length} clusters in total`);
+    }
+
     return {
       staleClusters: staleClusters.map(traceToCluster),
       clustersToAdd: clustersToAdd.map(traceToCluster),
