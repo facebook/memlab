@@ -40,6 +40,7 @@ import NormalizedTrace from '../trace-cluster/TraceBucket';
 import {LeakObjectFilter} from './leak-filters/LeakObjectFilter';
 import MLTraceSimilarityStrategy from '../trace-cluster/strategies/MLTraceSimilarityStrategy';
 import {LeakTraceFilter} from './trace-filters/LeakTraceFilter';
+import TraceSampler from './TraceSampler';
 
 type DiffSnapshotsOptions = {
   loadAllSnapshots?: boolean;
@@ -558,15 +559,15 @@ class MemoryAnalyst {
     const nodeIdInPaths: HeapNodeIdSet = new Set();
     const paths: LeakTracePathItem[] = [];
     let numOfLeakedObjects = 0;
-    let i = 0;
+    const sampler = new TraceSampler(leakedNodeIds.size);
 
     // analysis for each node
     utils.applyToNodes(
       leakedNodeIds,
       snapshot,
       node => {
-        if (!config.isContinuousTest && ++i % 11 === 0) {
-          info.overwrite(`progress: ${i} / ${leakedNodeIds.size} @${node.id}`);
+        if (!sampler.sample()) {
+          return;
         }
         // BFS search for path from the leaked node to GC roots
         const p = finder.getPathToGCRoots(snapshot, node);
@@ -639,15 +640,15 @@ class MemoryAnalyst {
     const finder = this.preparePathFinder(snapshot);
 
     const paths: LeakTracePathItem[] = [];
-    let i = 0;
+    const sampler = new TraceSampler(objectIds.size);
 
     // analysis for each node
     utils.applyToNodes(
       objectIds,
       snapshot,
       node => {
-        if (++i % 11 === 0) {
-          info.overwrite(`progress: ${i} / ${objectIds.size} @${node.id}`);
+        if (!sampler.sample()) {
+          return;
         }
         // BFS search for path from the leaked node to GC roots
         const p = finder.getPathToGCRoots(snapshot, node);

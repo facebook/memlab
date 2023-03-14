@@ -577,7 +577,7 @@ function filterNodesInPlace(
   snapshot: IHeapSnapshot,
   cb: IterateNodeCallback,
 ): void {
-  const ids = Array.from(idSet.keys());
+  const ids = Array.from(idSet);
   for (const id of ids) {
     const node = snapshot.getNodeById(id);
     if (node && !cb(node, snapshot)) {
@@ -592,7 +592,7 @@ function applyToNodes(
   cb: (node: IHeapNode, snapshot: IHeapSnapshot) => void,
   options: AnyOptions = {},
 ): void {
-  let ids = Array.from(idSet.keys());
+  let ids = Array.from(idSet);
   if (options.shuffle) {
     ids.sort(() => Math.random() - 0.5);
   } else if (options.reverse) {

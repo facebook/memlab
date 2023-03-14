@@ -32,6 +32,7 @@ import TraceSimilarityStrategy from './strategies/TraceSimilarityStrategy';
 import TraceAsClusterStrategy from './strategies/TraceAsClusterStrategy';
 import MLTraceSimilarityStrategy from './strategies/MLTraceSimilarityStrategy';
 import {lastNodeFromTrace} from './ClusterUtils';
+import TraceSampler from '../lib/TraceSampler';
 
 type AggregateNodeCb = (
   ids: Set<number>,
@@ -188,14 +189,7 @@ export default class NormalizedTrace {
     if (paths.length <= maxCount) {
       return [...paths];
     }
-    const sampleRatio = Math.min(1, maxCount / paths.length);
-    if (sampleRatio < 1) {
-      info.warning('Sampling trace due to a large number of traces:');
-      info.lowLevel(` Number of Traces: ${paths.length}`);
-      info.lowLevel(
-        ` Sampling Ratio: ${utils.getReadablePercent(sampleRatio)}`,
-      );
-    }
+    const sampler = new TraceSampler(paths.length);
     const ret = [];
     const samplePathMaxLength = NormalizedTrace.getSamplePathMaxLength(paths);
     if (config.verbose) {
@@ -205,7 +199,7 @@ export default class NormalizedTrace {
       if (utils.getLeakTracePathLength(p) > samplePathMaxLength) {
         continue;
       }
-      if (Math.random() < sampleRatio) {
+      if (sampler.sample()) {
         ret.push(p);
       } else {
         // force sample objects with non-trvial self size
