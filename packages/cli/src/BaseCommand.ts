@@ -8,7 +8,7 @@
  * @oncall web_perf_infra
  */
 
-import type {CLIOptions, Nullable} from '@memlab/core';
+import type {CLIOptions, CommandOptionExample, Nullable} from '@memlab/core';
 import {BaseOption} from '@memlab/core';
 
 export enum CommandCategory {
@@ -84,9 +84,9 @@ export default class BaseCommand extends Command {
     throw new Error(`${className}.getCommandName is not implemented`);
   }
 
-  // get a list of examples
+  // get a list of CLI option examples
   // examples will be displayed in helper text
-  getExamples(): string[] {
+  getExamples(): CommandOptionExample[] {
     return [];
   }
 

@@ -8,7 +8,7 @@
  * @oncall web_perf_infra
  */
 
-import type {CLIOptions} from '@memlab/core';
+import type {CLIOptions, CommandOptionExample} from '@memlab/core';
 
 import BaseCommand from '../../BaseCommand';
 import {runPageInteractionFromCLI} from './Snapshot';
@@ -53,7 +53,7 @@ export default class TakeSnapshotCommand extends BaseCommand {
     ];
   }
 
-  getExamples(): string[] {
+  getExamples(): CommandOptionExample[] {
     return [
       '--scenario <TEST_SCENARIO_FILE>',
       '--scenario /tmp/test-scenario.js',

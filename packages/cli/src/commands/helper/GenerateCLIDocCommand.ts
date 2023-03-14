@@ -8,10 +8,11 @@
  * @oncall web_perf_infra
  */
 
-import type {BaseOption, CLIOptions} from '@memlab/core';
+import type {BaseOption, CLIOptions, CommandOptionExample} from '@memlab/core';
 
 import path from 'path';
 import fs from 'fs-extra';
+import docUtils from './lib/DocUtils';
 import BaseCommand, {CommandCategory} from '../../BaseCommand';
 import {config, fileManager, utils} from '@memlab/core';
 import universalOptions from '../../options/lib/UniversalOptions';
@@ -135,18 +136,15 @@ export default class GenerateCLIDocCommand extends BaseCommand {
 
     // get example
     const examples = command.getExamples();
-    let example = '';
-    if (examples.length > 0) {
-      example = examples[0].trim();
-    }
+    const example: CommandOptionExample = examples[0] ?? '';
     // write command synopsis
-    const cmd = `memlab ${name} ${example}`;
+    const cmd = docUtils.generateExampleCommand(name, example);
     this.writeCodeBlock(docFile, cmd, 'bash');
 
     // write command examples if there is any
     const exampleBlock = examples
       .slice(1)
-      .map(example => `memlab ${name} ${example.trim()}`)
+      .map(example => docUtils.generateExampleCommand(name, example))
       .join('\n');
     if (exampleBlock.length > 0) {
       this.writeTextWithNewLine(docFile, '\n#### examples\n');

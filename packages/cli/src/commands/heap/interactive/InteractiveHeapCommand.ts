@@ -8,7 +8,12 @@
  * @oncall web_perf_infra
  */
 
-import {CLIOptions, ErrorHandling, Optional} from '@memlab/core';
+import {
+  CLIOptions,
+  CommandOptionExample,
+  ErrorHandling,
+  Optional,
+} from '@memlab/core';
 
 import chalk from 'chalk';
 import readline from 'readline';
@@ -36,7 +41,7 @@ export default class InteractiveHeapCommand extends BaseCommand {
     return CommandCategory.COMMON;
   }
 
-  getExamples(): string[] {
+  getExamples(): CommandOptionExample[] {
     return ['--snapshot <HEAP_SNAPSHOT_FILE>'];
   }
 

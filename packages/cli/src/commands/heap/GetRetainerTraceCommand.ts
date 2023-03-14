@@ -8,7 +8,7 @@
  * @oncall web_perf_infra
  */
 
-import type {CLIOptions, Optional} from '@memlab/core';
+import type {CLIOptions, CommandOptionExample, Optional} from '@memlab/core';
 
 import fs from 'fs-extra';
 import BaseCommand, {CommandCategory} from '../../BaseCommand';
@@ -37,7 +37,7 @@ export default class GetRetainerTraceCommand extends BaseCommand {
     return CommandCategory.COMMON;
   }
 
-  getExamples(): string[] {
+  getExamples(): CommandOptionExample[] {
     return [
       '--node-id=<HEAP_OBJECT_ID>',
       '--node-id=@3123123',

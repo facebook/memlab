@@ -8,7 +8,12 @@
  * @oncall web_perf_infra
  */
 
-import type {BaseOption, CLIOptions, Optional} from '@memlab/core';
+import type {
+  BaseOption,
+  CLIOptions,
+  CommandOptionExample,
+  Optional,
+} from '@memlab/core';
 
 import fs from 'fs';
 import path from 'path';
@@ -37,7 +42,7 @@ export default class MemLabRunCommand extends BaseCommand {
     return 'find memory leaks in web apps';
   }
 
-  getExamples(): string[] {
+  getExamples(): CommandOptionExample[] {
     return [
       '--scenario <TEST_SCENARIO_FILE>',
       '--scenario /tmp/test-scenario.js',

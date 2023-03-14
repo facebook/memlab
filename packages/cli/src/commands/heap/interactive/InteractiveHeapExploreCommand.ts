@@ -11,6 +11,7 @@
 import type {
   BaseOption,
   CLIOptions,
+  CommandOptionExample,
   IHeapSnapshot,
   Optional,
 } from '@memlab/core';
@@ -41,7 +42,7 @@ export default class InteractiveHeapViewCommand extends BaseCommand {
     return CommandCategory.COMMON;
   }
 
-  getExamples(): string[] {
+  getExamples(): CommandOptionExample[] {
     return ['--snapshot <HEAP_SNAPSHOT_FILE>'];
   }
 

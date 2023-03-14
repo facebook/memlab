@@ -8,7 +8,7 @@
  * @oncall web_perf_infra
  */
 
-import type {CLIOptions} from '@memlab/core';
+import type {CLIOptions, CommandOptionExample} from '@memlab/core';
 
 import {BaseOption} from '@memlab/core';
 import BaseCommand from '../BaseCommand';
@@ -42,7 +42,7 @@ export default class FBWarmupAppCommand extends BaseCommand {
     return [new InitDirectoryCommand(), new CheckXvfbSupportCommand()];
   }
 
-  getExamples(): string[] {
+  getExamples(): CommandOptionExample[] {
     return [
       '--scenario <TEST_SCENARIO_FILE>',
       '--scenario /tmp/test-scenario.js',

@@ -2081,3 +2081,11 @@ export interface IHeapConfig {
 
 /** @internal */
 export type ErrorWithMessage = Pick<Error, 'message'>;
+
+/** @internal */
+export type CommandOptionExample =
+  | string
+  | {
+      description?: string;
+      cliOptionExample: string;
+    };

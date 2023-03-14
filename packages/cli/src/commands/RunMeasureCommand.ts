@@ -8,7 +8,7 @@
  * @oncall web_perf_infra
  */
 
-import type {CLIOptions} from '@memlab/core';
+import type {CLIOptions, CommandOptionExample} from '@memlab/core';
 
 import BaseCommand from '../BaseCommand';
 import InitDirectoryCommand from './InitDirectoryCommand';
@@ -48,7 +48,7 @@ export default class RunMeasureCommand extends BaseCommand {
     return [new CleanRunDataCommand(), new InitDirectoryCommand()];
   }
 
-  getExamples(): string[] {
+  getExamples(): CommandOptionExample[] {
     return [
       '--scenario <TEST_SCENARIO_FILE>',
       '--scenario /tmp/test-scenario.js',

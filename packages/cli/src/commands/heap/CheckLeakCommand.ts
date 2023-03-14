@@ -8,7 +8,12 @@
  * @oncall web_perf_infra
  */
 import type {ParsedArgs} from 'minimist';
-import type {BaseOption, CLIOptions, Optional} from '@memlab/core';
+import type {
+  BaseOption,
+  CLIOptions,
+  CommandOptionExample,
+  Optional,
+} from '@memlab/core';
 
 import BaseCommand, {CommandCategory} from '../../BaseCommand';
 import {analysis, config, fileManager, runInfoUtils} from '@memlab/core';
@@ -60,7 +65,7 @@ export default class CheckLeakCommand extends BaseCommand {
     return 'find-leaks';
   }
 
-  getExamples(): string[] {
+  getExamples(): CommandOptionExample[] {
     return [
       '', // check memory leaks in the default working directory
       '--baseline /tmp/baseline.heapsnapshot --target /tmp/target.heapsnapshot --final /tmp/final.heapsnapshot',

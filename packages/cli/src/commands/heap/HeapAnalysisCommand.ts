@@ -8,7 +8,7 @@
  * @oncall web_perf_infra
  */
 
-import type {CLIOptions} from '@memlab/core';
+import type {CLIOptions, CommandOptionExample} from '@memlab/core';
 
 import {info, utils} from '@memlab/core';
 import BaseCommand, {CommandCategory} from '../../BaseCommand';
@@ -45,7 +45,7 @@ export default class RunHeapAnalysisCommand extends BaseCommand {
     });
   }
 
-  getExamples(): string[] {
+  getExamples(): CommandOptionExample[] {
     return ['<PLUGIN_NAME> [PLUGIN_OPTIONS]'];
   }
 

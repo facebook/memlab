@@ -9,12 +9,18 @@
  */
 
 import type {ParsedArgs} from 'minimist';
-import type {BaseOption, CLIOptions, Optional} from '@memlab/core';
+import type {
+  BaseOption,
+  CLIOptions,
+  CommandOptionExample,
+  Optional,
+} from '@memlab/core';
 
 import chalk from 'chalk';
 import stringWidth from 'string-width';
 import {config, info, utils} from '@memlab/core';
 import {heapConfig} from '@memlab/heap-analysis';
+import docUtils from './lib/DocUtils';
 import commandOrder from './lib/CommandOrder';
 import BaseCommand, {CommandCategory} from '../../BaseCommand';
 import universalOptions from '../../options/lib/UniversalOptions';
@@ -25,12 +31,17 @@ import {
   READABLE_TEXT_WIDTH,
 } from '../../lib/CLIUtils';
 
-type HelperOption = CLIOptions & {
-  modules: Map<string, BaseCommand>;
-  command: BaseCommand | null;
-  indent?: string;
+type PrintCommandOptions = {
   printOptions?: boolean;
+  printDoc?: boolean;
 };
+
+type HelperOption = CLIOptions &
+  PrintCommandOptions & {
+    modules: Map<string, BaseCommand>;
+    command: BaseCommand | null;
+    indent?: string;
+  };
 
 export default class HelperCommand extends BaseCommand {
   private printedCommand: Set<string> = new Set();
@@ -48,7 +59,7 @@ export default class HelperCommand extends BaseCommand {
     return 'list all MemLab CLI commands or print helper text for a specific command';
   }
 
-  getExamples(): string[] {
+  getExamples(): CommandOptionExample[] {
     return ['<COMMAND> [SUB-COMMANDS]'];
   }
 
@@ -195,7 +206,7 @@ export default class HelperCommand extends BaseCommand {
   private printCommand(
     command: BaseCommand,
     extraIndent = '',
-    printOptions = false,
+    options: PrintCommandOptions = {},
   ): void {
     const indent = '  ' + extraIndent;
     const name = command.getFullCommand();
@@ -204,15 +215,15 @@ export default class HelperCommand extends BaseCommand {
 
     // get example
     const examples = command.getExamples();
-    let example = '';
-    if (examples.length > 0) {
-      example = ' ' + examples[0].trim();
-    }
-    const cmd = chalk.green(`memlab ${name}${example}`);
+    const example: CommandOptionExample = examples[0] ?? '';
+    // write command synopsis
+    const cmd = docUtils.generateExampleCommand(name, example, {
+      descriptionAsBashComment: false,
+    });
     let msg = `${indent}${cmd}`;
     msg += `\n${indent}${desc}`;
 
-    if (cmdDoc.length > 0) {
+    if (options.printOptions && cmdDoc.length > 0) {
       const cmdDocBlock = alignTextInBlock(cmdDoc, {
         leftIndent: indent.length + 2,
       });
@@ -221,7 +232,7 @@ export default class HelperCommand extends BaseCommand {
     info.topLevel(msg);
 
     // print options info
-    if (printOptions) {
+    if (options.printOptions) {
       // print full options description
       this.printOptions(command, indent);
     } else {
@@ -239,7 +250,7 @@ export default class HelperCommand extends BaseCommand {
     options: HelperOption,
   ): Promise<void> {
     // print helper text for a specific command
-    this.printCommand(command, options.indent, options.printOptions);
+    this.printCommand(command, options.indent, options);
 
     // print helper text for its subcommands
     const subcommands = command.getSubCommands();
@@ -281,7 +292,7 @@ export default class HelperCommand extends BaseCommand {
 
     // print the helper text of the command
     info.topLevel('');
-    this.printCommand(command, '', true);
+    this.printCommand(command, '', {printOptions: true, printDoc: true});
 
     // print the helper text of the subcommands
     const subCommands = command.getSubCommands();
