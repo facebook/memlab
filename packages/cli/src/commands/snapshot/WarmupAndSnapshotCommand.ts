@@ -23,6 +23,22 @@ export default class WarmupAndSnapshotCommand extends BaseCommand {
     return 'Warm up server and take heap snapshots';
   }
 
+  getDocumenation(): string {
+    const warmupCommand = new WarmupAppCommand();
+    const warmupCLI = `memlab ${warmupCommand.getCommandName()}`;
+    const takeSnapshotCommand = new TakeSnapshotCommand();
+    const snapshotCLI = `memlab ${takeSnapshotCommand.getCommandName()}`;
+    return `This is equivalent to running ${warmupCLI} and ${snapshotCLI}.`;
+  }
+
+  getExamples(): string[] {
+    return [
+      '--scenario <TEST_SCENARIO_FILE>',
+      '--scenario /tmp/test-scenario.js',
+      '--scenario /tmp/test-scenario.js --work-dir /tmp/test-1/',
+    ];
+  }
+
   getPrerequisites(): BaseCommand[] {
     return [
       new InitDirectoryCommand(),

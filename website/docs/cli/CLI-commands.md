@@ -61,8 +61,20 @@ There are three ways to specify inputs for the `memlab find-leaks` command:
 
 Please only use one of the three ways to specify the input.
 
+You can also manually take heap snapshots in Chrome Devtools, save them to disk.
+Then process them using this command with the CLI flags (either option 1
+or option 2 mentioned above).
+
 ```bash
 memlab find-leaks 
+```
+
+#### examples
+
+```bash
+memlab find-leaks --baseline /tmp/baseline.heapsnapshot --target /tmp/target.heapsnapshot --final /tmp/final.heapsnapshot
+memlab find-leaks --work-dir /memlab/working/dir/generated/by/memlab/
+memlab find-leaks --snapshot-dir /dir/containing/heapsnapshot/files/
 ```
 
 **Options**:
@@ -605,8 +617,17 @@ memlab snapshot --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
 
 Warm up server and take heap snapshots
 
+This is equivalent to running memlab warmup and memlab snapshot.
+
 ```bash
-memlab warmup-and-snapshot 
+memlab warmup-and-snapshot --scenario <TEST_SCENARIO_FILE>
+```
+
+#### examples
+
+```bash
+memlab warmup-and-snapshot --scenario /tmp/test-scenario.js
+memlab warmup-and-snapshot --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
 ```
 
 **Options**:

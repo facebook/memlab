@@ -60,6 +60,15 @@ export default class CheckLeakCommand extends BaseCommand {
     return 'find-leaks';
   }
 
+  getExamples(): string[] {
+    return [
+      '', // check memory leaks in the default working directory
+      '--baseline /tmp/baseline.heapsnapshot --target /tmp/target.heapsnapshot --final /tmp/final.heapsnapshot',
+      '--work-dir /memlab/working/dir/generated/by/memlab/',
+      '--snapshot-dir /dir/containing/heapsnapshot/files/',
+    ];
+  }
+
   getDescription(): string {
     return 'find memory leaks in heap snapshots';
   }
@@ -70,7 +79,12 @@ export default class CheckLeakCommand extends BaseCommand {
  2. \`--snapshot-dir\` specifies the directory that holds all three heap snapshot files (MemLab will assign baseline, target, and final based on alphabetic order of the file);
  3. \`--work-dir\` specifies the output working directory of the \`memlab run\` or the \`memlab snapshot\` command;
 
-Please only use one of the three ways to specify the input.`;
+Please only use one of the three ways to specify the input.
+
+You can also manually take heap snapshots in Chrome Devtools, save them to disk.
+Then process them using this command with the CLI flags (either option 1
+or option 2 mentioned above).
+`;
   }
 
   getCategory(): CommandCategory {
