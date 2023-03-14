@@ -29,8 +29,16 @@ function generateExampleCommand(
     // if it's not null, undefined, or true
     options.descriptionAsBashComment !== false
   ) {
-    // inject the description as a bash command in the bash example
-    commandExample += `# ${cliExample.description.trim()}\n`;
+    const desc = cliExample.description.trim();
+    if (desc.length > 0) {
+      // inject the description as a bash command in the bash example
+      const bashText = cliExample.description
+        .trim()
+        .split('\n')
+        .map(line => `# ${line.trim()}`)
+        .join('\n');
+      commandExample += bashText + '\n';
+    }
   }
   commandExample += exampleFromCliOptionString(
     command,

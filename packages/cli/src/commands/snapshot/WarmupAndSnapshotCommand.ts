@@ -11,6 +11,7 @@
 import type {CLIOptions, CommandOptionExample} from '@memlab/core';
 
 import BaseCommand from '../../BaseCommand';
+import SetWorkingDirectoryOption from '../../options/SetWorkingDirectoryOption';
 import InitDirectoryCommand from '../InitDirectoryCommand';
 import WarmupAppCommand from '../WarmupAppCommand';
 import TakeSnapshotCommand from './TakeSnapshotCommand';
@@ -34,9 +35,18 @@ export default class WarmupAndSnapshotCommand extends BaseCommand {
 
   getExamples(): CommandOptionExample[] {
     return [
-      '--scenario <TEST_SCENARIO_FILE>',
+      {
+        description:
+          'specify a test scenario file, memlab will ' +
+          'warmup the server and take heap snapshots',
+        cliOptionExample: '--scenario <TEST_SCENARIO_FILE>',
+      },
       '--scenario /tmp/test-scenario.js',
-      '--scenario /tmp/test-scenario.js --work-dir /tmp/test-1/',
+      {
+        description: new SetWorkingDirectoryOption().getDescription(),
+        cliOptionExample:
+          '--scenario /tmp/test-scenario.js --work-dir /tmp/test-1/',
+      },
     ];
   }
 
