@@ -46,6 +46,7 @@ const constants = {
     '(Write barrier)',
     '(Retain maps)',
     '(Unknown)',
+    '<Synthetic>',
   ],
   namePrefixForScenarioFromFile: '',
   unset: 'UNSET',

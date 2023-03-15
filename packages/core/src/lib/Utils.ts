@@ -303,6 +303,11 @@ function isDOMTextNode(node: IHeapNode): boolean {
   return node.type === 'native' && node.name === 'Text';
 }
 
+// check if this is a [C++ roots] (synthetic) node
+function isCppRootsNode(node: IHeapNode): boolean {
+  return node.name === 'C++ roots' && node.type === 'synthetic';
+}
+
 function isRootNode(node: IHeapNode, opt: AnyOptions = {}): boolean {
   if (!node) {
     return false;
@@ -2067,6 +2072,7 @@ export default {
   hasReactEdges,
   isAlternateNode,
   isBlinkRootNode,
+  isCppRootsNode,
   isDOMInternalNode,
   isDOMNodeIncomplete,
   isDOMTextNode,

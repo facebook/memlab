@@ -577,7 +577,7 @@ class TraceFinder {
   }
 
   isLessPreferableNode(node: IHeapNode): boolean {
-    return config.nodeNameGreyList.has(node.name);
+    return config.nodeNameGreyList.has(node.name) || utils.isCppRootsNode(node);
   }
 
   // each edge is indexed by fromNode's ID, toNode's ID, edge name, and edge type
