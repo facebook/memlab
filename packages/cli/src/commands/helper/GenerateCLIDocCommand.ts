@@ -56,6 +56,13 @@ export default class GenerateCLIDocCommand extends BaseCommand {
 
   private writeCommandCategories(docFile: string): void {
     this.writeTextWithNewLine(docFile, '# Command Line Interface');
+    this.writeTextWithNewLine(
+      docFile,
+      `Install the memlab command line tool with npm:
+\`\`\`bash
+npm install -g memlab
+\`\`\``,
+    );
     for (const category in CommandCategory) {
       const commandsToPrintFirst: BaseCommand[] = [];
       this.writeCategory(

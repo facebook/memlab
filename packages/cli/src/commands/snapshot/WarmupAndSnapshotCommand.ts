@@ -30,7 +30,10 @@ export default class WarmupAndSnapshotCommand extends BaseCommand {
     const warmupCLI = `memlab ${warmupCommand.getCommandName()}`;
     const takeSnapshotCommand = new TakeSnapshotCommand();
     const snapshotCLI = `memlab ${takeSnapshotCommand.getCommandName()}`;
-    return `This is equivalent to running ${warmupCLI} and ${snapshotCLI}.`;
+    return (
+      'This is equivalent to running ' +
+      `\`${warmupCLI}\` and \`${snapshotCLI}\`.`
+    );
   }
 
   getExamples(): CommandOptionExample[] {
@@ -38,7 +41,7 @@ export default class WarmupAndSnapshotCommand extends BaseCommand {
       {
         description:
           'specify a test scenario file, memlab will ' +
-          'warmup the server and take heap snapshots',
+          'warm up the server and take heap snapshots',
         cliOptionExample: '--scenario <TEST_SCENARIO_FILE>',
       },
       '--scenario /tmp/test-scenario.js',

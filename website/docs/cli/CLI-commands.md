@@ -1,4 +1,8 @@
 # Command Line Interface
+Install the memlab command line tool with npm:
+```bash
+npm install -g memlab
+```
 
 ## COMMON Commands
 
@@ -622,10 +626,10 @@ memlab snapshot --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
 
 Warm up server and take heap snapshots
 
-This is equivalent to running memlab warmup and memlab snapshot.
+This is equivalent to running `memlab warmup` and `memlab snapshot`.
 
 ```bash
-# specify a test scenario file, memlab will warmup the server and take heap snapshots
+# specify a test scenario file, memlab will warm up the server and take heap snapshots
 memlab warmup-and-snapshot --scenario <TEST_SCENARIO_FILE>
 ```
 
