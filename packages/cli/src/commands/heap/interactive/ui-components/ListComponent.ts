@@ -289,7 +289,7 @@ export default class ListComponent {
       this.element.pushItem(content[i] as unknown as Widgets.BlessedElement);
       ++this.displayedItems;
     }
-    this.content = content;
+    this.content = content.map(v => v.replace(/\n/g, '\\n'));
     this.horizonScrollPositionMap.clear();
     this.insertDisplayMoreEntry();
     this.updateContent(oldContent, this.content);

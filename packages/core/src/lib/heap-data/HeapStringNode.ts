@@ -26,27 +26,36 @@ export default class HeapStringNode
   }
 
   get stringValue(): string {
-    const type = this.type;
-    if (type === 'concatenated string') {
-      const firstNode = this.getReferenceNode('first')?.toStringNode();
-      const secondNode = this.getReferenceNode('second')?.toStringNode();
-      if (firstNode == null || secondNode == null) {
-        throw throwError(new Error('broken concatenated string'));
+    const stack: IHeapStringNode[] = [this];
+    let ret = '';
+    while (stack.length > 0) {
+      const node = stack.pop() as HeapStringNode;
+      const type = node.type;
+      if (type === 'concatenated string') {
+        const firstNode = node.getReferenceNode('first')?.toStringNode();
+        const secondNode = node.getReferenceNode('second')?.toStringNode();
+        if (firstNode == null || secondNode == null) {
+          throw throwError(new Error('broken concatenated string'));
+        }
+        stack.push(secondNode);
+        stack.push(firstNode);
+        continue;
       }
-      return firstNode.stringValue + secondNode.stringValue;
-    }
 
-    if (type === 'sliced string') {
-      const parentNode = this.getReferenceNode('parent')?.toStringNode();
-      if (parentNode == null) {
-        throw throwError(new Error('broken sliced string'));
+      if (type === 'sliced string') {
+        const parentNode = node.getReferenceNode('parent')?.toStringNode();
+        if (parentNode == null) {
+          throw throwError(new Error('broken sliced string'));
+        }
+        // sliced string in heap snapshot doesn't include
+        // the start index and the end index, so this may be inaccurate
+        ret += `<sliced string of @${parentNode.id}>`;
+        continue;
       }
-      // sliced string in heap snapshot doesn't include
-      // the start index and the end index, so this may be inaccurate
-      return parentNode.stringValue;
-    }
 
-    return this.name;
+      ret += node.name;
+    }
+    return ret;
   }
 
   getJSONifyableObject(): AnyRecord {

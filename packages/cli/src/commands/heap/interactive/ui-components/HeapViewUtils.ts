@@ -83,6 +83,33 @@ export class ComponentDataItem {
     return chalk.grey(content);
   }
 
+  private static getHeapObjectTextContent(node: IHeapNode): string {
+    const objectType = chalk.grey(`(${node.type})`);
+    const objectId = chalk.grey(` @${node.id}`);
+    const size = utils.getReadableBytes(node.retainedSize);
+    const sizeInfo =
+      chalk.grey(' [') + chalk.bold(chalk.blue(size)) + chalk.grey(']');
+    const objectTitle = node.isString ? '<string>' : node.name;
+    return (
+      chalk.green('[') +
+      (isUsefulObjectForDebugging(node)
+        ? chalk.green(objectTitle)
+        : chalk.bold(chalk.grey(objectTitle))) +
+      chalk.green(']') +
+      objectType +
+      objectId +
+      sizeInfo
+    );
+  }
+
+  private static getHeapEdgeTextContent(edge: IHeapEdge): string {
+    const arrowPrefix = chalk.grey('--');
+    const arrowSuffix = chalk.grey('---') + '>';
+    const edgeType = chalk.grey(`(${edge.type})`);
+    const edgeName = edge.name_or_index;
+    return `${arrowPrefix}${edgeName}${edgeType}${arrowSuffix} `;
+  }
+
   private static getTextContent(data: ComponentDataItem): string {
     let ret = '';
     if (data.tag) {
@@ -91,33 +118,14 @@ export class ComponentDataItem {
     if (data.stringContent) {
       ret += data.stringContent;
     }
-    const arrowPrefix = chalk.grey('--');
-    const arrowSuffix = chalk.grey('---') + '>';
     if (data.referrerEdge) {
-      const edgeType = chalk.grey(`(${data.referrerEdge.type})`);
-      const edgeName = data.referrerEdge.name_or_index;
-      ret += `${arrowPrefix}${edgeName}${edgeType}${arrowSuffix} `;
+      ret += this.getHeapEdgeTextContent(data.referrerEdge);
     }
     if (data.heapObject) {
-      const objectType = chalk.grey(`(${data.heapObject.type})`);
-      const objectId = chalk.grey(` @${data.heapObject.id}`);
-      const size = utils.getReadableBytes(data.heapObject.retainedSize);
-      const sizeInfo =
-        chalk.grey(' [') + chalk.bold(chalk.blue(size)) + chalk.grey(']');
-      ret +=
-        chalk.green('[') +
-        (isUsefulObjectForDebugging(data.heapObject)
-          ? chalk.green(data.heapObject.name)
-          : chalk.bold(chalk.grey(data.heapObject.name))) +
-        chalk.green(']') +
-        objectType +
-        objectId +
-        sizeInfo;
+      ret += this.getHeapObjectTextContent(data.heapObject);
     }
     if (data.referenceEdge) {
-      const edgeType = chalk.grey(`(${data.referenceEdge.type})`);
-      const edgeName = data.referenceEdge.name_or_index;
-      ret += ` ${arrowPrefix}${edgeName}${edgeType}${arrowSuffix} `;
+      ret += this.getHeapEdgeTextContent(data.referenceEdge);
     }
     return ret === '' ? chalk.grey('<undefinied>') : ret;
   }
