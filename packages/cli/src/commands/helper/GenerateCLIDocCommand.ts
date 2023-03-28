@@ -161,7 +161,7 @@ npm install -g memlab
     // write options
     this.writeCommandOptions(docFile, command);
 
-    const subCommands = command.getSubCommands();
+    const subCommands = command.getSubCommands() ?? [];
     for (const subCommand of subCommands) {
       this.writeCommand(docFile, subCommand, indent + '#');
     }

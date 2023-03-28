@@ -247,6 +247,7 @@ export class MemLabConfig {
   interceptScript: boolean;
   isAnalyzingMainThread: boolean;
   targetWorkerTitle: Nullable<string>;
+  noReCluster: boolean;
 
   constructor(options: ConfigOption = {}) {
     // init properties, they can be configured manually
@@ -396,6 +397,8 @@ export class MemLabConfig {
     this.skipGC = false;
     // true if running in ContinuousTest
     this.isContinuousTest = false;
+    // true if reclustering is turned off
+    this.noReCluster = false;
     // true if running a local test
     this.isTest = false;
     // true if running in local puppeteer mode

@@ -151,6 +151,11 @@ export class CommandDispatcher {
     }
 
     const subCommands = command.getSubCommands();
+    // if the command will handle the sub-commands by itself
+    if (subCommands == null) {
+      return;
+    }
+
     for (const subCommand of subCommands) {
       if (subCommand.getCommandName() === args._[subCommandIndex]) {
         await this.runCommand(subCommand, args, runCmdOpt);

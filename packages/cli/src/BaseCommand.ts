@@ -8,7 +8,13 @@
  * @oncall web_perf_infra
  */
 
-import type {CLIOptions, CommandOptionExample, Nullable} from '@memlab/core';
+import type {
+  CLIOptions,
+  CommandOptionExample,
+  Nullable,
+  Optional,
+} from '@memlab/core';
+
 import {BaseOption} from '@memlab/core';
 
 export enum CommandCategory {
@@ -138,7 +144,11 @@ export default class BaseCommand extends Command {
   // for example command 'A' has two sub-commands 'B' and 'C'
   // CLI supports running in terminal: `memlab A B` or `memlab A C`
   // The parent command will be executed before its subcommands
-  getSubCommands(): BaseCommand[] {
+  //
+  // If this callback returns null or undefined, it means
+  // the command will handle the dispatcher won't try to match and process
+  // the subcommands (the command will handle sub-commands by itself).
+  getSubCommands(): Optional<BaseCommand[]> {
     return [];
   }
 

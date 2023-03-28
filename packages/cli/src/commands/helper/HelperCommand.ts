@@ -253,7 +253,7 @@ export default class HelperCommand extends BaseCommand {
     this.printCommand(command, options.indent, options);
 
     // print helper text for its subcommands
-    const subcommands = command.getSubCommands();
+    const subcommands = command.getSubCommands() ?? [];
     const subOptions = {...options};
     subOptions.indent = (subOptions.indent || '') + ' ';
     for (const subcommand of subcommands) {
@@ -279,7 +279,7 @@ export default class HelperCommand extends BaseCommand {
       if (!command) {
         break;
       }
-      const subCommands = command.getSubCommands();
+      const subCommands = command.getSubCommands() ?? [];
       map = new Map(
         subCommands.map((cmd: BaseCommand) => [cmd.getCommandName(), cmd]),
       );
@@ -295,7 +295,7 @@ export default class HelperCommand extends BaseCommand {
     this.printCommand(command, '', {printOptions: true, printDoc: true});
 
     // print the helper text of the subcommands
-    const subCommands = command.getSubCommands();
+    const subCommands = command.getSubCommands() ?? [];
     if (subCommands.length > 0) {
       info.topLevel(chalk.bold('  SUB-COMMANDS\n'));
       for (const subCommand of subCommands) {
