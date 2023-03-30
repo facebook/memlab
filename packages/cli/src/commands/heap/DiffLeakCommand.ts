@@ -7,7 +7,9 @@
  * @format
  * @oncall web_perf_infra
  */
+import type {ParsedArgs} from 'minimist';
 import type {BaseOption, CLIOptions} from '@memlab/core';
+import type {CheckLeakCommandOptions} from './CheckLeakCommand';
 
 import {analysis, info, config, runInfoUtils, utils} from '@memlab/core';
 import BaseCommand, {CommandCategory} from '../../BaseCommand';
@@ -26,6 +28,27 @@ import SetControlWorkDirOption from '../../options/experiment/SetControlWorkDirO
 import SetTreatmentWorkDirOption from '../../options/experiment/SetTreatmentWorkDirOption';
 
 export default class CheckLeakCommand extends BaseCommand {
+  private isMLClustering = false;
+  private isMLClusteringSettingCache = false;
+
+  protected useDefaultMLClusteringSetting(cliArgs: ParsedArgs): void {
+    if (!MLClusteringOption.hasOptionSet(cliArgs)) {
+      config.isMLClustering = this.isMLClustering;
+      this.isMLClusteringSettingCache = config.isMLClustering;
+    }
+  }
+
+  protected restoreDefaultMLClusteringSetting(cliArgs: ParsedArgs): void {
+    if (!MLClusteringOption.hasOptionSet(cliArgs)) {
+      config.isMLClustering = this.isMLClusteringSettingCache;
+    }
+  }
+
+  constructor(options: CheckLeakCommandOptions = {}) {
+    super();
+    this.isMLClustering = !!options?.isMLClustering;
+  }
+
   getCommandName(): string {
     return 'diff-leaks';
   }
@@ -81,6 +104,8 @@ export default class CheckLeakCommand extends BaseCommand {
       silentFail: true,
     });
     // diff memory leaks
+    this.useDefaultMLClusteringSetting(options.cliArgs);
     await analysis.diffLeakByWorkDir({controlWorkDirs, treatmentWorkDir});
+    this.restoreDefaultMLClusteringSetting(options.cliArgs);
   }
 }
