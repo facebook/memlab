@@ -128,6 +128,8 @@ export class CommandDispatcher {
     const {configFromOptions} = runCmdOpt;
     // execute command
     await command.run({cliArgs: args, configFromOptions});
+    // recommand CLI command and flags
+    config.setRunInfo('command', process.argv.slice(2).join(' '));
 
     if (runCmdOpt.isPrerequisite !== true) {
       // execute subcommands
