@@ -9,7 +9,7 @@
  */
 
 import type {ParsedArgs} from 'minimist';
-import type {MemLabConfig} from '@memlab/core';
+import type {MemLabConfig, Nullable} from '@memlab/core';
 
 import fs from 'fs';
 import {fileManager, BaseOption} from '@memlab/core';
@@ -24,12 +24,12 @@ export default class SetControlWorkDirOption extends BaseOption {
     return 'set the working directory of the control run';
   }
 
-  protected extractAndCheckWorkDirs(args: ParsedArgs): string[] {
+  protected extractAndCheckWorkDirs(args: ParsedArgs): Nullable<string[]> {
     let dirs: string[] = [];
     const name = this.getOptionName();
     const flagValue = args[name];
     if (!flagValue) {
-      return dirs;
+      return null;
     }
     if (Array.isArray(flagValue)) {
       dirs = flagValue as string[];
@@ -49,7 +49,7 @@ export default class SetControlWorkDirOption extends BaseOption {
   async parse(
     config: MemLabConfig,
     args: ParsedArgs,
-  ): Promise<{controlWorkDirs?: string[]}> {
+  ): Promise<{controlWorkDirs?: Nullable<string[]>}> {
     const dirs = this.extractAndCheckWorkDirs(args);
     return {controlWorkDirs: dirs};
   }

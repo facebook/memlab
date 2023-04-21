@@ -8,7 +8,7 @@
  * @oncall web_perf_infra
  */
 import type {ParsedArgs} from 'minimist';
-import type {BaseOption, CLIOptions} from '@memlab/core';
+import {BaseOption, CLIOptions} from '@memlab/core';
 import type {CheckLeakCommandOptions} from './CheckLeakCommand';
 
 import {analysis, info, config, runInfoUtils, utils} from '@memlab/core';
@@ -26,6 +26,11 @@ import MLClusteringLinkageMaxDistanceOption from '../../options/MLClusteringLink
 import MLClusteringMaxDFOption from '../../options/MLClusteringMaxDFOption';
 import SetControlWorkDirOption from '../../options/experiment/SetControlWorkDirOption';
 import SetTreatmentWorkDirOption from '../../options/experiment/SetTreatmentWorkDirOption';
+
+export type WorkDirSettings = {
+  controlWorkDirs: Array<string>;
+  treatmentWorkDir: string;
+};
 
 export default class CheckLeakCommand extends BaseCommand {
   private isMLClustering = false;
@@ -67,8 +72,8 @@ export default class CheckLeakCommand extends BaseCommand {
 
   getOptions(): BaseOption[] {
     return [
-      new SetControlWorkDirOption().required(),
-      new SetTreatmentWorkDirOption().required(),
+      new SetControlWorkDirOption(),
+      new SetTreatmentWorkDirOption(),
       new JSEngineOption(),
       new LeakFilterFileOption(),
       new OversizeThresholdOption(),
@@ -81,8 +86,7 @@ export default class CheckLeakCommand extends BaseCommand {
     ];
   }
 
-  async run(options: CLIOptions): Promise<void> {
-    config.chaseWeakMapEdge = false;
+  protected getWorkDirs(options: CLIOptions): WorkDirSettings {
     // double check parameters
     if (
       !options.configFromOptions?.controlWorkDirs ||
@@ -98,6 +102,15 @@ export default class CheckLeakCommand extends BaseCommand {
     const treatmentWorkDir = options.configFromOptions[
       'treatmentWorkDir'
     ] as string;
+    return {
+      controlWorkDirs,
+      treatmentWorkDir,
+    };
+  }
+
+  async run(options: CLIOptions): Promise<void> {
+    config.chaseWeakMapEdge = false;
+    const {controlWorkDirs, treatmentWorkDir} = this.getWorkDirs(options);
     const {runMetaInfoManager} = runInfoUtils;
     runMetaInfoManager.setConfigFromRunMeta({
       workDir: treatmentWorkDir,
