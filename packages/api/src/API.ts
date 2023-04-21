@@ -241,7 +241,7 @@ export async function findLeaks(
  * analysis class you are using for `heapAnalyzer`.
  * * **Examples**:
  * ```javascript
- * const {takeSnapshots, StringAnalysis} = require('@memlab/api');
+ * const {analyze, takeSnapshots, StringAnalysis} = require('@memlab/api');
  *
  * (async function () {
  *   const scenario = {
