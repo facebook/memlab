@@ -80,6 +80,12 @@ const defaultViewport = {
 };
 
 /** @internal */
+export enum TraceObjectMode {
+  Default = 1,
+  SelectedJSObjects = 2,
+}
+
+/** @internal */
 export enum ErrorHandling {
   Halt = 1,
   Throw = 2,
@@ -225,6 +231,7 @@ export class MemLabConfig {
   nodeIgnoreSetInShape: Set<string>;
   oversizeObjectAsLeak: boolean;
   oversizeThreshold: number;
+  traceAllObjectsMode: TraceObjectMode;
   clusterRetainedSizeThreshold: number;
   externalLeakFilter?: Optional<ILeakFilter>;
   monoRepoDir: string;
@@ -539,6 +546,9 @@ export class MemLabConfig {
     this.oversizeObjectAsLeak = false;
     // if larger than this threshold, consider as memory leak
     this.oversizeThreshold = 0;
+    // when specified default, this mode will trace/diff all objects
+    // you can specified other modes (e.g., selected JS objects only)
+    this.traceAllObjectsMode = TraceObjectMode.Default;
     // only report leak clusters with aggregated retained size
     // bigger than this threshold
     this.clusterRetainedSizeThreshold = 0;

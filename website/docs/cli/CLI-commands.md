@@ -42,7 +42,7 @@ memlab run --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--leak-filter`**: specify a definition JS file for leak filter
  * **`--trace-object-size-above`**: objects with retained size (bytes) bigger than the threshold will be considered as leaks
  * **`--ignore-leak-cluster-size-below`**: ignore memory leaks with aggregated retained size smaller than the threshold
- * **`--trace-all-objects`**: dump retainer trace for all allocated objects (ignore the leak filter)
+ * **`--trace-all-objects`**: dump retainer trace for all allocated objects (ignore the leak filter), available option modes: --trace-all-objects=selected-js-objects, --trace-all-objects=default
  * **`--save-trace-as-unclassified-cluster`**: dump each retainer trace as an unclassified trace cluster
  * **`--ml-clustering`**: use machine learning algorithms for clustering leak traces (by default, traces are clustered by heuristics)
  * **`--ml-linkage-max-dist`**: set linkage max distance value for clustering. The value should be between [0, 1] inclusive.
@@ -95,7 +95,7 @@ memlab find-leaks --work-dir /memlab/working/dir/generated/by/memlab/
  * **`--leak-filter`**: specify a definition JS file for leak filter
  * **`--trace-object-size-above`**: objects with retained size (bytes) bigger than the threshold will be considered as leaks
  * **`--ignore-leak-cluster-size-below`**: ignore memory leaks with aggregated retained size smaller than the threshold
- * **`--trace-all-objects`**: dump retainer trace for all allocated objects (ignore the leak filter)
+ * **`--trace-all-objects`**: dump retainer trace for all allocated objects (ignore the leak filter), available option modes: --trace-all-objects=selected-js-objects, --trace-all-objects=default
  * **`--save-trace-as-unclassified-cluster`**: dump each retainer trace as an unclassified trace cluster
  * **`--ml-clustering`**: use machine learning algorithms for clustering leak traces (by default, traces are clustered by heuristics)
  * **`--ml-linkage-max-dist`**: set linkage max distance value for clustering. The value should be between [0, 1] inclusive.
@@ -123,7 +123,7 @@ memlab diff-leaks
  * **`--leak-filter`**: specify a definition JS file for leak filter
  * **`--trace-object-size-above`**: objects with retained size (bytes) bigger than the threshold will be considered as leaks
  * **`--ignore-leak-cluster-size-below`**: ignore memory leaks with aggregated retained size smaller than the threshold
- * **`--trace-all-objects`**: dump retainer trace for all allocated objects (ignore the leak filter)
+ * **`--trace-all-objects`**: dump retainer trace for all allocated objects (ignore the leak filter), available option modes: --trace-all-objects=selected-js-objects, --trace-all-objects=default
  * **`--save-trace-as-unclassified-cluster`**: dump each retainer trace as an unclassified trace cluster
  * **`--ml-clustering`**: use machine learning algorithms for clustering leak traces (by default, traces are clustered by heuristics)
  * **`--ml-linkage-max-dist`**: set linkage max distance value for clustering. The value should be between [0, 1] inclusive.

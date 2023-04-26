@@ -12,6 +12,7 @@ import type {MemLabConfig} from '../../Config';
 import type {IHeapNode} from '../../Types';
 
 import utils from '../../Utils';
+import {TraceObjectMode} from '../../Config';
 import {ILeakObjectFilterRule, LeakDecision} from '../BaseLeakFilter.rule';
 
 /**
@@ -21,7 +22,7 @@ export class FilterOverSizedNodeAsLeakRule implements ILeakObjectFilterRule {
   filter(config: MemLabConfig, node: IHeapNode): LeakDecision {
     if (config.oversizeObjectAsLeak) {
       // TODO: add support to skip this check
-      if (!isHeapNodeUsefulForLeakTraceDiffing(node)) {
+      if (!isHeapNodeUsefulForLeakTraceDiffing(config, node)) {
         return LeakDecision.NOT_LEAK;
       }
       return node.retainedSize > config.oversizeThreshold
@@ -32,7 +33,13 @@ export class FilterOverSizedNodeAsLeakRule implements ILeakObjectFilterRule {
   }
 }
 
-function isHeapNodeUsefulForLeakTraceDiffing(node: IHeapNode): boolean {
+function isHeapNodeUsefulForLeakTraceDiffing(
+  config: MemLabConfig,
+  node: IHeapNode,
+): boolean {
+  if (config.traceAllObjectsMode === TraceObjectMode.Default) {
+    return true;
+  }
   const name = node.name;
   if (node.type !== 'object') {
     return false;
