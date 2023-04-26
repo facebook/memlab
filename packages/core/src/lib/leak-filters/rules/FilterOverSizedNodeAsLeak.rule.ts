@@ -10,6 +10,8 @@
 
 import type {MemLabConfig} from '../../Config';
 import type {IHeapNode} from '../../Types';
+
+import utils from '../../Utils';
 import {ILeakObjectFilterRule, LeakDecision} from '../BaseLeakFilter.rule';
 
 /**
@@ -18,10 +20,53 @@ import {ILeakObjectFilterRule, LeakDecision} from '../BaseLeakFilter.rule';
 export class FilterOverSizedNodeAsLeakRule implements ILeakObjectFilterRule {
   filter(config: MemLabConfig, node: IHeapNode): LeakDecision {
     if (config.oversizeObjectAsLeak) {
+      // TODO: add support to skip this check
+      if (!isHeapNodeUsefulForLeakTraceDiffing(node)) {
+        return LeakDecision.NOT_LEAK;
+      }
       return node.retainedSize > config.oversizeThreshold
         ? LeakDecision.LEAK
         : LeakDecision.NOT_LEAK;
     }
     return LeakDecision.MAYBE_LEAK;
   }
+}
+
+function isHeapNodeUsefulForLeakTraceDiffing(node: IHeapNode): boolean {
+  const name = node.name;
+  if (node.type !== 'object') {
+    return false;
+  }
+  if (name.startsWith('system / ')) {
+    return false;
+  }
+  if (utils.isFiberNode(node) && !utils.isDetachedFiberNode(node)) {
+    return false;
+  }
+  if (utils.isDOMNodeIncomplete(node) && !utils.isDetachedDOMNode(node)) {
+    return false;
+  }
+  if (node.getAnyReferrer('__proto__') != null) {
+    return false;
+  }
+  if (node.getAnyReferrer('prototype') != null) {
+    return false;
+  }
+  // react internal objects
+  if (node.getAnyReferrer('dependencies') != null) {
+    return false;
+  }
+  if (node.getAnyReferrer('memoizedState') != null) {
+    return false;
+  }
+  if (node.getAnyReferrer('next') != null) {
+    return false;
+  }
+  if (node.getAnyReferrer('deps') != null) {
+    return false;
+  }
+  if (node.getReference('baseQueue') != null) {
+    return false;
+  }
+  return true;
 }

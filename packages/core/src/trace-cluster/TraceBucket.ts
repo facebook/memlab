@@ -185,7 +185,7 @@ export default class NormalizedTrace {
   }
 
   static samplePaths(paths: LeakTracePathItem[]): LeakTracePathItem[] {
-    const maxCount = 5000;
+    const maxCount = config.maxSamplesForClustering;
     if (paths.length <= maxCount) {
       return [...paths];
     }
@@ -195,10 +195,10 @@ export default class NormalizedTrace {
     if (config.verbose) {
       info.lowLevel(` Sample Trace's Max Length: ${samplePathMaxLength}`);
     }
+    paths = paths.filter(
+      p => utils.getLeakTracePathLength(p) <= samplePathMaxLength,
+    );
     for (const p of paths) {
-      if (utils.getLeakTracePathLength(p) > samplePathMaxLength) {
-        continue;
-      }
       if (sampler.sample()) {
         ret.push(p);
       } else {
@@ -208,6 +208,9 @@ export default class NormalizedTrace {
           ret.push(p);
         }
       }
+    }
+    if (config.verbose) {
+      info.lowLevel(`Number of samples after sampling: ${ret.length}.`);
     }
     return ret;
   }

@@ -248,6 +248,7 @@ export class MemLabConfig {
   isAnalyzingMainThread: boolean;
   targetWorkerTitle: Nullable<string>;
   noReCluster: boolean;
+  maxSamplesForClustering: number;
 
   constructor(options: ConfigOption = {}) {
     // init properties, they can be configured manually
@@ -363,6 +364,8 @@ export class MemLabConfig {
     // if true, split dataset into trunks
     // with random order for sequential clustering
     this.seqClusteringIsRandomChunks = false;
+    // maximum number of samples as input for leak trace clustering
+    this.maxSamplesForClustering = 5000;
     // extra E2E run info (other than the fields defined in
     // RunMetaInfo like app, interaction, browserInfo).
     // Information saved in this map will be

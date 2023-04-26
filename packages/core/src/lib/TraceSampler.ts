@@ -12,21 +12,27 @@ import config from './Config';
 import info from './Console';
 import utils from './Utils';
 
+export type TraceSamplerOption = {
+  maxSample?: number;
+};
+
 export default class TraceSampler {
   // the max number of traces after sampling
-  private maxCount = 5000;
-  private sampleRatio = -1;
+  private maxCount = config.maxSamplesForClustering;
   private processed = 0;
+  private selected = 0;
   private population = -1;
 
-  constructor(n: number) {
+  constructor(n: number, options: TraceSamplerOption = {}) {
+    this.maxCount = options.maxSample ?? config.maxSamplesForClustering;
     this.init(n);
   }
 
   public init(n: number) {
     this.processed = 0;
+    this.selected = 0;
     this.population = n;
-    this.sampleRatio = this.calculateSampleRatio(n);
+    this.calculateSampleRatio(n);
   }
 
   private calculateSampleRatio(n: number): number {
@@ -42,6 +48,18 @@ export default class TraceSampler {
   }
 
   /**
+   * The caller decide to give up sampling this time.
+   * This `giveup` and the `sample` method in aggregation should be
+   * called `this.population` times.
+   *
+   * For example, if `giveup` is called n1 times,
+   * and `sample` is called n2 times, then n1 + n2 === this.population.
+   */
+  public giveup(): void {
+    ++this.processed;
+  }
+
+  /**
    * This sample method should be called precisely this.population times.
    * @returns true if this sample should be taken
    */
@@ -53,8 +71,6 @@ export default class TraceSampler {
         }`,
       );
     }
-    // increase the counter indicating how many samples has been processed
-    ++this.processed;
     // use large number to mod here to avoid too much console I/O
     if (!config.isContinuousTest && this.processed % 771 === 0) {
       const percent = utils.getReadablePercent(
@@ -64,6 +80,14 @@ export default class TraceSampler {
         `progress: ${this.processed} / ${this.population} (${percent})`,
       );
     }
-    return Math.random() <= this.sampleRatio;
+    const dynamicRatio =
+      (this.maxCount - this.selected) / (this.population - this.processed);
+    // increase the counter indicating how many samples has been processed
+    ++this.processed;
+    if (Math.random() <= dynamicRatio) {
+      ++this.selected;
+      return true;
+    }
+    return false;
   }
 }

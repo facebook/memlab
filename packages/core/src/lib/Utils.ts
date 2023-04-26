@@ -1099,6 +1099,20 @@ function pathHasEdgeWithIndex(path: LeakTracePathItem, idx: number): boolean {
   return false;
 }
 
+function pathHasEdgeWithName(
+  path: LeakTracePathItem,
+  edgeName: string,
+): boolean {
+  let p: Optional<LeakTracePathItem> = path;
+  while (p) {
+    if (p.edge && p.edge.name_or_index === edgeName) {
+      return true;
+    }
+    p = p.next;
+  }
+  return false;
+}
+
 function getLastNodeId(path: LeakTracePathItem): number {
   if (!path) {
     return -1;
@@ -2120,6 +2134,7 @@ export default {
   objectToMap,
   pathHasDetachedHTMLNode,
   pathHasEdgeWithIndex,
+  pathHasEdgeWithName,
   repeat,
   resolveFilePath,
   resolveSnapshotFilePath,

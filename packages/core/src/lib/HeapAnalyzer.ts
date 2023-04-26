@@ -557,18 +557,13 @@ class MemoryAnalyst {
 
     const leakTraceFilter = new LeakTraceFilter();
     const nodeIdInPaths: HeapNodeIdSet = new Set();
-    const paths: LeakTracePathItem[] = [];
-    let numOfLeakedObjects = 0;
-    const sampler = new TraceSampler(leakedNodeIds.size);
+    const samplePool: LeakTracePathItem[] = [];
 
     // analysis for each node
     utils.applyToNodes(
       leakedNodeIds,
       snapshot,
       node => {
-        if (!sampler.sample()) {
-          return;
-        }
         // BFS search for path from the leaked node to GC roots
         const p = finder.getPathToGCRoots(snapshot, node);
         if (
@@ -577,17 +572,27 @@ class MemoryAnalyst {
         ) {
           return;
         }
-
-        ++numOfLeakedObjects;
-        paths.push(p);
-
-        this.logLeakTraceSummary(p, nodeIdInPaths, snapshot, options);
+        // TOOD: support filtering trace based on node and edge names
+        // ignore if the leak trace is too long
+        if (utils.getLeakTracePathLength(p) > 100) {
+          return;
+        }
+        samplePool.push(p);
       },
       {reverse: true},
     );
 
+    const sampler = new TraceSampler(samplePool.length);
+    const paths = samplePool.filter(p => {
+      if (sampler.sample()) {
+        this.logLeakTraceSummary(p, nodeIdInPaths, snapshot, options);
+        return true;
+      }
+      return false;
+    });
+
     if (config.verbose) {
-      info.midLevel(`${numOfLeakedObjects} leaked objects`);
+      info.midLevel(`Filter and select ${paths.length} leaked trace`);
     }
     return paths;
   }
