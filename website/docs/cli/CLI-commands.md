@@ -128,6 +128,7 @@ memlab diff-leaks
  * **`--ml-clustering`**: use machine learning algorithms for clustering leak traces (by default, traces are clustered by heuristics)
  * **`--ml-linkage-max-dist`**: set linkage max distance value for clustering. The value should be between [0, 1] inclusive.
  * **`--ml-clustering-max-df`**: set percentage based max document frequency for limiting the terms that appear too often
+ * **`--max-cluster-sample-size`**: specify the max number of leak traces as input to leak trace clustering algorithm. Big sample size will preserve more complete inforrmation, but may risk out-of-memory crash.
  * **`--work-dir`**: set the working directory of the current run
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
