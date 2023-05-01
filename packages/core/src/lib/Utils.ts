@@ -1113,6 +1113,27 @@ function pathHasEdgeWithName(
   return false;
 }
 
+function pathHasNodeOrEdgeWithName(
+  path: LeakTracePathItem,
+  name: Optional<string>,
+): boolean {
+  if (name == null) {
+    return true;
+  }
+  name = name.toLowerCase();
+  let p: Optional<LeakTracePathItem> = path;
+  while (p) {
+    if (p.edge && `${p.edge.name_or_index}`.toLowerCase().includes(name)) {
+      return true;
+    }
+    if (p.node && `${p.node.name}`.toLowerCase().includes(name)) {
+      return true;
+    }
+    p = p.next;
+  }
+  return false;
+}
+
 function getLastNodeId(path: LeakTracePathItem): number {
   if (!path) {
     return -1;
@@ -2135,6 +2156,7 @@ export default {
   pathHasDetachedHTMLNode,
   pathHasEdgeWithIndex,
   pathHasEdgeWithName,
+  pathHasNodeOrEdgeWithName,
   repeat,
   resolveFilePath,
   resolveSnapshotFilePath,

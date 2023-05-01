@@ -256,6 +256,7 @@ export class MemLabConfig {
   targetWorkerTitle: Nullable<string>;
   noReCluster: boolean;
   maxSamplesForClustering: number;
+  filterTraceByName: Nullable<string>;
 
   constructor(options: ConfigOption = {}) {
     // init properties, they can be configured manually
@@ -379,6 +380,9 @@ export class MemLabConfig {
     // auto-serialized to run-meta.json when the file is saved
     // and auto-deserialized from run-meta.json when the file is loaded
     this.extraRunInfoMap = new Map();
+    // if specified via CLI options, this will filter leak traces by
+    // node and edge names in the leak trace
+    this.filterTraceByName = null;
   }
 
   // initialize configurable parameters

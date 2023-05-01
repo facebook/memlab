@@ -572,7 +572,11 @@ class MemoryAnalyst {
         ) {
           return;
         }
-        // TOOD: support filtering trace based on node and edge names
+        // filter leak trace based on CLI-specified node or edge names
+        if (!utils.pathHasNodeOrEdgeWithName(p, config.filterTraceByName)) {
+          return;
+        }
+
         // ignore if the leak trace is too long
         if (utils.getLeakTracePathLength(p) > 100) {
           return;

@@ -52,6 +52,7 @@ const optionNames = {
   SNAPSHOT_DIR: 'snapshot-dir',
   TARGET: 'target',
   TRACE_ALL_OBJECTS: 'trace-all-objects',
+  TRACE_CONTAINS: 'trace-contains',
   TRACE_OBJECT_SIZE_ABOVE: 'trace-object-size-above',
   TREATMENT_WORK_DIR: 'treatment-work-dir',
   USER_AGENT: 'user-agent',

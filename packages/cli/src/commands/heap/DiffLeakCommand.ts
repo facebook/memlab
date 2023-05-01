@@ -27,6 +27,7 @@ import MLClusteringMaxDFOption from '../../options/MLClusteringMaxDFOption';
 import SetControlWorkDirOption from '../../options/experiment/SetControlWorkDirOption';
 import SetTreatmentWorkDirOption from '../../options/experiment/SetTreatmentWorkDirOption';
 import SetMaxClusterSampleSizeOption from '../../options/SetMaxClusterSampleSizeOption';
+import SetTraceContainsFilterOption from '../../options/heap/SetTraceContainsFilterOption';
 
 export type WorkDirSettings = {
   controlWorkDirs: Array<string>;
@@ -85,6 +86,7 @@ export default class CheckLeakCommand extends BaseCommand {
       new MLClusteringLinkageMaxDistanceOption(),
       new MLClusteringMaxDFOption(),
       new SetMaxClusterSampleSizeOption(),
+      new SetTraceContainsFilterOption(),
     ];
   }
 
