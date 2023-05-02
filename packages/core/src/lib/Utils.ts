@@ -1973,6 +1973,9 @@ export function runShell(
     execOptions.shell = '/bin/bash';
   }
   let ret: Nullable<Buffer | string> = null;
+  if (config.verbose || config.isContinuousTest) {
+    info.lowLevel(`running shell command: ${command}`);
+  }
   try {
     ret = cp.execSync(command, execOptions);
   } catch (ex) {
