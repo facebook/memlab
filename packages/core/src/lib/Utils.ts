@@ -1979,7 +1979,7 @@ export function runShell(
   try {
     ret = cp.execSync(command, execOptions);
   } catch (ex) {
-    if (config.verbose) {
+    if (config.verbose || config.isContinuousTest) {
       if (ex instanceof Error) {
         info.lowLevel(ex.message);
         info.lowLevel(ex.stack ?? '');
