@@ -16,6 +16,7 @@ const optionNames = {
   CLEAN_UP_SNAPSHOT: 'clean-up-snapshot',
   CONTINUS_TEST: 'ContinuousTest',
   CONTROL_WORK_DIR: 'control-work-dir',
+  CHROMIUM_BINARY: 'chromium-binary',
   DEVICE: 'device',
   DISABLE_WEB_SECURITY: 'disable-web-security',
   DISABLE_XVFB: 'disable-xvfb',

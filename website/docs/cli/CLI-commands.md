@@ -32,6 +32,7 @@ memlab run --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--skip-extra-ops`**: skip doing extra interactions (e.g., scrolling and waiting) on target and final page
  * **`--local-puppeteer`**: enable remote browser instance debugging via local puppeteer
  * **`--scenario`**: set file path loading test scenario
+ * **`--chromium-binary`**: set the chromium binary for E2E run
  * **`--device`**: set the device type to emulate
  * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
@@ -504,6 +505,7 @@ memlab measure --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--run-mode`**: set running mode
  * **`--local-puppeteer`**: enable remote browser instance debugging via local puppeteer
  * **`--scenario`**: set file path loading test scenario
+ * **`--chromium-binary`**: set the chromium binary for E2E run
  * **`--device`**: set the device type to emulate
  * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
@@ -538,6 +540,7 @@ memlab warmup --scenario /tmp/test-scenario.js
  * **`--run-mode`**: set running mode
  * **`--local-puppeteer`**: enable remote browser instance debugging via local puppeteer
  * **`--scenario`**: set file path loading test scenario
+ * **`--chromium-binary`**: set the chromium binary for E2E run
  * **`--device`**: set the device type to emulate
  * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
@@ -610,6 +613,7 @@ memlab snapshot --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--run-mode`**: set running mode
  * **`--local-puppeteer`**: enable remote browser instance debugging via local puppeteer
  * **`--scenario`**: set file path loading test scenario
+ * **`--chromium-binary`**: set the chromium binary for E2E run
  * **`--device`**: set the device type to emulate
  * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
@@ -651,6 +655,7 @@ memlab warmup-and-snapshot --scenario /tmp/test-scenario.js --work-dir /tmp/test
  * **`--run-mode`**: set running mode
  * **`--local-puppeteer`**: enable remote browser instance debugging via local puppeteer
  * **`--scenario`**: set file path loading test scenario
+ * **`--chromium-binary`**: set the chromium binary for E2E run
  * **`--device`**: set the device type to emulate
  * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
