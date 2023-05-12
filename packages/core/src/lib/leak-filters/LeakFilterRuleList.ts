@@ -18,6 +18,7 @@ import {FilterOverSizedNodeAsLeakRule} from './rules/FilterOverSizedNodeAsLeak.r
 import {FilterStackTraceFrameRule} from './rules/FilterStackTraceFrame.rule';
 import {FilterTrivialNodeRule} from './rules/FilterTrivialNode.rule';
 import {FilterUnmountedFiberNodeRule} from './rules/FilterUnmountedFiberNode.rule';
+import {FilterXMLHTTPRequestRule} from './rules/FilterXMLHTTPRequest.rule';
 
 const list: ILeakObjectFilterRule[] = [
   new FilterByExternalFilterRule(),
@@ -27,6 +28,7 @@ const list: ILeakObjectFilterRule[] = [
   new FilterUnmountedFiberNodeRule(),
   new FilterDetachedDOMElementRule(),
   new FilterStackTraceFrameRule(),
+  new FilterXMLHTTPRequestRule(),
 ];
 
 export default setInternalValue(list, __filename, constant.internalDir);
