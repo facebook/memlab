@@ -202,7 +202,7 @@ export async function takeSnapshots(
 }
 
 /**
- * This API finds memory leaks by analyzing heap snapshot(s)
+ * This API finds memory leaks by analyzing heap snapshot(s).
  * This is equivalent to `memlab find-leaks` in CLI.
  *
  * @param runResult return value of a browser interaction run
@@ -225,6 +225,35 @@ export async function findLeaks(
 ): Promise<ISerializedInfo[]> {
   const workDir = runResult.getRootDirectory();
   fileManager.initDirs(defaultConfig, {workDir});
+  defaultConfig.chaseWeakMapEdge = false;
+  return await analysis.checkLeak();
+}
+
+/**
+ * This API finds memory leaks by analyzing specified heap snapshots.
+ * This is equivalent to `memlab find-leaks` with
+ * the `--baseline`, `--target`, and `--final` flags in CLI.
+ *
+ * @param baselineSnapshot the file path of the baseline heap snapshot
+ * @param targetSnapshot the file path of the target heap snapshot
+ * @param finalSnapshot the file path of the final heap snapshot
+ * @param options optionally, you can specify a working
+ * directory (other than the default one) for heap analysis
+ * @returns leak traces detected and clustered from the browser interaction
+ */
+export async function findLeaksBySnapshotFilePaths(
+  baselineSnapshot: string,
+  targetSnapshot: string,
+  finalSnapshot: string,
+  options: {workDir?: string} = {},
+): Promise<ISerializedInfo[]> {
+  defaultConfig.useExternalSnapshot = true;
+  defaultConfig.externalSnapshotFilePaths = [
+    baselineSnapshot,
+    targetSnapshot,
+    finalSnapshot,
+  ];
+  fileManager.initDirs(defaultConfig, {workDir: options.workDir});
   defaultConfig.chaseWeakMapEdge = false;
   return await analysis.checkLeak();
 }

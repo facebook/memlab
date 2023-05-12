@@ -71,13 +71,13 @@ const {analyze, takeSnapshots, StringAnalysis} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:256
+    * api/src/API.ts:285
 
 ___
 
 ### <a id="findleaks"></a>**findLeaks**(`runResult`)
 
-This API finds memory leaks by analyzing heap snapshot(s)
+This API finds memory leaks by analyzing heap snapshot(s).
 This is equivalent to `memlab find-leaks` in CLI.
 
  * **Parameters**:
@@ -98,6 +98,25 @@ const {findLeaks, takeSnapshots} = require('@memlab/api');
 
  * **Source**:
     * api/src/API.ts:223
+
+___
+
+### <a id="findleaksbysnapshotfilepaths"></a>**findLeaksBySnapshotFilePaths**(`baselineSnapshot`, `targetSnapshot`, `finalSnapshot`, `options?`)
+
+This API finds memory leaks by analyzing specified heap snapshots.
+This is equivalent to `memlab find-leaks` with
+the `--baseline`, `--target`, and `--final` flags in CLI.
+
+ * **Parameters**:
+    * `baselineSnapshot`: `string` | the file path of the baseline heap snapshot
+    * `targetSnapshot`: `string` | the file path of the target heap snapshot
+    * `finalSnapshot`: `string` | the file path of the final heap snapshot
+    * `options`: `Object` | optionally, you can specify a working directory (other than the default one) for heap analysis
+    * `options.workDir?`: `string`
+ * **Returns**: `Promise`<`ISerializedInfo`[]\> | leak traces detected and clustered from the browser interaction
+
+ * **Source**:
+    * api/src/API.ts:244
 
 ___
 
