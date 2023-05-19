@@ -516,7 +516,10 @@ export class MemLabConfig {
     // node names excluded from the trace finding
     this.nodeNameBlockList = new Set(['system / PropertyCell']);
     // edge names excluded from the trace finding
-    this.edgeNameBlockList = new Set(['feedback_cell']);
+    this.edgeNameBlockList = new Set([
+      'feedback_cell',
+      'part of key -> value pair in ephemeron table',
+    ]);
     // node names less preferable in trace finding
     this.nodeNameGreyList = new Set([
       'InternalNode',

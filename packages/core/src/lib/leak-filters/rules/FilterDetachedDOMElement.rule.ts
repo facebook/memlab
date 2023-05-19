@@ -21,23 +21,39 @@ export class FilterDetachedDOMElementRule implements ILeakObjectFilterRule {
     const isDetached = utils.isDetachedDOMNode(node, {
       ignoreInternalNode: true,
     });
-    if (isDetached) {
+    if (
+      isDetached &&
+      !isDominatedByEdgeName(node, 'stateNode') &&
+      !isDetachedDOMNodeDominatedByDehydratedMemoizedState(node)
+    ) {
       return LeakDecision.LEAK;
     }
     return LeakDecision.MAYBE_LEAK;
   }
+}
 
-  protected checkDetachedFiberNode(
-    config: MemLabConfig,
-    node: IHeapNode,
-  ): boolean {
-    if (
-      !config.detectFiberNodeLeak ||
-      !utils.isFiberNode(node) ||
-      utils.hasHostRoot(node)
-    ) {
-      return false;
-    }
-    return !utils.isNodeDominatedByDeletionsArray(node);
+function isDominatedByEdgeName(
+  node: IHeapNode,
+  edgeNameOrIndex: string | number,
+): boolean {
+  const referrerNode = node.getAnyReferrerNode(edgeNameOrIndex);
+  if (referrerNode == null) {
+    return false;
   }
+  return referrerNode.id === node.dominatorNode?.id;
+}
+
+// check if the input is a detached DOM node dominated by a 'dehydrated'
+// edge from a memoizedState. In this case, the node is not a memory leak
+function isDetachedDOMNodeDominatedByDehydratedMemoizedState(
+  node: IHeapNode,
+): boolean {
+  const referrerNode = node.getAnyReferrerNode('dehydrated', 'property');
+  if (referrerNode == null) {
+    return false;
+  }
+  return (
+    referrerNode.id === node.dominatorNode?.id &&
+    isDominatedByEdgeName(referrerNode, 'memoizedState')
+  );
 }
