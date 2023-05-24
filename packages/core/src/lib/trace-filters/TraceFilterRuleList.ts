@@ -11,7 +11,7 @@
 import constant from '../Constant';
 import {setInternalValue} from '../InternalValueSetter';
 import {ILeakTraceFilterRule} from './BaseTraceFilter.rule';
-import {FilterReactActiveElementRule} from './rules/fb-internal/FilterReactActiveElement.rule';
+import {FilterReactTransientLeakRule} from './rules/fb-internal/FilterReactTransientLeak.rule';
 import {FilterAttachedDOMToDetachedDOMTraceRule} from './rules/FilterAttachedDOMToDetachedDOMTrace.rule';
 import {FilterCppRootsToDetachedDOMTraceRule} from './rules/FilterCppRootsToDetachedDOMTrace.rule';
 import {FilterDOMNodeChainTraceRule} from './rules/FilterDOMNodeChainTrace.rule';
@@ -30,7 +30,7 @@ const list: ILeakTraceFilterRule[] = [
   new FilterDOMNodeChainTraceRule(),
   new FilterAttachedDOMToDetachedDOMTraceRule(),
   new FilterCppRootsToDetachedDOMTraceRule(),
-  new FilterReactActiveElementRule(),
+  new FilterReactTransientLeakRule(),
 ];
 
 export default setInternalValue(list, __filename, constant.internalDir);
