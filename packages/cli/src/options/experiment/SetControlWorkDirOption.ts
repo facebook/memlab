@@ -11,9 +11,9 @@
 import type {ParsedArgs} from 'minimist';
 import type {MemLabConfig, Nullable} from '@memlab/core';
 
-import fs from 'fs';
-import {fileManager, BaseOption} from '@memlab/core';
+import {BaseOption} from '@memlab/core';
 import optionConstants from '../lib/OptionConstant';
+import {extractAndCheckWorkDirs} from './ExperimentOptionUtils';
 
 export default class SetControlWorkDirOption extends BaseOption {
   getOptionName(): string {
@@ -24,33 +24,11 @@ export default class SetControlWorkDirOption extends BaseOption {
     return 'set the working directory of the control run';
   }
 
-  protected extractAndCheckWorkDirs(args: ParsedArgs): Nullable<string[]> {
-    let dirs: string[] = [];
-    const name = this.getOptionName();
-    const flagValue = args[name];
-    if (!flagValue) {
-      return null;
-    }
-    if (Array.isArray(flagValue)) {
-      dirs = flagValue as string[];
-    } else {
-      dirs = [flagValue] as string[];
-    }
-    for (const dir of dirs) {
-      if (fs.existsSync(dir)) {
-        fileManager.createDefaultVisitOrderMetaFile({
-          workDir: dir,
-        });
-      }
-    }
-    return dirs;
-  }
-
   async parse(
-    config: MemLabConfig,
+    _config: MemLabConfig,
     args: ParsedArgs,
   ): Promise<{controlWorkDirs?: Nullable<string[]>}> {
-    const dirs = this.extractAndCheckWorkDirs(args);
+    const dirs = extractAndCheckWorkDirs(this.getOptionName(), args);
     return {controlWorkDirs: dirs};
   }
 }

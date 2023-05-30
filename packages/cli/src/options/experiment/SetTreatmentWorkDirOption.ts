@@ -9,11 +9,11 @@
  */
 
 import type {ParsedArgs} from 'minimist';
-import type {AnyRecord, MemLabConfig} from '@memlab/core';
+import type {MemLabConfig, Nullable} from '@memlab/core';
 
-import fs from 'fs';
-import {fileManager, BaseOption} from '@memlab/core';
+import {BaseOption} from '@memlab/core';
 import optionConstants from '../lib/OptionConstant';
+import {extractAndCheckWorkDirs} from './ExperimentOptionUtils';
 
 export default class SetTreatmentWorkDirOption extends BaseOption {
   getOptionName(): string {
@@ -21,23 +21,14 @@ export default class SetTreatmentWorkDirOption extends BaseOption {
   }
 
   getDescription(): string {
-    return 'set the working directory of the test (treatment) run';
+    return 'set the working directory of the treatment run';
   }
 
   async parse(
     config: MemLabConfig,
     args: ParsedArgs,
-  ): Promise<{treatmentWorkDir?: string}> {
-    const name = this.getOptionName();
-    const ret: AnyRecord = {};
-    if (args[name]) {
-      ret.treatmentWorkDir = args[name] as string;
-      if (fs.existsSync(ret.treatmentWorkDir)) {
-        fileManager.createDefaultVisitOrderMetaFile({
-          workDir: ret.treatmentWorkDir,
-        });
-      }
-    }
-    return ret;
+  ): Promise<{treatmentWorkDirs?: Nullable<string[]>}> {
+    const dirs = extractAndCheckWorkDirs(this.getOptionName(), args);
+    return {treatmentWorkDirs: dirs};
   }
 }

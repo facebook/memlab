@@ -119,7 +119,7 @@ memlab diff-leaks
 
 **Options**:
  * **`--control-work-dir`**: set the working directory of the control run
- * **`--treatment-work-dir`**: set the working directory of the test (treatment) run
+ * **`--treatment-work-dir`**: set the working directory of the treatment run
  * **`--engine`**: set the JavaScript engine (default to V8)
  * **`--leak-filter`**: specify a definition JS file for leak filter
  * **`--trace-object-size-above`**: objects with retained size (bytes) bigger than the threshold will be considered as leaks

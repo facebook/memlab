@@ -864,8 +864,13 @@ export type TraceClusterMetaInfo = {
 
 /** @internal */
 export type ControlTreatmentClusterResult = {
-  controlOnlyClusters: TraceCluster[];
+  // all traces in the cluster are from some or all of the control groups
+  controlLikelyOrOnlyClusters: TraceCluster[];
+  // all traces in the cluster are from all of the treatment groups
   treatmentOnlyClusters: TraceCluster[];
+  // all traces in the cluster are from some (not all) of the treatment groups
+  treatmentLikelyClusters: TraceCluster[];
+  // traces in this cluster consists of traces from both control and treatment groups
   hybridClusters: Array<{control: TraceCluster; treatment: TraceCluster}>;
 };
 
@@ -2028,13 +2033,13 @@ export interface IOveralLeakInfo extends Partial<IOveralHeapInfo> {
 /** @internal */
 export type DiffLeakOptions = {
   controlWorkDirs: string[];
-  treatmentWorkDir: string;
+  treatmentWorkDirs: string[];
 };
 
 /** @internal */
 export type PlotMemoryOptions = {
   controlWorkDirs?: string[];
-  treatmentWorkDir?: string;
+  treatmentWorkDirs?: string[];
   workDir?: string;
 } & IMemoryAnalystOptions;
 

@@ -31,7 +31,7 @@ import SetTraceContainsFilterOption from '../../options/heap/SetTraceContainsFil
 
 export type WorkDirSettings = {
   controlWorkDirs: Array<string>;
-  treatmentWorkDir: string;
+  treatmentWorkDirs: Array<string>;
 };
 
 export default class CheckLeakCommand extends BaseCommand {
@@ -94,7 +94,7 @@ export default class CheckLeakCommand extends BaseCommand {
     // double check parameters
     if (
       !options.configFromOptions?.controlWorkDirs ||
-      !options.configFromOptions?.treatmentWorkDir
+      !options.configFromOptions?.treatmentWorkDirs
     ) {
       info.error('Please specify control and test working directory');
       throw utils.haltOrThrow('No control or test working directory specified');
@@ -103,26 +103,26 @@ export default class CheckLeakCommand extends BaseCommand {
     const controlWorkDirs = options.configFromOptions[
       'controlWorkDirs'
     ] as string[];
-    const treatmentWorkDir = options.configFromOptions[
-      'treatmentWorkDir'
-    ] as string;
+    const treatmentWorkDirs = options.configFromOptions[
+      'treatmentWorkDirs'
+    ] as string[];
     return {
       controlWorkDirs,
-      treatmentWorkDir,
+      treatmentWorkDirs,
     };
   }
 
   async run(options: CLIOptions): Promise<void> {
     config.chaseWeakMapEdge = false;
-    const {controlWorkDirs, treatmentWorkDir} = this.getWorkDirs(options);
+    const {controlWorkDirs, treatmentWorkDirs} = this.getWorkDirs(options);
     const {runMetaInfoManager} = runInfoUtils;
     runMetaInfoManager.setConfigFromRunMeta({
-      workDir: treatmentWorkDir,
+      workDir: treatmentWorkDirs[0],
       silentFail: true,
     });
     // diff memory leaks
     this.useDefaultMLClusteringSetting(options.cliArgs);
-    await analysis.diffLeakByWorkDir({controlWorkDirs, treatmentWorkDir});
+    await analysis.diffLeakByWorkDir({controlWorkDirs, treatmentWorkDirs});
     this.restoreDefaultMLClusteringSetting(options.cliArgs);
   }
 }

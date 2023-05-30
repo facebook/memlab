@@ -419,14 +419,15 @@ export default class NormalizedTrace {
   static clusterControlTreatmentPaths(
     leakPathsFromControlRuns: LeakTracePathItem[][],
     controlSnapshots: IHeapSnapshot[],
-    treatmentPaths: LeakTracePathItem[],
-    treatmentSnapshot: IHeapSnapshot,
+    leakPathsFromTreatmentRuns: LeakTracePathItem[][],
+    treatmentSnapshots: IHeapSnapshot[],
     aggregateDominatorMetrics: AggregateNodeCb,
     option: {strategy?: IClusterStrategy} = {},
   ): ControlTreatmentClusterResult {
     const result: ControlTreatmentClusterResult = {
-      controlOnlyClusters: [],
+      controlLikelyOrOnlyClusters: [],
       treatmentOnlyClusters: [],
+      treatmentLikelyClusters: [],
       hybridClusters: [],
     };
     info.overwrite('Clustering leak traces');
@@ -434,7 +435,11 @@ export default class NormalizedTrace {
       (count, leakPaths) => count + leakPaths.length,
       0,
     );
-    if (totalControlPaths === 0 && treatmentPaths.length === 0) {
+    const totalTreatmentPaths = leakPathsFromTreatmentRuns.reduce(
+      (count, leakPaths) => count + leakPaths.length,
+      0,
+    );
+    if (totalControlPaths === 0 && totalTreatmentPaths === 0) {
       info.midLevel('No leaks found');
       return result;
     }
@@ -444,16 +449,28 @@ export default class NormalizedTrace {
       [],
     );
     const controlPaths = this.samplePaths(flattenedLeakPathsFromControlRuns);
-    treatmentPaths = this.samplePaths(treatmentPaths);
+    const pathsForEachTreatmentGroup = leakPathsFromTreatmentRuns.map(
+      (treatmentPaths: LeakTracePathItem[]) => this.samplePaths(treatmentPaths),
+    );
 
     // build control trace to control path map
     const controlTraceToPathMap =
       NormalizedTrace.buildTraceToPathMap(controlPaths);
     const controlTraces = Array.from(controlTraceToPathMap.keys());
-    // build treatment trace to treatment path map
-    const treatmentTraceToPathMap =
-      NormalizedTrace.buildTraceToPathMap(treatmentPaths);
-    const treatmentTraces = Array.from(treatmentTraceToPathMap.keys());
+    // build treatment trace to treatment path maps
+    // we need to know the mapping to each treatment group
+    // to figure out if a trace cluster contains traces from all treatment groups
+    const treatmentTraceToPathMaps = pathsForEachTreatmentGroup.map(
+      treatmentPaths => NormalizedTrace.buildTraceToPathMap(treatmentPaths),
+    );
+    const treatmentTraceToPathMap = new Map();
+    const treatmentTraces: NormalizedTraceElement[][] = [];
+    for (const map of treatmentTraceToPathMaps) {
+      for (const [key, value] of map.entries()) {
+        treatmentTraceToPathMap.set(key, value);
+        treatmentTraces.push(key);
+      }
+    }
 
     // cluster traces from both the control group and the treatment group
     const {allClusters} = NormalizedTrace.diffTraces(
@@ -462,14 +479,18 @@ export default class NormalizedTrace {
       option,
     );
 
-    // pick one of the control heap snapshots
+    // pick one of the control and treatment heap snapshots
     const controlSnapshot = controlSnapshots[0];
+    const treatmentSnapshot = treatmentSnapshots[0];
 
     // construct TraceCluster from clustering result
     allClusters.forEach((traces: LeakTrace[]) => {
       const controlCluster = NormalizedTrace.initEmptyCluster(controlSnapshot);
       const treatmentCluster =
         NormalizedTrace.initEmptyCluster(treatmentSnapshot);
+      // a set containing each the treatment group that
+      // has at least one trace in this cluster
+      const treatmentSetWithClusterTrace = new Set();
       for (const trace of traces) {
         const normalizedTrace = trace as NormalizedTraceElement[];
         if (controlTraceToPathMap.has(normalizedTrace)) {
@@ -479,6 +500,12 @@ export default class NormalizedTrace {
             controlCluster,
           );
         } else {
+          for (let i = 0; i < treatmentTraceToPathMaps.length; ++i) {
+            if (treatmentTraceToPathMaps[i].has(normalizedTrace)) {
+              treatmentSetWithClusterTrace.add(i);
+              break;
+            }
+          }
           NormalizedTrace.pushLeakPathToCluster(
             treatmentTraceToPathMap,
             normalizedTrace,
@@ -504,10 +531,19 @@ export default class NormalizedTrace {
           aggregateDominatorMetrics,
         );
       }
-      if (controlClusterSize === 0) {
+      if (
+        controlClusterSize === 0 &&
+        treatmentSetWithClusterTrace.size === leakPathsFromTreatmentRuns.length
+      ) {
+        // only when the leak cluster consists of traces from all treatment groups
         result.treatmentOnlyClusters.push(treatmentCluster);
+      } else if (controlClusterSize === 0) {
+        // when the leak cluster consists of traces from
+        // some but not all of treatment groups
+        result.treatmentLikelyClusters.push(treatmentCluster);
       } else if (treatmentClusterSize === 0) {
-        result.controlOnlyClusters.push(controlCluster);
+        // when the leak cluster consists of traces from any of the control groups
+        result.controlLikelyOrOnlyClusters.push(controlCluster);
       } else {
         result.hybridClusters.push({
           control: controlCluster,
@@ -518,7 +554,10 @@ export default class NormalizedTrace {
     result.treatmentOnlyClusters.sort(
       (c1, c2) => (c2.retainedSize ?? 0) - (c1.retainedSize ?? 0),
     );
-    result.controlOnlyClusters.sort(
+    result.treatmentLikelyClusters.sort(
+      (c1, c2) => (c2.retainedSize ?? 0) - (c1.retainedSize ?? 0),
+    );
+    result.controlLikelyOrOnlyClusters.sort(
       (c1, c2) => (c2.retainedSize ?? 0) - (c1.retainedSize ?? 0),
     );
     result.hybridClusters.sort(

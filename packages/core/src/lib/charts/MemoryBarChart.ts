@@ -113,7 +113,7 @@ class MemoryBarChart {
 
   private loadPlotData(options: PlotMemoryOptions = {}): number[][] {
     // plot data for a single run
-    if (!options.controlWorkDirs && !options.treatmentWorkDir) {
+    if (!options.controlWorkDirs && !options.treatmentWorkDirs) {
       return this.loadPlotDataFromWorkDir(options);
     }
     // plot data for control and test run
@@ -121,7 +121,7 @@ class MemoryBarChart {
       workDir: options.controlWorkDirs && options.controlWorkDirs[0],
     });
     const testPlotData = this.loadPlotDataFromWorkDir({
-      workDir: options.treatmentWorkDir,
+      workDir: options.treatmentWorkDirs && options.treatmentWorkDirs[0],
     });
     // merge plot data
     return this.mergePlotData([controlPlotData, testPlotData]);

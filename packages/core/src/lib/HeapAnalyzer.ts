@@ -71,15 +71,20 @@ class MemoryAnalyst {
         workDir: controlWorkDir,
       }),
     );
-    const treatmentSnapshotDir = fileManager.getCurDataDir({
-      workDir: options.treatmentWorkDir,
-    });
+    const treatmentSnapshotDirs = options.treatmentWorkDirs.map(
+      treatmentWorkDir =>
+        fileManager.getCurDataDir({
+          workDir: treatmentWorkDir,
+        }),
+    );
     // check control working dir
     controlSnapshotDirs.forEach(controlSnapshotDir =>
       utils.checkSnapshots({snapshotDir: controlSnapshotDir}),
     );
     // check treatment working dir
-    utils.checkSnapshots({snapshotDir: treatmentSnapshotDir});
+    treatmentSnapshotDirs.forEach(treatmentSnapshotDir =>
+      utils.checkSnapshots({snapshotDir: treatmentSnapshotDir}),
+    );
     // display control and treatment memory
     memoryBarChart.plotMemoryBarChart(options);
     return this.diffMemoryLeakTraces(options);
@@ -107,28 +112,41 @@ class MemoryAnalyst {
       );
       controlSnapshots.push(snapshotDiff.snapshot);
     }
-    // diff snapshots and get treatment raw paths
-    const snapshotDiff = await this.diffSnapshots({
-      loadAllSnapshots: true,
-      workDir: options.treatmentWorkDir,
-    });
-    const treatmentLeakPaths = this.filterLeakPaths(
-      snapshotDiff.leakedHeapNodeIdSet,
-      snapshotDiff.snapshot,
-      {workDir: options.treatmentWorkDir},
-    );
-    const treatmentSnapshot = snapshotDiff.snapshot;
+    // diff snapshots from treatment dirs and get treatment raw paths array
+    const treatmentSnapshots = [];
+    const leakPathsFromTreatmentRuns = [];
+    let firstTreatmentSnapshotDiff: Nullable<IMemoryAnalystSnapshotDiff> = null;
+    for (const treatmentWorkDir of options.treatmentWorkDirs) {
+      const snapshotDiff = await this.diffSnapshots({
+        loadAllSnapshots: true,
+        workDir: treatmentWorkDir,
+      });
+      if (firstTreatmentSnapshotDiff == null) {
+        firstTreatmentSnapshotDiff = snapshotDiff;
+      }
+      leakPathsFromTreatmentRuns.push(
+        this.filterLeakPaths(
+          snapshotDiff.leakedHeapNodeIdSet,
+          snapshotDiff.snapshot,
+          {workDir: treatmentWorkDir},
+        ),
+      );
+      treatmentSnapshots.push(snapshotDiff.snapshot);
+    }
     const controlPathCounts = JSON.stringify(
       leakPathsFromControlRuns.map(leakPaths => leakPaths.length),
     );
+    const treatmentPathCounts = JSON.stringify(
+      leakPathsFromTreatmentRuns.map(leakPaths => leakPaths.length),
+    );
     info.topLevel(`${controlPathCounts} traces from control group`);
-    info.topLevel(`${treatmentLeakPaths.length} traces from treatment group`);
+    info.topLevel(`${treatmentPathCounts} traces from treatment group`);
 
     const result = NormalizedTrace.clusterControlTreatmentPaths(
       leakPathsFromControlRuns,
       controlSnapshots,
-      treatmentLeakPaths,
-      treatmentSnapshot,
+      leakPathsFromTreatmentRuns,
+      treatmentSnapshots,
       utils.aggregateDominatorMetrics,
       {
         strategy: config.isMLClustering
@@ -143,10 +161,13 @@ class MemoryAnalyst {
 
     // serialize JSON file with detailed leak trace information
     const treatmentOnlyPaths = result.treatmentOnlyClusters.map(c => c.path);
+    if (firstTreatmentSnapshotDiff == null) {
+      throw utils.haltOrThrow('treatemnt snapshot diff result not found');
+    }
     return traceDetailsLogger.logTraces(
-      snapshotDiff.leakedHeapNodeIdSet,
-      snapshotDiff.snapshot,
-      snapshotDiff.listOfLeakedHeapNodeIdSet,
+      firstTreatmentSnapshotDiff.leakedHeapNodeIdSet,
+      firstTreatmentSnapshotDiff.snapshot,
+      firstTreatmentSnapshotDiff.listOfLeakedHeapNodeIdSet,
       treatmentOnlyPaths,
       config.traceJsonOutDir,
     );
