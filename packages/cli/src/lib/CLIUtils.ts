@@ -8,7 +8,7 @@
  * @oncall web_perf_infra
  */
 import type {ParsedArgs} from 'minimist';
-import type {AnyRecord} from '@memlab/core';
+import type {AnyRecord, RecordValue} from '@memlab/core';
 
 import stringWidth from 'string-width';
 import {utils} from '@memlab/core';
@@ -57,6 +57,20 @@ export function filterAndGetUndefinedArgs(cliArgs: ParsedArgs): AnyRecord {
   return ret;
 }
 
+function quoteIfNecessary(v: RecordValue): RecordValue {
+  if (typeof v !== 'string') {
+    return v;
+  }
+  // if the string contains any whitespace character
+  if (/\s/.test(v)) {
+    // escape any existing " character
+    v = v.replace(/"/g, '\\"');
+    // wrap the string with "
+    v = `"${v}"`;
+  }
+  return v;
+}
+
 export function argsToString(args: AnyRecord): string {
   let ret = '';
   for (const optionName of Object.keys(args)) {
@@ -68,10 +82,10 @@ export function argsToString(args: AnyRecord): string {
       ret += `--${optionName} `;
     } else if (Array.isArray(value)) {
       value.forEach(v => {
-        ret += `--${optionName}=${v} `;
+        ret += `--${optionName}=${quoteIfNecessary(v)} `;
       });
     } else {
-      ret += `--${optionName}=${value} `;
+      ret += `--${optionName}=${quoteIfNecessary(value)} `;
     }
   }
   return ret.trim();
