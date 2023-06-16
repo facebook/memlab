@@ -28,11 +28,10 @@ export class FilterUnmountedFiberNodeRule implements ILeakObjectFilterRule {
     config: MemLabConfig,
     node: IHeapNode,
   ): boolean {
-    if (
-      !config.detectFiberNodeLeak ||
-      !utils.isFiberNode(node) ||
-      utils.hasHostRoot(node)
-    ) {
+    if (!config.detectFiberNodeLeak || !utils.isFiberNode(node)) {
+      return false;
+    }
+    if (!utils.isDetachedFiberNode(node)) {
       return false;
     }
     return !utils.isNodeDominatedByDeletionsArray(node);

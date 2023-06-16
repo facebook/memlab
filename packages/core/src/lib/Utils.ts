@@ -128,7 +128,7 @@ function isFiberNode(node: Optional<IHeapNode>): boolean {
 }
 
 // quickly check the detachedness field
-// need to call hasHostRoot(node) before this function
+// need to call markDetachedFiberNode(node) before this function
 // does not traverse and check the existance of HostRoot
 // NOTE: Doesn't work for FiberNode without detachedness field
 function isDetachedFiberNode(node: IHeapNode): boolean {
@@ -560,6 +560,36 @@ function hasHostRoot(node: IHeapNode): boolean {
       break;
     }
     visitedNodes.add(cur);
+    visitedIds.add(cur.id);
+    if (isHostRoot(cur)) {
+      return true;
+    }
+    cur = getReactFiberNode(cur, 'return');
+  }
+  return false;
+}
+
+// The Fiber tree starts with a special type of Fiber node (HostRoot).
+// return true if the node is a mounted Fiber node
+function markDetachedFiberNode(node: IHeapNode): boolean {
+  if (node && node.is_detached) {
+    return false;
+  }
+  let cur: Optional<IHeapNode> = node;
+  const visitedIds = new Set();
+  const visitedNodes: Set<IHeapNode> = new Set();
+  while (cur && isFiberNode(cur)) {
+    if (cur.id == null || visitedIds.has(cur.id)) {
+      break;
+    }
+    visitedNodes.add(cur);
+    // if a Fiber node whose dominator is neither root nor
+    // another Fiber node, then consider it as detached Fiber node
+    if (cur.dominatorNode && cur.dominatorNode.id !== 1) {
+      if (!isFiberNode(cur.dominatorNode)) {
+        cur.markAsDetached();
+      }
+    }
     visitedIds.add(cur.id);
     if (isHostRoot(cur)) {
       return true;
@@ -1761,8 +1791,9 @@ function dumpSnapshot(file: string, snapshot: RawHeapSnapshot): void {
 function markAllDetachedFiberNode(snapshot: IHeapSnapshot): void {
   info.overwrite('marking all detached Fiber nodes...');
   snapshot.nodes.forEach(node => {
-    // hasHostRoot checks and marks detached Fiber Nodes
-    isFiberNode(node) && !hasHostRoot(node);
+    if (isFiberNode(node)) {
+      markDetachedFiberNode(node);
+    }
   });
 }
 
@@ -2153,6 +2184,7 @@ export default {
   mapToObject,
   markAllDetachedFiberNode,
   markAlternateFiberNode,
+  markDetachedFiberNode,
   memCache,
   normalizeBaseUrl,
   objectToMap,
