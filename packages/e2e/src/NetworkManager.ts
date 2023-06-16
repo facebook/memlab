@@ -58,14 +58,37 @@ export default class NetworkManager {
 
     await session.send('Network.enable');
     await session.send('Network.setRequestInterception', {
-      patterns: patterns.map(
-        pattern =>
-          ({
-            urlPattern: pattern,
-            resourceType: 'Script',
-            interceptionStage: 'HeadersReceived',
-          } as AnyValue),
-      ),
+      // when extending the interception scope, make sure
+      // also update the resourceTypeToSuffix function in ScriptManager
+      patterns: [
+        // .js scripts
+        ...patterns.map(
+          pattern =>
+            ({
+              urlPattern: pattern,
+              resourceType: 'Script',
+              interceptionStage: 'HeadersReceived',
+            } as AnyValue),
+        ),
+        // .css stylesheets
+        ...patterns.map(
+          pattern =>
+            ({
+              urlPattern: pattern,
+              resourceType: 'Stylesheet',
+              interceptionStage: 'HeadersReceived',
+            } as AnyValue),
+        ),
+        // .html documents
+        ...patterns.map(
+          pattern =>
+            ({
+              urlPattern: pattern,
+              resourceType: 'Document',
+              interceptionStage: 'HeadersReceived',
+            } as AnyValue),
+        ),
+      ],
     });
 
     session.on(
@@ -113,7 +136,7 @@ export default class NetworkManager {
             );
           }
           requestCache.set(response.body, newBody as string);
-          this.scriptManager.logScript(request.url, newBody);
+          this.scriptManager.logScript(request.url, newBody, resourceType);
         }
 
         const newHeaders = [

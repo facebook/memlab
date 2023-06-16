@@ -23,6 +23,7 @@ type ScriptInfo = {
   url: string;
   fileId: number;
   code?: string;
+  resourceType: string;
 };
 
 export default class ScriptManager {
@@ -105,19 +106,37 @@ export default class ScriptManager {
     return newCode;
   }
 
-  public async logScript(url: string, code: string): Promise<void> {
+  public resourceTypeToSuffix(resourceType: string): string {
+    switch (resourceType) {
+      case 'Script':
+        return '.js';
+      case 'Stylesheet':
+        return '.css';
+      case 'Document':
+        return '.html';
+      default:
+        return '.unknown';
+    }
+  }
+
+  public async logScript(
+    url: string,
+    code: string,
+    resourceType: string,
+  ): Promise<void> {
     if (this.urlToScriptMap.has(url)) {
       return;
     }
     const metaFile = fileManager.getWebSourceMetaFile();
     const file = path.join(
       fileManager.getWebSourceDir(),
-      `${++this.fileId}.js`,
+      `${++this.fileId}${this.resourceTypeToSuffix(resourceType)}`,
     );
     const scriptInfo: ScriptInfo = {
       url,
       fileId: this.fileId,
       codePath: file,
+      resourceType,
     };
     this.urlToScriptMap.set(url, scriptInfo);
     this.scriptInfos.push(scriptInfo);
