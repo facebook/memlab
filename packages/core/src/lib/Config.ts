@@ -163,7 +163,7 @@ export class MemLabConfig {
   qes: QuickExperiment[];
   isOndemand: boolean;
   useExternalSnapshot: boolean;
-  externalRunMetaFile: string;
+  externalRunMetaTemplateFile: string;
   externalSnapshotVisitOrderFile: string;
   externalSnapshotDir: Nullable<string>;
   externalSnapshotFilePaths: string[];

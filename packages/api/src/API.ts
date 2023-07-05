@@ -15,6 +15,7 @@ import type {
   ISerializedInfo,
   IScenario,
   XvfbType,
+  Nullable,
   Optional,
 } from '@memlab/core';
 
@@ -416,38 +417,39 @@ export async function testInBrowser(options: APIOptions = {}): Promise<void> {
   }
 
   const testPlanner = options.testPlanner ?? defaultTestPlanner;
-  let interactionManager: E2EInteractionManager | null = null;
-  let xvfb: XvfbType | null = null;
+  let interactionManager: Nullable<E2EInteractionManager> = null;
+  let xvfb: Nullable<XvfbType> = null;
+  let browser: Nullable<Browser> = null;
+  let page: Nullable<Page> = null;
+  let maybeError: Nullable<Error> = null;
   try {
     xvfb = Xvfb.startIfEnabled();
-    const browser = await APIUtils.getBrowser();
+    browser = await APIUtils.getBrowser();
     const pages = await browser.pages();
-    const page = pages.length > 0 ? pages[0] : await browser.newPage();
+    page = pages.length > 0 ? pages[0] : await browser.newPage();
+    // create and configure web page interaction manager
     interactionManager = new E2EInteractionManager(page, browser);
-
     if (options.evalInBrowserAfterInitLoad) {
       interactionManager.setEvalFuncAfterInitLoad(
         options.evalInBrowserAfterInitLoad,
       );
     }
-
     const visitPlan = testPlanner.getVisitPlan();
+    // setup page configuration
     config.setDevice(visitPlan.device);
-
     autoDismissDialog(page);
     await initBrowserInfoInConfig(browser);
-
     browserInfo.monitorWebConsole(page);
-
     await setupPage(page, options);
-
+    // interact with the web page and take heap snapshots
     await interactionManager.visitAndGetSnapshots(options);
-    await utils.closePuppeteer(browser, [page]);
   } catch (ex) {
-    const error = utils.getError(ex);
-    utils.checkUninstalledLibrary(error);
-    info.error(error.message);
+    maybeError = utils.getError(ex);
+    utils.checkUninstalledLibrary(maybeError);
   } finally {
+    if (browser && page) {
+      await utils.closePuppeteer(browser, [page]);
+    }
     if (interactionManager) {
       interactionManager.clearCDPSession();
     }
@@ -457,6 +459,9 @@ export async function testInBrowser(options: APIOptions = {}): Promise<void> {
           utils.haltOrThrow(err);
         }
       });
+    }
+    if (maybeError != null) {
+      utils.haltOrThrow(maybeError);
     }
   }
 }

@@ -179,7 +179,7 @@ async function applyAsyncWithGuard(
   try {
     ret = await f.apply(self, args);
   } catch (ex) {
-    exceptionHandler(utils.getError(ex));
+    await exceptionHandler(utils.getError(ex));
   }
   return ret;
 }

@@ -636,7 +636,7 @@ export class FileManager {
     config.metricsOutDir = joinAndProcessDir(options, loggerOutDir, 'metrics');
     config.reportScreenshotFile = path.join(outDir, 'report.png');
 
-    config.externalRunMetaFile = this.getRunMetaExternalTemplateFile();
+    config.externalRunMetaTemplateFile = this.getRunMetaExternalTemplateFile();
     config.externalSnapshotVisitOrderFile =
       this.getSnapshotSequenceExternalTemplateFile();
 

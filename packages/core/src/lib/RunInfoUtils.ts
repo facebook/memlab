@@ -18,12 +18,17 @@ import utils from './Utils';
 import {setInternalValue} from './InternalValueSetter';
 
 export class RunMetaInfoManager {
-  getRunMetaFilePath(options?: {workDir?: Optional<string>}): string {
+  getRunMetaFilePath(options?: {
+    workDir?: Optional<string>;
+    readonly?: Optional<boolean>;
+  }): string {
     if (options?.workDir != null) {
       return fileManager.getRunMetaFile({workDir: options.workDir});
     }
-    if (config.useExternalSnapshot) {
-      return config.externalRunMetaFile;
+    if (options?.readonly && config.useExternalSnapshot) {
+      // only returns the template file if the
+      // run meta file is used for readonly purpose
+      return config.externalRunMetaTemplateFile;
     }
     if (config.runMetaFile != null) {
       return config.runMetaFile;
@@ -64,7 +69,9 @@ export class RunMetaInfoManager {
     metaFile?: Optional<string>;
     workDir?: Optional<string>;
   }): RunMetaInfo {
-    const file = options?.metaFile || this.getRunMetaFilePath(options);
+    const file =
+      options?.metaFile ||
+      this.getRunMetaFilePath({readonly: true, ...options});
     try {
       return this.loadRunMetaInfoFromFile(file);
     } catch (_) {
@@ -78,7 +85,9 @@ export class RunMetaInfoManager {
     metaFile?: Optional<string>;
     workDir?: Optional<string>;
   }): Nullable<RunMetaInfo> {
-    const file = options?.metaFile || this.getRunMetaFilePath(options);
+    const file =
+      options?.metaFile ||
+      this.getRunMetaFilePath({readonly: true, ...options});
     try {
       return this.loadRunMetaInfoFromFile(file);
     } catch (_) {
