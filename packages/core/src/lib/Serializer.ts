@@ -21,27 +21,19 @@ import {
   IHeapNode,
   IHeapSnapshot,
   ISerializedInfo,
+  JSONifyArgs,
+  JSONifyOptions,
   LeakTracePathItem,
   Nullable,
   Optional,
 } from './Types';
 import {EdgeIterationCallback} from '..';
+import SerializationHelper from './SerializationHelper';
 
 const REGEXP_NAME_CLEANUP = /[[]\(\)]/g;
 
-type JSONifyOptions = {
-  fiberNodeReturnTrace: Record<number, string>;
-  processedNodeId: Set<number>;
-  forceJSONifyDepth?: number;
-};
-
 const EMPTY_JSONIFY_OPTIONS = {
   fiberNodeReturnTrace: {},
-};
-
-type JSONifyArgs = {
-  leakedIdSet?: Set<number>;
-  nodeIdsInSnapshots?: Array<Set<number>>;
 };
 
 function JSONifyNodeRetainSize(node: IHeapNode): string {
@@ -473,7 +465,13 @@ function JSONifyNode(
   if (node.dominatorNode) {
     info['dominator id (extra)'] = `@${node.dominatorNode.id}`;
   }
-  return info;
+
+  // use serialization helper to wrap around
+  // the JSON node with additional tagging information
+  const {serializationHelper} = options;
+  return serializationHelper
+    ? serializationHelper.createOrMergeWrapper(info, node, args, options)
+    : info;
 }
 
 function JSONifyTabsOrder(): string {
@@ -487,7 +485,7 @@ function shouldHighlight(node: IHeapNode): boolean {
 
 function JSONifyPath(
   path: LeakTracePathItem,
-  _snapshot: IHeapSnapshot,
+  snapshot: IHeapSnapshot,
   args: JSONifyArgs,
 ): Nullable<ISerializedInfo> {
   if (!path.node) {
@@ -501,9 +499,16 @@ function JSONifyPath(
   ret[`${idx++}: ${getNodeNameInJSON(path.node, args)}`] = JSONifyNode(
     path.node,
     args,
-    {...EMPTY_JSONIFY_OPTIONS, processedNodeId: new Set()},
+    {
+      ...EMPTY_JSONIFY_OPTIONS,
+      processedNodeId: new Set(),
+    },
   );
   let pathItem: Optional<LeakTracePathItem> = path;
+
+  // initialize serialization helper
+  const serializationHelper = new SerializationHelper();
+  serializationHelper.setSnapshot(snapshot);
 
   while (pathItem?.edge) {
     const edge = pathItem.edge;
@@ -521,6 +526,7 @@ function JSONifyPath(
     ] = JSONifyNode(nextNode, args, {
       ...EMPTY_JSONIFY_OPTIONS,
       processedNodeId: new Set(),
+      serializationHelper,
     });
     pathItem = pathItem.next;
   }

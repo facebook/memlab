@@ -2094,3 +2094,28 @@ export type CommandOptionExample =
       description?: string;
       cliOptionExample: string;
     };
+
+/** @internal */
+export type JSONifyArgs = {
+  leakedIdSet?: Set<number>;
+  nodeIdsInSnapshots?: Array<Set<number>>;
+};
+
+/** @internal */
+export interface ISerializationHelper {
+  setSnapshot(snapshot: IHeapSnapshot): void;
+  createOrMergeWrapper(
+    info: ISerializedInfo,
+    node: IHeapNode,
+    args: JSONifyArgs,
+    options: JSONifyOptions,
+  ): ISerializedInfo;
+}
+
+/** @internal */
+export type JSONifyOptions = {
+  fiberNodeReturnTrace: Record<number, string>;
+  processedNodeId: Set<number>;
+  forceJSONifyDepth?: number;
+  serializationHelper?: ISerializationHelper;
+};
