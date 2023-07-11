@@ -183,7 +183,10 @@ export class TestPlanner {
     cookies: Cookies,
     scenario: IScenario,
   ): Cookies {
-    const ret = [];
+    const ret: Cookies = [];
+    if (cookies.length === 0) {
+      return ret;
+    }
     const url = new URL(scenario.url());
     const domain = '.' + url.hostname.split('.').slice(1).join('.');
     for (const cookie of cookies) {

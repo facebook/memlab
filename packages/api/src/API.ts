@@ -77,6 +77,10 @@ export type RunOptions = {
    * means analyzing the heap of the web worker with name: `'workerTitle'`.
    */
   webWorker?: Optional<string>;
+  /**
+   * skip warmup page load for the target web app
+   */
+  skipWarmup?: boolean;
 };
 
 /**
@@ -133,7 +137,9 @@ export async function warmupAndTakeSnapshots(
   config.scenario = options.scenario;
   const testPlanner = new TestPlanner({config});
   const {evalInBrowserAfterInitLoad} = options;
-  await warmup({testPlanner, config, evalInBrowserAfterInitLoad});
+  if (!options.skipWarmup) {
+    await warmup({testPlanner, config, evalInBrowserAfterInitLoad});
+  }
   await testInBrowser({testPlanner, config, evalInBrowserAfterInitLoad});
   return BrowserInteractionResultReader.from(config.workDir);
 }
@@ -165,7 +171,9 @@ export async function run(runOptions: RunOptions = {}): Promise<RunResult> {
   config.scenario = runOptions.scenario;
   const testPlanner = new TestPlanner({config});
   const {evalInBrowserAfterInitLoad} = runOptions;
-  await warmup({testPlanner, config, evalInBrowserAfterInitLoad});
+  if (!runOptions.skipWarmup) {
+    await warmup({testPlanner, config, evalInBrowserAfterInitLoad});
+  }
   await testInBrowser({testPlanner, config, evalInBrowserAfterInitLoad});
   const runResult = BrowserInteractionResultReader.from(config.workDir);
   const leaks = await findLeaks(runResult);

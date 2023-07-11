@@ -21,6 +21,7 @@ Options for configuring browser interaction run, all fields are optional
 | `cookiesFile?` | `string` | the absolute path of cookies file |
 | `evalInBrowserAfterInitLoad?` | `AnyFunction` | function to be evaluated in browser context after the web page initial load |
 | `scenario?` | `IScenario` | test scenario specifying how to interact with browser (for more details view [IScenario](../interfaces/core_src.IScenario.md)) |
+| `skipWarmup?` | `boolean` | skip warmup page load for the target web app |
 | `snapshotForEachStep?` | `boolean` | if true, take heap snapshot for each interaction step, by default this is false, which means memlab will decide which steps it will take heap snapshots |
 | `webWorker?` | `Optional`<`string`\> | if this field is provided, it specifies the web worker as the target for heap analysis. For example `{webWorker: null}` means analyzing the heap of the first web worker found. `{webWorker: 'workerTitle'}` means analyzing the heap of the web worker with name: `'workerTitle'`. |
 | `workDir?` | `string` | specify the working directory where you want memlab to dump heap snapshots and other meta data of the test run. If no working directory is provided, memlab will generate a random temp directory under the operating system's default directory for temporary files. Note: It's the caller's responsibility to make sure the specified working directory exists. |
@@ -40,7 +41,7 @@ A data structure holding the result of the [run](api_src.md#run) API call.
 | `runResult` | [`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md) | a utility for reading browser interaction results from disk |
 
  * **Source**:
-    * api/src/API.ts:85
+    * api/src/API.ts:89
 
 ## Functions
 
@@ -71,7 +72,7 @@ const {analyze, takeSnapshots, StringAnalysis} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:286
+    * api/src/API.ts:294
 
 ___
 
@@ -97,7 +98,7 @@ const {findLeaks, takeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:224
+    * api/src/API.ts:232
 
 ___
 
@@ -116,7 +117,7 @@ the `--baseline`, `--target`, and `--final` flags in CLI.
  * **Returns**: `Promise`<`ISerializedInfo`[]\> | leak traces detected and clustered from the browser interaction
 
  * **Source**:
-    * api/src/API.ts:245
+    * api/src/API.ts:253
 
 ___
 
@@ -144,7 +145,7 @@ const {run} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:162
+    * api/src/API.ts:168
 
 ___
 
@@ -169,7 +170,7 @@ const {takeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:193
+    * api/src/API.ts:201
 
 ___
 
@@ -195,4 +196,4 @@ const {warmupAndTakeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:128
+    * api/src/API.ts:132
