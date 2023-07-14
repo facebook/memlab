@@ -1,16 +1,23 @@
-# memlab
+<h1 align="center">
+  <a href="https://facebook.github.io/memlab/">MemLab</a>
+</h1>
 
-[![Licensed under the MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/facebook/memlab/blob/master/LICENSE)
-[![PR's Welcome](https://img.shields.io/badge/PRs%20-welcome-brightgreen.svg)](https://github.com/facebook/memlab/blob/main/CONTRIBUTING.md)
-[![npm version](https://img.shields.io/npm/v/memlab.svg?style=flat)](https://www.npmjs.com/package/memlab?activeTab=readme)
+<p align="center">
+  <a href="https://github.com/facebook/memlab/blob/master/LICENSE">
+    <img alt="Licensed under the MIT License" src="https://img.shields.io/badge/License-MIT-blue.svg"/>
+  </a>
+  <a href="https://github.com/facebook/memlab/blob/main/CONTRIBUTING.md">
+    <img alt="PR's Welcome" src="https://img.shields.io/badge/PRs%20-welcome-brightgreen.svg"/>
+  </a>
+  <a href="https://www.npmjs.com/package/memlab?activeTab=readme">
+    <img alt="npm version" src="https://img.shields.io/npm/v/memlab.svg?style=flat"/>
+  </a>
+</p>
 
 memlab is an end-to-end testing and analysis framework for identifying
 JavaScript memory leaks and optimization opportunities.
 
-Online Resources:
-* [Official Website and Demo](https://facebook.github.io/memlab)
-* [Documentation](https://facebook.github.io/memlab/docs/intro)
-* [Meta Engineering Blog Post](https://engineering.fb.com/2022/09/12/open-source/memlab/)
+**Online Resources:** [[Website and Demo](https://facebook.github.io/memlab)] | [[Documentation](https://facebook.github.io/memlab/docs/intro)] | [[Meta Engineering Blog Post](https://engineering.fb.com/2022/09/12/open-source/memlab/)]
 
 Features:
  * **Browser memory leak detection** - Write test scenarios with the Puppeteer
