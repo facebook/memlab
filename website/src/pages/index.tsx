@@ -39,7 +39,7 @@ const features: FeatureItem[] = [
           language="typescript"
           code={`// test.js
 function url() {
-  return 'https://www.google.com/maps/';
+  return 'https://www.google.com/maps/place/Silicon+Valley,+CA/';
 }
 async function action(page) {
   await page.click('button[aria-label="Hotels"]');
