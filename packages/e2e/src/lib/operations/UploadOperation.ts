@@ -8,7 +8,7 @@
  * @oncall web_perf_infra
  */
 
-import type {Page} from 'puppeteer';
+import type {ElementHandle, Page} from 'puppeteer';
 
 import path from 'path';
 import {config, utils} from '@memlab/core';
@@ -37,7 +37,9 @@ class UploadOperation extends BaseOperation {
   async act(page: Page): Promise<void> {
     this.log(`uploading file ${this.file}...`);
 
-    const uploadHandle = await page.$(this.selector);
+    const uploadHandle = (await page.$(
+      this.selector,
+    )) as ElementHandle<HTMLInputElement>;
     if (!uploadHandle) {
       throw utils.haltOrThrow(
         `upload failed, selector not found: ${this.selector}`,

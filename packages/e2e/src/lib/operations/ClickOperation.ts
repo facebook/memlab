@@ -8,7 +8,7 @@
  * @oncall web_perf_infra
  */
 
-import type {Page} from 'puppeteer';
+import type {ElementHandle, Page} from 'puppeteer';
 import type {AnyOptions, Optional} from '@memlab/core';
 
 import {info, config, utils} from '@memlab/core';
@@ -106,7 +106,7 @@ class ClickOperation extends BaseOperation {
     if (idx < 0 || idx >= elems.length) {
       utils.haltOrThrow(`clicking ${idx + 1}-th element, which doesn't exist`);
     }
-    await elems[idx].click({clickCount});
+    await (elems[idx] as ElementHandle<Element>).click({clickCount});
     await Promise.all(elems.map(e => e.dispose()));
   }
 

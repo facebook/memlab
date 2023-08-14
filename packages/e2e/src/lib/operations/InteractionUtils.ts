@@ -214,7 +214,7 @@ async function getElementsContainingText(
 ): Promise<ElementHandle<Element>[]> {
   const xpath = `//*[not(self::script)][contains(text(), '${text}')]`;
   const elements = await page.$x(xpath);
-  return elements;
+  return elements as ElementHandle<Element>[];
 }
 
 export default {
