@@ -21,7 +21,7 @@ async function action(page) {
 
 // action where we want to go back to the step before
 async function back(page) {
-  await page.click('[aria-label="Clear search"]');
+  await page.click('[aria-label="Close"]');
 }
 
 // specify the number of repeat for the action

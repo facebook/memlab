@@ -45,7 +45,7 @@ async function action(page) {
   await page.click('button[aria-label="Hotels"]');
 }
 async function back(page) {
-  await page.click('[aria-label="Clear search"]');
+  await page.click('[aria-label="Close"]');
 }
 
 module.exports = {action, back, url};`}

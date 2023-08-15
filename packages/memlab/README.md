@@ -50,7 +50,7 @@ async function action(page) {
 // action where we want to go back to the step before: click clear search
 async function back(page) {
   // puppeteer page API
-  await page.click('[aria-label="Clear search"]');
+  await page.click('[aria-label="Close"]');
 }
 
 module.exports = {action, back, url};
@@ -161,7 +161,7 @@ const scenario = {
     action: async (page) => await page.click('button[aria-label="Hotels"]'),
 
     // action where we want to go back to the step before
-    back: async (page) => await page.click('[aria-label="Clear search"]'),
+    back: async (page) => await page.click('[aria-label="Close"]'),
 }
 memlab.run({scenario});
 ```
