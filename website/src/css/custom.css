@@ -148,6 +148,7 @@ code {
 
 #learn-more {
   color: black;
+  backdrop-filter: blur(10px);
 }
 
 #header-container {
@@ -170,6 +171,7 @@ code {
   padding-top: 16px;
   padding-bottom: 0px;
   background: linear-gradient(#ffe53b, #dac540);
+  border-bottom: 1px solid black;
 }
 
 
