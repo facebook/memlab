@@ -9,6 +9,7 @@ custom_edit_url: null
 ## Classes
 
 - [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md)
+- [SnapshotResultReader](../classes/api_src.SnapshotResultReader.md)
 
 ## Type Aliases
 
@@ -27,7 +28,7 @@ Options for configuring browser interaction run, all fields are optional
 | `workDir?` | `string` | specify the working directory where you want memlab to dump heap snapshots and other meta data of the test run. If no working directory is provided, memlab will generate a random temp directory under the operating system's default directory for temporary files. Note: It's the caller's responsibility to make sure the specified working directory exists. |
 
  * **Source**:
-    * api/src/API.ts:44
+    * api/src/API.ts:45
 
 ___
 
@@ -41,7 +42,7 @@ A data structure holding the result of the [run](api_src.md#run) API call.
 | `runResult` | [`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md) | a utility for reading browser interaction results from disk |
 
  * **Source**:
-    * api/src/API.ts:89
+    * api/src/API.ts:90
 
 ## Functions
 
@@ -51,7 +52,7 @@ This API analyzes heap snapshot(s) with a specified heap analysis.
 This is equivalent to `memlab analyze` in CLI.
 
  * **Parameters**:
-    * `runResult`: [`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md) | return value of a browser interaction run
+    * `runResult`: `default` | return value of a browser interaction run
     * `heapAnalyzer`: `BaseAnalysis` | instance of a heap analysis
     * `args`: `ParsedArgs` | other CLI arguments that needs to be passed to the heap analysis
  * **Returns**: `Promise`<`void`\> | each analysis may have a different return type, please check out
@@ -72,7 +73,7 @@ const {analyze, takeSnapshots, StringAnalysis} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:294
+    * api/src/API.ts:295
 
 ___
 
@@ -82,7 +83,7 @@ This API finds memory leaks by analyzing heap snapshot(s).
 This is equivalent to `memlab find-leaks` in CLI.
 
  * **Parameters**:
-    * `runResult`: [`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md) | return value of a browser interaction run
+    * `runResult`: `default` | return value of a browser interaction run
  * **Returns**: `Promise`<`ISerializedInfo`[]\> | leak traces detected and clustered from the browser interaction
 * **Examples**:
 ```javascript
@@ -98,7 +99,7 @@ const {findLeaks, takeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:232
+    * api/src/API.ts:233
 
 ___
 
@@ -117,7 +118,7 @@ the `--baseline`, `--target`, and `--final` flags in CLI.
  * **Returns**: `Promise`<`ISerializedInfo`[]\> | leak traces detected and clustered from the browser interaction
 
  * **Source**:
-    * api/src/API.ts:253
+    * api/src/API.ts:254
 
 ___
 
@@ -145,7 +146,7 @@ const {run} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:168
+    * api/src/API.ts:169
 
 ___
 
@@ -170,7 +171,7 @@ const {takeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:201
+    * api/src/API.ts:202
 
 ___
 
@@ -196,4 +197,4 @@ const {warmupAndTakeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:132
+    * api/src/API.ts:133

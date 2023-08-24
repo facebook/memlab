@@ -1520,7 +1520,9 @@ function getSnapshotFilePath(
   options: {workDir?: string} = {},
 ): string {
   if (tab.snapshotFile) {
-    return path.join(fileManager.getCurDataDir(options), tab.snapshotFile);
+    return path.isAbsolute(tab.snapshotFile)
+      ? tab.snapshotFile
+      : path.join(fileManager.getCurDataDir(options), tab.snapshotFile);
   }
   const fileName = `s${tab.idx}.heapsnapshot`;
   if (options.workDir) {

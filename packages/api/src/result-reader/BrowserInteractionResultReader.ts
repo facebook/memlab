@@ -18,7 +18,7 @@ import BaseResultReader from './BaseResultReader';
 /**
  * A utility entity to read all generated files from
  * the directory holding the data and results from the
- * last browser interaction run
+ * last MemLab browser interaction run
  */
 export default class BrowserInteractionResultReader extends BaseResultReader {
   /**

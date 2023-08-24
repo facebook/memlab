@@ -57,6 +57,8 @@ export {default as NormalizedTrace} from './trace-cluster/TraceBucket';
 /** @internal */
 export {default as EvaluationMetric} from './trace-cluster/EvalutationMetric';
 /** @internal */
+export {RunMetaInfoManager} from './lib/RunInfoUtils';
+/** @internal */
 export * from './lib/PackageInfoLoader';
 /** @internal */
 export {default as SequentialClustering} from './trace-cluster/SequentialClustering';

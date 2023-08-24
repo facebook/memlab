@@ -12,8 +12,9 @@
 
 import fs from 'fs';
 import BrowserInteractionResultReader from '../../result-reader/BrowserInteractionResultReader';
-import {warmupAndTakeSnapshots} from '../../index';
+import {findLeaks, warmupAndTakeSnapshots} from '../../index';
 import {scenario, testSetup, testTimeout} from './lib/E2ETestSettings';
+import SnapshotResultReader from '../../result-reader/SnapshotResultReader';
 
 beforeEach(testSetup);
 
@@ -75,6 +76,54 @@ test(
     checkResultReader(
       BrowserInteractionResultReader.from(result.getRootDirectory()),
     );
+  },
+  testTimeout,
+);
+
+function injectDetachedDOMElements() {
+  // @ts-ignore
+  window.injectHookForLink4 = () => {
+    class TestObject {
+      key: 'value';
+    }
+    const arr = [];
+    for (let i = 0; i < 23; ++i) {
+      arr.push(document.createElement('div'));
+    }
+    // @ts-ignore
+    window.__injectedValue = arr;
+    // @ts-ignore
+    window._path_1 = {x: {y: document.createElement('div')}};
+    // @ts-ignore
+    window._path_2 = new Set([document.createElement('div')]);
+    // @ts-ignore
+    window._randomObject = [new TestObject()];
+  };
+}
+
+test(
+  'SnapshotResultReader is working as expected',
+  async () => {
+    const result = await warmupAndTakeSnapshots({
+      scenario,
+      evalInBrowserAfterInitLoad: injectDetachedDOMElements,
+    });
+    const snapshotFiles = result.getSnapshotFiles();
+    expect(snapshotFiles.length).toBe(3);
+    const reader = SnapshotResultReader.fromSnapshots(
+      snapshotFiles[0],
+      snapshotFiles[1],
+      snapshotFiles[2],
+    );
+    const leaks = await findLeaks(reader);
+    // detected all different leak trace cluster
+    expect(leaks.length >= 1).toBe(true);
+    // expect all traces are found
+    expect(
+      leaks.some(leak => JSON.stringify(leak).includes('__injectedValue')),
+    );
+    expect(leaks.some(leak => JSON.stringify(leak).includes('_path_1')));
+    expect(leaks.some(leak => JSON.stringify(leak).includes('_path_2')));
   },
   testTimeout,
 );

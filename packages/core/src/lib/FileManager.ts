@@ -528,6 +528,36 @@ export class FileManager {
     );
   }
 
+  /**
+   * create visit order data structure based on specified
+   * baseline, target, and final heap snapshots
+   */
+  public createVisitOrderWithSnapshots(
+    baselineSnapshot: string,
+    targetSnapshot: string,
+    finalSnapshot: string,
+  ): E2EStepInfo[] {
+    const snapshotTemplateFile = this.getSnapshotSequenceExternalTemplateFile();
+    const visitOrder = JSON.parse(
+      fs.readFileSync(snapshotTemplateFile, 'UTF-8'),
+    ) as E2EStepInfo[];
+    // fill in snapshot file name for each entry with snapshot: true
+    visitOrder.forEach(step => {
+      switch (step.name) {
+        case 'baseline':
+          step.snapshotFile = baselineSnapshot;
+          break;
+        case 'target':
+          step.snapshotFile = targetSnapshot;
+          break;
+        case 'final':
+          step.snapshotFile = finalSnapshot;
+          break;
+      }
+    });
+    return visitOrder;
+  }
+
   public initDirs(
     config: MemLabConfig,
     options: FileOption = FileManager.defaultFileOption,

@@ -37,6 +37,7 @@ import {
 import {BaseAnalysis} from '@memlab/heap-analysis';
 import APIUtils from './lib/APIUtils';
 import BrowserInteractionResultReader from './result-reader/BrowserInteractionResultReader';
+import BaseResultReader from './result-reader/BaseResultReader';
 
 /**
  * Options for configuring browser interaction run, all fields are optional
@@ -230,7 +231,7 @@ export async function takeSnapshots(
  * ```
  */
 export async function findLeaks(
-  runResult: BrowserInteractionResultReader,
+  runResult: BaseResultReader,
 ): Promise<ISerializedInfo[]> {
   const workDir = runResult.getRootDirectory();
   fileManager.initDirs(defaultConfig, {workDir});
@@ -292,7 +293,7 @@ export async function findLeaksBySnapshotFilePaths(
  * ```
  */
 export async function analyze(
-  runResult: BrowserInteractionResultReader,
+  runResult: BaseResultReader,
   heapAnalyzer: BaseAnalysis,
   args: ParsedArgs = {_: []},
 ): Promise<void> {
