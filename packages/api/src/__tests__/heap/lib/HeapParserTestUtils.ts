@@ -63,6 +63,7 @@ async function dumpHeap(
   snapshotFile: string,
   leakInjector: () => void,
 ): Promise<void> {
+  utils.tryToMutePuppeteerWarning();
   const browser = await puppeteer.launch(config.puppeteerConfig);
   const page = await browser.newPage();
   // set page size

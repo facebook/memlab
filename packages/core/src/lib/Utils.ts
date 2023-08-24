@@ -2092,6 +2092,16 @@ function objectToMap(object: StringRecord): Map<string, string> {
   return ret;
 }
 
+function tryToMutePuppeteerWarning() {
+  if (process.env['PUPPETEER_DISABLE_HEADLESS_WARNING'] == null) {
+    info.lowLevel(
+      'Setting env variable PUPPETEER_DISABLE_HEADLESS_WARNING=1 ' +
+        'to mute puppeteer warnings.',
+    );
+    process.env['PUPPETEER_DISABLE_HEADLESS_WARNING'] = '1';
+  }
+}
+
 export default {
   aggregateDominatorMetrics,
   applyToNodes,
@@ -2203,5 +2213,6 @@ export default {
   shouldShowMoreInfo,
   shuffleArray,
   throwError,
+  tryToMutePuppeteerWarning,
   upperCaseFirstCharacter,
 };

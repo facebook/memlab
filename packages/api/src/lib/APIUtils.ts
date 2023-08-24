@@ -24,6 +24,7 @@ async function getBrowser(
 ): Promise<Browser> {
   const runConfig = options.config ?? config;
   let browser: Browser;
+  utils.tryToMutePuppeteerWarning();
   if (runConfig.isLocalPuppeteer && !options.warmup) {
     try {
       browser = await puppeteer.connect({
