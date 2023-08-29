@@ -2093,13 +2093,16 @@ function objectToMap(object: StringRecord): Map<string, string> {
 }
 
 function tryToMutePuppeteerWarning() {
-  if (process.env['PUPPETEER_DISABLE_HEADLESS_WARNING'] == null) {
+  if (process.env['PUPPETEER_DISABLE_HEADLESS_WARNING'] != null) {
+    return;
+  }
+  if (config.verbose) {
     info.lowLevel(
       'Setting env variable PUPPETEER_DISABLE_HEADLESS_WARNING=1 ' +
         'to mute puppeteer warnings.',
     );
-    process.env['PUPPETEER_DISABLE_HEADLESS_WARNING'] = '1';
   }
+  process.env['PUPPETEER_DISABLE_HEADLESS_WARNING'] = '1';
 }
 
 export default {
