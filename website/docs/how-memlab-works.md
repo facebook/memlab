@@ -12,14 +12,23 @@ following order:
    heap snapshot named `SBP`
    *(the baseline page is specified by the **`url`**
    callback in [test scenario](api/interfaces/core_src.IScenario.md))*
- * Visit the target page `TP` and take another heap snapshot `STP`
-   *(the target interactions are specified by the **`action`**
+ * Visit the target page `TP` or trigger the target interactions and take
+   another heap snapshot `STP`
+   *(navigating to the target page or triggering the target interactions are
+   specified by the **`action`** callback in
+   [test scenario](api/interfaces/core_src.IScenario.md))*
+ * Finally, navigate to a different page or use any in-page interaction to
+   trigger the releasing of memory that is supposed to be released from the
+   target page. Here we reach the final state (`FP`), and take the final heap
+   snapshot `SFP`.
+   For example, in this step, you can close the widget opened by the target
+   interactions, or return to the baseline page.
+   *(the final navigation or interaction is specified by the **`back`**
    callback in [test scenario](api/interfaces/core_src.IScenario.md))*
- * Finally, come back to the baseline page (`BP`), and take the last
-   heap snapshot `SBP'`. With these heap snapshots, memlab finds memory
-   leaks as explained in the next section.
-   *(the final page is specified by the **`back`**
-   callback in [test scenario](api/interfaces/core_src.IScenario.md))*
+
+
+With these heap snapshots, memlab finds memory leaks as explained
+in the next section.
 
 ## 2. Heap Analysis
 
@@ -31,18 +40,18 @@ querying JavaScript heap.
 be derived as follows:
 
 ```math
-(STP \ SBP) ∩ SBP'
+(STP \ SBP) ∩ SFP
 ```
 
 MemLab first gets a set of allocated objects in `TP` (target interaction)
 by excluding `SBP`'s objects (object allocated from the baseline page)
 from `STP` (target heap snapshot).
 
-Then it takes an intersection with objects in `SBP'` (object remaining on the
+Then it takes an intersection with objects in `FP` (object remaining on the
 final page) to get objects that:
 
  1. are allocated from target interaction (`TP`)
- 2. but remain alive after memlab navigates from it.
+ 2. but remain alive when those objects are supposed to be released.
 
 The built-in leak detectors use domain-specific heuristics to further refine
 the list of leaked objects (e.g., detached DOM elements, error stack trace, etc.
