@@ -30,6 +30,8 @@ export type Nullable<T> = T | null;
 /** @internal */
 export type Optional<T> = Nullable<T> | undefined;
 /** @internal */
+export type Undefinable<T> = T | undefined;
+/** @internal */
 export type AnyRecord = Record<string, RecordValue>;
 /** @internal */
 export type StringRecord = Record<string, string>;
@@ -184,12 +186,23 @@ export type Predicator<T> = (entity: T) => boolean;
 
 /**
  * Data structure for holding cookies.
+ * The `name` and `value` field is mandatory.
+ * It is better to also specify the `domain` field, otherwise MemLab
+ * will try to infer `domain` automatically.
+ * The other fields are optional.
  * For concrete example, check out {@link cookies}.
  */
 export type Cookies = Array<{
   name: string;
   value: string;
   domain?: string;
+  url?: Undefinable<string>;
+  path?: Undefinable<string>;
+  expires?: Undefinable<number>;
+  httpOnly?: Undefinable<boolean>;
+  session?: Undefinable<boolean>;
+  secure?: Undefinable<boolean>;
+  sameSite?: Undefinable<'Strict' | 'Lax'>;
 }>;
 
 /** @internal */

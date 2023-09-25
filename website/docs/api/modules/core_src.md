@@ -34,17 +34,21 @@ this callback until it returns `true`. This is an async callback, you can
 also `await` and returns `true` until some async logic is resolved.
 
  * **Source**:
-    * core/src/lib/Types.ts:922
+    * core/src/lib/Types.ts:935
 
 ___
 
-### <a id="cookies" name="cookies"></a> **Cookies**: { `domain?`: `string` ; `name`: `string` ; `value`: `string`  }[]
+### <a id="cookies" name="cookies"></a> **Cookies**: { `domain?`: `string` ; `expires?`: `Undefinable`<`number`\> ; `httpOnly?`: `Undefinable`<`boolean`\> ; `name`: `string` ; `path?`: `Undefinable`<`string`\> ; `sameSite?`: `Undefinable`<``"Strict"`` \| ``"Lax"``\> ; `secure?`: `Undefinable`<`boolean`\> ; `session?`: `Undefinable`<`boolean`\> ; `url?`: `Undefinable`<`string`\> ; `value`: `string`  }[]
 
 Data structure for holding cookies.
+The `name` and `value` field is mandatory.
+It is better to also specify the `domain` field, otherwise MemLab
+will try to infer `domain` automatically.
+The other fields are optional.
 For concrete example, check out [cookies](../interfaces/core_src.IScenario.md#cookies).
 
  * **Source**:
-    * core/src/lib/Types.ts:189
+    * core/src/lib/Types.ts:195
 
 ___
 
@@ -59,7 +63,7 @@ or [forEachReferrer](../interfaces/core_src.IHeapNode.md#foreachreferrer).
  * **Returns**: `Optional`<{ `stop`: `boolean`  }\> \| `void` | this API returns void
 
  * **Source**:
-    * core/src/lib/Types.ts:1477
+    * core/src/lib/Types.ts:1490
 
 ___
 
@@ -75,7 +79,7 @@ For concrete example, check out [beforeLeakFilter](../interfaces/core_src.ILeakF
  * **Returns**: `void`
 
  * **Source**:
-    * core/src/lib/Types.ts:414
+    * core/src/lib/Types.ts:427
 
 ___
 
@@ -91,7 +95,7 @@ For concrete examples, check out [action](../interfaces/core_src.IScenario.md#ac
  * **Returns**: `Promise`<`void`\> | no return value
 
  * **Source**:
-    * core/src/lib/Types.ts:457
+    * core/src/lib/Types.ts:470
 
 ___
 
@@ -119,7 +123,7 @@ function leakFilter(node, _snapshot, _leakedNodeIds) {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:441
+    * core/src/lib/Types.ts:454
 
 ___
 
@@ -175,7 +179,7 @@ const runOptions: RunOptions = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:170
+    * core/src/lib/Types.ts:172
 
 ___
 
@@ -198,7 +202,7 @@ and [findReferrers](../interfaces/core_src.IHeapNode.md#findreferrers).
  * **Returns**: `boolean` | whether the entity passes the predicate check
 
  * **Source**:
-    * core/src/lib/Types.ts:183
+    * core/src/lib/Types.ts:185
 
 ___
 
@@ -213,7 +217,7 @@ You can retrieve the instance of this type through [getRunMetaInfo](../classes/a
 | `type` | `string` | type of the memlab run |
 
  * **Source**:
-    * core/src/lib/Types.ts:1003
+    * core/src/lib/Types.ts:1016
 
 ## Functions
 
