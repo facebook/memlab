@@ -421,11 +421,11 @@ export default class E2EInteractionManager {
     checkLastSnapshotChunk(lastChunk);
     session.removeListener(
       'HeapProfiler.addHeapSnapshotChunk',
-      dataHandler as AnyValue,
+      dataHandler,
     );
     session.removeListener(
       'HeapProfiler.reportHeapSnapshotProgress',
-      progressHandler,
+      progressHandler as AnyValue,
     );
     writeStream.end();
   }
