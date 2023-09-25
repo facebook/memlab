@@ -586,7 +586,13 @@ function markDetachedFiberNode(node: IHeapNode): boolean {
     // if a Fiber node whose dominator is neither root nor
     // another Fiber node, then consider it as detached Fiber node
     if (cur.dominatorNode && cur.dominatorNode.id !== 1) {
-      if (!isFiberNode(cur.dominatorNode)) {
+      if (
+        isDOMNodeIncomplete(cur.dominatorNode) &&
+        !isDetachedDOMNode(cur.dominatorNode)
+      ) {
+        // skip the direct marking of detached DOM nodes here
+        // if the Fiber Node is dominated by an attached DOM element
+      } else if (!isFiberNode(cur.dominatorNode)) {
         cur.markAsDetached();
       }
     }
