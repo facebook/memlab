@@ -394,11 +394,10 @@ export default class E2EInteractionManager {
       lastChunk = data.chunk;
     };
 
-    // TODO: update type definition
     const progressHandler = (data: {
       done: number;
       total: number;
-      finished: boolean;
+      finished?: boolean;
     }) => {
       const percent = ((100 * data.done) / data.total) | 0;
       if (!config.isContinuousTest) {
@@ -407,10 +406,7 @@ export default class E2EInteractionManager {
     };
 
     session.on('HeapProfiler.addHeapSnapshotChunk', dataHandler);
-    session.on(
-      'HeapProfiler.reportHeapSnapshotProgress',
-      progressHandler as AnyValue,
-    );
+    session.on('HeapProfiler.reportHeapSnapshotProgress', progressHandler);
 
     // start taking heap snapshot
     await session.send('HeapProfiler.takeHeapSnapshot', {
@@ -422,7 +418,7 @@ export default class E2EInteractionManager {
     session.removeListener('HeapProfiler.addHeapSnapshotChunk', dataHandler);
     session.removeListener(
       'HeapProfiler.reportHeapSnapshotProgress',
-      progressHandler as AnyValue,
+      progressHandler,
     );
     writeStream.end();
   }
