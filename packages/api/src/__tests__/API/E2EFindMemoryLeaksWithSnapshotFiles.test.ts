@@ -57,7 +57,7 @@ test(
       newSnapshotFiles.push(newFile);
       fs.moveSync(file, newFile);
     });
-    fs.rmdirSync(result.getRootDirectory(), {recursive: true});
+    fs.removeSync(result.getRootDirectory());
 
     // find memory leaks with the new snapshot files
     const leaks = await findLeaksBySnapshotFilePaths(
@@ -76,7 +76,7 @@ test(
     expect(leaks.some(leak => JSON.stringify(leak).includes('_path_2')));
 
     // finally clean up the temporary directory
-    fs.rmdirSync(tmpDir, {recursive: true});
+    fs.removeSync(tmpDir);
   },
   testTimeout,
 );
