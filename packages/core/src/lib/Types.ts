@@ -25,12 +25,24 @@ export type RecordValue =
   | RecordValue[]
   | {[key: string]: RecordValue};
 
-/** @internal */
+/**
+ * Given any type `T`, return the union type `T` and `null`
+ * @typeParam T - The type that will be made nullable.
+ */
 export type Nullable<T> = T | null;
-/** @internal */
-export type Optional<T> = Nullable<T> | undefined;
-/** @internal */
+
+/**
+ * Given any type `T`, return the union type `T`, `null`, and `undefined`.
+ * @typeParam T - The type that will be made both nullable and undefinable.
+ */
+export type Optional<T> = T | null | undefined;
+
+/**
+ * Given any type `T`, return the union type `T` and `undefined`.
+ * @typeParam T - The type that will be made undefinable.
+ */
 export type Undefinable<T> = T | undefined;
+
 /** @internal */
 export type AnyRecord = Record<string, RecordValue>;
 /** @internal */
@@ -186,24 +198,49 @@ export type Predicator<T> = (entity: T) => boolean;
 
 /**
  * Data structure for holding cookies.
+ * For concrete use case, please check out {@link cookies}.
+ */
+export type Cookies = Array<Cookie>;
+
+/**
+ * A single cookie entry in a Cookies list.
  * The `name` and `value` field is mandatory.
  * It is better to also specify the `domain` field, otherwise MemLab
  * will try to infer `domain` automatically.
  * The other fields are optional.
- * For concrete example, check out {@link cookies}.
+ * For concrete use case, please check out {@link cookies}.
  */
-export type Cookies = Array<{
+export type Cookie = {
+  /** Mandatory: Represents the name of the cookie */
   name: string;
+  /** Mandatory: Represents the value assigned to the cookie */
   value: string;
+  /** Add when possible: Defines the domain associated with the cookie */
   domain?: string;
+  /**
+   * Optional: Specifies the request-URI linked with the cookie setup.
+   * This can influence the cookie's default domain and path
+   */
   url?: Undefinable<string>;
+  /** Optional: Defines the domain associated with the cookie */
   path?: Undefinable<string>;
+  /** Optional: Indicates when the cookie will expire, in Unix time (seconds) */
   expires?: Undefinable<number>;
+  /** Optional: Flag to determine if the cookie is accessible only over HTTP */
   httpOnly?: Undefinable<boolean>;
+  /** Optional: Flag to check if the cookie is a session cookie */
   session?: Undefinable<boolean>;
+  /**
+   * Optional: Flag to indicate if the cookie transmission
+   * requires a secure protocol (e.g., HTTPS)
+   */
   secure?: Undefinable<boolean>;
+  /**
+   * Optional: Determines if a cookie is transmitted with cross-site requests,
+   * offering a degree of defense against cross-site request forgery attacks.
+   */
   sameSite?: Undefinable<'Strict' | 'Lax'>;
-}>;
+};
 
 /** @internal */
 export interface IE2EScenarioSynthesizer {

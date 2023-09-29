@@ -42,7 +42,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 ## Properties
 
-### <a id="dominatornode" name="dominatornode"></a> **dominatorNode**: `Nullable`<[`IHeapNode`](core_src.IHeapNode.md)\>
+### <a id="dominatornode" name="dominatornode"></a> **dominatorNode**: [`Nullable`](../modules/core_src.md#nullable)<[`IHeapNode`](core_src.IHeapNode.md)\>
 
 get the dominator node of this node. If the dominator node gets released
 there will be no path from GC to this node, and therefore this node can
@@ -51,7 +51,7 @@ For more information on what a dominator node is, please check out
 [this doc](https://developer.chrome.com/docs/devtools/memory-problems/memory-101/#dominators).
 
  * **Source**:
-    * core/src/lib/Types.ts:1599
+    * core/src/lib/Types.ts:1636
 
 ___
 
@@ -61,7 +61,7 @@ The total number of outgoing JS references (including engine-internal,
 native, and JS references).
 
  * **Source**:
-    * core/src/lib/Types.ts:1553
+    * core/src/lib/Types.ts:1590
 
 ___
 
@@ -71,7 +71,7 @@ returns true if the heap node has been set an incoming edge
 which leads to the parent node on the shortest path to GC root.
 
  * **Source**:
-    * core/src/lib/Types.ts:1575
+    * core/src/lib/Types.ts:1612
 
 ___
 
@@ -80,7 +80,7 @@ ___
 unique id of the heap object
 
  * **Source**:
-    * core/src/lib/Types.ts:1480
+    * core/src/lib/Types.ts:1517
 
 ___
 
@@ -90,7 +90,7 @@ check if this a string node (normal string node, concatenated string node
 or sliced string node)
 
  * **Source**:
-    * core/src/lib/Types.ts:1611
+    * core/src/lib/Types.ts:1648
 
 ___
 
@@ -103,17 +103,17 @@ from the React Fiber tree, `is_detached` will be `true`;
 otherwise it will be `false`
 
  * **Source**:
-    * core/src/lib/Types.ts:1535
+    * core/src/lib/Types.ts:1572
 
 ___
 
-### <a id="location" name="location"></a> **location**: `Nullable`<[`IHeapLocation`](core_src.IHeapLocation.md)\>
+### <a id="location" name="location"></a> **location**: [`Nullable`](../modules/core_src.md#nullable)<[`IHeapLocation`](core_src.IHeapLocation.md)\>
 
 source location information of this heap object (if it is recorded by
 the heap snapshot).
 
  * **Source**:
-    * core/src/lib/Types.ts:1604
+    * core/src/lib/Types.ts:1641
 
 ___
 
@@ -124,7 +124,7 @@ for JS object instances (type `object`), `name` is the constructor's name
 of the object instance. for `string`, `name` is the string value.
 
  * **Source**:
-    * core/src/lib/Types.ts:1476
+    * core/src/lib/Types.ts:1513
 
 ___
 
@@ -133,7 +133,7 @@ ___
 index of this heap object inside the `node.snapshot.nodes` pseudo array
 
  * **Source**:
-    * core/src/lib/Types.ts:1584
+    * core/src/lib/Types.ts:1621
 
 ___
 
@@ -143,7 +143,7 @@ Get the number of all incoming references pointing to this heap object
 (including engine-internal, native, and JS references).
 
  * **Source**:
-    * core/src/lib/Types.ts:1570
+    * core/src/lib/Types.ts:1607
 
 ___
 
@@ -153,7 +153,7 @@ The incoming edge which leads to the parent node
 on the shortest path to GC root.
 
  * **Source**:
-    * core/src/lib/Types.ts:1580
+    * core/src/lib/Types.ts:1617
 
 ___
 
@@ -163,7 +163,7 @@ Get a JS array containing all outgoing JS references from this heap object
 (including engine-internal, native, and JS references).
 
  * **Source**:
-    * core/src/lib/Types.ts:1560
+    * core/src/lib/Types.ts:1597
 
 ___
 
@@ -173,7 +173,7 @@ Get a JS array containing all incoming JS references pointing to this heap
 object (including engine-internal, native, and JS references).
 
  * **Source**:
-    * core/src/lib/Types.ts:1565
+    * core/src/lib/Types.ts:1602
 
 ___
 
@@ -185,7 +185,7 @@ could be released if this object is released). For difference between
 [this doc](https://developer.chrome.com/docs/devtools/memory-problems/memory-101/#object_sizes).
 
  * **Source**:
-    * core/src/lib/Types.ts:1591
+    * core/src/lib/Types.ts:1628
 
 ___
 
@@ -197,7 +197,7 @@ by the object itself.). For difference between **shallow size** and
 [this doc](https://developer.chrome.com/docs/devtools/memory-problems/memory-101/#object_sizes).
 
  * **Source**:
-    * core/src/lib/Types.ts:1548
+    * core/src/lib/Types.ts:1585
 
 ___
 
@@ -206,7 +206,7 @@ ___
 get the [IHeapSnapshot](core_src.IHeapSnapshot.md) containing this heap object
 
  * **Source**:
-    * core/src/lib/Types.ts:1527
+    * core/src/lib/Types.ts:1564
 
 ___
 
@@ -216,7 +216,7 @@ get the string value of the JS string heap object associated with
 this `IHeapStringNode` instance in heap
 
  * **Source**:
-    * core/src/lib/Types.ts:1909
+    * core/src/lib/Types.ts:1946
 
 ___
 
@@ -229,7 +229,7 @@ This is engine-specific, for example all types in V8:
 `symbol`, `bigint`
 
  * **Source**:
-    * core/src/lib/Types.ts:1470
+    * core/src/lib/Types.ts:1507
 
 ## Methods
 
@@ -241,7 +241,7 @@ returns `true`
 
  * **Parameters**:
     * `predicate`: [`Predicator`](../modules/core_src.md#predicator)<[`IHeapEdge`](core_src.IHeapEdge.md)\> | the callback for each outgoing JavaScript reference
- * **Returns**: `Nullable`<[`IHeapEdge`](core_src.IHeapEdge.md)\> | the first outgoing edge for which the predicate returns `true`,
+ * **Returns**: [`Nullable`](../modules/core_src.md#nullable)<[`IHeapEdge`](core_src.IHeapEdge.md)\> | the first outgoing edge for which the predicate returns `true`,
 otherwise returns `null` if no such edge is found.
 
 * **Examples**:
@@ -253,7 +253,7 @@ const reference = node.findAnyReference((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1680
+    * core/src/lib/Types.ts:1717
 
 ___
 
@@ -265,7 +265,7 @@ predicate returns `true`
 
  * **Parameters**:
     * `predicate`: [`Predicator`](../modules/core_src.md#predicator)<[`IHeapEdge`](core_src.IHeapEdge.md)\> | the callback for each incoming JavaScript reference
- * **Returns**: `Nullable`<[`IHeapEdge`](core_src.IHeapEdge.md)\> | the first incoming edge for which the predicate returns `true`,
+ * **Returns**: [`Nullable`](../modules/core_src.md#nullable)<[`IHeapEdge`](core_src.IHeapEdge.md)\> | the first incoming edge for which the predicate returns `true`,
 otherwise returns `null` if no such edge is found.
 
 * **Examples**:
@@ -277,7 +277,7 @@ const referrer = node.findAnyReferrer((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1697
+    * core/src/lib/Types.ts:1734
 
 ___
 
@@ -290,7 +290,7 @@ returns `true`
 
  * **Parameters**:
     * `predicate`: [`Predicator`](../modules/core_src.md#predicator)<[`IHeapNode`](core_src.IHeapNode.md)\> | the callback for each incoming JavaScript heap object
- * **Returns**: `Nullable`<[`IHeapNode`](core_src.IHeapNode.md)\> | the first referring node for which the predicate returns `true`,
+ * **Returns**: [`Nullable`](../modules/core_src.md#nullable)<[`IHeapNode`](core_src.IHeapNode.md)\> | the first referring node for which the predicate returns `true`,
 otherwise returns `null` if no such node is found.
 
 * **Examples**:
@@ -302,7 +302,7 @@ const referrer = node.findAnyReferrerNode((node: IHeapNode) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1715
+    * core/src/lib/Types.ts:1752
 
 ___
 
@@ -327,7 +327,7 @@ const referrerNodes = node.findReferrerNodes((node: IHeapNode) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1750
+    * core/src/lib/Types.ts:1787
 
 ___
 
@@ -351,7 +351,7 @@ const referrers = node.findReferrers((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1732
+    * core/src/lib/Types.ts:1769
 
 ___
 
@@ -376,7 +376,7 @@ node.forEachReference((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1645
+    * core/src/lib/Types.ts:1682
 
 ___
 
@@ -401,7 +401,7 @@ node.forEachReferrer((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1663
+    * core/src/lib/Types.ts:1700
 
 ___
 
@@ -413,7 +413,7 @@ reference pointing to the hosting node.
  * **Parameters**:
     * `edgeName`: `string` \| `number` | the name of the incoming JavaScript reference
     * `edgeType?`: `string` | optional parameter specifying the type of the incoming JavaScript reference
- * **Returns**: `Nullable`<[`IHeapEdge`](core_src.IHeapEdge.md)\> | the incoming edge that meets the specification
+ * **Returns**: [`Nullable`](../modules/core_src.md#nullable)<[`IHeapEdge`](core_src.IHeapEdge.md)\> | the incoming edge that meets the specification
 
 * **Examples**:
 ```typescript
@@ -422,7 +422,7 @@ const reference = node.getAnyReferrer('ref', 'property');
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1805
+    * core/src/lib/Types.ts:1842
 
 ___
 
@@ -435,7 +435,7 @@ containing the incoming reference.
  * **Parameters**:
     * `edgeName`: `string` \| `number` | the name of the incoming JavaScript reference
     * `edgeType?`: `string` | optional parameter specifying the type of the incoming JavaScript reference
- * **Returns**: `Nullable`<[`IHeapNode`](core_src.IHeapNode.md)\> | the node containing the incoming JS reference that meets
+ * **Returns**: [`Nullable`](../modules/core_src.md#nullable)<[`IHeapNode`](core_src.IHeapNode.md)\> | the node containing the incoming JS reference that meets
 the specification
 
 * **Examples**:
@@ -448,7 +448,7 @@ const n2 = node.getAnyReferrer('ref', 'property')?.fromNode;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1828
+    * core/src/lib/Types.ts:1865
 
 ___
 
@@ -460,7 +460,7 @@ reference from the hosting node.
  * **Parameters**:
     * `edgeName`: `string` \| `number` | the name of the outgoing JavaScript reference
     * `edgeType?`: `string` | optional parameter specifying the type of the outgoing JavaScript reference
- * **Returns**: `Nullable`<[`IHeapEdge`](core_src.IHeapEdge.md)\> | the outgoing edge that meets the specification
+ * **Returns**: [`Nullable`](../modules/core_src.md#nullable)<[`IHeapEdge`](core_src.IHeapEdge.md)\> | the outgoing edge that meets the specification
 
 * **Examples**:
 ```typescript
@@ -469,7 +469,7 @@ const reference = node.getReference('map', 'hidden');
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1765
+    * core/src/lib/Types.ts:1802
 
 ___
 
@@ -482,7 +482,7 @@ by the outgoing JS reference.
  * **Parameters**:
     * `edgeName`: `string` \| `number` | the name of the outgoing JavaScript reference
     * `edgeType?`: `string` | optional parameter specifying the type of the outgoing JavaScript reference
- * **Returns**: `Nullable`<[`IHeapNode`](core_src.IHeapNode.md)\> | the node pointed to by the outgoing reference that meets
+ * **Returns**: [`Nullable`](../modules/core_src.md#nullable)<[`IHeapNode`](core_src.IHeapNode.md)\> | the node pointed to by the outgoing reference that meets
 the specification
 
 * **Examples**:
@@ -494,7 +494,7 @@ const hiddenClassNode2 = node.getReference('map', 'hidden')?.toNode;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1787
+    * core/src/lib/Types.ts:1824
 
 ___
 
@@ -521,7 +521,7 @@ const nodes2 = node.getReferrers('ref', 'property')
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1868
+    * core/src/lib/Types.ts:1905
 
 ___
 
@@ -543,7 +543,7 @@ const referrers = node.getReferrers('ref', 'property');
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1847
+    * core/src/lib/Types.ts:1884
 
 ___
 
@@ -561,7 +561,7 @@ captured by the hosting object.
     * `...args`: `any`[]
  * **Returns**: `string`
  * **Source**:
-    * core/src/lib/Types.ts:1627
+    * core/src/lib/Types.ts:1664
 
 ___
 
@@ -571,6 +571,6 @@ convert to an [IHeapStringNode](core_src.IHeapStringNode.md) object if this node
 The [IHeapStringNode](core_src.IHeapStringNode.md) object supports querying the string content
 inside the string node.
 
- * **Returns**: `Nullable`<[`IHeapStringNode`](core_src.IHeapStringNode.md)\>
+ * **Returns**: [`Nullable`](../modules/core_src.md#nullable)<[`IHeapStringNode`](core_src.IHeapStringNode.md)\>
  * **Source**:
-    * core/src/lib/Types.ts:1617
+    * core/src/lib/Types.ts:1654

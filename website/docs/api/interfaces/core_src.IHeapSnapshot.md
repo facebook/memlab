@@ -39,7 +39,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1101
+    * core/src/lib/Types.ts:1138
 
 ___
 
@@ -70,7 +70,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1075
+    * core/src/lib/Types.ts:1112
 
 ## Methods
 
@@ -81,7 +81,7 @@ a specified constructor name (if there is any).
 
  * **Parameters**:
     * `className`: `string` | The constructor name of the object instance
- * **Returns**: `Nullable`<[`IHeapNode`](core_src.IHeapNode.md)\> | a handle pointing to any one of the object instances, returns
+ * **Returns**: [`Nullable`](../modules/core_src.md#nullable)<[`IHeapNode`](core_src.IHeapNode.md)\> | a handle pointing to any one of the object instances, returns
          `null` if no such object exists in the heap.
 
 * **Examples**:
@@ -105,7 +105,7 @@ class TestObject {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1190
+    * core/src/lib/Types.ts:1227
 
 ___
 
@@ -116,7 +116,7 @@ to get an [IHeapNode](core_src.IHeapNode.md) associated with the id.
 
  * **Parameters**:
     * `id`: `number` | id of the heap node (JS object in heap) you would like to query
- * **Returns**: `Nullable`<[`IHeapNode`](core_src.IHeapNode.md)\> | the API returns `null` if no heap object has the specified id.
+ * **Returns**: [`Nullable`](../modules/core_src.md#nullable)<[`IHeapNode`](core_src.IHeapNode.md)\> | the API returns `null` if no heap object has the specified id.
 
 * **Examples**:
 ```typescript
@@ -134,7 +134,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1123
+    * core/src/lib/Types.ts:1160
 
 ___
 
@@ -180,7 +180,7 @@ test('memory test with heap assertion', async () => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1162
+    * core/src/lib/Types.ts:1199
 
 ___
 
@@ -212,7 +212,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1216
+    * core/src/lib/Types.ts:1253
 
 ___
 
@@ -256,4 +256,4 @@ test('memory test', async () => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1254
+    * core/src/lib/Types.ts:1291

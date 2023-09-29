@@ -34,25 +34,48 @@ this callback until it returns `true`. This is an async callback, you can
 also `await` and returns `true` until some async logic is resolved.
 
  * **Source**:
-    * core/src/lib/Types.ts:935
+    * core/src/lib/Types.ts:972
 
 ___
 
-### <a id="cookies" name="cookies"></a> **Cookies**: { `domain?`: `string` ; `expires?`: `Undefinable`<`number`\> ; `httpOnly?`: `Undefinable`<`boolean`\> ; `name`: `string` ; `path?`: `Undefinable`<`string`\> ; `sameSite?`: `Undefinable`<``"Strict"`` \| ``"Lax"``\> ; `secure?`: `Undefinable`<`boolean`\> ; `session?`: `Undefinable`<`boolean`\> ; `url?`: `Undefinable`<`string`\> ; `value`: `string`  }[]
+### <a id="cookie" name="cookie"></a> **Cookie**: `Object`
 
-Data structure for holding cookies.
+A single cookie entry in a Cookies list.
 The `name` and `value` field is mandatory.
 It is better to also specify the `domain` field, otherwise MemLab
 will try to infer `domain` automatically.
 The other fields are optional.
-For concrete example, check out [cookies](../interfaces/core_src.IScenario.md#cookies).
+For concrete use case, please check out [cookies](../interfaces/core_src.IScenario.md#cookies).
+
+| Name | Type | Description |
+| :------ | :------ | :------ |
+| `domain?` | `string` | Add when possible: Defines the domain associated with the cookie |
+| `expires?` | [`Undefinable`](core_src.md#undefinable)<`number`\> | Optional: Indicates when the cookie will expire, in Unix time (seconds) |
+| `httpOnly?` | [`Undefinable`](core_src.md#undefinable)<`boolean`\> | Optional: Flag to determine if the cookie is accessible only over HTTP |
+| `name` | `string` | Mandatory: Represents the name of the cookie |
+| `path?` | [`Undefinable`](core_src.md#undefinable)<`string`\> | Optional: Defines the domain associated with the cookie |
+| `sameSite?` | [`Undefinable`](core_src.md#undefinable)<``"Strict"`` \| ``"Lax"``\> | Optional: Determines if a cookie is transmitted with cross-site requests, offering a degree of defense against cross-site request forgery attacks. |
+| `secure?` | [`Undefinable`](core_src.md#undefinable)<`boolean`\> | Optional: Flag to indicate if the cookie transmission requires a secure protocol (e.g., HTTPS) |
+| `session?` | [`Undefinable`](core_src.md#undefinable)<`boolean`\> | Optional: Flag to check if the cookie is a session cookie |
+| `url?` | [`Undefinable`](core_src.md#undefinable)<`string`\> | Optional: Specifies the request-URI linked with the cookie setup. This can influence the cookie's default domain and path |
+| `value` | `string` | Mandatory: Represents the value assigned to the cookie |
 
  * **Source**:
-    * core/src/lib/Types.ts:195
+    * core/src/lib/Types.ts:213
 
 ___
 
-### <a id="edgeiterationcallback" name="edgeiterationcallback"></a> **EdgeIterationCallback**: (`edge`: [`IHeapEdge`](../interfaces/core_src.IHeapEdge.md)) => `Optional`<{ `stop`: `boolean`  }\> \| `void`
+### <a id="cookies" name="cookies"></a> **Cookies**: [`Cookie`](core_src.md#cookie)[]
+
+Data structure for holding cookies.
+For concrete use case, please check out [cookies](../interfaces/core_src.IScenario.md#cookies).
+
+ * **Source**:
+    * core/src/lib/Types.ts:203
+
+___
+
+### <a id="edgeiterationcallback" name="edgeiterationcallback"></a> **EdgeIterationCallback**: (`edge`: [`IHeapEdge`](../interfaces/core_src.IHeapEdge.md)) => [`Optional`](core_src.md#optional)<{ `stop`: `boolean`  }\> \| `void`
 
 Executes a provided callback once for JavaScript references.
 For concrete examples, check out [forEachReference](../interfaces/core_src.IHeapNode.md#foreachreference)
@@ -60,10 +83,10 @@ or [forEachReferrer](../interfaces/core_src.IHeapNode.md#foreachreferrer).
 
  * **Parameters**:
     * `edge`: [`IHeapEdge`](../interfaces/core_src.IHeapEdge.md)
- * **Returns**: `Optional`<{ `stop`: `boolean`  }\> \| `void` | this API returns void
+ * **Returns**: [`Optional`](core_src.md#optional)<{ `stop`: `boolean`  }\> \| `void` | this API returns void
 
  * **Source**:
-    * core/src/lib/Types.ts:1490
+    * core/src/lib/Types.ts:1527
 
 ___
 
@@ -79,7 +102,7 @@ For concrete example, check out [beforeLeakFilter](../interfaces/core_src.ILeakF
  * **Returns**: `void`
 
  * **Source**:
-    * core/src/lib/Types.ts:427
+    * core/src/lib/Types.ts:464
 
 ___
 
@@ -95,7 +118,7 @@ For concrete examples, check out [action](../interfaces/core_src.IScenario.md#ac
  * **Returns**: `Promise`<`void`\> | no return value
 
  * **Source**:
-    * core/src/lib/Types.ts:470
+    * core/src/lib/Types.ts:507
 
 ___
 
@@ -123,7 +146,37 @@ function leakFilter(node, _snapshot, _leakedNodeIds) {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:454
+    * core/src/lib/Types.ts:491
+
+___
+
+### <a id="nullable" name="nullable"></a> **Nullable**<`T`\>: `T` \| ``null``
+
+Given any type `T`, return the union type `T` and `null`
+
+#### Type parameters
+
+| Name | Description |
+| :------ | :------ |
+| `T` | The type that will be made nullable. |
+
+ * **Source**:
+    * core/src/lib/Types.ts:32
+
+___
+
+### <a id="optional" name="optional"></a> **Optional**<`T`\>: `T` \| ``null`` \| `undefined`
+
+Given any type `T`, return the union type `T`, `null`, and `undefined`.
+
+#### Type parameters
+
+| Name | Description |
+| :------ | :------ |
+| `T` | The type that will be made both nullable and undefinable. |
+
+ * **Source**:
+    * core/src/lib/Types.ts:38
 
 ___
 
@@ -179,7 +232,7 @@ const runOptions: RunOptions = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:172
+    * core/src/lib/Types.ts:184
 
 ___
 
@@ -202,7 +255,7 @@ and [findReferrers](../interfaces/core_src.IHeapNode.md#findreferrers).
  * **Returns**: `boolean` | whether the entity passes the predicate check
 
  * **Source**:
-    * core/src/lib/Types.ts:185
+    * core/src/lib/Types.ts:197
 
 ___
 
@@ -217,7 +270,22 @@ You can retrieve the instance of this type through [getRunMetaInfo](../classes/a
 | `type` | `string` | type of the memlab run |
 
  * **Source**:
-    * core/src/lib/Types.ts:1016
+    * core/src/lib/Types.ts:1053
+
+___
+
+### <a id="undefinable" name="undefinable"></a> **Undefinable**<`T`\>: `T` \| `undefined`
+
+Given any type `T`, return the union type `T` and `undefined`.
+
+#### Type parameters
+
+| Name | Description |
+| :------ | :------ |
+| `T` | The type that will be made undefinable. |
+
+ * **Source**:
+    * core/src/lib/Types.ts:44
 
 ## Functions
 

@@ -41,7 +41,7 @@ The total number of edges in heap graph (or JS references in heap
 snapshot).
 
  * **Source**:
-    * core/src/lib/Types.ts:1442
+    * core/src/lib/Types.ts:1479
 
 ## Methods
 
@@ -54,7 +54,7 @@ to each element in ascending order of element index.
     * `callback`: (`edge`: [`IHeapEdge`](core_src.IHeapEdge.md), `index`: `number`) => `boolean` \| `void` | the callback does not need to return any value, if the callback returns `false` when iterating on element at index `i`, then all elements after `i` won't be iterated.
  * **Returns**: `void`
  * **Source**:
-    * core/src/lib/Types.ts:1458
+    * core/src/lib/Types.ts:1495
 
 ___
 
@@ -64,8 +64,8 @@ get an [IHeapEdge](core_src.IHeapEdge.md) element at the specified index
 
  * **Parameters**:
     * `index`: `number` | the index of an element in the pseudo array, the index ranges from 0 to array length - 1. Notice that this is not the heap node id.
- * **Returns**: `Nullable`<[`IHeapEdge`](core_src.IHeapEdge.md)\> | When 0 <= `index` < array.length, this API returns the element
+ * **Returns**: [`Nullable`](../modules/core_src.md#nullable)<[`IHeapEdge`](core_src.IHeapEdge.md)\> | When 0 <= `index` < array.length, this API returns the element
 at the specified index, otherwise it returns `null`.
 
  * **Source**:
-    * core/src/lib/Types.ts:1450
+    * core/src/lib/Types.ts:1487
