@@ -19,7 +19,10 @@ export default class LeakClusterSizeThresholdOption extends BaseOption {
   }
 
   getDescription(): string {
-    return 'ignore memory leaks with aggregated retained size smaller than the threshold';
+    return (
+      'ignore memory leaks with aggregated retained size ' +
+      'smaller than the threshold (in bytes)'
+    );
   }
 
   getExampleValues(): string[] {
