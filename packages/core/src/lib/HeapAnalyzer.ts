@@ -711,6 +711,7 @@ class MemoryAnalyst {
     const existingClusters = await clusterLogger.loadClusters(
       config.currentUniqueClusterDir,
     );
+    info.lowLevel(`Number of clusters loaded: ${existingClusters.length}`);
     // figure out stale and new clusters
     const clusterDiff = NormalizedTrace.diffClusters(
       clusters,
