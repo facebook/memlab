@@ -13,12 +13,12 @@ import type {IHeapNode} from '../../Types';
 
 import utils from '../../Utils';
 import {TraceObjectMode} from '../../Config';
-import {ILeakObjectFilterRule, LeakDecision} from '../BaseLeakFilter.rule';
+import {LeakDecision, LeakObjectFilterRuleBase} from '../BaseLeakFilter.rule';
 
 /**
  * trivial nodes are not reported as memory leaks
  */
-export class FilterOverSizedNodeAsLeakRule implements ILeakObjectFilterRule {
+export class FilterOverSizedNodeAsLeakRule extends LeakObjectFilterRuleBase {
   filter(config: MemLabConfig, node: IHeapNode): LeakDecision {
     if (config.oversizeObjectAsLeak) {
       // TODO: add support to skip this check

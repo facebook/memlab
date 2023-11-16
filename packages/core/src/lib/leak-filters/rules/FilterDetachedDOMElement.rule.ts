@@ -10,13 +10,13 @@
 
 import type {MemLabConfig} from '../../Config';
 import type {IHeapNode} from '../../Types';
-import {ILeakObjectFilterRule, LeakDecision} from '../BaseLeakFilter.rule';
+import {LeakDecision, LeakObjectFilterRuleBase} from '../BaseLeakFilter.rule';
 import utils from '../../Utils';
 
 /**
  * mark detached DOM elements as memory leaks
  */
-export class FilterDetachedDOMElementRule implements ILeakObjectFilterRule {
+export class FilterDetachedDOMElementRule extends LeakObjectFilterRuleBase {
   filter(_config: MemLabConfig, node: IHeapNode): LeakDecision {
     const isDetached = utils.isDetachedDOMNode(node, {
       ignoreInternalNode: true,

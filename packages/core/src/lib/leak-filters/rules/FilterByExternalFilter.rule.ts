@@ -11,12 +11,12 @@
 import type {MemLabConfig} from '../../Config';
 import type {HeapNodeIdSet, IHeapNode, IHeapSnapshot} from '../../Types';
 
-import {ILeakObjectFilterRule, LeakDecision} from '../BaseLeakFilter.rule';
+import {LeakDecision, LeakObjectFilterRuleBase} from '../BaseLeakFilter.rule';
 
 /**
  * filter memory leaks defined by external leak filter
  */
-export class FilterByExternalFilterRule implements ILeakObjectFilterRule {
+export class FilterByExternalFilterRule extends LeakObjectFilterRuleBase {
   filter(
     config: MemLabConfig,
     node: IHeapNode,

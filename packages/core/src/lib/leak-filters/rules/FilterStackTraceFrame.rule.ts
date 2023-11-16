@@ -11,13 +11,13 @@
 import type {MemLabConfig} from '../../Config';
 import type {IHeapNode} from '../../Types';
 
-import {ILeakObjectFilterRule, LeakDecision} from '../BaseLeakFilter.rule';
+import {LeakDecision, LeakObjectFilterRuleBase} from '../BaseLeakFilter.rule';
 import utils from '../../Utils';
 
 /**
  * stack trace frames as memory leaks
  */
-export class FilterStackTraceFrameRule implements ILeakObjectFilterRule {
+export class FilterStackTraceFrameRule extends LeakObjectFilterRuleBase {
   filter(_config: MemLabConfig, node: IHeapNode): LeakDecision {
     return utils.isStackTraceFrame(node)
       ? LeakDecision.LEAK

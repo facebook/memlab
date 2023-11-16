@@ -18,6 +18,15 @@ import rules from './LeakFilterRuleList';
  * if an object is a memory leak or not
  */
 export class LeakObjectFilter {
+  beforeFiltering(
+    config: MemLabConfig,
+    snapshot: IHeapSnapshot,
+    leakedNodeIds: HeapNodeIdSet,
+  ): void {
+    for (const rule of rules) {
+      rule.beforeFiltering(config, snapshot, leakedNodeIds);
+    }
+  }
   public filter(
     config: MemLabConfig,
     node: IHeapNode,

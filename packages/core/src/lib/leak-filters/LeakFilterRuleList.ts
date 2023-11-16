@@ -19,8 +19,10 @@ import {FilterStackTraceFrameRule} from './rules/FilterStackTraceFrame.rule';
 import {FilterTrivialNodeRule} from './rules/FilterTrivialNode.rule';
 import {FilterUnmountedFiberNodeRule} from './rules/FilterUnmountedFiberNode.rule';
 import {FilterXMLHTTPRequestRule} from './rules/FilterXMLHTTPRequest.rule';
+import {FilterUserTaggedLeaksRule} from './rules/FilterUserTaggedLeaks.rule';
 
 const list: ILeakObjectFilterRule[] = [
+  new FilterUserTaggedLeaksRule(),
   new FilterByExternalFilterRule(),
   new FilterTrivialNodeRule(),
   new FilterHermesNodeRule(),

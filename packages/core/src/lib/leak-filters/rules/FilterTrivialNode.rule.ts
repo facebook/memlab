@@ -10,13 +10,13 @@
 
 import type {MemLabConfig} from '../../Config';
 import type {IHeapNode} from '../../Types';
-import {ILeakObjectFilterRule, LeakDecision} from '../BaseLeakFilter.rule';
+import {LeakDecision, LeakObjectFilterRuleBase} from '../BaseLeakFilter.rule';
 import utils from '../../Utils';
 
 /**
  * trivial nodes are not reported as memory leaks
  */
-export class FilterTrivialNodeRule implements ILeakObjectFilterRule {
+export class FilterTrivialNodeRule extends LeakObjectFilterRuleBase {
   filter(config: MemLabConfig, node: IHeapNode): LeakDecision {
     return this.isTrivialNode(node)
       ? LeakDecision.NOT_LEAK

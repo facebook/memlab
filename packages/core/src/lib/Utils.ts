@@ -1675,7 +1675,10 @@ function isMeaningfulEdge(
     const index = edgeNameOrIndex;
     // only elements at particular indexes of (map descriptors) are holding
     // representative references to objects.
-    if (index >= 2 || (typeof index === 'number' && index % 3 === 1)) {
+    if (parseInt(index.toString(), 10) >= 2) {
+      return false;
+    }
+    if (typeof index === 'number' && index % 3 === 1) {
       return false;
     }
   }
@@ -2111,6 +2114,10 @@ function tryToMutePuppeteerWarning() {
   process.env['PUPPETEER_DISABLE_HEADLESS_WARNING'] = '1';
 }
 
+function isStandardNumberToString(input: string): boolean {
+  return parseInt(input, 10).toString() === input;
+}
+
 export default {
   aggregateDominatorMetrics,
   applyToNodes,
@@ -2191,6 +2198,7 @@ export default {
   isRootNode,
   isSlicedStringNode,
   isStackTraceFrame,
+  isStandardNumberToString,
   isStringNode,
   isURLEqual,
   isWeakMapEdge,

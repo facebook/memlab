@@ -10,10 +10,10 @@
 
 import type {MemLabConfig} from '../../Config';
 import type {IHeapNode} from '../../Types';
-import {ILeakObjectFilterRule, LeakDecision} from '../BaseLeakFilter.rule';
+import {LeakDecision, LeakObjectFilterRuleBase} from '../BaseLeakFilter.rule';
 import utils from '../../Utils';
 
-export class FilterHermesNodeRule implements ILeakObjectFilterRule {
+export class FilterHermesNodeRule extends LeakObjectFilterRuleBase {
   public filter(config: MemLabConfig, node: IHeapNode): LeakDecision {
     // when analyzing hermes heap snapshots, filter Hermes internal objects
     if (config.jsEngine === 'hermes' && utils.isHermesInternalObject(node)) {

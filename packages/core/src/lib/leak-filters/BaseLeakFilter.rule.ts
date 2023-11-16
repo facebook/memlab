@@ -22,7 +22,35 @@ export enum LeakDecision {
 }
 
 export interface ILeakObjectFilterRule {
+  beforeFiltering(
+    config: MemLabConfig,
+    snapshot: IHeapSnapshot,
+    leakedNodeIds: HeapNodeIdSet,
+  ): void;
+
   filter(
+    config: MemLabConfig,
+    node: IHeapNode,
+    snapshot: IHeapSnapshot,
+    leakedNodeIds: HeapNodeIdSet,
+  ): LeakDecision;
+}
+
+export abstract class LeakObjectFilterRuleBase
+  implements ILeakObjectFilterRule
+{
+  beforeFiltering(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _config: MemLabConfig,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _snapshot: IHeapSnapshot,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _leakedNodeIds: HeapNodeIdSet,
+  ): void {
+    // do nothing by default
+  }
+
+  abstract filter(
     config: MemLabConfig,
     node: IHeapNode,
     snapshot: IHeapSnapshot,

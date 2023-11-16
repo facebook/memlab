@@ -433,6 +433,7 @@ class MemoryAnalyst {
     }
 
     const leakFilter = new LeakObjectFilter();
+    leakFilter.beforeFiltering(config, snapshot, leakedNodeIds);
     // start filtering memory leaks
     utils.filterNodesInPlace(leakedNodeIds, snapshot, node =>
       leakFilter.filter(config, node, snapshot, leakedNodeIds),

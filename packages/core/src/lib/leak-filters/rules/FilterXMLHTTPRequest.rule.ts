@@ -10,12 +10,12 @@
 
 import type {MemLabConfig} from '../../Config';
 import type {IHeapEdge, IHeapNode} from '../../Types';
-import {ILeakObjectFilterRule, LeakDecision} from '../BaseLeakFilter.rule';
+import {LeakDecision, LeakObjectFilterRuleBase} from '../BaseLeakFilter.rule';
 
 /**
  * mark XMLHTTPRequest with status ok as memory leaks
  */
-export class FilterXMLHTTPRequestRule implements ILeakObjectFilterRule {
+export class FilterXMLHTTPRequestRule extends LeakObjectFilterRuleBase {
   filter(_config: MemLabConfig, node: IHeapNode): LeakDecision {
     return this.checkFinishedXMLHTTPRequest(node)
       ? LeakDecision.LEAK

@@ -10,13 +10,13 @@
 
 import type {MemLabConfig} from '../../Config';
 import type {IHeapNode} from '../../Types';
-import {ILeakObjectFilterRule, LeakDecision} from '../BaseLeakFilter.rule';
+import {LeakDecision, LeakObjectFilterRuleBase} from '../BaseLeakFilter.rule';
 import utils from '../../Utils';
 
 /**
  * mark React FiberNodes without a React Fiber Root as memory leaks
  */
-export class FilterUnmountedFiberNodeRule implements ILeakObjectFilterRule {
+export class FilterUnmountedFiberNodeRule extends LeakObjectFilterRuleBase {
   filter(config: MemLabConfig, node: IHeapNode): LeakDecision {
     if (this.checkDetachedFiberNode(config, node)) {
       return LeakDecision.LEAK;
