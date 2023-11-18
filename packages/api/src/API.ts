@@ -388,17 +388,10 @@ async function setupPage(page: Page, options: APIOptions = {}): Promise<void> {
 
   // automatically accept dialog
   page.on('dialog', async dialog => {
-    await dialog.accept();
-  });
-}
-
-function autoDismissDialog(page: Page, options: APIOptions = {}): void {
-  const config = options.config ?? defaultConfig;
-  page.on('dialog', async dialog => {
     if (config.verbose) {
       info.lowLevel(`Browser dialog: ${dialog.message()}`);
     }
-    await dialog.dismiss();
+    await dialog.accept();
   });
 }
 
@@ -446,7 +439,6 @@ export async function testInBrowser(options: APIOptions = {}): Promise<void> {
     const visitPlan = testPlanner.getVisitPlan();
     // setup page configuration
     config.setDevice(visitPlan.device);
-    autoDismissDialog(page);
     await initBrowserInfoInConfig(browser);
     browserInfo.monitorWebConsole(page);
     await setupPage(page, options);

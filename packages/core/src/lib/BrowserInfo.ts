@@ -114,7 +114,6 @@ class BrowserInfo {
     page.on('pageerror', handleError);
     page.on('error', handleError);
 
-    // automatically accept dialog
     page.on('dialog', async (dialog: Dialog) => {
       let msg = this.formatDialogMessage(dialog);
       this._consoleMessages.push(msg);
@@ -122,7 +121,7 @@ class BrowserInfo {
         msg = this.formatDialogMessage(dialog, {color: true});
         info.highLevel(msg);
       }
-      await dialog.accept();
+      // dialog will be auto accepted or dismissed in setupPage
     });
   }
 }
