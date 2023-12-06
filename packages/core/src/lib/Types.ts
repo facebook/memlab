@@ -1159,6 +1159,58 @@ export interface IHeapSnapshot {
    */
   getNodeById(id: number): Nullable<IHeapNode>;
   /**
+   * Given an array of ids of heap nodes (JS objects in heap), use this API
+   * to get an array of those heap nodes.
+   * @param ids id array of the heap nodes (JS objects in heap) you
+   * would like to query
+   * @returns an array of those heap nodes. The return array will preserve the
+   * order of the input array. If an id is not found in the heap, the
+   * corresponding element in the return array will be `null`.
+   *
+   * * **Examples**:
+   * ```typescript
+   * import type {IHeapSnapshot} from '@memlab/core';
+   * import {dumpNodeHeapSnapshot} from '@memlab/core';
+   * import {getFullHeapFromFile} from '@memlab/heap-analysis';
+   *
+   * (async function () {
+   *   const heapFile = dumpNodeHeapSnapshot();
+   *   const heap: IHeapSnapshot = await getFullHeapFromFile(heapFile);
+   *
+   *   // suppose 1000 is not a valid id in the heap
+   *   const nodes = heap.getNodesByIds([1, 2, 1000, 3]);
+   *   nodes // should be [node1, node2, null, node3]
+   * })();
+   * ```
+   */
+  getNodesByIds(ids: number[]): Array<Nullable<IHeapNode>>;
+  /**
+   * Given a set of ids of heap nodes (JS objects in heap), use this API
+   * to get a set of those heap nodes.
+   * @param ids id set of the heap nodes (JS objects in heap) you
+   * would like to query
+   * @returns a set of those heap nodes. The set will only include
+   * nodes that are found in the heap. If none of the input ids are found,
+   * this API will return an empty set.
+   *
+   * * **Examples**:
+   * ```typescript
+   * import type {IHeapSnapshot} from '@memlab/core';
+   * import {dumpNodeHeapSnapshot} from '@memlab/core';
+   * import {getFullHeapFromFile} from '@memlab/heap-analysis';
+   *
+   * (async function () {
+   *   const heapFile = dumpNodeHeapSnapshot();
+   *   const heap: IHeapSnapshot = await getFullHeapFromFile(heapFile);
+   *
+   *   // suppose 1000 is not a valid id in the heap
+   *   const set = heap.getNodesByIdSet(new Set([1, 2, 1000, 3]));
+   *   set // should be Set([node1, node2, node3])
+   * })();
+   * ```
+   */
+  getNodesByIdSet(ids: Set<number>): Set<IHeapNode>;
+  /**
    * Search for the heap and check if there is any JS object instance with
    * a specified constructor name.
    * @param className The constructor name of the object instance

@@ -212,6 +212,31 @@ export default class HeapSnapshot implements IHeapSnapshot {
     return new HeapNode(this, idx);
   }
 
+  getNodesByIds(ids: number[]): Array<Nullable<HeapNode>> {
+    const ret: Array<Nullable<HeapNode>> = [];
+    ids.forEach(id => {
+      if (!(id in this._nodeId2NodeIdx)) {
+        ret.push(null);
+        return;
+      }
+      const idx = this._nodeId2NodeIdx[id];
+      ret.push(new HeapNode(this, idx));
+    });
+    return ret;
+  }
+
+  getNodesByIdSet(ids: Set<number>): Set<HeapNode> {
+    const ret = new Set<HeapNode>();
+    ids.forEach(id => {
+      if (!(id in this._nodeId2NodeIdx)) {
+        return;
+      }
+      const idx = this._nodeId2NodeIdx[id];
+      ret.add(new HeapNode(this, idx));
+    });
+    return ret;
+  }
+
   clearShortestPathInfo(): void {
     this._nodeIdxHasPathEdge = new Uint8Array(this._nodeCount);
   }

@@ -105,7 +105,7 @@ class TestObject {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1227
+    * core/src/lib/Types.ts:1279
 
 ___
 
@@ -135,6 +135,70 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
  * **Source**:
     * core/src/lib/Types.ts:1160
+
+___
+
+### <a id="getnodesbyidset"></a>**getNodesByIdSet**(`ids`)
+
+Given a set of ids of heap nodes (JS objects in heap), use this API
+to get a set of those heap nodes.
+
+ * **Parameters**:
+    * `ids`: `Set`<`number`\> | id set of the heap nodes (JS objects in heap) you would like to query
+ * **Returns**: `Set`<[`IHeapNode`](core_src.IHeapNode.md)\> | a set of those heap nodes. The set will only include
+nodes that are found in the heap. If none of the input ids are found,
+this API will return an empty set.
+
+* **Examples**:
+```typescript
+import type {IHeapSnapshot} from '@memlab/core';
+import {dumpNodeHeapSnapshot} from '@memlab/core';
+import {getFullHeapFromFile} from '@memlab/heap-analysis';
+
+(async function () {
+  const heapFile = dumpNodeHeapSnapshot();
+  const heap: IHeapSnapshot = await getFullHeapFromFile(heapFile);
+
+  // suppose 1000 is not a valid id in the heap
+  const set = heap.getNodesByIdSet(new Set([1, 2, 1000, 3]));
+  set // should be Set([node1, node2, node3])
+})();
+```
+
+ * **Source**:
+    * core/src/lib/Types.ts:1212
+
+___
+
+### <a id="getnodesbyids"></a>**getNodesByIds**(`ids`)
+
+Given an array of ids of heap nodes (JS objects in heap), use this API
+to get an array of those heap nodes.
+
+ * **Parameters**:
+    * `ids`: `number`[] | id array of the heap nodes (JS objects in heap) you would like to query
+ * **Returns**: [`Nullable`](../modules/core_src.md#nullable)<[`IHeapNode`](core_src.IHeapNode.md)\>[] | an array of those heap nodes. The return array will preserve the
+order of the input array. If an id is not found in the heap, the
+corresponding element in the return array will be `null`.
+
+* **Examples**:
+```typescript
+import type {IHeapSnapshot} from '@memlab/core';
+import {dumpNodeHeapSnapshot} from '@memlab/core';
+import {getFullHeapFromFile} from '@memlab/heap-analysis';
+
+(async function () {
+  const heapFile = dumpNodeHeapSnapshot();
+  const heap: IHeapSnapshot = await getFullHeapFromFile(heapFile);
+
+  // suppose 1000 is not a valid id in the heap
+  const nodes = heap.getNodesByIds([1, 2, 1000, 3]);
+  nodes // should be [node1, node2, null, node3]
+})();
+```
+
+ * **Source**:
+    * core/src/lib/Types.ts:1186
 
 ___
 
@@ -180,7 +244,7 @@ test('memory test with heap assertion', async () => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1199
+    * core/src/lib/Types.ts:1251
 
 ___
 
@@ -212,7 +276,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1253
+    * core/src/lib/Types.ts:1305
 
 ___
 
@@ -256,4 +320,4 @@ test('memory test', async () => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1291
+    * core/src/lib/Types.ts:1343
