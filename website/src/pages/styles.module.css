@@ -83,3 +83,11 @@
   padding: 5px;
   width: 100px;
 }
+
+.titleLink {
+  color: var(--ifm-color-content);
+}
+
+[data-theme='dark'] .titleLink {
+  color: var(--ifm-link-color);
+}

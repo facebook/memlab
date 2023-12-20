@@ -25,6 +25,7 @@ import homePageStdouts from '../data/HomePageMainTerminal';
 
 interface FeatureItem {
   title: string;
+  docUrl?: string;
   imageUrl?: string;
   description: ReactNode;
 }
@@ -32,6 +33,7 @@ interface FeatureItem {
 const features: FeatureItem[] = [
   {
     title: 'Define Your Test',
+    docUrl: 'docs/api/interfaces/core_src.IScenario',
     description: (
       <>
         Define E2E test scenarios on browser interaction:
@@ -55,6 +57,7 @@ module.exports = {action, back, url};`}
   },
   {
     title: 'Run memlab in CLI',
+    docUrl: 'docs/cli/CLI-commands',
     description: (
       <>
         Find memory leaks with the custom E2E test scenario:
@@ -79,6 +82,7 @@ $ memlab analyze -h`}
   },
   {
     title: 'Programming API',
+    docUrl: 'docs/api/modules/api_src',
     description: (
       <>
         Memory analysis for JavaScript heap snapshots:
@@ -100,7 +104,7 @@ async function test() {
   },
 ];
 
-function Feature({imageUrl, title, description}) {
+function Feature({imageUrl, title, description, docUrl}) {
   const imgUrl = useBaseUrl(imageUrl);
   return (
     <div className={clsx('col col--4', styles.feature)}>
@@ -109,7 +113,13 @@ function Feature({imageUrl, title, description}) {
           <img className={styles.featureImage} src={imgUrl} alt={title} />
         </div>
       )}
-      <h3>{title}</h3>
+      {docUrl ? (
+        <Link className={styles.titleLink} to={docUrl}>
+          <h3>{title}</h3>
+        </Link>
+      ) : (
+        <h3>{title}</h3>
+      )}
       <p>{description}</p>
     </div>
   );
@@ -161,11 +171,12 @@ export default function Home(): React.ReactElement {
           <section className={styles.features}>
             <div className="container">
               <div className="row">
-                {features.map(({title, imageUrl, description}) => (
+                {features.map(({title, docUrl, imageUrl, description}) => (
                   <Feature
                     key={title}
                     title={title}
-                    imageUrl={imageUrl}
+                    docUrl={useBaseUrl(docUrl)}
+                    imageUrl={useBaseUrl(imageUrl)}
                     description={description}
                   />
                 ))}
