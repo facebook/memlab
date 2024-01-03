@@ -400,9 +400,9 @@ async function initBrowserInfoInConfig(
   options: APIOptions = {},
 ): Promise<void> {
   const config = options.config ?? defaultConfig;
-  browserInfo.setPuppeteerConfig(config.puppeteerConfig);
+  browserInfo.recordPuppeteerConfig(config.puppeteerConfig);
   const version = await browser.version();
-  browserInfo.setBrowserVersion(version);
+  browserInfo.recordBrowserVersion(version);
   if (config.verbose) {
     info.lowLevel(JSON.stringify(browserInfo, null, 2));
   }

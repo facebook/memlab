@@ -33,11 +33,11 @@ class BrowserInfo {
     this._consoleMessages = [];
   }
 
-  setBrowserVersion(version: string): void {
+  recordBrowserVersion(version: string): void {
     this._browserVersion = version;
   }
 
-  setPuppeteerConfig(puppeteerConfig: LaunchOptions): void {
+  recordPuppeteerConfig(puppeteerConfig: LaunchOptions): void {
     this._puppeteerConfig = puppeteerConfig;
   }
 
