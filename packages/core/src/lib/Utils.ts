@@ -1433,7 +1433,7 @@ function checkSnapshots(
 
   if (options.snapshotDir) {
     const snapshots = getSnapshotFilesInDir(snapshotDir);
-    const min = options.minSnapshots || 1;
+    const min = options.minSnapshots || 0;
     if (snapshots.length < min) {
       utils.haltOrThrow(
         `Directory has < ${min} snapshot files: ${options.snapshotDir}`,

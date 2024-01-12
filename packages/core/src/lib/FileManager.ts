@@ -501,6 +501,27 @@ export class FileManager {
     );
   }
 
+  // make sure the visit order meta file exists and points to a single
+  // heap snapshot which may be outside of the working directory
+  public createOrOverrideVisitOrderMetaFileForExternalSnapshot(
+    snapshotFile: string,
+    options: FileOption = FileManager.defaultFileOption,
+  ): void {
+    // if memlab/data/cur doesn't exist, return
+    const curDataDir = this.getCurDataDir(options);
+    if (!fs.existsSync(curDataDir)) {
+      return;
+    }
+    // TODO: maybe remove the existing heap snapshot files
+
+    // If there is at least one snapshot, create a snap-seq.json file.
+    // First, get the meta file for leak detection in a single heap snapshot
+    this.createDefaultVisitOrderMetaFileWithSingleSnapshot(
+      options,
+      snapshotFile,
+    );
+  }
+
   public createDefaultVisitOrderMetaFileWithSingleSnapshot(
     options: FileOption = FileManager.defaultFileOption,
     snapshotFile: string,

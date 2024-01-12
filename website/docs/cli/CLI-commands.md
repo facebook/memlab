@@ -118,7 +118,9 @@ memlab diff-leaks
 ```
 
 **Options**:
+ * **`--control-snapshot`**: set the single (target) snapshot of control run
  * **`--control-work-dir`**: set the working directory of the control run
+ * **`--treatment-snapshot`**: set the single (target) snapshot of treatment run
  * **`--treatment-work-dir`**: set the working directory of the treatment run
  * **`--engine`**: set the JavaScript engine (default to V8)
  * **`--leak-filter`**: specify a definition JS file for leak filter

@@ -28,6 +28,8 @@ import SetControlWorkDirOption from '../../options/experiment/SetControlWorkDirO
 import SetTreatmentWorkDirOption from '../../options/experiment/SetTreatmentWorkDirOption';
 import SetMaxClusterSampleSizeOption from '../../options/SetMaxClusterSampleSizeOption';
 import SetTraceContainsFilterOption from '../../options/heap/SetTraceContainsFilterOption';
+import SetControlSnapshotOption from '../../options/experiment/SetControlSnapshotOption';
+import SetTreatmentSnapshotOption from '../../options/experiment/SetTreatmentSnapshotOption';
 
 export type WorkDirSettings = {
   controlWorkDirs: Array<string>;
@@ -74,7 +76,9 @@ export default class CheckLeakCommand extends BaseCommand {
 
   getOptions(): BaseOption[] {
     return [
+      new SetControlSnapshotOption(),
       new SetControlWorkDirOption(),
+      new SetTreatmentSnapshotOption(),
       new SetTreatmentWorkDirOption(),
       new JSEngineOption(),
       new LeakFilterFileOption(),
@@ -90,14 +94,25 @@ export default class CheckLeakCommand extends BaseCommand {
     ];
   }
 
+  protected showWorkingDirErrorMessageAndHalt(): never {
+    throw utils.haltOrThrow(
+      'No control or test working directory or snapshot location specified, ' +
+        'please specify them via: \n' +
+        ` --${new SetControlSnapshotOption().getOptionName()} with ` +
+        ` --${new SetTreatmentSnapshotOption().getOptionName()}\n` +
+        'alternatively, you can also specify them via: \n' +
+        ` --${new SetControlWorkDirOption().getOptionName()} with ` +
+        ` --${new SetTreatmentWorkDirOption().getOptionName()}`,
+    );
+  }
+
   protected getWorkDirs(options: CLIOptions): WorkDirSettings {
     // double check parameters
     if (
       !options.configFromOptions?.controlWorkDirs ||
       !options.configFromOptions?.treatmentWorkDirs
     ) {
-      info.error('Please specify control and test working directory');
-      throw utils.haltOrThrow('No control or test working directory specified');
+      this.showWorkingDirErrorMessageAndHalt();
     }
     // get parameters
     const controlWorkDirs = options.configFromOptions[
@@ -112,6 +127,21 @@ export default class CheckLeakCommand extends BaseCommand {
     };
   }
 
+  private dumpVerboseInfo(
+    controlWorkDirs: string[],
+    treatmentWorkDirs: string[],
+  ): void {
+    if (config.verbose) {
+      info.lowLevel(
+        `control working directories: ${controlWorkDirs.join(', ')}`,
+      );
+      info.lowLevel(
+        `treatment working directories: ${treatmentWorkDirs.join(', ')}`,
+      );
+      info.lowLevel(`diffing working directory: ${treatmentWorkDirs[0]}`);
+    }
+  }
+
   async run(options: CLIOptions): Promise<void> {
     config.chaseWeakMapEdge = false;
     const {controlWorkDirs, treatmentWorkDirs} = this.getWorkDirs(options);
@@ -120,6 +150,7 @@ export default class CheckLeakCommand extends BaseCommand {
       workDir: treatmentWorkDirs[0],
       silentFail: true,
     });
+    this.dumpVerboseInfo(controlWorkDirs, treatmentWorkDirs);
     // diff memory leaks
     this.useDefaultMLClusteringSetting(options.cliArgs);
     await analysis.diffLeakByWorkDir({controlWorkDirs, treatmentWorkDirs});

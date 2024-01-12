@@ -9,7 +9,7 @@
  */
 
 import type {ParsedArgs} from 'minimist';
-import type {AnyRecord, MemLabConfig} from '@memlab/core';
+import type {AnyRecord, AnyValue, MemLabConfig, Nullable} from '@memlab/core';
 
 import {config, info} from '@memlab/core';
 import BaseCommand from './BaseCommand';
@@ -83,14 +83,43 @@ export class CommandDispatcher {
     args: ParsedArgs,
   ): Promise<AnyRecord> {
     const options = [...universalOptions, ...command.getOptions()];
-    const configFromOptions = Object.create(null);
+    const configFromOptions: AnyRecord = Object.create(null);
     for (const option of options) {
       const ret = await option.run(config, args);
       if (ret) {
-        Object.assign(configFromOptions, ret);
+        this.mergeConfigFromOptions(configFromOptions, ret);
       }
     }
     return configFromOptions;
+  }
+
+  private mergeConfigFromOptions(to: AnyRecord, from: AnyRecord): AnyRecord {
+    for (const key in from) {
+      if (Array.isArray(to[key]) && Array.isArray(from[key])) {
+        // both are arrays, merge them
+        this.mergeArrays(to[key] as AnyValue[], from[key] as AnyValue[]);
+      } else if (from[key] == null || to[key] == null) {
+        // one of them is null, use the other one
+        to[key] = to[key] || from[key];
+      } else {
+        // both have existing values, first one wins
+        info.warning(`Merge conflict CLI options key: ${key}`);
+      }
+    }
+    return to;
+  }
+
+  private mergeArrays(arr1: Nullable<AnyValue[]>, arr2: Nullable<AnyValue[]>) {
+    if (arr1 == null) {
+      return arr2;
+    }
+    if (arr2 == null) {
+      return arr1;
+    }
+    for (const v of arr2) {
+      arr1.push(v);
+    }
+    return arr1;
   }
 
   private async runCommand(
