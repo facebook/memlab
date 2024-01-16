@@ -33,6 +33,8 @@ memlab run --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--local-puppeteer`**: enable remote browser instance debugging via local puppeteer
  * **`--scenario`**: set file path loading test scenario
  * **`--chromium-binary`**: set the chromium binary for E2E run
+ * **`--protocol-timeout`**: set the protocol timeout for chromium connection (in ms). 
+The current default value is 180000, you may want to increase the timeout via this flag when the heap snapshot is too big (e.g., over 1GB) and the Page crashed with error: 'ProtocolError: HeapProfiler.takeHeapSnapshot timed out'.
  * **`--device`**: set the device type to emulate
  * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
@@ -508,6 +510,8 @@ memlab measure --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--local-puppeteer`**: enable remote browser instance debugging via local puppeteer
  * **`--scenario`**: set file path loading test scenario
  * **`--chromium-binary`**: set the chromium binary for E2E run
+ * **`--protocol-timeout`**: set the protocol timeout for chromium connection (in ms). 
+The current default value is 180000, you may want to increase the timeout via this flag when the heap snapshot is too big (e.g., over 1GB) and the Page crashed with error: 'ProtocolError: HeapProfiler.takeHeapSnapshot timed out'.
  * **`--device`**: set the device type to emulate
  * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
@@ -543,6 +547,8 @@ memlab warmup --scenario /tmp/test-scenario.js
  * **`--local-puppeteer`**: enable remote browser instance debugging via local puppeteer
  * **`--scenario`**: set file path loading test scenario
  * **`--chromium-binary`**: set the chromium binary for E2E run
+ * **`--protocol-timeout`**: set the protocol timeout for chromium connection (in ms). 
+The current default value is 180000, you may want to increase the timeout via this flag when the heap snapshot is too big (e.g., over 1GB) and the Page crashed with error: 'ProtocolError: HeapProfiler.takeHeapSnapshot timed out'.
  * **`--device`**: set the device type to emulate
  * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
@@ -616,6 +622,8 @@ memlab snapshot --scenario /tmp/test-scenario.js --work-dir /tmp/test-1/
  * **`--local-puppeteer`**: enable remote browser instance debugging via local puppeteer
  * **`--scenario`**: set file path loading test scenario
  * **`--chromium-binary`**: set the chromium binary for E2E run
+ * **`--protocol-timeout`**: set the protocol timeout for chromium connection (in ms). 
+The current default value is 180000, you may want to increase the timeout via this flag when the heap snapshot is too big (e.g., over 1GB) and the Page crashed with error: 'ProtocolError: HeapProfiler.takeHeapSnapshot timed out'.
  * **`--device`**: set the device type to emulate
  * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering
@@ -658,6 +666,8 @@ memlab warmup-and-snapshot --scenario /tmp/test-scenario.js --work-dir /tmp/test
  * **`--local-puppeteer`**: enable remote browser instance debugging via local puppeteer
  * **`--scenario`**: set file path loading test scenario
  * **`--chromium-binary`**: set the chromium binary for E2E run
+ * **`--protocol-timeout`**: set the protocol timeout for chromium connection (in ms). 
+The current default value is 180000, you may want to increase the timeout via this flag when the heap snapshot is too big (e.g., over 1GB) and the Page crashed with error: 'ProtocolError: HeapProfiler.takeHeapSnapshot timed out'.
  * **`--device`**: set the device type to emulate
  * **`--user-agent`**: set the UserAgent string in browser (for E2E interaction), otherwise it uses the default UserAgent from Chromium
  * **`--disable-xvfb`**: disable Xvfb (X virtual framebuffer) for simulating headful browser rendering

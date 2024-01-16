@@ -18,6 +18,7 @@ const optionNames = {
   CONTROL_SNAPSHOT: 'control-snapshot',
   CONTROL_WORK_DIR: 'control-work-dir',
   CHROMIUM_BINARY: 'chromium-binary',
+  CHROMIUM_PROTOCOL_TIMEOUT: 'protocol-timeout',
   DEVICE: 'device',
   DISABLE_WEB_SECURITY: 'disable-web-security',
   DISABLE_XVFB: 'disable-xvfb',

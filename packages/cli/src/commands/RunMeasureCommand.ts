@@ -35,6 +35,7 @@ import DisableWebSecurityOption from '../options/e2e/DisableWebSecurityOption';
 import EnableJSRewriteOption from '../options/e2e/EnableJSRewriteOption';
 import EnableJSInterceptOption from '../options/e2e/EnableJSInterceptOption';
 import SetChromiumBinaryOption from '../options/e2e/SetChromiumBinaryOption';
+import SetChromiumProtocolTimeoutOption from '../options/e2e/SetChromiumProtocolTimeoutOption';
 
 export default class RunMeasureCommand extends BaseCommand {
   getCommandName(): string {
@@ -73,6 +74,7 @@ export default class RunMeasureCommand extends BaseCommand {
       new RemoteBrowserDebugOption(),
       new ScenarioFileOption(),
       new SetChromiumBinaryOption(),
+      new SetChromiumProtocolTimeoutOption(),
       new SetDeviceOption(),
       new SetUserAgentOption(),
       new DisableXvfbOption(),

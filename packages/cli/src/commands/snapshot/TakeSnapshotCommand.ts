@@ -36,6 +36,7 @@ import EnableJSRewriteOption from '../../options/e2e/EnableJSRewriteOption';
 import EnableJSInterceptOption from '../../options/e2e/EnableJSInterceptOption';
 import TargetWorkerOption from '../../options/e2e/TargetWorkerOption';
 import SetChromiumBinaryOption from '../../options/e2e/SetChromiumBinaryOption';
+import SetChromiumProtocolTimeoutOption from '../../options/e2e/SetChromiumProtocolTimeoutOption';
 
 export default class TakeSnapshotCommand extends BaseCommand {
   getCommandName(): string {
@@ -77,6 +78,7 @@ export default class TakeSnapshotCommand extends BaseCommand {
       new RemoteBrowserDebugOption(),
       new ScenarioFileOption(),
       new SetChromiumBinaryOption(),
+      new SetChromiumProtocolTimeoutOption(),
       new SetDeviceOption(),
       new SetUserAgentOption(),
       new DisableXvfbOption(),
