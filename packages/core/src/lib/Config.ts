@@ -42,6 +42,7 @@ interface BrowserLaunchArgumentOptions {
 interface BrowserConnectOptions {
   ignoreHTTPSErrors?: boolean;
   defaultViewport?: AnyValue | null;
+  protocolTimeout?: number;
   slowMo?: number;
   targetFilter?: AnyFunction;
 }
@@ -291,6 +292,7 @@ export class MemLabConfig {
     this.puppeteerConfig = {
       headless: !this._isHeadfulBrowser,
       devtools: this.openDevtoolsConsole,
+      protocolTimeout: constant.defaultProtocolTimeout,
       // IMPORTANT: test ContinuousTest before change this config
       ignoreHTTPSErrors: true,
       // Support running on Windows

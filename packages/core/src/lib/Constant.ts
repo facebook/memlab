@@ -19,6 +19,7 @@ const constants = {
   internalDir: 'fb-internal',
   monoRepoDir: '',
   defaultUserAgent: 'default',
+  defaultProtocolTimeout: 5 * 60 * 1000,
   V8SyntheticRoots: [
     '(GC roots)',
     '(Internalized strings)',
