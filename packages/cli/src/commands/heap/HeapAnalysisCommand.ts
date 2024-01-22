@@ -8,7 +8,7 @@
  * @oncall web_perf_infra
  */
 
-import type {CLIOptions, CommandOptionExample} from '@memlab/core';
+import type {BaseOption, CLIOptions, CommandOptionExample} from '@memlab/core';
 
 import {info, utils} from '@memlab/core';
 import BaseCommand, {CommandCategory} from '../../BaseCommand';
@@ -17,6 +17,8 @@ import HeapAnalysisSubCommandWrapper from './HeapAnalysisSubCommandWrapper';
 import {BaseAnalysis} from '@memlab/heap-analysis';
 import HelperCommand from '../helper/HelperCommand';
 import InitDirectoryCommand from '../InitDirectoryCommand';
+import HeapAnalysisPluginOption from '../../options/heap/HeapAnalysisPluginOption';
+import {ParsedArgs} from 'minimist';
 
 export default class RunHeapAnalysisCommand extends BaseCommand {
   getCommandName(): string {
@@ -24,7 +26,7 @@ export default class RunHeapAnalysisCommand extends BaseCommand {
   }
 
   getDescription(): string {
-    return 'Run heap analysis plugins';
+    return 'Run heap analysis on heap snapshots.\n';
   }
 
   getCategory(): CommandCategory {
@@ -33,6 +35,10 @@ export default class RunHeapAnalysisCommand extends BaseCommand {
 
   getPrerequisites(): BaseCommand[] {
     return [new InitDirectoryCommand()];
+  }
+
+  getOptions(): BaseOption[] {
+    return [new HeapAnalysisPluginOption()];
   }
 
   getSubCommands(): BaseCommand[] {
@@ -49,25 +55,39 @@ export default class RunHeapAnalysisCommand extends BaseCommand {
     return ['<PLUGIN_NAME> [PLUGIN_OPTIONS]'];
   }
 
-  async run(options: CLIOptions): Promise<void> {
-    const args = options.cliArgs;
-    const analysisMap = heapAnalysisLoader.loadAllAnalysis();
-    if (!args || args._.length < 2 || !analysisMap.has(args._[1])) {
-      const helper = new HelperCommand();
-
-      const modules = new Map();
-      for (const subCommand of this.getSubCommands()) {
-        modules.set(subCommand.getCommandName(), subCommand);
-      }
-      const errMsg =
-        args && args._.length < 2
-          ? `\n  Heap analysis plugin name missing\n`
-          : `\n  Invalid command \`memlab ${this.getCommandName()} ${
-              args?._[1]
-            }\`\n`;
-      info.error(errMsg);
-      await helper.run({cliArgs: args, modules, command: this});
-      utils.haltOrThrow(errMsg, {printErrorBeforeHalting: false});
+  private async errorIfNoSubCommand(
+    args: ParsedArgs,
+    analysisMap: Map<string, BaseAnalysis>,
+  ): Promise<void> {
+    if (args && args._.length >= 2 && analysisMap.has(args._[1])) {
+      return;
     }
+
+    const helper = new HelperCommand();
+    const modules = new Map();
+    for (const subCommand of this.getSubCommands()) {
+      modules.set(subCommand.getCommandName(), subCommand);
+    }
+    const errMsg =
+      args && args._.length < 2
+        ? `\n  Heap analysis plugin name missing\n`
+        : `\n  Invalid command \`memlab ${this.getCommandName()} ${
+            args?._[1]
+          }\`\n`;
+    info.error(errMsg);
+    await helper.run({cliArgs: args, modules, command: this});
+    utils.haltOrThrow(errMsg, {printErrorBeforeHalting: false});
+  }
+
+  async run(options: CLIOptions): Promise<void> {
+    // process command line arguments and load analysis modules
+    const args = options.cliArgs;
+    const plugin = options.configFromOptions?.heapAnalysisPlugin;
+    const analysisMap = heapAnalysisLoader.loadAllAnalysis({
+      heapAnalysisPlugin: `${plugin}`,
+      errorWhenPluginFailed: true,
+    });
+
+    await this.errorIfNoSubCommand(args, analysisMap);
   }
 }

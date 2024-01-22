@@ -170,13 +170,14 @@ memlab trace --node-id=128127
 
 ### memlab analyze
 
-Run heap analysis plugins
+Run heap analysis on heap snapshots.
 
 ```bash
 memlab analyze <PLUGIN_NAME> [PLUGIN_OPTIONS]
 ```
 
 **Options**:
+ * **`--analysis-plugin`**: specify the external heap analysis plugin file (must be a vanilla JS file ended with `Analysis.js` suffix)
  * **`--work-dir`**: set the working directory of the current run
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
