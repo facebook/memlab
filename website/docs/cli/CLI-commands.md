@@ -346,6 +346,22 @@ memlab analyze unbound-object
  * **`--debug`**: enable manual debugging
  * **`--silent`**, **`-s`**: mute all terminal output
 
+#### memlab analyze react-hooks
+
+Show a memory breakdown of the most memory-consuming React components and their React hooks. This works best with unminified heap snapshots taken from React apps running in Dev mode. But also supports minified heap snapshots taken from React apps in production mode.
+
+```bash
+memlab analyze react-hooks 
+```
+
+**Options**:
+ * **`--snapshot`**: set file path of the heap snapshot under analysis
+ * **`--help`**, **`-h`**: print helper text
+ * **`--verbose`**, **`-v`**: show more details
+ * **`--sc`**: set to continuous test mode
+ * **`--debug`**: enable manual debugging
+ * **`--silent`**, **`-s`**: mute all terminal output
+
 #### memlab analyze unbound-shape
 
 Get shapes with unbound growth (a class of objects with growing aggregated retained size)

@@ -1327,16 +1327,23 @@ async function closePuppeteer(
   }
 }
 
-function camelCaseToReadableString(str: string): string {
+function camelCaseToReadableString(
+  str: string,
+  options: {capitalizeFirstWord?: boolean} = {},
+): string {
   let ret = '';
+  const strToProcess = str.trim();
   const isUpperCase = (c: string) => /^[A-Z]$/.test(c);
-  for (const c of str) {
+  for (const c of strToProcess) {
     if (isUpperCase(c)) {
       ret += ret.length > 0 ? ' ' : '';
       ret += c.toLowerCase();
     } else {
       ret += c;
     }
+  }
+  if (options.capitalizeFirstWord && ret.length > 0) {
+    ret = ret[0].toUpperCase() + ret.slice(1);
   }
   return ret;
 }

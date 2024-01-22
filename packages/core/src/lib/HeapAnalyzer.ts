@@ -519,13 +519,14 @@ class MemoryAnalyst {
   }
 
   public printHeapInfo(leakInfo: IOveralHeapInfo): void {
+    info.topLevel('Heap overall statistics:');
     Object.entries(leakInfo)
       .map(([k, v]) => [
-        utils.camelCaseToReadableString(k),
+        utils.camelCaseToReadableString(k, {capitalizeFirstWord: true}),
         utils.getReadableBytes(v),
       ])
       .forEach(([name, value]) => {
-        info.topLevel(`· ${name}: ${value}`);
+        info.topLevel(`  ${name}: ${value}`);
       });
   }
 
