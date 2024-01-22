@@ -16,8 +16,9 @@
   border: 0;
   color: #f0f0f0;
   display: inline-block;
-  font-family: 'DejaVu Sans Mono', 'Liberation Mono', monospace;
-  font-size: 14px;
+  /* Monaco is from Macbook */
+  font-family: 'DejaVu Sans Mono', 'Liberation Mono', monospace, 'Monaco';
+  font-size: 13px;
   text-align: left;
   width: 100%;
   -webkit-font-smoothing: auto;
