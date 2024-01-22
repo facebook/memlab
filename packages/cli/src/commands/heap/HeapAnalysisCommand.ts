@@ -82,9 +82,12 @@ export default class RunHeapAnalysisCommand extends BaseCommand {
   async run(options: CLIOptions): Promise<void> {
     // process command line arguments and load analysis modules
     const args = options.cliArgs;
-    const plugin = options.configFromOptions?.heapAnalysisPlugin;
+    let plugin = options.configFromOptions?.heapAnalysisPlugin;
+    if (plugin != null) {
+      plugin = `${plugin}`;
+    }
     const analysisMap = heapAnalysisLoader.loadAllAnalysis({
-      heapAnalysisPlugin: `${plugin}`,
+      heapAnalysisPlugin: plugin,
       errorWhenPluginFailed: true,
     });
 
