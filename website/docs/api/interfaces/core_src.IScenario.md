@@ -89,7 +89,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:705
+    * core/src/lib/Types.ts:795
 
 ___
 
@@ -119,7 +119,7 @@ Check out [this page](/docs/how-memlab-works) on why
 memlab needs to undo/revert the `action` callback.
 
  * **Source**:
-    * core/src/lib/Types.ts:730
+    * core/src/lib/Types.ts:820
 
 ___
 
@@ -153,7 +153,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:611
+    * core/src/lib/Types.ts:701
 
 ___
 
@@ -185,7 +185,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:808
+    * core/src/lib/Types.ts:898
 
 ___
 
@@ -226,7 +226,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:781
+    * core/src/lib/Types.ts:871
 
 ___
 
@@ -273,7 +273,55 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:850
+    * core/src/lib/Types.ts:940
+
+___
+
+### <a id="retainerreferencefilter" name="retainerreferencefilter"></a> `Optional` **retainerReferenceFilter**: [`ReferenceFilterCallback`](../modules/core_src.md#referencefiltercallback)
+
+Callback that can be used to define a logic to decide whether
+a reference should be considered as part of the retainer trace.
+The callback is called for every reference (edge) in the heap snapshot.
+
+For concrete examples, check out [leakFilter](core_src.IScenario.md#leakfilter).
+
+* **Parameters**:
+  * edge - the reference (edge) that is considered
+    for calcualting the retainer trace
+  * snapshot - the snapshot of target interaction
+  * isReferenceUsedByDefault - MemLab has its own default logic for
+    whether a reference should be considered as part of the retainer trace,
+    if this parameter is true, it means MemLab will consider this reference
+    when calculating the retainer trace.
+
+* **Returns**: the value indicating whether the given reference should be
+considered when calculating the retainer trace. Note that when this
+callback returns true, the reference will only be considered as a candidate
+for retainer trace, so it may or may not be included in the retainer trace;
+however, if this callback returns false, the reference will be excluded.
+
+Note that by excluding a dominator reference of an object (i.e., an edge
+that must be traveled through to reach the heap object from GC roots),
+the object will be considered as unreachable in the heap graph; and
+therefore, the reference and heap object will not be included in the
+retainer trace detection and retainer size calculation.
+
+* **Examples**:
+```javascript
+// save as leak-filter.js
+module.exports = {
+  retainerReferenceFilter(edge, _snapshot, _leakedNodeIds) {
+    // exclude react fiber references
+    if (edge.name_or_index.toString().startsWith('__reactFiber$')) {
+      return false;
+    }
+    return true;
+  }
+};
+```
+
+ * **Source**:
+    * core/src/lib/Types.ts:983
 
 ___
 
@@ -308,7 +356,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:659
+    * core/src/lib/Types.ts:749
 
 ## Methods
 
@@ -343,7 +391,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:582
+    * core/src/lib/Types.ts:672
 
 ___
 
@@ -364,7 +412,7 @@ module.exports = {
 
  * **Returns**: `number`
  * **Source**:
-    * core/src/lib/Types.ts:745
+    * core/src/lib/Types.ts:835
 
 ___
 
@@ -387,4 +435,4 @@ load. All objects allocated by the initial page load will be candidates
 for memory leak filtering.
 
  * **Source**:
-    * core/src/lib/Types.ts:629
+    * core/src/lib/Types.ts:719

@@ -619,17 +619,30 @@ export class MemLabConfig {
     if (scenario == null) {
       return;
     }
+    let hasCallback = false;
+    const externalFilter: ILeakFilter = {};
 
     // set leak filter
-    const {leakFilter, beforeLeakFilter} = scenario;
-    if (typeof leakFilter !== 'function') {
-      return;
+    const {leakFilter, beforeLeakFilter, retainerReferenceFilter} = scenario;
+    if (typeof leakFilter === 'function') {
+      hasCallback = true;
+      externalFilter.leakFilter = leakFilter;
     }
-    this.externalLeakFilter = {leakFilter};
 
     // set leak filter init callback
     if (typeof beforeLeakFilter === 'function') {
-      this.externalLeakFilter.beforeLeakFilter = beforeLeakFilter;
+      hasCallback = true;
+      externalFilter.beforeLeakFilter = beforeLeakFilter;
+    }
+
+    // set retainer reference filter callback
+    if (typeof retainerReferenceFilter === 'function') {
+      hasCallback = true;
+      externalFilter.retainerReferenceFilter = retainerReferenceFilter;
+    }
+
+    if (hasCallback) {
+      this.externalLeakFilter = externalFilter;
     }
   }
 

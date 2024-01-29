@@ -17,7 +17,12 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs-extra';
 import {run} from '../../index';
-import {scenario, testSetup, testTimeout} from './lib/E2ETestSettings';
+import {
+  getUniqueID,
+  scenario,
+  testSetup,
+  testTimeout,
+} from './lib/E2ETestSettings';
 
 beforeEach(testSetup);
 
@@ -57,39 +62,6 @@ test(
     );
     expect(leaks.some(leak => JSON.stringify(leak).includes('_path_1')));
     expect(leaks.some(leak => JSON.stringify(leak).includes('_path_2')));
-  },
-  testTimeout,
-);
-
-test(
-  'self-defined leak detector can find TestObject',
-  async () => {
-    const selfDefinedScenario: IScenario = {
-      app: (): string => 'test-spa',
-      url: (): string => '',
-      action: async (page: Page): Promise<void> =>
-        await page.click('[data-testid="link-4"]'),
-      leakFilter: (node: IHeapNode) => {
-        return node.name === 'TestObject' && node.type === 'object';
-      },
-    };
-
-    const workDir = path.join(os.tmpdir(), 'memlab-api-test', `${process.pid}`);
-    fs.mkdirsSync(workDir);
-
-    const result = await run({
-      scenario: selfDefinedScenario,
-      evalInBrowserAfterInitLoad: injectDetachedDOMElements,
-      workDir,
-    });
-    // detected all different leak trace cluster
-    expect(result.leaks.length).toBe(1);
-    // expect all traces are found
-    expect(
-      result.leaks.some(leak => JSON.stringify(leak).includes('_randomObject')),
-    );
-    const reader = result.runResult;
-    expect(path.resolve(reader.getRootDirectory())).toBe(path.resolve(workDir));
   },
   testTimeout,
 );
@@ -139,7 +111,7 @@ test(
       },
     };
 
-    const workDir = path.join(os.tmpdir(), 'memlab-api-test', `${process.pid}`);
+    const workDir = path.join(os.tmpdir(), 'memlab-api-test', getUniqueID());
     fs.mkdirsSync(workDir);
 
     const result = await run({

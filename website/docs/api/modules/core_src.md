@@ -34,7 +34,7 @@ this callback until it returns `true`. This is an async callback, you can
 also `await` and returns `true` until some async logic is resolved.
 
  * **Source**:
-    * core/src/lib/Types.ts:972
+    * core/src/lib/Types.ts:1105
 
 ___
 
@@ -86,7 +86,7 @@ or [forEachReferrer](../interfaces/core_src.IHeapNode.md#foreachreferrer).
  * **Returns**: [`Optional`](core_src.md#optional)<{ `stop`: `boolean`  }\> \| `void` | this API returns void
 
  * **Source**:
-    * core/src/lib/Types.ts:1579
+    * core/src/lib/Types.ts:1712
 
 ___
 
@@ -102,7 +102,7 @@ For concrete example, check out [beforeLeakFilter](../interfaces/core_src.ILeakF
  * **Returns**: `void`
 
  * **Source**:
-    * core/src/lib/Types.ts:464
+    * core/src/lib/Types.ts:518
 
 ___
 
@@ -118,7 +118,7 @@ For concrete examples, check out [action](../interfaces/core_src.IScenario.md#ac
  * **Returns**: `Promise`<`void`\> | no return value
 
  * **Source**:
-    * core/src/lib/Types.ts:507
+    * core/src/lib/Types.ts:597
 
 ___
 
@@ -146,7 +146,7 @@ function leakFilter(node, _snapshot, _leakedNodeIds) {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:491
+    * core/src/lib/Types.ts:545
 
 ___
 
@@ -259,6 +259,39 @@ and [findReferrers](../interfaces/core_src.IHeapNode.md#findreferrers).
 
 ___
 
+### <a id="referencefiltercallback" name="referencefiltercallback"></a> **ReferenceFilterCallback**: (`edge`: [`IHeapEdge`](../interfaces/core_src.IHeapEdge.md), `snapshot`: [`IHeapSnapshot`](../interfaces/core_src.IHeapSnapshot.md), `isReferenceUsedByDefault`: `boolean`) => `boolean`
+
+Callback that can be used to define a logic to decide whether
+a reference should be filtered (included) for some
+calculations (e.g., retainer trace calculation)
+
+For concrete examples, check out [leakFilter](../interfaces/core_src.ILeakFilter.md#leakfilter).
+
+ * **Parameters**:
+    * `edge`: [`IHeapEdge`](../interfaces/core_src.IHeapEdge.md) | the reference (edge) that is considered for calcualting the retainer trace
+    * `snapshot`: [`IHeapSnapshot`](../interfaces/core_src.IHeapSnapshot.md) | the snapshot of target interaction
+    * `isReferenceUsedByDefault`: `boolean` | MemLab has its own default logic for whether a reference should be filtered (included), if this parameter is true, it means MemLab will consider this reference for inclusion
+ * **Returns**: `boolean` | the value indicating whether the given reference should be
+filtered (i.e., included)
+
+* **Examples**:
+```javascript
+// exclude react fiber references
+function retainerReferenceFilter(edge, _snapshot, _leakedNodeIds) {
+  if (edge.name_or_index.toString().startsWith('__reactFiber$')) {
+    return false;
+  }
+  // exclude other references here
+  // ...
+  return true;
+};
+```
+
+ * **Source**:
+    * core/src/lib/Types.ts:581
+
+___
+
 ### <a id="runmetainfo" name="runmetainfo"></a> **RunMetaInfo**: `Object`
 
 This data structure holds the information about memlab run.
@@ -270,7 +303,7 @@ You can retrieve the instance of this type through [getRunMetaInfo](../classes/a
 | `type` | `string` | type of the memlab run |
 
  * **Source**:
-    * core/src/lib/Types.ts:1053
+    * core/src/lib/Types.ts:1186
 
 ___
 

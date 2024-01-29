@@ -390,7 +390,7 @@ export interface ILeakFilter {
    *     in browser.
    *
    * * **Examples**:
-   * ```typescript
+   * ```javascript
    * module.exports = {
    *   beforeLeakFilter: (snapshot, leakedNodeIds) {
    *     // initialize some data stores
@@ -429,7 +429,7 @@ export interface ILeakFilter {
    * * **Returns**: the boolean value indicating whether the given node in
    *   the snapshot should be considered as leaked.
    *
-   *
+   * * **Examples**:
    * ```javascript
    * // save as leak-filter.js
    * module.exports = {
@@ -450,7 +450,61 @@ export interface ILeakFilter {
    * memlab run --scenario <SCENARIO FILE> --leak-filter <PATH TO leak-filter.js>
    * ```
    */
-  leakFilter: LeakFilterCallback;
+  leakFilter?: LeakFilterCallback;
+  /**
+   * Callback that can be used to define a logic to decide whether
+   * a reference should be considered as part of the retainer trace.
+   * The callback is called for every reference (edge) in the heap snapshot.
+   *
+   * For concrete examples, check out {@link leakFilter}.
+   *
+   * * **Parameters**:
+   *   * edge - the reference (edge) that is considered
+   *     for calcualting the retainer trace
+   *   * snapshot - the snapshot of target interaction
+   *   * isReferenceUsedByDefault - MemLab has its own default logic for
+   *     whether a reference should be considered as part of the retainer trace,
+   *     if this parameter is true, it means MemLab will consider this reference
+   *     when calculating the retainer trace.
+   *
+   * * **Returns**: the value indicating whether the given reference should be
+   * considered when calculating the retainer trace. Note that when this
+   * callback returns true, the reference will only be considered as a candidate
+   * for retainer trace, so it may or may not be included in the retainer trace;
+   * however, if this callback returns false, the reference will be excluded.
+   *
+   * Note that by excluding a dominator reference of an object (i.e., an edge
+   * that must be traveled through to reach the heap object from GC roots),
+   * the object will be considered as unreachable in the heap graph; and
+   * therefore, the reference and heap object will not be included in the
+   * retainer trace detection and retainer size calculation.
+   *
+   * * **Examples**:
+   * ```javascript
+   * // save as leak-filter.js
+   * module.exports = {
+   *   retainerReferenceFilter(edge, _snapshot, _leakedNodeIds) {
+   *     // exclude react fiber references
+   *     if (edge.name_or_index.toString().startsWith('__reactFiber$')) {
+   *       return false;
+   *     }
+   *     // exclude other references here
+   *     // ...
+   *     return true;
+   *   }
+   * };
+   * ```
+   *
+   * Use the leak filter definition in command line interface:
+   * ```bash
+   * memlab find-leaks --leak-filter <PATH TO leak-filter.js>
+   * ```
+   *
+   * ```bash
+   * memlab run --scenario <SCENARIO FILE> --leak-filter <PATH TO leak-filter.js>
+   * ```
+   */
+  retainerReferenceFilter?: ReferenceFilterCallback;
 }
 
 /**
@@ -492,6 +546,42 @@ export type LeakFilterCallback = (
   node: IHeapNode,
   snapshot: IHeapSnapshot,
   leakedNodeIds: HeapNodeIdSet,
+) => boolean;
+
+/**
+ * Callback that can be used to define a logic to decide whether
+ * a reference should be filtered (included) for some
+ * calculations (e.g., retainer trace calculation)
+ *
+ * For concrete examples, check out {@link leakFilter}.
+ *
+ * @param edge - the reference (edge) that is considered
+ * for calcualting the retainer trace
+ * @param snapshot - the snapshot of target interaction
+ * @param isReferenceUsedByDefault - MemLab has its own default logic for
+ * whether a reference should be filtered (included), if this parameter is true,
+ * it means MemLab will consider this reference for inclusion
+ *
+ * @returns the value indicating whether the given reference should be
+ * filtered (i.e., included)
+ *
+ * * **Examples**:
+ * ```javascript
+ * // exclude react fiber references
+ * function retainerReferenceFilter(edge, _snapshot, _leakedNodeIds) {
+ *   if (edge.name_or_index.toString().startsWith('__reactFiber$')) {
+ *     return false;
+ *   }
+ *   // exclude other references here
+ *   // ...
+ *   return true;
+ * };
+ * ```
+ */
+export type ReferenceFilterCallback = (
+  edge: IHeapEdge,
+  snapshot: IHeapSnapshot,
+  isReferenceUsedByDefault: boolean,
 ) => boolean;
 
 /**
@@ -848,6 +938,49 @@ export interface IScenario {
    * ```
    */
   leakFilter?: LeakFilterCallback;
+  /**
+   * Callback that can be used to define a logic to decide whether
+   * a reference should be considered as part of the retainer trace.
+   * The callback is called for every reference (edge) in the heap snapshot.
+   *
+   * For concrete examples, check out {@link leakFilter}.
+   *
+   * * **Parameters**:
+   *   * edge - the reference (edge) that is considered
+   *     for calcualting the retainer trace
+   *   * snapshot - the snapshot of target interaction
+   *   * isReferenceUsedByDefault - MemLab has its own default logic for
+   *     whether a reference should be considered as part of the retainer trace,
+   *     if this parameter is true, it means MemLab will consider this reference
+   *     when calculating the retainer trace.
+   *
+   * * **Returns**: the value indicating whether the given reference should be
+   * considered when calculating the retainer trace. Note that when this
+   * callback returns true, the reference will only be considered as a candidate
+   * for retainer trace, so it may or may not be included in the retainer trace;
+   * however, if this callback returns false, the reference will be excluded.
+   *
+   * Note that by excluding a dominator reference of an object (i.e., an edge
+   * that must be traveled through to reach the heap object from GC roots),
+   * the object will be considered as unreachable in the heap graph; and
+   * therefore, the reference and heap object will not be included in the
+   * retainer trace detection and retainer size calculation.
+   *
+   * * **Examples**:
+   * ```javascript
+   * // save as leak-filter.js
+   * module.exports = {
+   *   retainerReferenceFilter(edge, _snapshot, _leakedNodeIds) {
+   *     // exclude react fiber references
+   *     if (edge.name_or_index.toString().startsWith('__reactFiber$')) {
+   *       return false;
+   *     }
+   *     return true;
+   *   }
+   * };
+   * ```
+   */
+  retainerReferenceFilter?: ReferenceFilterCallback;
 }
 
 /** @internal */

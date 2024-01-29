@@ -89,7 +89,7 @@ class TraceFinder {
       visitedIDs.add(node.id);
 
       for (const edge of node.references) {
-        if (!this.shouldTraverseEdge(edge, traverseOption)) {
+        if (!this.shouldTraverseEdge(edge, snapshot, traverseOption)) {
           continue;
         }
 
@@ -318,6 +318,7 @@ class TraceFinder {
     edges: IHeapEdges,
     postOrderInfo: PostOrderMapping,
     flags: Uint32Array,
+    snapshot: IHeapSnapshot,
   ): Uint32Array {
     const {postOrderIndex2NodeIndex, nodeIndex2PostOrderIndex} = postOrderInfo;
     const nodeCount = nodes.length;
@@ -409,7 +410,7 @@ class TraceFinder {
           ) {
             return;
           }
-          if (!this.shouldTraverseEdge(edge)) {
+          if (!this.shouldTraverseEdge(edge, snapshot)) {
             return;
           }
           let referrerPostOrderIndex =
@@ -517,7 +518,26 @@ class TraceFinder {
     return false;
   }
 
-  shouldTraverseEdge(edge: IHeapEdge, options: AnyOptions = {}): boolean {
+  shouldTraverseEdge(
+    edge: IHeapEdge,
+    snapshot: IHeapSnapshot,
+    options: AnyOptions = {},
+  ): boolean {
+    const shouldTraverseByDefault = this.shouldTraverseNodeByInternalStandard(
+      edge,
+      options,
+    );
+    const externalFilter = config.externalLeakFilter?.retainerReferenceFilter;
+    if (externalFilter != null) {
+      return externalFilter(edge, snapshot, shouldTraverseByDefault);
+    }
+    return shouldTraverseByDefault;
+  }
+
+  private shouldTraverseNodeByInternalStandard(
+    edge: IHeapEdge,
+    options: AnyOptions = {},
+  ): boolean {
     if (this.isBlockListedEdge(edge)) {
       return false;
     }
@@ -602,6 +622,7 @@ class TraceFinder {
       snapshot.edges,
       postOrderInfo,
       flags,
+      snapshot,
     );
     // step 3: calculate retained sizes
     info.overwrite('calculating dominators and retained sizes ..');
@@ -650,7 +671,7 @@ class TraceFinder {
           if (toNode.hasPathEdge) {
             continue;
           }
-          if (!this.shouldTraverseEdge(edge, traverseOption)) {
+          if (!this.shouldTraverseEdge(edge, snapshot, traverseOption)) {
             continue;
           }
           if (this.shouldIgnoreEdgeInTraceFinding(edge)) {

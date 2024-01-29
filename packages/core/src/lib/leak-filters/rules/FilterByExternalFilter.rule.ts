@@ -23,11 +23,11 @@ export class FilterByExternalFilterRule extends LeakObjectFilterRuleBase {
     snapshot: IHeapSnapshot,
     leakedNodeIds: HeapNodeIdSet,
   ): LeakDecision {
-    if (config.externalLeakFilter) {
-      return config.externalLeakFilter.leakFilter(node, snapshot, leakedNodeIds)
-        ? LeakDecision.LEAK
-        : LeakDecision.NOT_LEAK;
+    if (config.externalLeakFilter?.leakFilter == null) {
+      return LeakDecision.MAYBE_LEAK;
     }
-    return LeakDecision.MAYBE_LEAK;
+    return config.externalLeakFilter.leakFilter(node, snapshot, leakedNodeIds)
+      ? LeakDecision.LEAK
+      : LeakDecision.NOT_LEAK;
   }
 }
