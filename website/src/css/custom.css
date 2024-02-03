@@ -65,7 +65,7 @@ article h1 {
 }
 
 article h1 code {
-  font-size: 32px !important;
+  font-size: 30px !important;
 }
 
 article h2 {
@@ -82,7 +82,7 @@ article h2 {
 }
 
 article h2 code {
-  font-size: 24px !important;
+  font-size: 22px !important;
 }
 
 article h3 {
@@ -91,7 +91,7 @@ article h3 {
 }
 
 article h3 code {
-  font-size: 20px !important;
+  font-size: 18px !important;
 }
 
 article strong {
