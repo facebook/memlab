@@ -6,6 +6,10 @@ sidebar_position: 0
 custom_edit_url: null
 ---
 
+## Enumerations
+
+- [ConsoleMode](../enums/api_src.ConsoleMode.md)
+
 ## Classes
 
 - [BrowserInteractionResultReader](../classes/api_src.BrowserInteractionResultReader.md)
@@ -19,6 +23,7 @@ Options for configuring browser interaction run, all fields are optional
 
 | Name | Type | Description |
 | :------ | :------ | :------ |
+| `consoleMode?` | [`ConsoleMode`](../enums/api_src.ConsoleMode.md) | specifying the terminal output mode, default is `default`. For more details. please check out [ConsoleMode](../enums/api_src.ConsoleMode.md) |
 | `cookiesFile?` | `string` | the absolute path of cookies file |
 | `evalInBrowserAfterInitLoad?` | `AnyFunction` | function to be evaluated in browser context after the web page initial load |
 | `scenario?` | `IScenario` | test scenario specifying how to interact with browser (for more details view [IScenario](../interfaces/core_src.IScenario.md)) |
@@ -28,7 +33,7 @@ Options for configuring browser interaction run, all fields are optional
 | `workDir?` | `string` | specify the working directory where you want memlab to dump heap snapshots and other meta data of the test run. If no working directory is provided, memlab will generate a random temp directory under the operating system's default directory for temporary files. Note: It's the caller's responsibility to make sure the specified working directory exists. |
 
  * **Source**:
-    * api/src/API.ts:45
+    * api/src/API.ts:47
 
 ___
 
@@ -42,7 +47,7 @@ A data structure holding the result of the [run](api_src.md#run) API call.
 | `runResult` | [`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md) | a utility for reading browser interaction results from disk |
 
  * **Source**:
-    * api/src/API.ts:90
+    * api/src/API.ts:97
 
 ## Functions
 
@@ -73,17 +78,19 @@ const {analyze, takeSnapshots, StringAnalysis} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:295
+    * api/src/API.ts:317
 
 ___
 
-### <a id="findleaks"></a>**findLeaks**(`runResult`)
+### <a id="findleaks"></a>**findLeaks**(`runResult`, `options?`)
 
 This API finds memory leaks by analyzing heap snapshot(s).
 This is equivalent to `memlab find-leaks` in CLI.
 
  * **Parameters**:
     * `runResult`: `default` | return value of a browser interaction run
+    * `options`: `Object` | configure memory leak detection run
+    * `options.consoleMode?`: [`ConsoleMode`](../enums/api_src.ConsoleMode.md) | specify the terminal output mode (see [ConsoleMode](../enums/api_src.ConsoleMode.md))
  * **Returns**: `Promise`<`ISerializedInfo`[]\> | leak traces detected and clustered from the browser interaction
 * **Examples**:
 ```javascript
@@ -93,13 +100,13 @@ const {findLeaks, takeSnapshots} = require('@memlab/api');
   const scenario = {
     url: () => 'https://www.facebook.com',
   };
-  const result = await takeSnapshots({scenario});
-  const leaks = findLeaks(result);
+  const result = await takeSnapshots({scenario, consoleMode: 'SILENT'});
+  const leaks = findLeaks(result, {consoleMode: 'CONTINUOUS_TEST'});
 })();
 ```
 
  * **Source**:
-    * api/src/API.ts:233
+    * api/src/API.ts:245
 
 ___
 
@@ -113,16 +120,17 @@ the `--baseline`, `--target`, and `--final` flags in CLI.
     * `baselineSnapshot`: `string` | the file path of the baseline heap snapshot
     * `targetSnapshot`: `string` | the file path of the target heap snapshot
     * `finalSnapshot`: `string` | the file path of the final heap snapshot
-    * `options`: `Object` | optionally, you can specify a working directory (other than the default one) for heap analysis
-    * `options.workDir?`: `string`
+    * `options`: `Object` | optionally, you can specify a mode for heap analysis
+    * `options.consoleMode?`: [`ConsoleMode`](../enums/api_src.ConsoleMode.md) | specify the terminal output mode (see [ConsoleMode](../enums/api_src.ConsoleMode.md))
+    * `options.workDir?`: `string` | specify a working directory (other than the default one)
  * **Returns**: `Promise`<`ISerializedInfo`[]\> | leak traces detected and clustered from the browser interaction
 
  * **Source**:
-    * api/src/API.ts:254
+    * api/src/API.ts:273
 
 ___
 
-### <a id="run"></a>**run**(`runOptions?`)
+### <a id="run"></a>**run**(`options?`)
 
 This API runs browser interaction and find memory leaks triggered in browser
 This is equivalent to running `memlab run` in CLI.
@@ -130,7 +138,7 @@ This is also equivalent to warm up, and call [takeSnapshots](api_src.md#takesnap
 and [findLeaks](api_src.md#findleaks).
 
  * **Parameters**:
-    * `runOptions`: [`RunOptions`](api_src.md#runoptions) | configure browser interaction run
+    * `options`: [`RunOptions`](api_src.md#runoptions)
  * **Returns**: `Promise`<[`RunResult`](api_src.md#runresult)\> | memory leaks detected and a utility reading browser
 interaction results from disk
 * **Examples**:
@@ -146,7 +154,7 @@ const {run} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:169
+    * api/src/API.ts:177
 
 ___
 
@@ -171,7 +179,7 @@ const {takeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:202
+    * api/src/API.ts:210
 
 ___
 
@@ -197,4 +205,4 @@ const {warmupAndTakeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:133
+    * api/src/API.ts:140

@@ -18,6 +18,7 @@ import type {
   Nullable,
   Optional,
 } from '@memlab/core';
+import {ConsoleMode} from './state/ConsoleModeManager';
 
 import {
   analysis,
@@ -38,6 +39,7 @@ import {BaseAnalysis} from '@memlab/heap-analysis';
 import APIUtils from './lib/APIUtils';
 import BrowserInteractionResultReader from './result-reader/BrowserInteractionResultReader';
 import BaseResultReader from './result-reader/BaseResultReader';
+import stateManager from './state/APIStateManager';
 
 /**
  * Options for configuring browser interaction run, all fields are optional
@@ -82,6 +84,11 @@ export type RunOptions = {
    * skip warmup page load for the target web app
    */
   skipWarmup?: boolean;
+  /**
+   * specifying the terminal output mode, default is `default`.
+   * For more details. please check out {@link ConsoleMode}
+   */
+  consoleMode?: ConsoleMode;
 };
 
 /**
@@ -134,15 +141,16 @@ export async function warmupAndTakeSnapshots(
   options: RunOptions = {},
 ): Promise<BrowserInteractionResultReader> {
   const config = getConfigFromRunOptions(options);
-  config.externalCookiesFile = options.cookiesFile;
-  config.scenario = options.scenario;
+  const state = stateManager.getAndUpdateState(config, options);
   const testPlanner = new TestPlanner({config});
   const {evalInBrowserAfterInitLoad} = options;
   if (!options.skipWarmup) {
     await warmup({testPlanner, config, evalInBrowserAfterInitLoad});
   }
   await testInBrowser({testPlanner, config, evalInBrowserAfterInitLoad});
-  return BrowserInteractionResultReader.from(config.workDir);
+  const ret = BrowserInteractionResultReader.from(config.workDir);
+  stateManager.restoreState(config, state);
+  return ret;
 }
 
 /**
@@ -166,18 +174,18 @@ export async function warmupAndTakeSnapshots(
  * })();
  * ```
  */
-export async function run(runOptions: RunOptions = {}): Promise<RunResult> {
-  const config = getConfigFromRunOptions(runOptions);
-  config.externalCookiesFile = runOptions.cookiesFile;
-  config.scenario = runOptions.scenario;
+export async function run(options: RunOptions = {}): Promise<RunResult> {
+  const config = getConfigFromRunOptions(options);
+  const state = stateManager.getAndUpdateState(config, options);
   const testPlanner = new TestPlanner({config});
-  const {evalInBrowserAfterInitLoad} = runOptions;
-  if (!runOptions.skipWarmup) {
+  const {evalInBrowserAfterInitLoad} = options;
+  if (!options.skipWarmup) {
     await warmup({testPlanner, config, evalInBrowserAfterInitLoad});
   }
   await testInBrowser({testPlanner, config, evalInBrowserAfterInitLoad});
   const runResult = BrowserInteractionResultReader.from(config.workDir);
   const leaks = await findLeaks(runResult);
+  stateManager.restoreState(config, state);
   return {leaks, runResult};
 }
 
@@ -203,12 +211,13 @@ export async function takeSnapshots(
   options: RunOptions = {},
 ): Promise<BrowserInteractionResultReader> {
   const config = getConfigFromRunOptions(options);
-  config.externalCookiesFile = options.cookiesFile;
-  config.scenario = options.scenario;
+  const state = stateManager.getAndUpdateState(config, options);
   const testPlanner = new TestPlanner();
   const {evalInBrowserAfterInitLoad} = options;
   await testInBrowser({testPlanner, config, evalInBrowserAfterInitLoad});
-  return BrowserInteractionResultReader.from(config.workDir);
+  const ret = BrowserInteractionResultReader.from(config.workDir);
+  stateManager.restoreState(config, state);
+  return ret;
 }
 
 /**
@@ -216,6 +225,9 @@ export async function takeSnapshots(
  * This is equivalent to `memlab find-leaks` in CLI.
  *
  * @param runResult return value of a browser interaction run
+ * @param options configure memory leak detection run
+ * @param options.consoleMode specify the terminal output
+ * mode (see {@link ConsoleMode})
  * @returns leak traces detected and clustered from the browser interaction
  * * **Examples**:
  * ```javascript
@@ -225,18 +237,22 @@ export async function takeSnapshots(
  *   const scenario = {
  *     url: () => 'https://www.facebook.com',
  *   };
- *   const result = await takeSnapshots({scenario});
- *   const leaks = findLeaks(result);
+ *   const result = await takeSnapshots({scenario, consoleMode: 'SILENT'});
+ *   const leaks = findLeaks(result, {consoleMode: 'CONTINUOUS_TEST'});
  * })();
  * ```
  */
 export async function findLeaks(
   runResult: BaseResultReader,
+  options: {consoleMode?: ConsoleMode} = {},
 ): Promise<ISerializedInfo[]> {
+  const state = stateManager.getAndUpdateState(defaultConfig, options);
   const workDir = runResult.getRootDirectory();
   fileManager.initDirs(defaultConfig, {workDir});
   defaultConfig.chaseWeakMapEdge = false;
-  return await analysis.checkLeak();
+  const ret = await analysis.checkLeak();
+  stateManager.restoreState(defaultConfig, state);
+  return ret;
 }
 
 /**
@@ -247,16 +263,20 @@ export async function findLeaks(
  * @param baselineSnapshot the file path of the baseline heap snapshot
  * @param targetSnapshot the file path of the target heap snapshot
  * @param finalSnapshot the file path of the final heap snapshot
- * @param options optionally, you can specify a working
- * directory (other than the default one) for heap analysis
+ * @param options optionally, you can specify a mode for heap analysis
+ * @param options.workDir specify a working directory (other than
+ * the default one)
+ * @param options.consoleMode specify the terminal output
+ * mode (see {@link ConsoleMode})
  * @returns leak traces detected and clustered from the browser interaction
  */
 export async function findLeaksBySnapshotFilePaths(
   baselineSnapshot: string,
   targetSnapshot: string,
   finalSnapshot: string,
-  options: {workDir?: string} = {},
+  options: {workDir?: string; consoleMode?: ConsoleMode} = {},
 ): Promise<ISerializedInfo[]> {
+  const state = stateManager.getAndUpdateState(defaultConfig, options);
   defaultConfig.useExternalSnapshot = true;
   defaultConfig.externalSnapshotFilePaths = [
     baselineSnapshot,
@@ -265,7 +285,9 @@ export async function findLeaksBySnapshotFilePaths(
   ];
   fileManager.initDirs(defaultConfig, {workDir: options.workDir});
   defaultConfig.chaseWeakMapEdge = false;
-  return await analysis.checkLeak();
+  const ret = await analysis.checkLeak();
+  stateManager.restoreState(defaultConfig, state);
+  return ret;
 }
 
 /**

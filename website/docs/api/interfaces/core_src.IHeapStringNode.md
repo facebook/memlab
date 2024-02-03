@@ -51,7 +51,7 @@ For more information on what a dominator node is, please check out
 [this doc](https://developer.chrome.com/docs/devtools/memory-problems/memory-101/#dominators).
 
  * **Source**:
-    * core/src/lib/Types.ts:1821
+    * core/src/lib/Types.ts:1844
 
 ___
 
@@ -61,7 +61,7 @@ The total number of outgoing JS references (including engine-internal,
 native, and JS references).
 
  * **Source**:
-    * core/src/lib/Types.ts:1775
+    * core/src/lib/Types.ts:1798
 
 ___
 
@@ -71,7 +71,7 @@ returns true if the heap node has been set an incoming edge
 which leads to the parent node on the shortest path to GC root.
 
  * **Source**:
-    * core/src/lib/Types.ts:1797
+    * core/src/lib/Types.ts:1820
 
 ___
 
@@ -80,7 +80,7 @@ ___
 unique id of the heap object
 
  * **Source**:
-    * core/src/lib/Types.ts:1702
+    * core/src/lib/Types.ts:1725
 
 ___
 
@@ -90,7 +90,7 @@ check if this a string node (normal string node, concatenated string node
 or sliced string node)
 
  * **Source**:
-    * core/src/lib/Types.ts:1833
+    * core/src/lib/Types.ts:1856
 
 ___
 
@@ -103,7 +103,7 @@ from the React Fiber tree, `is_detached` will be `true`;
 otherwise it will be `false`
 
  * **Source**:
-    * core/src/lib/Types.ts:1757
+    * core/src/lib/Types.ts:1780
 
 ___
 
@@ -113,7 +113,7 @@ source location information of this heap object (if it is recorded by
 the heap snapshot).
 
  * **Source**:
-    * core/src/lib/Types.ts:1826
+    * core/src/lib/Types.ts:1849
 
 ___
 
@@ -124,7 +124,7 @@ for JS object instances (type `object`), `name` is the constructor's name
 of the object instance. for `string`, `name` is the string value.
 
  * **Source**:
-    * core/src/lib/Types.ts:1698
+    * core/src/lib/Types.ts:1721
 
 ___
 
@@ -133,7 +133,7 @@ ___
 index of this heap object inside the `node.snapshot.nodes` pseudo array
 
  * **Source**:
-    * core/src/lib/Types.ts:1806
+    * core/src/lib/Types.ts:1829
 
 ___
 
@@ -143,7 +143,7 @@ Get the number of all incoming references pointing to this heap object
 (including engine-internal, native, and JS references).
 
  * **Source**:
-    * core/src/lib/Types.ts:1792
+    * core/src/lib/Types.ts:1815
 
 ___
 
@@ -153,7 +153,7 @@ The incoming edge which leads to the parent node
 on the shortest path to GC root.
 
  * **Source**:
-    * core/src/lib/Types.ts:1802
+    * core/src/lib/Types.ts:1825
 
 ___
 
@@ -163,7 +163,7 @@ Get a JS array containing all outgoing JS references from this heap object
 (including engine-internal, native, and JS references).
 
  * **Source**:
-    * core/src/lib/Types.ts:1782
+    * core/src/lib/Types.ts:1805
 
 ___
 
@@ -173,7 +173,7 @@ Get a JS array containing all incoming JS references pointing to this heap
 object (including engine-internal, native, and JS references).
 
  * **Source**:
-    * core/src/lib/Types.ts:1787
+    * core/src/lib/Types.ts:1810
 
 ___
 
@@ -185,7 +185,7 @@ could be released if this object is released). For difference between
 [this doc](https://developer.chrome.com/docs/devtools/memory-problems/memory-101/#object_sizes).
 
  * **Source**:
-    * core/src/lib/Types.ts:1813
+    * core/src/lib/Types.ts:1836
 
 ___
 
@@ -197,7 +197,7 @@ by the object itself.). For difference between **shallow size** and
 [this doc](https://developer.chrome.com/docs/devtools/memory-problems/memory-101/#object_sizes).
 
  * **Source**:
-    * core/src/lib/Types.ts:1770
+    * core/src/lib/Types.ts:1793
 
 ___
 
@@ -206,7 +206,7 @@ ___
 get the [IHeapSnapshot](core_src.IHeapSnapshot.md) containing this heap object
 
  * **Source**:
-    * core/src/lib/Types.ts:1749
+    * core/src/lib/Types.ts:1772
 
 ___
 
@@ -216,7 +216,7 @@ get the string value of the JS string heap object associated with
 this `IHeapStringNode` instance in heap
 
  * **Source**:
-    * core/src/lib/Types.ts:2131
+    * core/src/lib/Types.ts:2154
 
 ___
 
@@ -229,7 +229,7 @@ This is engine-specific, for example all types in V8:
 `symbol`, `bigint`
 
  * **Source**:
-    * core/src/lib/Types.ts:1692
+    * core/src/lib/Types.ts:1715
 
 ## Methods
 
@@ -253,7 +253,7 @@ const reference = node.findAnyReference((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1902
+    * core/src/lib/Types.ts:1925
 
 ___
 
@@ -277,7 +277,7 @@ const referrer = node.findAnyReferrer((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1919
+    * core/src/lib/Types.ts:1942
 
 ___
 
@@ -302,7 +302,7 @@ const referrer = node.findAnyReferrerNode((node: IHeapNode) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1937
+    * core/src/lib/Types.ts:1960
 
 ___
 
@@ -327,7 +327,7 @@ const referrerNodes = node.findReferrerNodes((node: IHeapNode) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1972
+    * core/src/lib/Types.ts:1995
 
 ___
 
@@ -351,7 +351,7 @@ const referrers = node.findReferrers((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1954
+    * core/src/lib/Types.ts:1977
 
 ___
 
@@ -376,7 +376,7 @@ node.forEachReference((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1867
+    * core/src/lib/Types.ts:1890
 
 ___
 
@@ -401,7 +401,7 @@ node.forEachReferrer((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1885
+    * core/src/lib/Types.ts:1908
 
 ___
 
@@ -422,7 +422,7 @@ const reference = node.getAnyReferrer('ref', 'property');
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:2027
+    * core/src/lib/Types.ts:2050
 
 ___
 
@@ -448,7 +448,7 @@ const n2 = node.getAnyReferrer('ref', 'property')?.fromNode;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:2050
+    * core/src/lib/Types.ts:2073
 
 ___
 
@@ -469,7 +469,7 @@ const reference = node.getReference('map', 'hidden');
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1987
+    * core/src/lib/Types.ts:2010
 
 ___
 
@@ -494,7 +494,7 @@ const hiddenClassNode2 = node.getReference('map', 'hidden')?.toNode;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:2009
+    * core/src/lib/Types.ts:2032
 
 ___
 
@@ -521,7 +521,7 @@ const nodes2 = node.getReferrers('ref', 'property')
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:2090
+    * core/src/lib/Types.ts:2113
 
 ___
 
@@ -543,7 +543,7 @@ const referrers = node.getReferrers('ref', 'property');
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:2069
+    * core/src/lib/Types.ts:2092
 
 ___
 
@@ -561,7 +561,7 @@ captured by the hosting object.
     * `...args`: `any`[]
  * **Returns**: `string`
  * **Source**:
-    * core/src/lib/Types.ts:1849
+    * core/src/lib/Types.ts:1872
 
 ___
 
@@ -573,4 +573,4 @@ inside the string node.
 
  * **Returns**: [`Nullable`](../modules/core_src.md#nullable)<[`IHeapStringNode`](core_src.IHeapStringNode.md)\>
  * **Source**:
-    * core/src/lib/Types.ts:1839
+    * core/src/lib/Types.ts:1862

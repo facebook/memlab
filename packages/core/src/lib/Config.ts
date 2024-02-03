@@ -8,10 +8,9 @@
  * @oncall web_perf_infra
  */
 
-import type {LaunchOptions, Permission} from 'puppeteer';
+import type {Permission} from 'puppeteer';
 import type {
   AnyFunction,
-  AnyValue,
   FileOption,
   IClusterStrategy,
   IRunningMode,
@@ -22,6 +21,7 @@ import type {
   QuickExperiment,
   ILeakFilter,
   IPackageInfo,
+  PuppeteerConfig,
 } from './Types';
 
 import path from 'path';
@@ -30,22 +30,6 @@ import info from './Console';
 import constant from './Constant';
 import fileManager, {FileManager} from './FileManager';
 import {setInternalValue} from './InternalValueSetter';
-
-interface BrowserLaunchArgumentOptions {
-  headless?: boolean;
-  userDataDir?: string;
-  devtools?: boolean;
-  debuggingPort?: number;
-  args?: string[];
-}
-
-interface BrowserConnectOptions {
-  ignoreHTTPSErrors?: boolean;
-  defaultViewport?: AnyValue | null;
-  protocolTimeout?: number;
-  slowMo?: number;
-  targetFilter?: AnyFunction;
-}
 
 interface Device {
   name: string;
@@ -154,9 +138,7 @@ export class MemLabConfig {
   extraRunInfoMap: Map<string, string>;
 
   heapConfig: Optional<IHeapConfig>;
-  puppeteerConfig: LaunchOptions &
-    BrowserLaunchArgumentOptions &
-    BrowserConnectOptions;
+  puppeteerConfig: PuppeteerConfig;
   openDevtoolsConsole: boolean;
   emulateDevice: Nullable<Device>;
   addEnableGK: Set<string>;

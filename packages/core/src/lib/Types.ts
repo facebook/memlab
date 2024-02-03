@@ -131,6 +131,29 @@ export type CLIArgs = {
   'snapshot-dir': string;
 };
 
+/** @internal */
+interface BrowserLaunchArgumentOptions {
+  headless?: boolean;
+  userDataDir?: string;
+  devtools?: boolean;
+  debuggingPort?: number;
+  args?: string[];
+}
+
+/** @internal */
+interface BrowserConnectOptions {
+  ignoreHTTPSErrors?: boolean;
+  defaultViewport?: AnyValue | null;
+  protocolTimeout?: number;
+  slowMo?: number;
+  targetFilter?: AnyFunction;
+}
+
+/** @internal */
+export type PuppeteerConfig = LaunchOptions &
+  BrowserLaunchArgumentOptions &
+  BrowserConnectOptions;
+
 /**
  * This is the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
  * class used by MemLab. The puppeteer `Page` class instance provides
