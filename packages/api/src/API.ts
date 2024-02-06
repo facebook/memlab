@@ -89,6 +89,10 @@ export type RunOptions = {
    * For more details. please check out {@link ConsoleMode}
    */
   consoleMode?: ConsoleMode;
+  /**
+   * specify the Chromium binary for E2E run
+   */
+  chromiumBinary?: string;
 };
 
 /**

@@ -23,6 +23,7 @@ Options for configuring browser interaction run, all fields are optional
 
 | Name | Type | Description |
 | :------ | :------ | :------ |
+| `chromiumBinary?` | `string` | specify the Chromium binary for E2E run |
 | `consoleMode?` | [`ConsoleMode`](../enums/api_src.ConsoleMode.md) | specifying the terminal output mode, default is `default`. For more details. please check out [ConsoleMode](../enums/api_src.ConsoleMode.md) |
 | `cookiesFile?` | `string` | the absolute path of cookies file |
 | `evalInBrowserAfterInitLoad?` | `AnyFunction` | function to be evaluated in browser context after the web page initial load |
@@ -47,7 +48,7 @@ A data structure holding the result of the [run](api_src.md#run) API call.
 | `runResult` | [`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md) | a utility for reading browser interaction results from disk |
 
  * **Source**:
-    * api/src/API.ts:97
+    * api/src/API.ts:101
 
 ## Functions
 
@@ -78,7 +79,7 @@ const {analyze, takeSnapshots, StringAnalysis} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:317
+    * api/src/API.ts:321
 
 ___
 
@@ -106,7 +107,7 @@ const {findLeaks, takeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:245
+    * api/src/API.ts:249
 
 ___
 
@@ -126,7 +127,7 @@ the `--baseline`, `--target`, and `--final` flags in CLI.
  * **Returns**: `Promise`<`ISerializedInfo`[]\> | leak traces detected and clustered from the browser interaction
 
  * **Source**:
-    * api/src/API.ts:273
+    * api/src/API.ts:277
 
 ___
 
@@ -154,7 +155,7 @@ const {run} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:177
+    * api/src/API.ts:181
 
 ___
 
@@ -179,7 +180,7 @@ const {takeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:210
+    * api/src/API.ts:214
 
 ___
 
@@ -205,4 +206,4 @@ const {warmupAndTakeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:140
+    * api/src/API.ts:144

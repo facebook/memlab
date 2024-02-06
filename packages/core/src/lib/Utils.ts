@@ -19,7 +19,7 @@ import fs from 'fs';
 import path from 'path';
 import cp from 'child_process';
 import process from 'process';
-import config, {ErrorHandling} from './Config';
+import config, {ErrorHandling, MemLabConfig} from './Config';
 import info from './Console';
 import constant from './Constant';
 import parser from './HeapParser';
@@ -2125,6 +2125,19 @@ function isStandardNumberToString(input: string): boolean {
   return parseInt(input, 10).toString() === input;
 }
 
+function setChromiumBinary(config: MemLabConfig, chromiumBinary: string) {
+  const binaryPath = path.isAbsolute(chromiumBinary)
+    ? path.resolve(chromiumBinary)
+    : path.resolve(process.cwd(), chromiumBinary);
+  if (!fs.existsSync(binaryPath)) {
+    throw utils.haltOrThrow(`Chromium binary does not exist: ${binaryPath}`);
+  }
+  if (config.verbose) {
+    info.lowLevel(`Using ${binaryPath} as Chromium binary for E2E run`);
+  }
+  config.puppeteerConfig.executablePath = binaryPath;
+}
+
 export default {
   aggregateDominatorMetrics,
   applyToNodes,
@@ -2232,6 +2245,7 @@ export default {
   resolveFilePath,
   resolveSnapshotFilePath,
   runShell,
+  setChromiumBinary,
   setIsAlternateNode,
   setIsRegularFiberNode,
   shouldShowMoreInfo,

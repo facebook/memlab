@@ -8,8 +8,10 @@
  * @oncall web_perf_infra
  */
 
-import {MemLabConfig, PuppeteerConfig} from '@memlab/core';
-import {RunOptions} from '../API';
+import type {MemLabConfig, PuppeteerConfig} from '@memlab/core';
+import type {RunOptions} from '../API';
+
+import {utils} from '@memlab/core';
 
 /**
  * Manage, save, and restore the current state of the PuppeteerConfig.
@@ -20,6 +22,9 @@ class PuppeteerStateManager {
     config.puppeteerConfig = {...config.puppeteerConfig};
     config.externalCookiesFile = options.cookiesFile;
     config.scenario = options.scenario;
+    if (options.chromiumBinary != null) {
+      utils.setChromiumBinary(config, options.chromiumBinary);
+    }
     return existing;
   }
 

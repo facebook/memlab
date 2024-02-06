@@ -10,9 +10,7 @@
 import type {ParsedArgs} from 'minimist';
 import {MemLabConfig} from '@memlab/core';
 
-import path from 'path';
-import fs from 'fs';
-import {info, utils, BaseOption} from '@memlab/core';
+import {utils, BaseOption} from '@memlab/core';
 import optionConstants from '../lib/OptionConstant';
 
 export default class SetChromiumBinaryOption extends BaseOption {
@@ -28,16 +26,7 @@ export default class SetChromiumBinaryOption extends BaseOption {
     const name = this.getOptionName();
     const arg = args[name];
     if (arg) {
-      const binaryPath = path.resolve(process.cwd(), arg);
-      if (!fs.existsSync(binaryPath)) {
-        throw utils.haltOrThrow(
-          `Chromium binary does not exist: ${binaryPath}`,
-        );
-      }
-      if (config.verbose) {
-        info.lowLevel(`Using ${binaryPath} as Chromium binary for E2E run`);
-      }
-      config.puppeteerConfig.executablePath = binaryPath;
+      utils.setChromiumBinary(config, arg);
     }
   }
 }
