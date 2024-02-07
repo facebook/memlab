@@ -41,7 +41,7 @@ The total number of edges in heap graph (or JS references in heap
 snapshot).
 
  * **Source**:
-    * core/src/lib/Types.ts:1687
+    * core/src/lib/Types.ts:1719
 
 ## Methods
 
@@ -54,7 +54,7 @@ to each element in ascending order of element index.
     * `callback`: (`edge`: [`IHeapEdge`](core_src.IHeapEdge.md), `index`: `number`) => `boolean` \| `void` | the callback does not need to return any value, if the callback returns `false` when iterating on element at index `i`, then all elements after `i` won't be iterated.
  * **Returns**: `void`
  * **Source**:
-    * core/src/lib/Types.ts:1703
+    * core/src/lib/Types.ts:1735
 
 ___
 
@@ -68,4 +68,4 @@ get an [IHeapEdge](core_src.IHeapEdge.md) element at the specified index
 at the specified index, otherwise it returns `null`.
 
  * **Source**:
-    * core/src/lib/Types.ts:1695
+    * core/src/lib/Types.ts:1727

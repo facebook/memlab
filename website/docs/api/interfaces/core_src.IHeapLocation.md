@@ -43,7 +43,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 get the column number
 
  * **Source**:
-    * core/src/lib/Types.ts:1556
+    * core/src/lib/Types.ts:1582
 
 ___
 
@@ -52,7 +52,7 @@ ___
 get the line number
 
  * **Source**:
-    * core/src/lib/Types.ts:1552
+    * core/src/lib/Types.ts:1578
 
 ___
 
@@ -61,7 +61,7 @@ ___
 get the heap object this location this location represents
 
  * **Source**:
-    * core/src/lib/Types.ts:1544
+    * core/src/lib/Types.ts:1570
 
 ___
 
@@ -70,7 +70,7 @@ ___
 get the script ID of the source file
 
  * **Source**:
-    * core/src/lib/Types.ts:1548
+    * core/src/lib/Types.ts:1574
 
 ___
 
@@ -79,7 +79,7 @@ ___
 get the [IHeapSnapshot](core_src.IHeapSnapshot.md) containing this location instance
 
  * **Source**:
-    * core/src/lib/Types.ts:1540
+    * core/src/lib/Types.ts:1566
 
 ## Methods
 
@@ -87,8 +87,11 @@ get the [IHeapSnapshot](core_src.IHeapSnapshot.md) containing this location inst
 
 convert to a concise readable string output
 (like calling `JSON.stringify(node, ...args)`).
-Note: calling `JSON.stringify(node, ...args)` will not work
-since the string is too large and not readable.
+
+Note: Please be aware that using `JSON.stringify(node, ...args)` is
+not recommended as it will generate a JSON representation of the host
+object that is too large to be easily readable due to its connections
+to other parts of the data structures within the heap snapshot.
 
 This API does not completely serialize all the information
 captured by the hosting object.
@@ -97,4 +100,4 @@ captured by the hosting object.
     * `...args`: `any`[]
  * **Returns**: `string`
  * **Source**:
-    * core/src/lib/Types.ts:1566
+    * core/src/lib/Types.ts:1595

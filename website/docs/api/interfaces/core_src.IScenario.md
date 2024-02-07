@@ -50,7 +50,8 @@ All JS objects in browser allocated by the browser interactions triggered
 from the `action` callback will be candidates for memory leak filtering.
 
 * **Parameters**:
-  * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+  * `page`: <code>[Page](../modules/core_src.md#page)</code> | the puppeteer
+    [`Page`](https://pptr.dev/api/puppeteer.page)
     object, which provides APIs to interact with the web browser. To import
     this type, check out [Page](../modules/core_src.md#page).
 
@@ -89,7 +90,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:818
+    * core/src/lib/Types.ts:829
 
 ___
 
@@ -99,7 +100,8 @@ ___
 back/revert the `action` callback. Think of it as an undo action.
 
 * **Parameters**:
-  * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+  * `page`: <code>[Page](../modules/core_src.md#page)</code> | the puppeteer
+    [`Page`](https://pptr.dev/api/puppeteer.page)
     object, which provides APIs to interact with the web browser. To import
     this type, check out [Page](../modules/core_src.md#page).
 
@@ -119,7 +121,7 @@ Check out [this page](/docs/how-memlab-works) on why
 memlab needs to undo/revert the `action` callback.
 
  * **Source**:
-    * core/src/lib/Types.ts:843
+    * core/src/lib/Types.ts:855
 
 ___
 
@@ -130,7 +132,8 @@ once before the initial page load. This callback can be used to set up
 the HTTP headers or to prepare data before loading the web page.
 
 * **Parameters**:
-  * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+  * `page`: <code>[Page](../modules/core_src.md#page)</code> | the puppeteer
+    [`Page`](https://pptr.dev/api/puppeteer.page)
     object, which provides APIs to interact with the web browser. To import
     this type, check out [Page](../modules/core_src.md#page).
 
@@ -153,7 +156,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:724
+    * core/src/lib/Types.ts:733
 
 ___
 
@@ -165,12 +168,13 @@ be used to initialize some data stores or to any one-off
 preprocessings.
 
 * **Parameters**:
-  * snapshot: `IHeapSnapshot` | the final heap snapshot taken after
-    all browser interactions are done.
-    Check out [IHeapSnapshot](core_src.IHeapSnapshot.md) for more APIs that queries the heap snapshot.
-  * leakedNodeIds: `Set<number>` | the set of ids of all JS heap objects
-    allocated by the `action` call but not released after the `back` call
-    in browser.
+  * `snapshot`: <code>[IHeapSnapshot](core_src.IHeapSnapshot.md)</code> | the final heap
+     snapshot taken after all browser interactions are done.
+     Check out [IHeapSnapshot](core_src.IHeapSnapshot.md) for more APIs that queries the
+     heap snapshot.
+  * `leakedNodeIds`: `Set<number>` | the set of ids of all JS heap objects
+     allocated by the `action` call but not released after the `back` call
+     in browser.
 
 * **Examples**:
 ```typescript
@@ -185,7 +189,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:921
+    * core/src/lib/Types.ts:941
 
 ___
 
@@ -199,13 +203,16 @@ considers a navigation to be finished when there are no network
 connections for at least 500ms.
 
 * **Parameters**:
-  * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+  * `page`: <code>[Page](../modules/core_src.md#page)</code> | the puppeteer
+    [`Page`](https://pptr.dev/api/puppeteer.page)
     object, which provides APIs to interact with the web browser. To import
     this type, check out [Page](../modules/core_src.md#page).
+
 * **Returns**: a boolean value, if it returns `true`, memlab will consider
   the navigation completes, if it returns `false`, memlab will keep calling
   this callback until it returns `true`. This is an async callback, you can
   also `await` and returns `true` until some async logic is resolved.
+
 * **Examples**:
 ```typescript
 module.exports = {
@@ -226,7 +233,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:894
+    * core/src/lib/Types.ts:913
 
 ___
 
@@ -247,13 +254,16 @@ and unmounted Fiber nodes (detached from React Fiber tree) as
 memory leaks.
 
 * **Parameters**:
-  * node: `IHeapNode` | one of the heap object allocated but not released.
-  * snapshot: `IHeapSnapshot` | the final heap snapshot taken after
-    all browser interactions are done.
-    Check out [IHeapSnapshot](core_src.IHeapSnapshot.md) for more APIs that queries the heap snapshot.
-  * leakedNodeIds: `Set<number>` | the set of ids of all JS heap objects
-    allocated by the `action` call but not released after the `back` call
-    in browser.
+  * `node`: <code>[IHeapNode](core_src.IHeapNode.md)</code> | the heap object
+     allocated but not released. This filter callback will be applied
+     to each node allocated but not released in the heap snapshot.
+  * `snapshot`: <code>[IHeapSnapshot](core_src.IHeapSnapshot.md)</code> | the final heap
+     snapshot taken after all browser interactions are done.
+     Check out [IHeapSnapshot](core_src.IHeapSnapshot.md) for more APIs that queries the
+     heap snapshot.
+  * `leakedNodeIds`: `Set<number>` | the set of ids of all JS heap objects
+     allocated by the `action` call but not released after the `back` call
+     in browser.
 
 * **Returns**: the boolean value indicating whether the given node in
   the snapshot should be considered as leaked.
@@ -273,7 +283,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:963
+    * core/src/lib/Types.ts:986
 
 ___
 
@@ -286,13 +296,16 @@ The callback is called for every reference (edge) in the heap snapshot.
 For concrete examples, check out [leakFilter](core_src.IScenario.md#leakfilter).
 
 * **Parameters**:
-  * edge - the reference (edge) that is considered
-    for calcualting the retainer trace
-  * snapshot - the snapshot of target interaction
-  * isReferenceUsedByDefault - MemLab has its own default logic for
-    whether a reference should be considered as part of the retainer trace,
-    if this parameter is true, it means MemLab will consider this reference
-    when calculating the retainer trace.
+  * `edge` : <code>[IHeapEdge](core_src.IHeapEdge.md)</code> | the reference (edge)
+     that is considered for calcualting the retainer trace
+  * `snapshot`: <code>[IHeapSnapshot](core_src.IHeapSnapshot.md)</code> | the heap snapshot
+     taken after all browser interactions are done.
+     Check out [IHeapSnapshot](core_src.IHeapSnapshot.md) for more APIs that queries the
+     heap snapshot.
+  * `isReferenceUsedByDefault`: `boolean` | MemLab has its own default
+     logic for whether a reference should be considered as part of the
+     retainer trace, if this parameter is true, it means MemLab will
+     consider this reference when calculating the retainer trace.
 
 * **Returns**: the value indicating whether the given reference should be
 considered when calculating the retainer trace. Note that when this
@@ -321,7 +334,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1006
+    * core/src/lib/Types.ts:1032
 
 ___
 
@@ -333,7 +346,8 @@ if you have to (we recommend using [cookies](core_src.IScenario.md#cookies))
 or to prepare data before the [action](core_src.IScenario.md#action) call.
 
 * **Parameters**:
-  * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+  * `page`: <code>[Page](../modules/core_src.md#page)</code> | the puppeteer
+    [`Page`](https://pptr.dev/api/puppeteer.page)
     object, which provides APIs to interact with the web browser. To import
     this type, check out [Page](../modules/core_src.md#page).
 
@@ -356,7 +370,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:772
+    * core/src/lib/Types.ts:782
 
 ## Methods
 
@@ -391,13 +405,17 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:695
+    * core/src/lib/Types.ts:703
 
 ___
 
 ### <a id="repeat"></a>`Optional` **repeat**()
 
-Specifies how many **extra** `action` and `back` actions performed by memlab.
+Specifies how many **extra** `action` and `back` actions performed
+by memlab.
+
+* **Returns**: a number value specifies the number of extra actions.
+
 * **Examples**:
 ```typescript
 module.exports = {
@@ -412,7 +430,7 @@ module.exports = {
 
  * **Returns**: `number`
  * **Source**:
-    * core/src/lib/Types.ts:858
+    * core/src/lib/Types.ts:874
 
 ___
 
@@ -435,4 +453,4 @@ load. All objects allocated by the initial page load will be candidates
 for memory leak filtering.
 
  * **Source**:
-    * core/src/lib/Types.ts:742
+    * core/src/lib/Types.ts:751

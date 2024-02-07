@@ -34,7 +34,7 @@ this callback until it returns `true`. This is an async callback, you can
 also `await` and returns `true` until some async logic is resolved.
 
  * **Source**:
-    * core/src/lib/Types.ts:1128
+    * core/src/lib/Types.ts:1154
 
 ___
 
@@ -86,7 +86,7 @@ or [forEachReferrer](../interfaces/core_src.IHeapNode.md#foreachreferrer).
  * **Returns**: [`Optional`](core_src.md#optional)<{ `stop`: `boolean`  }\> \| `void` | this API returns void
 
  * **Source**:
-    * core/src/lib/Types.ts:1735
+    * core/src/lib/Types.ts:1767
 
 ___
 
@@ -102,7 +102,7 @@ For concrete example, check out [beforeLeakFilter](../interfaces/core_src.ILeakF
  * **Returns**: `void`
 
  * **Source**:
-    * core/src/lib/Types.ts:541
+    * core/src/lib/Types.ts:548
 
 ___
 
@@ -118,7 +118,7 @@ For concrete examples, check out [action](../interfaces/core_src.IScenario.md#ac
  * **Returns**: `Promise`<`void`\> | no return value
 
  * **Source**:
-    * core/src/lib/Types.ts:620
+    * core/src/lib/Types.ts:628
 
 ___
 
@@ -146,7 +146,7 @@ function leakFilter(node, _snapshot, _leakedNodeIds) {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:568
+    * core/src/lib/Types.ts:575
 
 ___
 
@@ -269,7 +269,7 @@ For concrete examples, check out [leakFilter](../interfaces/core_src.ILeakFilter
 
  * **Parameters**:
     * `edge`: [`IHeapEdge`](../interfaces/core_src.IHeapEdge.md) | the reference (edge) that is considered for calcualting the retainer trace
-    * `snapshot`: [`IHeapSnapshot`](../interfaces/core_src.IHeapSnapshot.md) | the snapshot of target interaction
+    * `snapshot`: [`IHeapSnapshot`](../interfaces/core_src.IHeapSnapshot.md) | the final snapshot taken after all browser interactions are done.
     * `isReferenceUsedByDefault`: `boolean` | MemLab has its own default logic for whether a reference should be filtered (included), if this parameter is true, it means MemLab will consider this reference for inclusion
  * **Returns**: `boolean` | the value indicating whether the given reference should be
 filtered (i.e., included)
@@ -288,7 +288,7 @@ function retainerReferenceFilter(edge, _snapshot, _leakedNodeIds) {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:604
+    * core/src/lib/Types.ts:612
 
 ___
 
@@ -303,7 +303,7 @@ You can retrieve the instance of this type through [getRunMetaInfo](../classes/a
 | `type` | `string` | type of the memlab run |
 
  * **Source**:
-    * core/src/lib/Types.ts:1209
+    * core/src/lib/Types.ts:1235
 
 ___
 

@@ -71,13 +71,14 @@ the subsequent `leakFilter` function calls. This callback could
 be used to initialize some data stores or any one-off
 preprocessings.
 
-* **Parameters**:
-  * snapshot: `IHeapSnapshot` | the final heap snapshot taken after
-    all browser interactions are done.
-    Check out [IHeapSnapshot](core_src.IHeapSnapshot.md) for more APIs that queries the heap snapshot.
-  * leakedNodeIds: `Set<number>` | the set of ids of all JS heap objects
-    allocated by the `action` call but not released after the `back` call
-    in browser.
+* * **Parameters**:
+  * `snapshot`: <code>[IHeapSnapshot](core_src.IHeapSnapshot.md)</code> | the final heap
+     snapshot taken after all browser interactions are done.
+     Check out [IHeapSnapshot](core_src.IHeapSnapshot.md) for more APIs that queries the
+     heap snapshot.
+  * `leakedNodeIds`: `Set<number>` | the set of ids of all JS heap objects
+     allocated by the `action` call but not released after the `back` call
+     in browser.
 
 * **Examples**:
 ```javascript
@@ -92,7 +93,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:427
+    * core/src/lib/Types.ts:428
 
 ___
 
@@ -113,13 +114,16 @@ and unmounted Fiber nodes (detached from React Fiber tree) as
 memory leaks.
 
 * **Parameters**:
-  * node: `IHeapNode` | one of the heap object allocated but not released.
-  * snapshot: `IHeapSnapshot` | the final heap snapshot taken after
-    all browser interactions are done.
-    Check out [IHeapSnapshot](core_src.IHeapSnapshot.md) for more APIs that queries the heap snapshot.
-  * leakedNodeIds: `Set<number>` | the set of ids of all JS heap objects
-    allocated by the `action` call but not released after the `back` call
-    in browser.
+  * `node`: <code>[IHeapNode](core_src.IHeapNode.md)</code> | the heap object
+     allocated but not released. This filter callback will be applied
+     to each node allocated but not released in the heap snapshot.
+  * `snapshot`: <code>[IHeapSnapshot](core_src.IHeapSnapshot.md)</code> | the final heap
+     snapshot taken after all browser interactions are done.
+     Check out [IHeapSnapshot](core_src.IHeapSnapshot.md) for more APIs that queries the
+     heap snapshot.
+  * `leakedNodeIds`: `Set<number>` | the set of ids of all JS heap objects
+     allocated by the `action` call but not released after the `back` call
+     in browser.
 
 * **Returns**: the boolean value indicating whether the given node in
   the snapshot should be considered as leaked.
@@ -146,7 +150,7 @@ memlab run --scenario <SCENARIO FILE> --leak-filter <PATH TO leak-filter.js>
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:476
+    * core/src/lib/Types.ts:480
 
 ___
 
@@ -159,13 +163,16 @@ The callback is called for every reference (edge) in the heap snapshot.
 For concrete examples, check out [leakFilter](core_src.ILeakFilter.md#leakfilter).
 
 * **Parameters**:
-  * edge - the reference (edge) that is considered
-    for calcualting the retainer trace
-  * snapshot - the snapshot of target interaction
-  * isReferenceUsedByDefault - MemLab has its own default logic for
-    whether a reference should be considered as part of the retainer trace,
-    if this parameter is true, it means MemLab will consider this reference
-    when calculating the retainer trace.
+  * `edge` : <code>[IHeapEdge](core_src.IHeapEdge.md)</code> | the reference (edge)
+     that is considered for calcualting the retainer trace
+  * `snapshot`: <code>[IHeapSnapshot](core_src.IHeapSnapshot.md)</code> | the final heap
+     snapshot taken after all browser interactions are done.
+     Check out [IHeapSnapshot](core_src.IHeapSnapshot.md) for more APIs that queries the
+     heap snapshot.
+  * `isReferenceUsedByDefault`: `boolean` | MemLab has its own default
+     logic for whether a reference should be considered as part of the
+     retainer trace, if this parameter is true, it means MemLab will
+     consider this reference when calculating the retainer trace.
 
 * **Returns**: the value indicating whether the given reference should be
 considered when calculating the retainer trace. Note that when this
@@ -205,4 +212,4 @@ memlab run --scenario <SCENARIO FILE> --leak-filter <PATH TO leak-filter.js>
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:530
+    * core/src/lib/Types.ts:537

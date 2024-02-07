@@ -404,13 +404,14 @@ export interface ILeakFilter {
    * be used to initialize some data stores or any one-off
    * preprocessings.
    *
-   * * **Parameters**:
-   *   * snapshot: `IHeapSnapshot` | the final heap snapshot taken after
-   *     all browser interactions are done.
-   *     Check out {@link IHeapSnapshot} for more APIs that queries the heap snapshot.
-   *   * leakedNodeIds: `Set<number>` | the set of ids of all JS heap objects
-   *     allocated by the `action` call but not released after the `back` call
-   *     in browser.
+   * * * **Parameters**:
+   *   * `snapshot`: <code>{@link IHeapSnapshot}</code> | the final heap
+   *      snapshot taken after all browser interactions are done.
+   *      Check out {@link IHeapSnapshot} for more APIs that queries the
+   *      heap snapshot.
+   *   * `leakedNodeIds`: `Set<number>` | the set of ids of all JS heap objects
+   *      allocated by the `action` call but not released after the `back` call
+   *      in browser.
    *
    * * **Examples**:
    * ```javascript
@@ -441,13 +442,16 @@ export interface ILeakFilter {
    * memory leaks.
    *
    * * **Parameters**:
-   *   * node: `IHeapNode` | one of the heap object allocated but not released.
-   *   * snapshot: `IHeapSnapshot` | the final heap snapshot taken after
-   *     all browser interactions are done.
-   *     Check out {@link IHeapSnapshot} for more APIs that queries the heap snapshot.
-   *   * leakedNodeIds: `Set<number>` | the set of ids of all JS heap objects
-   *     allocated by the `action` call but not released after the `back` call
-   *     in browser.
+   *   * `node`: <code>{@link IHeapNode}</code> | the heap object
+   *      allocated but not released. This filter callback will be applied
+   *      to each node allocated but not released in the heap snapshot.
+   *   * `snapshot`: <code>{@link IHeapSnapshot}</code> | the final heap
+   *      snapshot taken after all browser interactions are done.
+   *      Check out {@link IHeapSnapshot} for more APIs that queries the
+   *      heap snapshot.
+   *   * `leakedNodeIds`: `Set<number>` | the set of ids of all JS heap objects
+   *      allocated by the `action` call but not released after the `back` call
+   *      in browser.
    *
    * * **Returns**: the boolean value indicating whether the given node in
    *   the snapshot should be considered as leaked.
@@ -482,13 +486,16 @@ export interface ILeakFilter {
    * For concrete examples, check out {@link leakFilter}.
    *
    * * **Parameters**:
-   *   * edge - the reference (edge) that is considered
-   *     for calcualting the retainer trace
-   *   * snapshot - the snapshot of target interaction
-   *   * isReferenceUsedByDefault - MemLab has its own default logic for
-   *     whether a reference should be considered as part of the retainer trace,
-   *     if this parameter is true, it means MemLab will consider this reference
-   *     when calculating the retainer trace.
+   *   * `edge` : <code>{@link IHeapEdge}</code> | the reference (edge)
+   *      that is considered for calcualting the retainer trace
+   *   * `snapshot`: <code>{@link IHeapSnapshot}</code> | the final heap
+   *      snapshot taken after all browser interactions are done.
+   *      Check out {@link IHeapSnapshot} for more APIs that queries the
+   *      heap snapshot.
+   *   * `isReferenceUsedByDefault`: `boolean` | MemLab has its own default
+   *      logic for whether a reference should be considered as part of the
+   *      retainer trace, if this parameter is true, it means MemLab will
+   *      consider this reference when calculating the retainer trace.
    *
    * * **Returns**: the value indicating whether the given reference should be
    * considered when calculating the retainer trace. Note that when this
@@ -580,7 +587,8 @@ export type LeakFilterCallback = (
  *
  * @param edge - the reference (edge) that is considered
  * for calcualting the retainer trace
- * @param snapshot - the snapshot of target interaction
+ * @param snapshot - the final snapshot taken after all browser
+ * interactions are done.
  * @param isReferenceUsedByDefault - MemLab has its own default logic for
  * whether a reference should be filtered (included), if this parameter is true,
  * it means MemLab will consider this reference for inclusion
@@ -699,7 +707,8 @@ export interface IScenario {
    * the HTTP headers or to prepare data before loading the web page.
    *
    * * **Parameters**:
-   *   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+   *   * `page`: <code>{@link Page}</code> | the puppeteer
+   *     [`Page`](https://pptr.dev/api/puppeteer.page)
    *     object, which provides APIs to interact with the web browser. To import
    *     this type, check out {@link Page}.
    *
@@ -747,7 +756,8 @@ export interface IScenario {
    * or to prepare data before the {@link action} call.
    *
    * * **Parameters**:
-   *   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+   *   * `page`: <code>{@link Page}</code> | the puppeteer
+   *     [`Page`](https://pptr.dev/api/puppeteer.page)
    *     object, which provides APIs to interact with the web browser. To import
    *     this type, check out {@link Page}.
    *
@@ -777,7 +787,8 @@ export interface IScenario {
    * from the `action` callback will be candidates for memory leak filtering.
    *
    * * **Parameters**:
-   *   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+   *   * `page`: <code>{@link Page}</code> | the puppeteer
+   *     [`Page`](https://pptr.dev/api/puppeteer.page)
    *     object, which provides APIs to interact with the web browser. To import
    *     this type, check out {@link Page}.
    *
@@ -821,7 +832,8 @@ export interface IScenario {
    * back/revert the `action` callback. Think of it as an undo action.
    *
    * * **Parameters**:
-   *   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+   *   * `page`: <code>{@link Page}</code> | the puppeteer
+   *     [`Page`](https://pptr.dev/api/puppeteer.page)
    *     object, which provides APIs to interact with the web browser. To import
    *     this type, check out {@link Page}.
    *
@@ -842,7 +854,11 @@ export interface IScenario {
    */
   back?: InteractionsCallback;
   /**
-   * Specifies how many **extra** `action` and `back` actions performed by memlab.
+   * Specifies how many **extra** `action` and `back` actions performed
+   * by memlab.
+   *
+   * * **Returns**: a number value specifies the number of extra actions.
+   *
    * * **Examples**:
    * ```typescript
    * module.exports = {
@@ -865,13 +881,16 @@ export interface IScenario {
    * connections for at least 500ms.
    *
    * * **Parameters**:
-   *   * page: `Page` | the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
+   *   * `page`: <code>{@link Page}</code> | the puppeteer
+   *     [`Page`](https://pptr.dev/api/puppeteer.page)
    *     object, which provides APIs to interact with the web browser. To import
    *     this type, check out {@link Page}.
+   *
    * * **Returns**: a boolean value, if it returns `true`, memlab will consider
    *   the navigation completes, if it returns `false`, memlab will keep calling
    *   this callback until it returns `true`. This is an async callback, you can
    *   also `await` and returns `true` until some async logic is resolved.
+   *
    * * **Examples**:
    * ```typescript
    * module.exports = {
@@ -899,12 +918,13 @@ export interface IScenario {
    * preprocessings.
    *
    * * **Parameters**:
-   *   * snapshot: `IHeapSnapshot` | the final heap snapshot taken after
-   *     all browser interactions are done.
-   *     Check out {@link IHeapSnapshot} for more APIs that queries the heap snapshot.
-   *   * leakedNodeIds: `Set<number>` | the set of ids of all JS heap objects
-   *     allocated by the `action` call but not released after the `back` call
-   *     in browser.
+   *   * `snapshot`: <code>{@link IHeapSnapshot}</code> | the final heap
+   *      snapshot taken after all browser interactions are done.
+   *      Check out {@link IHeapSnapshot} for more APIs that queries the
+   *      heap snapshot.
+   *   * `leakedNodeIds`: `Set<number>` | the set of ids of all JS heap objects
+   *      allocated by the `action` call but not released after the `back` call
+   *      in browser.
    *
    * * **Examples**:
    * ```typescript
@@ -935,13 +955,16 @@ export interface IScenario {
    * memory leaks.
    *
    * * **Parameters**:
-   *   * node: `IHeapNode` | one of the heap object allocated but not released.
-   *   * snapshot: `IHeapSnapshot` | the final heap snapshot taken after
-   *     all browser interactions are done.
-   *     Check out {@link IHeapSnapshot} for more APIs that queries the heap snapshot.
-   *   * leakedNodeIds: `Set<number>` | the set of ids of all JS heap objects
-   *     allocated by the `action` call but not released after the `back` call
-   *     in browser.
+   *   * `node`: <code>{@link IHeapNode}</code> | the heap object
+   *      allocated but not released. This filter callback will be applied
+   *      to each node allocated but not released in the heap snapshot.
+   *   * `snapshot`: <code>{@link IHeapSnapshot}</code> | the final heap
+   *      snapshot taken after all browser interactions are done.
+   *      Check out {@link IHeapSnapshot} for more APIs that queries the
+   *      heap snapshot.
+   *   * `leakedNodeIds`: `Set<number>` | the set of ids of all JS heap objects
+   *      allocated by the `action` call but not released after the `back` call
+   *      in browser.
    *
    * * **Returns**: the boolean value indicating whether the given node in
    *   the snapshot should be considered as leaked.
@@ -969,13 +992,16 @@ export interface IScenario {
    * For concrete examples, check out {@link leakFilter}.
    *
    * * **Parameters**:
-   *   * edge - the reference (edge) that is considered
-   *     for calcualting the retainer trace
-   *   * snapshot - the snapshot of target interaction
-   *   * isReferenceUsedByDefault - MemLab has its own default logic for
-   *     whether a reference should be considered as part of the retainer trace,
-   *     if this parameter is true, it means MemLab will consider this reference
-   *     when calculating the retainer trace.
+   *   * `edge` : <code>{@link IHeapEdge}</code> | the reference (edge)
+   *      that is considered for calcualting the retainer trace
+   *   * `snapshot`: <code>{@link IHeapSnapshot}</code> | the heap snapshot
+   *      taken after all browser interactions are done.
+   *      Check out {@link IHeapSnapshot} for more APIs that queries the
+   *      heap snapshot.
+   *   * `isReferenceUsedByDefault`: `boolean` | MemLab has its own default
+   *      logic for whether a reference should be considered as part of the
+   *      retainer trace, if this parameter is true, it means MemLab will
+   *      consider this reference when calculating the retainer trace.
    *
    * * **Returns**: the value indicating whether the given reference should be
    * considered when calculating the retainer trace. Note that when this
@@ -1557,8 +1583,11 @@ export interface IHeapLocation {
   /**
    * convert to a concise readable string output
    * (like calling `JSON.stringify(node, ...args)`).
-   * Note: calling `JSON.stringify(node, ...args)` will not work
-   * since the string is too large and not readable.
+   *
+   * Note: Please be aware that using `JSON.stringify(node, ...args)` is
+   * not recommended as it will generate a JSON representation of the host
+   * object that is too large to be easily readable due to its connections
+   * to other parts of the data structures within the heap snapshot.
    *
    * This API does not completely serialize all the information
    * captured by the hosting object.
@@ -1641,8 +1670,11 @@ export interface IHeapEdge extends IHeapEdgeBasic {
   /**
    * convert to a concise readable string output
    * (like calling `JSON.stringify(node, ...args)`).
-   * Note: calling `JSON.stringify(node, ...args)` will not work
-   * since the string is too large and not readable.
+   *
+   * Note: Please be aware that using `JSON.stringify(node, ...args)` is
+   * not recommended as it will generate a JSON representation of the host
+   * object that is too large to be easily readable due to its connections
+   * to other parts of the data structures within the heap snapshot.
    *
    * This API does not completely serialize all the information
    * captured by the hosting object.
@@ -1863,8 +1895,11 @@ export interface IHeapNode extends IHeapNodeBasic {
   /**
    * convert to a concise readable string output
    * (like calling `JSON.stringify(node, ...args)`).
-   * Note: calling `JSON.stringify(node, ...args)` will not work
-   * since the string is too large and not readable.
+   *
+   * Note: Please be aware that using `JSON.stringify(node, ...args)` is
+   * not recommended as it will generate a JSON representation of the host
+   * object that is too large to be easily readable due to its connections
+   * to other parts of the data structures within the heap snapshot.
    *
    * This API does not completely serialize all the information
    * captured by the hosting object.

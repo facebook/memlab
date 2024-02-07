@@ -45,7 +45,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 index of this JS reference inside the `edge.snapshot.edges` pseudo array
 
  * **Source**:
-    * core/src/lib/Types.ts:1619
+    * core/src/lib/Types.ts:1648
 
 ___
 
@@ -55,7 +55,7 @@ returns an [IHeapNode](core_src.IHeapNode.md) instance representing the hosting
 JS heap object where this reference starts
 
  * **Source**:
-    * core/src/lib/Types.ts:1640
+    * core/src/lib/Types.ts:1669
 
 ___
 
@@ -67,7 +67,7 @@ otherwise this is a reference with a string name (`edge.name_or_index`
 will return a string)
 
  * **Source**:
-    * core/src/lib/Types.ts:1626
+    * core/src/lib/Types.ts:1655
 
 ___
 
@@ -77,7 +77,7 @@ name of the JS reference. If this is a reference to an array element
 or internal table element, it is an numeric index
 
  * **Source**:
-    * core/src/lib/Types.ts:1575
+    * core/src/lib/Types.ts:1604
 
 ___
 
@@ -86,7 +86,7 @@ ___
 get the [IHeapSnapshot](core_src.IHeapSnapshot.md) containing this JS reference
 
  * **Source**:
-    * core/src/lib/Types.ts:1615
+    * core/src/lib/Types.ts:1644
 
 ___
 
@@ -96,7 +96,7 @@ returns an [IHeapNode](core_src.IHeapNode.md) instance representing the JS heap 
 pointed to by this reference
 
  * **Source**:
-    * core/src/lib/Types.ts:1635
+    * core/src/lib/Types.ts:1664
 
 ___
 
@@ -105,7 +105,7 @@ ___
 the index of the JS heap object pointed to by this reference
 
  * **Source**:
-    * core/src/lib/Types.ts:1630
+    * core/src/lib/Types.ts:1659
 
 ___
 
@@ -115,7 +115,7 @@ type of the JS reference, all types:
 `context`, `element`, `property`, `internal`, `hidden`, `shortcut`, `weak`
 
  * **Source**:
-    * core/src/lib/Types.ts:1580
+    * core/src/lib/Types.ts:1609
 
 ## Methods
 
@@ -123,8 +123,11 @@ type of the JS reference, all types:
 
 convert to a concise readable string output
 (like calling `JSON.stringify(node, ...args)`).
-Note: calling `JSON.stringify(node, ...args)` will not work
-since the string is too large and not readable.
+
+Note: Please be aware that using `JSON.stringify(node, ...args)` is
+not recommended as it will generate a JSON representation of the host
+object that is too large to be easily readable due to its connections
+to other parts of the data structures within the heap snapshot.
 
 This API does not completely serialize all the information
 captured by the hosting object.
@@ -133,4 +136,4 @@ captured by the hosting object.
     * `...args`: `any`[]
  * **Returns**: `string`
  * **Source**:
-    * core/src/lib/Types.ts:1650
+    * core/src/lib/Types.ts:1682
