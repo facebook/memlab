@@ -26,10 +26,10 @@
     "access": "public"
   },
   "dependencies": {
-    "@memlab/api": "^1.0.11",
-    "@memlab/core": "^1.1.13",
-    "@memlab/e2e": "^1.0.11",
-    "@memlab/heap-analysis": "^1.0.7",
+    "@memlab/api": "^1.0.27",
+    "@memlab/core": "^1.1.28",
+    "@memlab/e2e": "^1.0.28",
+    "@memlab/heap-analysis": "^1.0.25",
     "ansi": "^0.3.1",
     "babar": "^0.2.0",
     "blessed": "^0.1.81",

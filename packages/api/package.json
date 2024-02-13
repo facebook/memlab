@@ -27,9 +27,9 @@
     "access": "public"
   },
   "dependencies": {
-    "@memlab/core": "^1.1.10",
-    "@memlab/e2e": "^1.0.9",
-    "@memlab/heap-analysis": "^1.0.7",
+    "@memlab/core": "^1.1.28",
+    "@memlab/e2e": "^1.0.28",
+    "@memlab/heap-analysis": "^1.0.25",
     "ansi": "^0.3.1",
     "babar": "^0.2.0",
     "chalk": "^4.0.0",
