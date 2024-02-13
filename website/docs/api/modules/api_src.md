@@ -23,12 +23,12 @@ Options for configuring browser interaction run, all fields are optional
 
 | Name | Type | Description |
 | :------ | :------ | :------ |
-| `chromiumBinary?` | `string` | specify the Chromium binary for E2E run |
+| `chromiumBinary?` | `string` | if not specified, memlab will use the Chromium binary installed by Puppeteer. Use this option to specify a different binary if Puppeteer does not install the Chromium binary correctly (e.g., in a environtment Docker) or when you may want to use a different version of Chromium binary. |
 | `consoleMode?` | [`ConsoleMode`](../enums/api_src.ConsoleMode.md) | specifying the terminal output mode, default is `default`. For more details. please check out [ConsoleMode](../enums/api_src.ConsoleMode.md) |
 | `cookiesFile?` | `string` | the absolute path of cookies file |
-| `evalInBrowserAfterInitLoad?` | `AnyFunction` | function to be evaluated in browser context after the web page initial load |
+| `evalInBrowserAfterInitLoad?` | `AnyFunction` | function to be evaluated in browser context after the web page initial load. Note that this function is defined in node.js context but it will be evaluated in browser context so the function should not use any closure variables outside of the browser context. |
 | `scenario?` | `IScenario` | test scenario specifying how to interact with browser (for more details view [IScenario](../interfaces/core_src.IScenario.md)) |
-| `skipWarmup?` | `boolean` | skip warmup page load for the target web app |
+| `skipWarmup?` | `boolean` | skip the initial page loading warmup for the web application being tested |
 | `snapshotForEachStep?` | `boolean` | if true, take heap snapshot for each interaction step, by default this is false, which means memlab will decide which steps it will take heap snapshots |
 | `webWorker?` | `Optional`<`string`\> | if this field is provided, it specifies the web worker as the target for heap analysis. For example `{webWorker: null}` means analyzing the heap of the first web worker found. `{webWorker: 'workerTitle'}` means analyzing the heap of the web worker with name: `'workerTitle'`. |
 | `workDir?` | `string` | specify the working directory where you want memlab to dump heap snapshots and other meta data of the test run. If no working directory is provided, memlab will generate a random temp directory under the operating system's default directory for temporary files. Note: It's the caller's responsibility to make sure the specified working directory exists. |
@@ -48,7 +48,7 @@ A data structure holding the result of the [run](api_src.md#run) API call.
 | `runResult` | [`BrowserInteractionResultReader`](../classes/api_src.BrowserInteractionResultReader.md) | a utility for reading browser interaction results from disk |
 
  * **Source**:
-    * api/src/API.ts:101
+    * api/src/API.ts:108
 
 ## Functions
 
@@ -79,7 +79,7 @@ const {analyze, takeSnapshots, StringAnalysis} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:321
+    * api/src/API.ts:328
 
 ___
 
@@ -107,7 +107,7 @@ const {findLeaks, takeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:249
+    * api/src/API.ts:256
 
 ___
 
@@ -127,7 +127,7 @@ the `--baseline`, `--target`, and `--final` flags in CLI.
  * **Returns**: `Promise`<`ISerializedInfo`[]\> | leak traces detected and clustered from the browser interaction
 
  * **Source**:
-    * api/src/API.ts:277
+    * api/src/API.ts:284
 
 ___
 
@@ -155,7 +155,7 @@ const {run} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:181
+    * api/src/API.ts:188
 
 ___
 
@@ -180,7 +180,7 @@ const {takeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:214
+    * api/src/API.ts:221
 
 ___
 
@@ -206,4 +206,4 @@ const {warmupAndTakeSnapshots} = require('@memlab/api');
 ```
 
  * **Source**:
-    * api/src/API.ts:144
+    * api/src/API.ts:151

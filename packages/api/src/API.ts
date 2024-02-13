@@ -54,7 +54,10 @@ export type RunOptions = {
   cookiesFile?: string;
   /**
    * function to be evaluated in browser context after
-   * the web page initial load
+   * the web page initial load.
+   * Note that this function is defined in node.js context but it will be
+   * evaluated in browser context so the function should not use any closure
+   * variables outside of the browser context.
    */
   evalInBrowserAfterInitLoad?: AnyFunction;
   /**
@@ -81,7 +84,7 @@ export type RunOptions = {
    */
   webWorker?: Optional<string>;
   /**
-   * skip warmup page load for the target web app
+   * skip the initial page loading warmup for the web application being tested
    */
   skipWarmup?: boolean;
   /**
@@ -90,7 +93,11 @@ export type RunOptions = {
    */
   consoleMode?: ConsoleMode;
   /**
-   * specify the Chromium binary for E2E run
+   * if not specified, memlab will use the Chromium binary installed
+   * by Puppeteer. Use this option to specify a different binary if
+   * Puppeteer does not install the Chromium binary correctly (e.g., in a
+   * environtment Docker) or when you may want to use a different version of
+   * Chromium binary.
    */
   chromiumBinary?: string;
 };
