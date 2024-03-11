@@ -75,6 +75,35 @@ export default class BaseResultReader {
   }
 
   /**
+   * This method gets the backup file of the console output.
+   *
+   * The memlab CLI commands (e.g., `memlab find-leaks`) outputs a
+   * non-structured string representation for easy reading, while the
+   * APIs (e.g., <code>{@link findLeaks}</code>) return structured leaks
+   * representation that is handy for post-processing. If you need to
+   * obtain all the string output from the CLI in the current working directory,
+   * you can read them from the CLI output backup file returned by this method.
+   *
+   * @returns the absolute path of the backup file
+   * * **Examples**:
+   * ```javascript
+   * const {takeSnapshots, findLeaks} = require('@memlab/api');
+   *
+   * (async function () {
+   *   const scenario = { url: () => 'https://www.npmjs.com'};
+   *   const result = await takeSnapshots({scenario});
+   *   const leaks = await findLeaks(result);
+   *
+   *   // get the console output backup file
+   *   const consoleBackupFile = result.getConsoleBackupFile();
+   * })();
+   * ```
+   */
+  public getConsoleBackupFile(): string {
+    return this.fileManager.getConsoleBackupFile({workDir: this.workDir});
+  }
+
+  /**
    * clean up data/files generated from the memlab browser interaction run
    * @returns no return value
    * * **Examples**:

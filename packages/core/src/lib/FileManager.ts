@@ -129,6 +129,12 @@ export class FileManager {
     return path.join(this.getDataBaseDir(options), 'cur');
   }
 
+  public getConsoleBackupFile(
+    options: FileOption = FileManager.defaultFileOption,
+  ): string {
+    return path.join(this.getCurDataDir(options), 'console-log.txt');
+  }
+
   public getWebSourceDir(
     options: FileOption = FileManager.defaultFileOption,
   ): string {
@@ -633,7 +639,7 @@ export class FileManager {
     );
 
     // register the default log file
-    config.consoleLogFile = path.join(config.curDataDir, 'console-log.txt');
+    config.consoleLogFile = this.getConsoleBackupFile(options);
     info.registerLogFile(config.consoleLogFile);
 
     config.runMetaFile = this.getRunMetaFile(options);
