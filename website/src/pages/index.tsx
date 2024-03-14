@@ -21,6 +21,7 @@ import TerminalReplay from '../components/TerminalReplay';
 import Showcase from '../components/Showcase';
 import * as Three from 'three';
 import NET from 'vanta/dist/vanta.net.min';
+import useWindowSize from '../lib/useWindowSize';
 
 import nomralizeTypeSpeed from '../lib/TypeSpeedNormalization';
 import homePageStdouts from '../data/HomePageMainTerminal';
@@ -128,12 +129,15 @@ function Feature({imageUrl, title, description, docUrl}) {
 }
 
 const stdouts = nomralizeTypeSpeed(homePageStdouts);
+const MIN_POINTS = 6;
+const MAX_POINTS = 16;
 
 export default function Home(): React.ReactElement {
   const {siteConfig} = useDocusaurusContext();
   const headerContainerID = 'css-animated-bg-container';
   const [vantaEffect, setVantaEffect] = useState(null);
   const headerRef = useRef(null);
+  const {width} = useWindowSize();
 
   useEffect(() => {
     if (!vantaEffect) {
@@ -147,17 +151,22 @@ export default function Home(): React.ReactElement {
           minHeight: 200.0,
           minWidth: 200.0,
           scale: 0.9,
-          scaleMobile: 0.8,
+          scaleMobile: 0.4,
           color: 0x63822b,
           backgroundColor: 0xf0db4f,
-          points: 12.0,
+          points: Math.min(
+            Math.max(Math.floor((12.0 * width) / 1800), MIN_POINTS),
+            MAX_POINTS,
+          ),
           maxDistance: 30.0,
           spacing: 22.0,
         }),
       );
     }
     return () => {
-      if (vantaEffect) vantaEffect.destroy();
+      if (vantaEffect != null) {
+        vantaEffect.destroy();
+      }
     };
   }, [vantaEffect]);
 

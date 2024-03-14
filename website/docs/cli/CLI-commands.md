@@ -501,6 +501,8 @@ memlab reset
 
 Run test scenario in measure mode
 
+In some web apps, the heap size can show considerable variability across various runs. This fluctuation can often make it hard to understand the impact of memory leaks. The introduction of the measure mode aims to address this challenge by executing the same scenario repetitively, therefore getting multiple data points of JavaScript heap sizes. This can help understand if the heap size movements during specific runs come from memory-related issues or just noise.
+
 ```bash
 memlab measure --scenario <TEST_SCENARIO_FILE>
 ```

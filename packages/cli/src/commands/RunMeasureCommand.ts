@@ -84,6 +84,18 @@ export default class RunMeasureCommand extends BaseCommand {
     ];
   }
 
+  getDocumenation(): string {
+    return (
+      'In some web apps, the heap size can show considerable variability' +
+      ' across various runs. This fluctuation can often make it hard to' +
+      ' understand the impact of memory leaks. The introduction of the measure' +
+      ' mode aims to address this challenge by executing the same scenario' +
+      ' repetitively, therefore getting multiple data points of JavaScript heap' +
+      ' sizes. This can help understand if the heap size movements during' +
+      ' specific runs come from memory-related issues or just noise.'
+    );
+  }
+
   async run(options: CLIOptions): Promise<void> {
     const numRuns = NumberOfRunsOption.getParsedOption(
       options.configFromOptions,
