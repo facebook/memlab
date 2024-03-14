@@ -8,7 +8,7 @@
  * @oncall web_perf_infra
  */
 
-import React, {ReactNode, useLayoutEffect} from 'react';
+import React, {ReactNode, useEffect, useRef, useState} from 'react';
 import clsx from 'clsx';
 import Layout from '@theme/Layout';
 import Link from '@docusaurus/Link';
@@ -19,7 +19,9 @@ import useBaseUrl from '@docusaurus/useBaseUrl';
 import styles from './styles.module.css';
 import TerminalReplay from '../components/TerminalReplay';
 import Showcase from '../components/Showcase';
-import startAnimation from '../lib/ContainerAnimation';
+import * as Three from 'three';
+import NET from 'vanta/dist/vanta.net.min';
+
 import nomralizeTypeSpeed from '../lib/TypeSpeedNormalization';
 import homePageStdouts from '../data/HomePageMainTerminal';
 
@@ -130,15 +132,40 @@ const stdouts = nomralizeTypeSpeed(homePageStdouts);
 export default function Home(): React.ReactElement {
   const {siteConfig} = useDocusaurusContext();
   const headerContainerID = 'css-animated-bg-container';
+  const [vantaEffect, setVantaEffect] = useState(null);
+  const headerRef = useRef(null);
 
-  useLayoutEffect(() => {
-    startAnimation(headerContainerID);
-  }, []);
+  useEffect(() => {
+    if (!vantaEffect) {
+      setVantaEffect(
+        NET({
+          el: headerRef.current,
+          THREE: Three,
+          mouseControls: true,
+          touchControls: true,
+          gyroControls: false,
+          minHeight: 200.0,
+          minWidth: 200.0,
+          scale: 0.9,
+          scaleMobile: 0.8,
+          color: 0x63822b,
+          backgroundColor: 0xf0db4f,
+          points: 12.0,
+          maxDistance: 30.0,
+          spacing: 22.0,
+        }),
+      );
+    }
+    return () => {
+      if (vantaEffect) vantaEffect.destroy();
+    };
+  }, [vantaEffect]);
 
   return (
     <Layout description="memlab is an E2E testing, memory leak detection, and heap analysis framework for front-end JavaScript.">
       <header
         id={headerContainerID}
+        ref={headerRef}
         className={clsx('hero hero--primary', styles.heroBanner)}>
         <div id="header-container" className="container">
           <div id="left-header-section" className="container-section">

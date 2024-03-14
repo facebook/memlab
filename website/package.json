@@ -29,7 +29,9 @@
     "raw-loader": "^4.0.2",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
-    "typedoc": "^0.22.17"
+    "three": "0.134.0",
+    "typedoc": "^0.22.17",
+    "vanta": "0.5.24"
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "2.0.0-beta.21",

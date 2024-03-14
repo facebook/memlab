@@ -142,12 +142,13 @@ code {
 }
 
 #title, #sub-title {
-  color: black;
-  text-shadow: 2px 2px 2px rgb(209, 183, 61);
+  color: #323330;
+  font-family: circular, 'Segoe UI', sans-serif, Tahoma, Geneva, Verdana;
+  text-shadow: 1px 1px 1px rgb(209, 183, 61);
 }
 
 #learn-more {
-  color: black;
+  color: #323330;
   backdrop-filter: blur(10px);
 }
 
