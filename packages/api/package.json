@@ -34,7 +34,7 @@
     "babar": "^0.2.0",
     "chalk": "^4.0.0",
     "fs-extra": "^4.0.2",
-    "minimist": "^1.2.0",
+    "minimist": "^1.2.8",
     "puppeteer": "^21.0.3",
     "puppeteer-core": "^21.0.3",
     "string-width": "^4.2.0",
@@ -44,7 +44,7 @@
   "devDependencies": {
     "@types/fs-extra": "^9.0.3",
     "@types/jest": "^27.4.1",
-    "@types/minimist": "^1.2.2",
+    "@types/minimist": "^1.2.5",
     "@types/node": "^12.16.3",
     "@types/puppeteer": "^5.4.4",
     "jest": "^29.6.2",
