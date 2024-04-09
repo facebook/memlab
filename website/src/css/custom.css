@@ -149,7 +149,7 @@ code {
 
 #learn-more {
   color: #323330;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(4px);
 }
 
 #header-container {

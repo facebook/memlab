@@ -140,7 +140,7 @@ export default function Home(): React.ReactElement {
   const {width} = useWindowSize();
 
   useEffect(() => {
-    if (!vantaEffect) {
+    if (!vantaEffect && width > 800) {
       setVantaEffect(
         NET({
           el: headerRef.current,
