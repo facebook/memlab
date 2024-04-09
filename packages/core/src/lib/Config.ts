@@ -293,6 +293,9 @@ export class MemLabConfig {
         '--js-flags="--no-move-object-start"',
         // Alreay on by default, just want to make sure
         '--enable-precise-memory-info',
+        // sites using WebGL (three.js) will fail
+        // in headless mode without WebGL
+        '--enable-webgl',
         'browser-test',
       ],
       defaultViewport,
