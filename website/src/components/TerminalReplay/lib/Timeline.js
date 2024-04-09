@@ -132,8 +132,6 @@ const Timeline = (function () {
 
   Timeline.prototype.playing = false;
 
-  Timeline.prototype.markers = [];
-
   function Timeline(options) {
     this._onTick = __bind(this._onTick, this);
     let key, val, _ref;
@@ -148,6 +146,7 @@ const Timeline = (function () {
       this._options[key] = val;
     }
     this._events = {};
+    this.markers = [];
   }
 
   Timeline.prototype.length = function (ms) {
