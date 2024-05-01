@@ -186,11 +186,17 @@ the object will be considered as unreachable in the heap graph; and
 therefore, the reference and heap object will not be included in the
 retainer trace detection and retainer size calculation.
 
+Please also be aware that some edges like self-referencing edges,
+JS engine's internal edges, and hidden edges should not be considered
+as part of the retainer trace. These edges could make the retainer trace
+unncessarily complex and cause confusion. `isReferenceUsedByDefault` will
+be `false` for these types of edges.
+
 * **Examples**:
 ```javascript
 // save as leak-filter.js
 module.exports = {
-  retainerReferenceFilter(edge, _snapshot, _leakedNodeIds) {
+  retainerReferenceFilter(edge, _snapshot, _isReferenceUsedByDefault) {
     // exclude react fiber references
     if (edge.name_or_index.toString().startsWith('__reactFiber$')) {
       return false;
@@ -212,4 +218,4 @@ memlab run --scenario <SCENARIO FILE> --leak-filter <PATH TO leak-filter.js>
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:537
+    * core/src/lib/Types.ts:543

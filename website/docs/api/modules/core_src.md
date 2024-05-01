@@ -34,7 +34,7 @@ this callback until it returns `true`. This is an async callback, you can
 also `await` and returns `true` until some async logic is resolved.
 
  * **Source**:
-    * core/src/lib/Types.ts:1154
+    * core/src/lib/Types.ts:1166
 
 ___
 
@@ -86,7 +86,7 @@ or [forEachReferrer](../interfaces/core_src.IHeapNode.md#foreachreferrer).
  * **Returns**: [`Optional`](core_src.md#optional)<{ `stop`: `boolean`  }\> \| `void` | this API returns void
 
  * **Source**:
-    * core/src/lib/Types.ts:1767
+    * core/src/lib/Types.ts:1779
 
 ___
 
@@ -102,7 +102,7 @@ For concrete example, check out [beforeLeakFilter](../interfaces/core_src.ILeakF
  * **Returns**: `void`
 
  * **Source**:
-    * core/src/lib/Types.ts:548
+    * core/src/lib/Types.ts:554
 
 ___
 
@@ -118,7 +118,7 @@ For concrete examples, check out [action](../interfaces/core_src.IScenario.md#ac
  * **Returns**: `Promise`<`void`\> | no return value
 
  * **Source**:
-    * core/src/lib/Types.ts:628
+    * core/src/lib/Types.ts:640
 
 ___
 
@@ -146,7 +146,7 @@ function leakFilter(node, _snapshot, _leakedNodeIds) {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:575
+    * core/src/lib/Types.ts:581
 
 ___
 
@@ -274,10 +274,16 @@ For concrete examples, check out [leakFilter](../interfaces/core_src.ILeakFilter
  * **Returns**: `boolean` | the value indicating whether the given reference should be
 filtered (i.e., included)
 
+Please also be aware that some edges like self-referencing edges,
+JS engine's internal edges, and hidden edges should not be considered
+as part of the retainer trace. These edges could make the retainer trace
+unncessarily complex and cause confusion. `isReferenceUsedByDefault` will
+be `false` for these types of edges.
+
 * **Examples**:
 ```javascript
 // exclude react fiber references
-function retainerReferenceFilter(edge, _snapshot, _leakedNodeIds) {
+function retainerReferenceFilter(edge, _snapshot, _isReferenceUsedByDefault) {
   if (edge.name_or_index.toString().startsWith('__reactFiber$')) {
     return false;
   }
@@ -288,7 +294,7 @@ function retainerReferenceFilter(edge, _snapshot, _leakedNodeIds) {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:612
+    * core/src/lib/Types.ts:624
 
 ___
 
@@ -303,7 +309,7 @@ You can retrieve the instance of this type through [getRunMetaInfo](../classes/a
 | `type` | `string` | type of the memlab run |
 
  * **Source**:
-    * core/src/lib/Types.ts:1235
+    * core/src/lib/Types.ts:1247
 
 ___
 

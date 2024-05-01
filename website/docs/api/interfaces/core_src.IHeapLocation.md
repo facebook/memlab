@@ -43,7 +43,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 get the column number
 
  * **Source**:
-    * core/src/lib/Types.ts:1582
+    * core/src/lib/Types.ts:1594
 
 ___
 
@@ -52,7 +52,7 @@ ___
 get the line number
 
  * **Source**:
-    * core/src/lib/Types.ts:1578
+    * core/src/lib/Types.ts:1590
 
 ___
 
@@ -61,7 +61,7 @@ ___
 get the heap object this location this location represents
 
  * **Source**:
-    * core/src/lib/Types.ts:1570
+    * core/src/lib/Types.ts:1582
 
 ___
 
@@ -70,7 +70,7 @@ ___
 get the script ID of the source file
 
  * **Source**:
-    * core/src/lib/Types.ts:1574
+    * core/src/lib/Types.ts:1586
 
 ___
 
@@ -79,7 +79,7 @@ ___
 get the [IHeapSnapshot](core_src.IHeapSnapshot.md) containing this location instance
 
  * **Source**:
-    * core/src/lib/Types.ts:1566
+    * core/src/lib/Types.ts:1578
 
 ## Methods
 
@@ -100,4 +100,4 @@ captured by the hosting object.
     * `...args`: `any`[]
  * **Returns**: `string`
  * **Source**:
-    * core/src/lib/Types.ts:1595
+    * core/src/lib/Types.ts:1607

@@ -16,7 +16,7 @@ through [RunMetaInfo](../modules/core_src.md#runmetainfo).
 browser version
 
  * **Source**:
-    * core/src/lib/Types.ts:1220
+    * core/src/lib/Types.ts:1232
 
 ___
 
@@ -25,7 +25,7 @@ ___
 all web console output
 
  * **Source**:
-    * core/src/lib/Types.ts:1228
+    * core/src/lib/Types.ts:1240
 
 ___
 
@@ -34,4 +34,4 @@ ___
 configuration for puppeteer
 
  * **Source**:
-    * core/src/lib/Types.ts:1224
+    * core/src/lib/Types.ts:1236

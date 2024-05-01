@@ -686,7 +686,10 @@ function loadLeakFilter(filename: string): ILeakFilter {
     if (typeof filter === 'function') {
       return {leakFilter: filter};
     }
-    if (typeof filter?.leakFilter === 'function') {
+    if (
+      typeof filter?.leakFilter === 'function' ||
+      typeof filter?.retainerReferenceFilter === 'function'
+    ) {
       return filter;
     }
     throw haltOrThrow(`Invalid leak filter in ${filepath}`);

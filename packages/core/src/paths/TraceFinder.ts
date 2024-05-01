@@ -727,10 +727,16 @@ class TraceFinder {
     if (!node || !node.hasPathEdge) {
       return null;
     }
+    const visited = new Set<number>([node.id]);
     let path: LeakTracePathItem = {node};
     while (node && node.hasPathEdge) {
       const edge: IHeapEdge = node.pathEdge as IHeapEdge;
-      path = {node: edge.fromNode, edge, next: path};
+      const fromNode = edge.fromNode;
+      if (visited.has(fromNode.id)) {
+        return null;
+      }
+      visited.add(fromNode.id);
+      path = {node: fromNode, edge, next: path};
       node = edge.fromNode;
     }
     return path;
