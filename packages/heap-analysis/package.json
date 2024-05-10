@@ -1,6 +1,6 @@
 {
   "name": "@memlab/heap-analysis",
-  "version": "1.0.27",
+  "version": "1.0.28",
   "license": "MIT",
   "description": "heap analysis plugins for memlab",
   "author": "Liang Gong <lgong@fb.com>",
@@ -20,8 +20,8 @@
     "LICENSE"
   ],
   "dependencies": {
-    "@memlab/core": "^1.1.30",
-    "@memlab/e2e": "^1.0.30",
+    "@memlab/core": "^1.1.31",
+    "@memlab/e2e": "^1.0.31",
     "ansi": "^0.3.1",
     "babar": "^0.2.0",
     "chalk": "^4.0.0",
