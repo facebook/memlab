@@ -13,6 +13,7 @@ import type {Command, Optional} from './Types';
 import info from './Console';
 import cp from 'child_process';
 import os from 'os';
+import utils from './Utils';
 
 type Options = {
   msg?: string;
@@ -66,7 +67,7 @@ class ProcessManager {
     if (options.msg) {
       info.lowLevel(options.msg);
     }
-    const str = [cmd, ...args].join(' ');
+    const str = utils.convertCLIArgsToReadableCommand([cmd, ...args]);
     this.nProc++;
     const proc = cp.spawn(cmd, args);
     proc.on('exit', code => {

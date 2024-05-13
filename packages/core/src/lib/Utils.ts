@@ -2141,6 +2141,22 @@ function setChromiumBinary(config: MemLabConfig, chromiumBinary: string) {
   config.puppeteerConfig.executablePath = binaryPath;
 }
 
+function convertToReadableArg(arg: string): string {
+  const startsWithBackslashAndQuote = arg.startsWith('\\"');
+  const endsWithBackslashAndQuote = arg.endsWith('\\"');
+  if (startsWithBackslashAndQuote && endsWithBackslashAndQuote) {
+    return `"${arg.substring(2, arg.length - 2)}"`;
+  }
+  if (/\s/.test(arg)) {
+    return `"${arg}"`;
+  }
+  return arg;
+}
+
+function convertCLIArgsToReadableCommand(args: string[]): string {
+  return args.map(convertToReadableArg).join(' ');
+}
+
 export default {
   aggregateDominatorMetrics,
   applyToNodes,
@@ -2150,6 +2166,7 @@ export default {
   checkSnapshots,
   checkUninstalledLibrary,
   closePuppeteer,
+  convertCLIArgsToReadableCommand,
   dumpSnapshot,
   equalOrMatch,
   extractClosureNodeInfo,
