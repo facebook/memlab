@@ -17,17 +17,13 @@ export default function Home() {
       <div className="row">
         <div className="col-md-3">
           <Link href="/examples/detached-dom">
-            <a>
-              <h2>Example 1 &rarr;</h2>
-            </a>
+            <h2>Example 1 &rarr;</h2>
           </Link>
           <p>Detached DOM element</p>
         </div>
         <div className="col-md-3">
           <Link href="/examples/oversized-object">
-            <a>
-              <h2>Example 2 &rarr;</h2>
-            </a>
+            <h2>Example 2 &rarr;</h2>
           </Link>
           <p>Leaked event listener</p>
         </div>
