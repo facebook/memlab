@@ -240,6 +240,7 @@ export class MemLabConfig {
   noReCluster: boolean;
   maxSamplesForClustering: number;
   filterTraceByName: Nullable<string>;
+  skipBrowserCloseWait: boolean;
 
   constructor(options: ConfigOption = {}) {
     // init properties, they can be configured manually
@@ -370,6 +371,8 @@ export class MemLabConfig {
     // if specified via CLI options, this will filter leak traces by
     // node and edge names in the leak trace
     this.filterTraceByName = null;
+    // if true, memlab will not wait for the browser to close successfully
+    this.skipBrowserCloseWait = false;
   }
 
   // initialize configurable parameters
