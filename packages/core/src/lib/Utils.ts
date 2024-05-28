@@ -1325,6 +1325,8 @@ async function closePuppeteer(
   if (config.isLocalPuppeteer && !options.warmup) {
     await Promise.all(pages.map(page => page.close()));
     await browser.disconnect();
+  } else if (config.skipBrowserCloseWait) {
+    browser.close();
   } else {
     await browser.close();
   }
