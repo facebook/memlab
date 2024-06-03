@@ -1,6 +1,6 @@
 {
   "name": "@memlab/e2e",
-  "version": "1.0.31",
+  "version": "1.0.32",
   "license": "MIT",
   "description": "memlab browser E2E interaction libraries",
   "author": "Liang Gong <lgong@fb.com>",
@@ -21,7 +21,11 @@
     "LICENSE"
   ],
   "dependencies": {
-    "@memlab/core": "^1.1.31",
+    "@babel/generator": "^7.16.0",
+    "@babel/parser": "^7.16.4",
+    "@babel/template": "^7.16.0",
+    "@babel/traverse": "^7.16.3",
+    "@memlab/core": "^1.1.32",
     "ansi": "^0.3.1",
     "babar": "^0.2.0",
     "chalk": "^4.0.0",
@@ -31,11 +35,7 @@
     "puppeteer-core": "^21.0.3",
     "string-width": "^4.2.0",
     "util.promisify": "^1.1.1",
-    "xvfb": "^0.4.0",
-    "@babel/parser": "^7.16.4",
-    "@babel/traverse": "^7.16.3",
-    "@babel/generator": "^7.16.0",
-    "@babel/template": "^7.16.0"
+    "xvfb": "^0.4.0"
   },
   "devDependencies": {
     "@babel/types": "^7.16.0",
