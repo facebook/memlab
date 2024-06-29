@@ -19,6 +19,7 @@ import serializer from '../lib/Serializer';
 import utils from '../lib/Utils';
 import fs from 'fs';
 import path from 'path';
+import info from '../lib/Console';
 
 class LeakTraceDetailsLogger {
   _wrapPathJSONInLoader(jsonContent: string): string {
@@ -41,11 +42,22 @@ class LeakTraceDetailsLogger {
   ): Nullable<ISerializedInfo> {
     const options = {leakedIdSet, nodeIdsInSnapshots};
     const gcTrace = serializer.JSONifyPath(trace, snapshot, options);
-    const traceJSON = JSON.stringify(gcTrace, null, 2);
-    const content = this._wrapPathJSONInLoader(traceJSON);
-    fs.writeFile(filepath, content, 'UTF-8', () => {
-      // noop
-    });
+    try {
+      const traceJSON = JSON.stringify(gcTrace, null, 2);
+      const content = this._wrapPathJSONInLoader(traceJSON);
+      fs.writeFile(filepath, content, 'UTF-8', () => {
+        // noop
+      });
+    } catch (ex) {
+      const error = utils.getError(ex);
+      if (error.message.includes('Invalid string length')) {
+        info.warning(
+          'Trace details JSON not saved because it exceeded the size limit.',
+        );
+      } else {
+        utils.haltOrThrow(error);
+      }
+    }
     return gcTrace;
   }
 
