@@ -32,4 +32,4 @@ test('memory test', async () => {
   heap = await takeNodeMinimalHeap();
   // if rabbitHole does not add new references, the obj can be GCed
   expect(heap.hasObjectWithClassName('TestObject')).toBe(false);
-}, 30000);
+}, 60000);

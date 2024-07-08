@@ -14,7 +14,11 @@ import {info, config} from '@memlab/core';
 import path from 'path';
 
 import type {Page, ElementHandle} from 'puppeteer';
-import type {CheckPageLoadCallback, OperationArgs} from '@memlab/core';
+import type {
+  CheckPageLoadCallback,
+  OperationArgs,
+  Optional,
+} from '@memlab/core';
 
 function waitFor(delay: number): Promise<void> {
   return new Promise(resolve => {
@@ -213,8 +217,55 @@ async function getElementsContainingText(
   text: string,
 ): Promise<ElementHandle<Element>[]> {
   const xpath = `//*[not(self::script)][contains(text(), '${text}')]`;
-  const elements = await page.$x(xpath);
-  return elements as ElementHandle<Element>[];
+  return findBySelector(page, xpath);
+}
+
+// some synced implementation of memlab based on this codebase
+// may be using an old version of puppeteer that doesn't have page.$
+interface PageWithSelectorAllVersions {
+  $?: (xpath: string) => Promise<Optional<ElementHandle<Element>[]>>;
+  $x?: (xpath: string) => Promise<Optional<ElementHandle<Element>[]>>;
+}
+
+async function findBySelector(
+  page: Page,
+  xpath: string,
+): Promise<ElementHandle<Element>[]> {
+  const _page = page as unknown as PageWithSelectorAllVersions;
+  if (typeof _page.$x === 'function') {
+    return ((await _page.$x(xpath)) ?? []) as ElementHandle<Element>[];
+  }
+
+  // evaluate in browser and return the result as a JSHandle
+  // to an array of elements in the browser's context
+  const elements = await page.evaluateHandle(xpath => {
+    const xpathResult = document.evaluate(
+      xpath,
+      document,
+      null,
+      XPathResult.ORDERED_NODE_ITERATOR_TYPE,
+      null,
+    );
+
+    const nodes = [];
+    let node = xpathResult.iterateNext();
+    while (node) {
+      nodes.push(node);
+      node = xpathResult.iterateNext();
+    }
+    return nodes;
+  }, xpath);
+
+  // Convert the elements to ElementHandle<Element>[]
+  const elementHandles = await elements.getProperties();
+  const ret = [];
+  for (const elementHandle of elementHandles.values()) {
+    const element = elementHandle.asElement();
+    if (element != null) {
+      ret.push(element as ElementHandle<Element>);
+    }
+  }
+  return ret;
 }
 
 export default {

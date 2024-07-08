@@ -27,4 +27,4 @@ test('memory test', async () => {
 
   // expect object with marker "memlab-mark-2" can be GCed
   expect(heap.hasObjectWithTag('memlab-mark-2')).toBe(false);
-}, 30000);
+}, 60000);

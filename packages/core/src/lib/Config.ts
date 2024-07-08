@@ -24,6 +24,7 @@ import type {
   PuppeteerConfig,
 } from './Types';
 
+import os from 'os';
 import path from 'path';
 import modes from '../modes/RunningModes';
 import info from './Console';
@@ -87,6 +88,7 @@ export class MemLabConfig {
   _isHeadfulBrowser: boolean;
   _disableWebSecurity: boolean;
   _browser: string;
+  _chromeUserDataDir: string;
 
   snapshotHasDetachedness: boolean;
   specifiedEngine: boolean;
@@ -103,7 +105,6 @@ export class MemLabConfig {
   workDir: string;
   browserDir: string;
   dataBaseDir: string;
-  userDataDir: string;
   curDataDir: string;
   webSourceDir: string;
   debugDataDir: string;
@@ -263,6 +264,7 @@ export class MemLabConfig {
     this.analysisMode = constant.unset;
     this.focusFiberNodeId = -1;
     this.isFB = constant.isFB;
+    this._chromeUserDataDir = os.tmpdir();
     // assuming the Evn doesn't support Xvfb before checking
     this.machineSupportsXVFB = false;
     // by default we want to use Xvfb if the Env supports it
@@ -280,7 +282,7 @@ export class MemLabConfig {
       ignoreHTTPSErrors: true,
       // Support running on Windows
       ignoreDefaultArgs: ['--disable-extensions'],
-      userDataDir: this.userDataDir,
+      userDataDir: this._chromeUserDataDir,
       // Chromium in ContinuousTest needs this args
       args: [
         '--no-sandbox',
@@ -600,6 +602,17 @@ export class MemLabConfig {
   setTarget(app: string, tab: string): void {
     this.targetApp = app;
     this.targetTab = tab;
+  }
+
+  set userDataDir(chromeUserDataDir: string) {
+    this._chromeUserDataDir = chromeUserDataDir;
+    if (this.puppeteerConfig != null) {
+      this.puppeteerConfig.userDataDir = chromeUserDataDir;
+    }
+  }
+
+  get userDataDir(): string {
+    return this._chromeUserDataDir;
   }
 
   set scenario(scenario: Optional<IScenario>) {

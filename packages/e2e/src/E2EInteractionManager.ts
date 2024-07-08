@@ -55,6 +55,21 @@ const {
   getURLParameter,
 } = E2EUtils;
 
+type PuppeteerDataHandler = (data: {chunk: string}) => void;
+type PuppeteerProgressHandler = (data: {
+  done: number;
+  total: number;
+  finished?: boolean;
+}) => void;
+type DataHandler = PuppeteerDataHandler | PuppeteerProgressHandler;
+
+// some synced implementation of memlab based on this codebase
+// may be using an old version of puppeteer that doesn't have page.$
+interface SessionWithRemoveListenerFromAllVersions {
+  removeListener?: (type: string, dataHandler: DataHandler) => void;
+  removeAllListeners: (type: string) => void;
+}
+
 export default class E2EInteractionManager {
   private mainThreadCdpsession: Optional<CDPSession>;
   private page: Page;
@@ -389,16 +404,12 @@ export default class E2EInteractionManager {
   ) {
     const writeStream = fs.createWriteStream(file, {encoding: 'UTF-8'});
     let lastChunk = '';
-    const dataHandler = (data: {chunk: string}) => {
+    const dataHandler: PuppeteerDataHandler = data => {
       writeStream.write(data.chunk);
       lastChunk = data.chunk;
     };
 
-    const progressHandler = (data: {
-      done: number;
-      total: number;
-      finished?: boolean;
-    }) => {
+    const progressHandler: PuppeteerProgressHandler = data => {
       const percent = ((100 * data.done) / data.total) | 0;
       if (!config.isContinuousTest) {
         info.overwrite(`heap snapshot ${percent}% complete`);
@@ -415,12 +426,33 @@ export default class E2EInteractionManager {
     });
 
     checkLastSnapshotChunk(lastChunk);
-    session.removeListener('HeapProfiler.addHeapSnapshotChunk', dataHandler);
-    session.removeListener(
+    this.removeListener(
+      session,
+      'HeapProfiler.addHeapSnapshotChunk',
+      dataHandler,
+    );
+    this.removeListener(
+      session,
       'HeapProfiler.reportHeapSnapshotProgress',
       progressHandler,
     );
     writeStream.end();
+  }
+
+  // this implement may remove all dataHandler of the specified eventType
+  private removeListener(
+    session: SessionWithRemoveListenerFromAllVersions,
+    eventType: string,
+    dataHandler: DataHandler,
+  ) {
+    if (typeof session.removeListener === 'function') {
+      session.removeListener(eventType, dataHandler);
+      return;
+    }
+    if (typeof session.removeAllListeners === 'function') {
+      session.removeAllListeners(eventType);
+      return;
+    }
   }
 
   private async saveHeapSnapshotToFile(file: string): Promise<void> {
