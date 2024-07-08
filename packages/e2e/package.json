@@ -1,6 +1,6 @@
 {
   "name": "@memlab/e2e",
-  "version": "1.0.33",
+  "version": "1.0.34",
   "license": "MIT",
   "description": "memlab browser E2E interaction libraries",
   "author": "Liang Gong <lgong@fb.com>",
@@ -25,7 +25,7 @@
     "@babel/parser": "^7.16.4",
     "@babel/template": "^7.16.0",
     "@babel/traverse": "^7.16.3",
-    "@memlab/core": "^1.1.33",
+    "@memlab/core": "^1.1.34",
     "ansi": "^0.3.1",
     "babar": "^0.2.0",
     "chalk": "^4.0.0",
