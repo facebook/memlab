@@ -242,6 +242,7 @@ export class MemLabConfig {
   maxSamplesForClustering: number;
   filterTraceByName: Nullable<string>;
   skipBrowserCloseWait: boolean;
+  simplifyCodeSerialization: boolean;
 
   constructor(options: ConfigOption = {}) {
     // init properties, they can be configured manually
@@ -375,6 +376,9 @@ export class MemLabConfig {
     this.filterTraceByName = null;
     // if true, memlab will not wait for the browser to close successfully
     this.skipBrowserCloseWait = false;
+    // if true, serialized leak trace will have a simplified representation
+    // for code object, which could be large and cause OOM during serualization
+    this.simplifyCodeSerialization = !constant.isFB;
   }
 
   // initialize configurable parameters

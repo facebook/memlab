@@ -329,18 +329,23 @@ function JSONifyCode(
   options: JSONifyOptions,
 ): ISerializedInfo {
   const info = Object.create(null);
+
   iterateSelectedEdges(node, (edge: IHeapEdge): Optional<{stop: boolean}> => {
     if (
       edge.name_or_index === 'name_or_scope_info' &&
       edge.toNode.name === '(function scope info)'
     ) {
       const key = 'variables with non-number values in closure scope chain';
-      info[key] = JSONifyNode(edge.toNode, args, options);
+      info[key] = config.simplifyCodeSerialization
+        ? JSONifyNodeOneLevel(edge.toNode)
+        : JSONifyNode(edge.toNode, args, options);
     } else if (edge.name_or_index === 'script_or_debug_info') {
       info['script URL'] = edge.toNode.name;
     } else {
       const key = filterJSONPropName(edge.name_or_index);
-      info[key] = JSONifyNode(edge.toNode, args, options);
+      info[key] = config.simplifyCodeSerialization
+        ? JSONifyNodeOneLevel(edge.toNode)
+        : JSONifyNode(edge.toNode, args, options);
     }
     return null;
   });
