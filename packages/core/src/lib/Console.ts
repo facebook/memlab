@@ -228,7 +228,6 @@ class MemLabConsole {
     const lines = msg.split('\n').map(line => stringWidth(line));
     const section = this.getLastSection();
     section?.msgs.push({lines, options});
-    this.logMsg(msg);
   }
 
   private clearPrevMsgInLastSection(): void {
@@ -356,7 +355,8 @@ class MemLabConsole {
     if (
       this.shouldBeConcise('table') ||
       this.config.isTest ||
-      this.config.muteConsole
+      this.config.muteConsole ||
+      this.config.muteConfig?.muteTable
     ) {
       return;
     }
@@ -370,7 +370,11 @@ class MemLabConsole {
   }
 
   public trace(): void {
-    if (this.config.isTest || this.config.muteConsole) {
+    if (
+      this.config.isTest ||
+      this.config.muteConsole ||
+      this.config.muteConfig?.muteTrace
+    ) {
       return;
     }
     console.trace();
@@ -380,6 +384,10 @@ class MemLabConsole {
     if (this.shouldBeConcise('topLevel')) {
       return this.overwrite(msg);
     }
+    this.logMsg(msg);
+    if (this.config.muteConfig?.muteTopLevel) {
+      return;
+    }
     this.clearPrevOverwriteMsg();
     this.printStr(this.style(msg, 'top'));
   }
@@ -387,6 +395,10 @@ class MemLabConsole {
   public highLevel(msg: string): void {
     if (this.shouldBeConcise('highLevel')) {
       return this.overwrite(msg);
+    }
+    this.logMsg(msg);
+    if (this.config.muteConfig?.muteHighLevel) {
+      return;
     }
     this.clearPrevOverwriteMsg();
     this.printStr(this.style(msg, 'high'));
@@ -396,6 +408,10 @@ class MemLabConsole {
     if (this.shouldBeConcise('midLevel')) {
       return this.overwrite(msg);
     }
+    this.logMsg(msg);
+    if (this.config.muteConfig?.muteMidLevel) {
+      return;
+    }
     this.clearPrevOverwriteMsg();
     this.printStr(this.style(msg, 'mid'));
   }
@@ -404,6 +420,10 @@ class MemLabConsole {
     if (this.shouldBeConcise('lowLevel')) {
       return this.overwrite(msg);
     }
+    this.logMsg(msg);
+    if (this.config.muteConfig?.muteLowLevel) {
+      return;
+    }
     this.clearPrevOverwriteMsg();
     this.printStr(this.style(msg, 'low'));
   }
@@ -411,6 +431,10 @@ class MemLabConsole {
   public success(msg: string): void {
     if (this.shouldBeConcise('success')) {
       return this.overwrite(msg);
+    }
+    this.logMsg(msg);
+    if (this.config.muteConfig?.muteSuccess) {
+      return;
     }
     this.clearPrevOverwriteMsg();
     this.printStr(this.style(msg, 'success'));
@@ -424,11 +448,19 @@ class MemLabConsole {
   }
 
   public error(msg: string): void {
+    this.logMsg(msg);
+    if (this.config.muteConfig?.muteError) {
+      return;
+    }
     this.clearPrevOverwriteMsg();
     this.printStr(this.style(msg, 'error'));
   }
 
   public warning(msg: string): void {
+    this.logMsg(msg);
+    if (this.config.muteConfig?.muteWarning) {
+      return;
+    }
     this.clearPrevOverwriteMsg();
     this.printStr(this.style(msg, 'warning'));
   }
@@ -437,6 +469,7 @@ class MemLabConsole {
     if (this.shouldBeConcise('nextLine')) {
       return this.overwrite('');
     }
+    this.logMsg('');
     this.clearPrevOverwriteMsg();
     this.printStr('');
   }
@@ -445,6 +478,10 @@ class MemLabConsole {
     msg: string,
     options: {level?: keyof MemlabConsoleStyles} = {},
   ): void {
+    this.logMsg(msg);
+    if (this.config.muteConfig?.muteLowLevel) {
+      return;
+    }
     const str = this.style(msg, options.level || 'low');
     if (this.config.isContinuousTest) {
       this.printStr(msg, {isOverwrite: false});
@@ -464,6 +501,7 @@ class MemLabConsole {
       output: process.stdout,
     });
     this.pushMsg(query);
+    this.logMsg(query);
     return new Promise(resolve =>
       rl.question(query, ans => {
         rl.close();

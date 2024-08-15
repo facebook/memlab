@@ -78,6 +78,21 @@ export enum ErrorHandling {
 }
 
 /** @internal */
+export type MuteConfig = {
+  muteError?: boolean;
+  muteWarning?: boolean;
+  muteInfo?: boolean;
+  muteSuccess?: boolean;
+  muteLog?: boolean;
+  muteTable?: boolean;
+  muteTrace?: boolean;
+  muteTopLevel?: boolean;
+  muteHighLevel?: boolean;
+  muteMidLevel?: boolean;
+  muteLowLevel?: boolean;
+};
+
+/** @internal */
 export class MemLabConfig {
   _reportLeaksInTimers: boolean;
   _deviceManualOverridden: boolean;
@@ -220,6 +235,7 @@ export class MemLabConfig {
   externalLeakFilter?: Optional<ILeakFilter>;
   monoRepoDir: string;
   muteConsole: boolean;
+  muteConfig?: MuteConfig;
   includeObjectInfoInTraceReturnChain: boolean;
   logUnclassifiedClusters: boolean;
   errorHandling: ErrorHandling;
