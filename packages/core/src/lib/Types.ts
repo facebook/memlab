@@ -2317,9 +2317,6 @@ export interface ISerializedInfo {
 }
 
 /** @internal */
-export type NumericDictionary = {[index: number]: number};
-
-/** @internal */
 export interface IOveralHeapInfo {
   fiberNodeSize: number;
   regularFiberNodeSize: number;

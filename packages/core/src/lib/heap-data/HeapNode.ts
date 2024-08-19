@@ -309,12 +309,14 @@ export default class HeapNode implements IHeapNode {
   }
 
   get retainedSize(): number {
-    return this.heapSnapshot._nodeIdx2RetainedSize[this.idx];
+    const bigUintSize = this.heapSnapshot._nodeIdx2RetainedSize[this.idx];
+    return Number(bigUintSize);
   }
 
   set retainedSize(size: number) {
     const heapSnapshot = this.heapSnapshot;
-    heapSnapshot._nodeIdx2RetainedSize[this.idx] = size;
+    const bigUintSize = BigInt(Math.floor(size));
+    heapSnapshot._nodeIdx2RetainedSize[this.idx] = bigUintSize;
   }
 
   get dominatorNode(): Nullable<HeapNode> {
@@ -351,7 +353,7 @@ export default class HeapNode implements IHeapNode {
   get location(): Nullable<HeapLocation> {
     const heapSnapshot = this.heapSnapshot;
     const locationIdx = heapSnapshot._nodeIdx2LocationIdx[this.idx];
-    return locationIdx == null
+    return locationIdx == heapSnapshot._locationCount // no location mapping
       ? null
       : new HeapLocation(heapSnapshot, locationIdx);
   }

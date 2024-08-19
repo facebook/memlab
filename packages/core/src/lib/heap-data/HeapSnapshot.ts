@@ -23,7 +23,6 @@ import type {
   HeapEdgeTypes,
   HeapSnapshotMeta,
   RawHeapSnapshot,
-  NumericDictionary,
   Nullable,
 } from '../Types';
 
@@ -33,9 +32,12 @@ import HeapNode from './HeapNode';
 import HeapEdge from './HeapEdge';
 import {NodeDetachState, throwError} from './HeapUtils';
 import MemLabTaggedStore from './MemLabTagStore';
+import NumericDictionary from './utils/NumericDictionary';
 
 const EMPTY_UINT8_ARRAY = new Uint8Array(0);
 const EMPTY_UINT32_ARRAY = new Uint32Array(0);
+const EMPTY_BIG_UINT64_ARRAY = new BigUint64Array(0);
+const EMPTY_NUMERIC_DICTIONARY = new NumericDictionary(0);
 
 export default class HeapSnapshot implements IHeapSnapshot {
   public snapshot: RawHeapSnapshot;
@@ -44,16 +46,16 @@ export default class HeapSnapshot implements IHeapSnapshot {
   public _nodeCount = -1;
   public edges: IHeapEdges;
   public _edgeCount = -1;
-  public _nodeId2NodeIdx: NumericDictionary = {};
+  public _nodeId2NodeIdx: NumericDictionary = EMPTY_NUMERIC_DICTIONARY;
   public _nodeIdxHasPathEdge: Uint8Array = EMPTY_UINT8_ARRAY;
   public _nodeIdx2PathEdgeIdx: Uint32Array = EMPTY_UINT32_ARRAY;
   public _nodeIdx2DominatorNodeIdx: Uint32Array = EMPTY_UINT32_ARRAY;
   public _nodeIdxHasDominatorNode: Uint8Array = EMPTY_UINT8_ARRAY;
-  public _nodeIdx2RetainedSize: NumericDictionary = {};
+  public _nodeIdx2RetainedSize: BigUint64Array = EMPTY_BIG_UINT64_ARRAY;
   public _additionalAttributes: Uint8Array = EMPTY_UINT8_ARRAY;
   public _nodeDetachednessOffset = -1;
   public _externalDetachedness: Uint8Array = EMPTY_UINT8_ARRAY;
-  public _nodeIdx2LocationIdx: NumericDictionary = {};
+  public _nodeIdx2LocationIdx: Uint32Array = EMPTY_UINT32_ARRAY;
   public _locationFieldsCount = -1;
   public _locationCount = -1;
   public _locationObjectIndexOffset = -1;
@@ -205,22 +207,15 @@ export default class HeapSnapshot implements IHeapSnapshot {
   }
 
   getNodeById(id: number): Nullable<HeapNode> {
-    if (!(id in this._nodeId2NodeIdx)) {
-      return null;
-    }
-    const idx = this._nodeId2NodeIdx[id];
-    return new HeapNode(this, idx);
+    const idx = this._nodeId2NodeIdx.get(id);
+    return idx == null ? null : new HeapNode(this, idx);
   }
 
   getNodesByIds(ids: number[]): Array<Nullable<HeapNode>> {
     const ret: Array<Nullable<HeapNode>> = [];
     ids.forEach(id => {
-      if (!(id in this._nodeId2NodeIdx)) {
-        ret.push(null);
-        return;
-      }
-      const idx = this._nodeId2NodeIdx[id];
-      ret.push(new HeapNode(this, idx));
+      const idx = this._nodeId2NodeIdx.get(id);
+      ret.push(idx == null ? null : new HeapNode(this, idx));
     });
     return ret;
   }
@@ -228,11 +223,10 @@ export default class HeapSnapshot implements IHeapSnapshot {
   getNodesByIdSet(ids: Set<number>): Set<HeapNode> {
     const ret = new Set<HeapNode>();
     ids.forEach(id => {
-      if (!(id in this._nodeId2NodeIdx)) {
-        return;
+      const idx = this._nodeId2NodeIdx.get(id);
+      if (idx != null) {
+        ret.add(new HeapNode(this, idx));
       }
-      const idx = this._nodeId2NodeIdx[id];
-      ret.add(new HeapNode(this, idx));
     });
     return ret;
   }
@@ -260,7 +254,7 @@ export default class HeapSnapshot implements IHeapSnapshot {
     this._nodeIdx2DominatorNodeIdx = new Uint32Array(this._nodeCount);
     this._nodeIdxHasDominatorNode = new Uint8Array(this._nodeCount);
     // retained size info
-    this._nodeIdx2RetainedSize = Object.create(null);
+    this._nodeIdx2RetainedSize = new BigUint64Array(this._nodeCount);
     // additional attributes
     this._additionalAttributes = new Uint8Array(this._nodeCount);
     // additional detachedness info
@@ -271,7 +265,9 @@ export default class HeapSnapshot implements IHeapSnapshot {
 
   _buildLocationIdx(): void {
     info.overwrite('building location index...');
-    this._nodeIdx2LocationIdx = Object.create(null);
+    this._nodeIdx2LocationIdx = new Uint32Array(this._nodeCount);
+    // use the total location count as a guard value for no mapping
+    this._nodeIdx2LocationIdx.fill(this._locationCount);
     // iterate over locations
     const locations = this.snapshot.locations;
     const locationFieldsCount = this._locationFieldsCount;
@@ -288,14 +284,14 @@ export default class HeapSnapshot implements IHeapSnapshot {
 
   _buildNodeIdx(): void {
     info.overwrite('building node index...');
-    this._nodeId2NodeIdx = Object.create(null);
+    this._nodeId2NodeIdx = new NumericDictionary(this._nodeCount);
     // iterate over each node
     const nodeValues = this.snapshot.nodes;
     const nodeFieldsCount = this._nodeFieldsCount;
     let nodeIdx = 0;
     while (nodeIdx < this._nodeCount) {
       const id = nodeValues[nodeIdx * nodeFieldsCount + this._nodeIdOffset];
-      this._nodeId2NodeIdx[id] = nodeIdx;
+      this._nodeId2NodeIdx.set(id, nodeIdx);
       ++nodeIdx;
     }
   }
