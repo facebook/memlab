@@ -27,6 +27,7 @@ import {fileManager} from '@memlab/core';
 import {heapConfig, loadHeapSnapshot} from '@memlab/heap-analysis';
 import {CommandDispatcher} from '../../../Dispatcher';
 import InteractiveCommandLoader from './InteractiveCommandLoader';
+import HeapParserDictFastStoreSizeOption from '../../../options/heap/HeapParserDictFastStoreSizeOption';
 
 export default class InteractiveHeapCommand extends BaseCommand {
   getCommandName(): string {
@@ -46,7 +47,11 @@ export default class InteractiveHeapCommand extends BaseCommand {
   }
 
   getOptions(): BaseOption[] {
-    return [new SnapshotFileOption(), new JSEngineOption()];
+    return [
+      new SnapshotFileOption(),
+      new JSEngineOption(),
+      new HeapParserDictFastStoreSizeOption(),
+    ];
   }
 
   private exitAttempt = 0;

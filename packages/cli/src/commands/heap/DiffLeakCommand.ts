@@ -30,6 +30,7 @@ import SetMaxClusterSampleSizeOption from '../../options/SetMaxClusterSampleSize
 import SetTraceContainsFilterOption from '../../options/heap/SetTraceContainsFilterOption';
 import SetControlSnapshotOption from '../../options/experiment/SetControlSnapshotOption';
 import SetTreatmentSnapshotOption from '../../options/experiment/SetTreatmentSnapshotOption';
+import HeapParserDictFastStoreSizeOption from '../../options/heap/HeapParserDictFastStoreSizeOption';
 
 export type WorkDirSettings = {
   controlWorkDirs: Array<string>;
@@ -91,6 +92,7 @@ export default class CheckLeakCommand extends BaseCommand {
       new MLClusteringMaxDFOption(),
       new SetMaxClusterSampleSizeOption(),
       new SetTraceContainsFilterOption(),
+      new HeapParserDictFastStoreSizeOption(),
     ];
   }
 

@@ -259,6 +259,7 @@ export class MemLabConfig {
   filterTraceByName: Nullable<string>;
   skipBrowserCloseWait: boolean;
   simplifyCodeSerialization: boolean;
+  heapParserDictFastStoreSize: number;
 
   constructor(options: ConfigOption = {}) {
     // init properties, they can be configured manually
@@ -508,6 +509,9 @@ export class MemLabConfig {
     // object size below the threshold won't be reported
     this.unboundSizeThreshold = 10 * 1024;
 
+    // threshold for swtiching between fast store and slower store
+    // of NumericDictionary used by heap snapshot parser
+    this.heapParserDictFastStoreSize = 5_000_000;
     // if true reset the GK list in visit synthesizer
     this.resetGK = false;
     // default userAgent, if undefined use puppeteer's default value

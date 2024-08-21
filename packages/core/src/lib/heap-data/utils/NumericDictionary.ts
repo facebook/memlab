@@ -14,23 +14,40 @@
 import {Nullable} from '../../Types';
 
 // if the number is larger than this, we will use the slow store
-const MAX_FAST_STORE_SIZE = 50_000_000;
+const DEFAULT_FAST_STORE_SIZE = 5_000_000;
+// maxmimum fast store size allowed to set to NumericDictionary,
+// if the store size is bigger than this, it will cause exceptions
+// in JS engines on some platforms
+const MAX_FAST_STORE_SIZE = 10_000_000;
 
 type DirectMap = Map<number, number>;
 type IndirectMap = Map<number, Nullable<DirectMap>>;
+
+export type NumericDictOptions = {
+  fastStoreSize?: number;
+};
 
 export default class NumericDictionary {
   private useFastStore = true;
   private fastStore: Nullable<DirectMap> = null;
   private slowStore: Nullable<IndirectMap> = null;
   private numberOfShards = 1;
+  private fastStoreSize = DEFAULT_FAST_STORE_SIZE;
 
-  constructor(size: number) {
-    this.useFastStore = size <= MAX_FAST_STORE_SIZE;
+  constructor(size: number, options: NumericDictOptions = {}) {
+    if (options.fastStoreSize != null) {
+      if (
+        options.fastStoreSize > 0 &&
+        options.fastStoreSize <= MAX_FAST_STORE_SIZE
+      ) {
+        this.fastStoreSize = options.fastStoreSize;
+      }
+    }
+    this.useFastStore = size <= this.fastStoreSize;
     if (this.useFastStore) {
       this.fastStore = new Map();
     } else {
-      this.numberOfShards = Math.ceil(size / MAX_FAST_STORE_SIZE);
+      this.numberOfShards = Math.ceil(size / this.fastStoreSize);
       this.slowStore = new Map();
     }
   }
@@ -40,7 +57,7 @@ export default class NumericDictionary {
   }
 
   getShard(key: number): number {
-    return Math.floor(key / MAX_FAST_STORE_SIZE);
+    return Math.floor(key / this.fastStoreSize);
   }
 
   has(key: number): boolean {

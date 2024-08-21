@@ -32,6 +32,7 @@ import TargetFileOption from '../options/heap/TargetFileOption';
 import FinalFileOption from '../options/heap/FinalFileOption';
 import SnapshotDirectoryOption from '../options/heap/SnapshotDirectoryOption';
 import JSEngineOption from '../options/heap/JSEngineOption';
+import HeapParserDictFastStoreSizeOption from '../options/heap/HeapParserDictFastStoreSizeOption';
 
 export default class MemLabRunCommand extends BaseCommand {
   getCommandName(): string {
@@ -73,6 +74,7 @@ export default class MemLabRunCommand extends BaseCommand {
       new FinalFileOption(),
       new SnapshotDirectoryOption(),
       new JSEngineOption(),
+      new HeapParserDictFastStoreSizeOption(),
     ];
   }
 

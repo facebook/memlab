@@ -27,6 +27,7 @@ const optionNames = {
   FULL: 'full',
   HEADFUL: 'headful',
   HEAP_ANALYSIS_PLUGIN_FILE: 'analysis-plugin',
+  HEAP_PARSER_DICT_FAST_STORE_SIZE: 'heap-parser-dict-fast-store-size',
   HELP: 'help',
   IGNORE_LEAK_CLUSTER_SIZE_BELOW: 'ignore-leak-cluster-size-below',
   INTERACTION: 'interaction',

@@ -284,7 +284,9 @@ export default class HeapSnapshot implements IHeapSnapshot {
 
   _buildNodeIdx(): void {
     info.overwrite('building node index...');
-    this._nodeId2NodeIdx = new NumericDictionary(this._nodeCount);
+    this._nodeId2NodeIdx = new NumericDictionary(this._nodeCount, {
+      fastStoreSize: config.heapParserDictFastStoreSize,
+    });
     // iterate over each node
     const nodeValues = this.snapshot.nodes;
     const nodeFieldsCount = this._nodeFieldsCount;

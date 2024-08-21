@@ -18,6 +18,7 @@ import JSEngineOption from '../../options/heap/JSEngineOption';
 import HeapNodeIdOption from '../../options/heap/HeapNodeIdOption';
 import SnapshotDirectoryOption from '../../options/heap/SnapshotDirectoryOption';
 import {fileManager} from '@memlab/core';
+import HeapParserDictFastStoreSizeOption from '../../options/heap/HeapParserDictFastStoreSizeOption';
 
 async function calculateRetainerTrace(): Promise<void> {
   const snapshotPath = utils.getSingleSnapshotFileForAnalysis();
@@ -51,6 +52,7 @@ export default class GetRetainerTraceCommand extends BaseCommand {
       new SnapshotDirectoryOption(),
       new JSEngineOption(),
       new HeapNodeIdOption().required(),
+      new HeapParserDictFastStoreSizeOption(),
     ];
   }
 

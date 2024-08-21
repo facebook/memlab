@@ -28,6 +28,7 @@ import CliScreen from './ui-components/CliScreen';
 import HeapNodeIdOption from '../../../options/heap/HeapNodeIdOption';
 import MLClusteringOption from '../../../options/MLClusteringOption';
 import SetWorkingDirectoryOption from '../../../options/SetWorkingDirectoryOption';
+import HeapParserDictFastStoreSizeOption from '../../../options/heap/HeapParserDictFastStoreSizeOption';
 
 export default class InteractiveHeapViewCommand extends BaseCommand {
   getCommandName(): string {
@@ -53,6 +54,7 @@ export default class InteractiveHeapViewCommand extends BaseCommand {
       new HeapNodeIdOption(),
       new MLClusteringOption(),
       new SetWorkingDirectoryOption(),
+      new HeapParserDictFastStoreSizeOption(),
     ];
   }
 

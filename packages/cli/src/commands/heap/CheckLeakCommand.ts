@@ -35,6 +35,7 @@ import MLClusteringMaxDFOption from '../../options/MLClusteringMaxDFOption';
 import CleanupSnapshotOption from '../../options/heap/CleanupSnapshotOption';
 import SetWorkingDirectoryOption from '../../options/SetWorkingDirectoryOption';
 import OptionConstant from '../../options/lib/OptionConstant';
+import HeapParserDictFastStoreSizeOption from '../../options/heap/HeapParserDictFastStoreSizeOption';
 
 export type CheckLeakCommandOptions = {
   isMLClustering?: boolean;
@@ -148,6 +149,7 @@ or option 2 mentioned above).
       new MLClusteringMaxDFOption(),
       new CleanupSnapshotOption(),
       new SetWorkingDirectoryOption(),
+      new HeapParserDictFastStoreSizeOption(),
     ];
   }
 
