@@ -66,6 +66,7 @@ const optionNames = {
   WORK_DIR: 'work-dir',
   WORKER_TITLE: 'worker',
   DEBUG: 'debug',
+  OUTPUT: 'output'
 };
 
 const optionShortcuts = {

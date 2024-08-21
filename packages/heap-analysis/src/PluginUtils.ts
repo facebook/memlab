@@ -19,6 +19,7 @@ import {
   MemLabConfig,
   config,
   takeNodeMinimalHeap,
+  OutputFormat,
 } from '@memlab/core';
 
 import chalk from 'chalk';
@@ -162,11 +163,29 @@ function printNodeListInTerminal(
     nodeList = filterOutDominators(nodeList);
   }
 
+  if (config.outputFormat == OutputFormat.Json) {
+    const jsonNodes = nodeList.map(node => {
+      const jsonObject = node.getJSONifyableObject();
+      jsonObject.self_size = node.self_size;
+      jsonObject.retainedSize = node.retainedSize;
+      jsonObject.shape = serializer.summarizeNodeShape(node);
+      if (printRef) {
+        jsonObject.references = node.references.slice(0, MAX_NUM_OF_EDGES_TO_PRINT).map(e => e.getJSONifyableObject());
+      }
+
+      return jsonObject;
+    });
+
+    info.writeRaw(JSON.stringify(jsonNodes));
+    info.writeRaw('\n');
+    return;
+  }
+
   for (const node of nodeList) {
     const nodeInfo = getHeapObjectString(node);
     info.topLevel(`${indent}${dot}${nodeInfo}`);
     if (printRef) {
-      printReferencesInTerminal(node.references, {indent: indent + '  '});
+      printReferencesInTerminal(node.references, { indent: indent + '  ' });
     }
   }
 }
@@ -250,6 +269,15 @@ function printReferencesInTerminal(
   edgeList: IHeapEdge[],
   options: AnyOptions & PrintNodeOption = {},
 ): void {
+  if (config.outputFormat == OutputFormat.Json) {
+    const jsonEdges = edgeList.map(edge => {
+      return edge.getJSONifyableObject();
+    });
+
+    info.writeRaw(JSON.stringify(jsonEdges));
+    info.writeRaw('\n');
+  }
+
   const dot = chalk.grey('· ');
   const indent = options.indent || '';
   let n = 0;
@@ -453,14 +481,14 @@ async function loadHeapSnapshot(
   if (heapConfig.isCliInteractiveMode) {
     if (!heapConfig.currentHeap) {
       const file = getSnapshotFileForAnalysis(options);
-      const heap = await loadProcessedSnapshot({file});
+      const heap = await loadProcessedSnapshot({ file });
       heapConfig.currentHeapFile = file;
       heapConfig.currentHeap = heap;
     }
     return heapConfig.currentHeap;
   } else {
     const file = getSnapshotFileForAnalysis(options);
-    return loadProcessedSnapshot({file});
+    return loadProcessedSnapshot({ file });
   }
 }
 
@@ -482,7 +510,7 @@ async function loadHeapSnapshot(
  * ```
  */
 async function getFullHeapFromFile(file: string): Promise<IHeapSnapshot> {
-  return await loadProcessedSnapshot({file});
+  return await loadProcessedSnapshot({ file });
 }
 
 /**
@@ -598,9 +626,9 @@ async function snapshotMapReduce<T1, T2>(
   utils.checkSnapshots({snapshotDir});
   const snapshotFiles = snapshotDir
     ? // load snapshots from a directory
-      utils.getSnapshotFilesInDir(snapshotDir)
+    utils.getSnapshotFilesInDir(snapshotDir)
     : // load snapshots based on the visit sequence meta data
-      utils.getSnapshotFilesFromTabsOrder();
+    utils.getSnapshotFilesFromTabsOrder();
 
   const intermediateResults = [];
   for (let i = 0; i < snapshotFiles.length; ++i) {

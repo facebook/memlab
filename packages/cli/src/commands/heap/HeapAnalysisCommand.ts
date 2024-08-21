@@ -20,6 +20,7 @@ import InitDirectoryCommand from '../InitDirectoryCommand';
 import HeapAnalysisPluginOption from '../../options/heap/HeapAnalysisPluginOption';
 import {ParsedArgs} from 'minimist';
 import HeapParserDictFastStoreSizeOption from '../../options/heap/HeapParserDictFastStoreSizeOption';
+import AnalysisOutputOption from '../../options/heap/AnalysisOutputOption';
 
 export default class RunHeapAnalysisCommand extends BaseCommand {
   getCommandName(): string {
@@ -42,6 +43,7 @@ export default class RunHeapAnalysisCommand extends BaseCommand {
     return [
       new HeapAnalysisPluginOption(),
       new HeapParserDictFastStoreSizeOption(),
+      new AnalysisOutputOption()
     ];
   }
 

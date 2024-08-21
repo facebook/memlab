@@ -9,6 +9,7 @@
  */
 
 import type {
+  AnyRecord,
   AnyValue,
   EdgeIterationCallback,
   IHeapEdge,
@@ -175,8 +176,8 @@ export class NodeRecord implements IHeapNode {
     throw new Error('NodeRecord.getReferrerNodes is not implemented');
   }
 
-  toJSONString(...args: Array<AnyValue>): string {
-    const rep = {
+  getJSONifyableObject(): AnyRecord {
+    return {
       id: this.id,
       kind: this.kind,
       name: this.name,
@@ -187,8 +188,10 @@ export class NodeRecord implements IHeapNode {
       incomingEdgeCount: this.numOfReferrers,
       contructorName: this.constructor.name,
     };
+  }
 
-    return JSON.stringify(rep, ...args);
+  toJSONString(...args: Array<AnyValue>): string {
+    return JSON.stringify(this.getJSONifyableObject(), ...args);
   }
 
   constructor(node: IHeapNode) {
@@ -233,16 +236,18 @@ export class EdgeRecord implements IHeapEdge {
     this.to_node = edge.to_node;
   }
 
-  toJSONString(...args: Array<AnyValue>): string {
-    const rep = {
+  getJSONifyableObject(): AnyRecord {
+    return {
       kind: this.kind,
       name_or_index: this.name_or_index,
       type: this.type,
       edgeIndex: this.edgeIndex,
       to_node: this.to_node,
     };
+  }
 
-    return JSON.stringify(rep, ...args);
+  toJSONString(...args: Array<AnyValue>): string {
+    return JSON.stringify(this.getJSONifyableObject(), ...args);
   }
 
   set snapshot(s: IHeapSnapshot) {
