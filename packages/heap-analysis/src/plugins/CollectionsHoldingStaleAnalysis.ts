@@ -11,11 +11,14 @@
 import type {AnalyzeSnapshotResult, HeapAnalysisOptions} from '../PluginUtils';
 import type {IHeapSnapshot, IHeapNode} from '@memlab/core';
 
-import {info, utils, BaseOption} from '@memlab/core';
+import {info, utils, BaseOption, OutputFormat, config} from '@memlab/core';
 import BaseAnalysis from '../BaseAnalysis';
 import pluginUtils from '../PluginUtils';
 import chalk from 'chalk';
 import SnapshotFileOption from '../options/HeapAnalysisSnapshotFileOption';
+import OutputOption from '../options/HeapAnalysisOutputOption';
+
+const MAX_COLLECTION_STAT_ITEMS = 20;
 
 type CollectionStat = {
   collection: IHeapNode;
@@ -72,7 +75,7 @@ export default class CollectionsHoldingStaleAnalysis extends BaseAnalysis {
 
   /** @internal */
   getOptions(): BaseOption[] {
-    return [new SnapshotFileOption()];
+    return [new SnapshotFileOption(), new OutputOption()];
   }
 
   /** @internal */
@@ -99,7 +102,11 @@ export default class CollectionsHoldingStaleAnalysis extends BaseAnalysis {
   async process(options: HeapAnalysisOptions): Promise<void> {
     const snapshot = await pluginUtils.loadHeapSnapshot(options);
     const collectionsStat = this.getCollectionsWithStaleValues(snapshot);
-    this.print(collectionsStat);
+    if (config.outputFormat === OutputFormat.Json) {
+      this.printJson(collectionsStat);
+    } else {
+      this.print(collectionsStat);
+    }
   }
 
   private getCollectionsWithStaleValues(
@@ -133,7 +140,7 @@ export default class CollectionsHoldingStaleAnalysis extends BaseAnalysis {
     }
 
     collections.sort((c1, c2) => c2.staleRetainedSize - c1.staleRetainedSize);
-    collections = collections.slice(0, 20);
+    collections = collections.slice(0, MAX_COLLECTION_STAT_ITEMS);
     for (const stat of collections) {
       const collection = stat.collection;
       const collectionSize = utils.getReadableBytes(collection.retainedSize);
@@ -153,5 +160,21 @@ export default class CollectionsHoldingStaleAnalysis extends BaseAnalysis {
       info.topLevel(`\n${dot} ${collectionDesc}:`);
       info.topLevel(`  ${childrenDesc}`);
     }
+  }
+
+  private printJson(collections: CollectionStat[]): void {
+    collections.sort((c1, c2) => c2.staleRetainedSize - c1.staleRetainedSize);
+    const output = collections
+      .slice(0, MAX_COLLECTION_STAT_ITEMS)
+      .map(stat => ({
+        id: stat.collection.id,
+        size: utils.getReadableBytes(stat.collection.retainedSize),
+        childrenSize: stat.childrenSize,
+        staleChildrenSize: stat.staleChildren.length,
+        staleChildrenIds: stat.staleChildren.map(node => node.id),
+      }));
+
+    info.writeOutput(JSON.stringify(output));
+    info.writeOutput('\n');
   }
 }

@@ -45,7 +45,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 index of this JS reference inside the `edge.snapshot.edges` pseudo array
 
  * **Source**:
-    * core/src/lib/Types.ts:1660
+    * core/src/lib/Types.ts:1668
 
 ___
 
@@ -55,7 +55,7 @@ returns an [IHeapNode](core_src.IHeapNode.md) instance representing the hosting
 JS heap object where this reference starts
 
  * **Source**:
-    * core/src/lib/Types.ts:1681
+    * core/src/lib/Types.ts:1689
 
 ___
 
@@ -67,7 +67,7 @@ otherwise this is a reference with a string name (`edge.name_or_index`
 will return a string)
 
  * **Source**:
-    * core/src/lib/Types.ts:1667
+    * core/src/lib/Types.ts:1675
 
 ___
 
@@ -77,7 +77,7 @@ name of the JS reference. If this is a reference to an array element
 or internal table element, it is an numeric index
 
  * **Source**:
-    * core/src/lib/Types.ts:1616
+    * core/src/lib/Types.ts:1624
 
 ___
 
@@ -86,7 +86,7 @@ ___
 get the [IHeapSnapshot](core_src.IHeapSnapshot.md) containing this JS reference
 
  * **Source**:
-    * core/src/lib/Types.ts:1656
+    * core/src/lib/Types.ts:1664
 
 ___
 
@@ -96,7 +96,7 @@ returns an [IHeapNode](core_src.IHeapNode.md) instance representing the JS heap 
 pointed to by this reference
 
  * **Source**:
-    * core/src/lib/Types.ts:1676
+    * core/src/lib/Types.ts:1684
 
 ___
 
@@ -105,7 +105,7 @@ ___
 the index of the JS heap object pointed to by this reference
 
  * **Source**:
-    * core/src/lib/Types.ts:1671
+    * core/src/lib/Types.ts:1679
 
 ___
 
@@ -115,9 +115,23 @@ type of the JS reference, all types:
 `context`, `element`, `property`, `internal`, `hidden`, `shortcut`, `weak`
 
  * **Source**:
-    * core/src/lib/Types.ts:1621
+    * core/src/lib/Types.ts:1629
 
 ## Methods
+
+### <a id="getjsonifyableobject"></a>**getJSONifyableObject**()
+
+convert to a concise readable object that can be used for serialization
+(like calling `JSON.stringify(node, ...args)`).
+
+This API does not contain all the information
+captured by the hosting object.
+
+ * **Returns**: `AnyRecord`
+ * **Source**:
+    * core/src/lib/Types.ts:1697
+
+___
 
 ### <a id="tojsonstring"></a>**toJSONString**(...`args`)
 
@@ -136,4 +150,4 @@ captured by the hosting object.
     * `...args`: `any`[]
  * **Returns**: `string`
  * **Source**:
-    * core/src/lib/Types.ts:1694
+    * core/src/lib/Types.ts:1710

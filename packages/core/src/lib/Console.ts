@@ -15,7 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import readline from 'readline';
 import stringWidth from 'string-width';
-import type {MemLabConfig} from './Config';
+import {OutputFormat, type MemLabConfig} from './Config';
 import {AnyValue, Nullable, Optional} from './Types';
 
 type Message = {
@@ -39,7 +39,6 @@ type Sections = {
   arr: Section[];
 };
 
-const stdout = process.stdout;
 const TABLE_MAX_WIDTH = 50;
 const LOG_BUFFER_LENGTH = 100;
 const prevLine = '\x1b[F';
@@ -149,6 +148,14 @@ class MemLabConsole {
     return inst;
   }
 
+  private get isTextOutput(): boolean {
+    return this.config.outputFormat === OutputFormat.Text;
+  }
+
+  private get outStream() {
+    return this.isTextOutput ? process.stdout : process.stderr;
+  }
+
   private style(msg: string, name: keyof MemlabConsoleStyles): string {
     if (Object.prototype.hasOwnProperty.call(this.styles, name)) {
       return this.styles[name](msg);
@@ -183,6 +190,10 @@ class MemLabConsole {
         .replace(/\[\d{1,3}m/g, ''),
     );
     this.log.push(...lines);
+    this.tryFlush();
+  }
+
+  private tryFlush(): void {
     if (this.log.length > LOG_BUFFER_LENGTH) {
       this.flushLog({sync: true});
     }
@@ -243,7 +254,7 @@ class MemLabConsole {
       return;
     }
     if (!this.config.muteConsole) {
-      stdout.write(eraseLine);
+      this.outStream.write(eraseLine);
     }
     const msg = section.msgs.pop();
 
@@ -254,11 +265,11 @@ class MemLabConsole {
     const lines = msg.lines;
     while (lines.length > 0) {
       const line = lines.pop() ?? 0;
-      const width = stdout.columns;
+      const width = this.outStream.columns;
       let n = line === 0 ? 1 : Math.ceil(line / width);
       if (!this.config.muteConsole && !this.config.isTest) {
         while (n-- > 0) {
-          stdout.write(prevLine + eraseLine);
+          this.outStream.write(prevLine + eraseLine);
         }
       }
     }
@@ -306,8 +317,23 @@ class MemLabConsole {
       return;
     }
     if (this.config.isContinuousTest || !this.config.muteConsole) {
-      console.log(msg);
+      if (this.isTextOutput) {
+        console.log(msg);
+      } else {
+        this.outStream.write(msg);
+        this.outStream.write('\n');
+      }
     }
+  }
+
+  public writeOutput(output: string): void {
+    this.log.push(output);
+    if (this.config.muteConfig?.muteOutput) {
+      return;
+    }
+    process.stdout.write(output);
+
+    this.tryFlush();
   }
 
   public registerLogFile(logFile: string): void {
@@ -498,7 +524,7 @@ class MemLabConsole {
   public waitForConsole(query: string): Promise<string> {
     const rl = readline.createInterface({
       input: process.stdin,
-      output: process.stdout,
+      output: this.outStream,
     });
     this.pushMsg(query);
     this.logMsg(query);
@@ -515,7 +541,7 @@ class MemLabConsole {
     total: number,
     options: {message?: string} = {},
   ): void {
-    let width = Math.floor(stdout.columns * 0.8);
+    let width = Math.floor(this.outStream.columns * 0.8);
     width = Math.min(width, 80);
     const messageMaxWidth = Math.floor(width * 0.3);
     let message = options.message || '';

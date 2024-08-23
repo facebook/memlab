@@ -72,6 +72,12 @@ export enum TraceObjectMode {
 }
 
 /** @internal */
+export enum OutputFormat {
+  Text = 1,
+  Json = 2,
+}
+
+/** @internal */
 export enum ErrorHandling {
   Halt = 1,
   Throw = 2,
@@ -90,6 +96,7 @@ export type MuteConfig = {
   muteHighLevel?: boolean;
   muteMidLevel?: boolean;
   muteLowLevel?: boolean;
+  muteOutput?: boolean;
 };
 
 /** @internal */
@@ -260,6 +267,7 @@ export class MemLabConfig {
   skipBrowserCloseWait: boolean;
   simplifyCodeSerialization: boolean;
   heapParserDictFastStoreSize: number;
+  outputFormat: OutputFormat;
 
   constructor(options: ConfigOption = {}) {
     // init properties, they can be configured manually

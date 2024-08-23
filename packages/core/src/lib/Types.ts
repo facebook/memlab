@@ -1593,6 +1593,14 @@ export interface IHeapLocation {
    */
   column: number;
   /**
+   * convert to a concise readable object that can be used for serialization
+   * (like calling `JSON.stringify(node, ...args)`).
+   *
+   * This API does not contain all the information
+   * captured by the hosting object.
+   */
+  getJSONifyableObject(): AnyRecord;
+  /**
    * convert to a concise readable string output
    * (like calling `JSON.stringify(node, ...args)`).
    *
@@ -1679,6 +1687,14 @@ export interface IHeapEdge extends IHeapEdgeBasic {
    * JS heap object where this reference starts
    */
   fromNode: IHeapNode;
+  /**
+   * convert to a concise readable object that can be used for serialization
+   * (like calling `JSON.stringify(node, ...args)`).
+   *
+   * This API does not contain all the information
+   * captured by the hosting object.
+   */
+  getJSONifyableObject(): AnyRecord;
   /**
    * convert to a concise readable string output
    * (like calling `JSON.stringify(node, ...args)`).
@@ -1904,6 +1920,15 @@ export interface IHeapNode extends IHeapNodeBasic {
    * inside the string node.
    */
   toStringNode(): Nullable<IHeapStringNode>;
+  /**
+   * convert to a concise readable object that can be used for serialization
+   * (like calling `JSON.stringify(node, ...args)`).
+   *
+   * This API does not contain all the information
+   * captured by the hosting object.
+   */
+
+  getJSONifyableObject(): AnyRecord;
   /**
    * convert to a concise readable string output
    * (like calling `JSON.stringify(node, ...args)`).

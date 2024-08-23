@@ -83,6 +83,20 @@ get the [IHeapSnapshot](core_src.IHeapSnapshot.md) containing this location inst
 
 ## Methods
 
+### <a id="getjsonifyableobject"></a>**getJSONifyableObject**()
+
+convert to a concise readable object that can be used for serialization
+(like calling `JSON.stringify(node, ...args)`).
+
+This API does not contain all the information
+captured by the hosting object.
+
+ * **Returns**: `AnyRecord`
+ * **Source**:
+    * core/src/lib/Types.ts:1602
+
+___
+
 ### <a id="tojsonstring"></a>**toJSONString**(...`args`)
 
 convert to a concise readable string output
@@ -100,4 +114,4 @@ captured by the hosting object.
     * `...args`: `any`[]
  * **Returns**: `string`
  * **Source**:
-    * core/src/lib/Types.ts:1607
+    * core/src/lib/Types.ts:1615

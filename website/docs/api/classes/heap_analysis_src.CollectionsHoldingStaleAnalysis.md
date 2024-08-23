@@ -70,4 +70,4 @@ const name = analysis.getCommandName();
 ```
 
  * **Source**:
-    * heap-analysis/src/plugins/CollectionsHoldingStaleAnalysis.ts:64
+    * heap-analysis/src/plugins/CollectionsHoldingStaleAnalysis.ts:67
