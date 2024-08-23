@@ -96,6 +96,7 @@ export type MuteConfig = {
   muteHighLevel?: boolean;
   muteMidLevel?: boolean;
   muteLowLevel?: boolean;
+  muteOutput?: boolean;
 };
 
 /** @internal */

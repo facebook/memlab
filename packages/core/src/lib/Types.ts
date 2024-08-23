@@ -1599,7 +1599,6 @@ export interface IHeapLocation {
    * This API does not contain all the information
    * captured by the hosting object.
    */
-
   getJSONifyableObject(): AnyRecord;
   /**
    * convert to a concise readable string output
@@ -1695,7 +1694,6 @@ export interface IHeapEdge extends IHeapEdgeBasic {
    * This API does not contain all the information
    * captured by the hosting object.
    */
-
   getJSONifyableObject(): AnyRecord;
   /**
    * convert to a concise readable string output

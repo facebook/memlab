@@ -20,6 +20,7 @@ import {
   config,
   takeNodeMinimalHeap,
   OutputFormat,
+  AnyRecord,
 } from '@memlab/core';
 
 import chalk from 'chalk';
@@ -147,6 +148,37 @@ function filterOutDominators(nodeList: IHeapNode[]): IHeapNode[] {
   return nodeList.filter(node => candidateIdSet.has(node.id));
 }
 
+function getNodeRecord(node: IHeapNode, printRef: boolean): AnyRecord {
+  const refs = node.references.slice(0, MAX_NUM_OF_EDGES_TO_PRINT);
+  return {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    selfsize: node.self_size,
+    retainedSize: node.retainedSize,
+    traceNodeId: node.trace_node_id,
+    nodeIndex: node.nodeIndex,
+    references: printRef ? refs.map(edge => getEdgeRecord(edge)) : refs.map(edge => ({
+      name: edge.name_or_index.toString(),
+      toNode: edge.toNode.id,
+    })),
+    referrers: node.referrers.slice(0, MAX_NUM_OF_EDGES_TO_PRINT).map(edge => ({
+      name: edge.name_or_index.toString(),
+      fromNode: edge.fromNode.id,
+    })),
+  };
+}
+
+function getEdgeRecord(edge: IHeapEdge): AnyRecord {
+  return {
+    nameOrIndex: edge.name_or_index,
+    type: edge.type,
+    edgeIndex: edge.edgeIndex,
+    toNode: getNodeRecord(edge.toNode, false /* printRef */),
+    fromNode: getNodeRecord(edge.fromNode, false /* printRef */),
+  };
+}
+
 type PrintNodeOption = {
   indent?: string;
   printReferences?: boolean;
@@ -163,21 +195,11 @@ function printNodeListInTerminal(
     nodeList = filterOutDominators(nodeList);
   }
 
-  if (config.outputFormat == OutputFormat.Json) {
-    const jsonNodes = nodeList.map(node => {
-      const jsonObject = node.getJSONifyableObject();
-      jsonObject.self_size = node.self_size;
-      jsonObject.retainedSize = node.retainedSize;
-      jsonObject.shape = serializer.summarizeNodeShape(node);
-      if (printRef) {
-        jsonObject.references = node.references.slice(0, MAX_NUM_OF_EDGES_TO_PRINT).map(e => e.getJSONifyableObject());
-      }
+  if (config.outputFormat === OutputFormat.Json) {
+    const jsonNodes = nodeList.map(node => getNodeRecord(node, printRef));
 
-      return jsonObject;
-    });
-
-    info.writeRaw(JSON.stringify(jsonNodes));
-    info.writeRaw('\n');
+    info.writeOutput(JSON.stringify(jsonNodes));
+    info.writeOutput('\n');
     return;
   }
 
@@ -188,6 +210,12 @@ function printNodeListInTerminal(
       printReferencesInTerminal(node.references, { indent: indent + '  ' });
     }
   }
+}
+
+function printNodeInTerminal(node: IHeapNode): void {
+  const nodeRecord = getNodeRecord(node, false /* printRef */);
+  info.writeOutput(JSON.stringify(nodeRecord));
+  info.writeOutput('\n');
 }
 
 function isNumeric(v: number | string): boolean {
@@ -269,13 +297,11 @@ function printReferencesInTerminal(
   edgeList: IHeapEdge[],
   options: AnyOptions & PrintNodeOption = {},
 ): void {
-  if (config.outputFormat == OutputFormat.Json) {
-    const jsonEdges = edgeList.map(edge => {
-      return edge.getJSONifyableObject();
-    });
+  if (config.outputFormat === OutputFormat.Json) {
+    const jsonEdges = edgeList.map(edge => getEdgeRecord(edge));
 
-    info.writeRaw(JSON.stringify(jsonEdges));
-    info.writeRaw('\n');
+    info.writeOutput(JSON.stringify(jsonEdges));
+    info.writeOutput('\n');
   }
 
   const dot = chalk.grey('· ');
@@ -801,6 +827,7 @@ export default {
   printNodeListInTerminal,
   printReferencesInTerminal,
   printReferrersInTerminal,
+  printNodeInTerminal,
   snapshotMapReduce,
   takeNodeFullHeap,
 };

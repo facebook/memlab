@@ -190,8 +190,12 @@ class MemLabConsole {
         .replace(/\[\d{1,3}m/g, ''),
     );
     this.log.push(...lines);
+    this.tryFlush();
+  }
+
+  private tryFlush(): void {
     if (this.log.length > LOG_BUFFER_LENGTH) {
-      this.flushLog({sync: true});
+      this.flushLog({ sync: true });
     }
   }
 
@@ -323,8 +327,14 @@ class MemLabConsole {
     }
   }
 
-  public writeRaw(s: string): void {
-    process.stdout.write(s);
+  public writeOutput(output: string): void {
+    if (this.config.muteConfig?.muteOutput) {
+      return;
+    }
+
+    process.stdout.write(output);
+    this.log.push(output);
+    this.tryFlush();
   }
 
   public registerLogFile(logFile: string): void {

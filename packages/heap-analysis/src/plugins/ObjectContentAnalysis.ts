@@ -12,11 +12,12 @@ import type {IHeapEdge, IHeapNode, IHeapSnapshot} from '@memlab/core';
 import type {AnalyzeSnapshotResult, HeapAnalysisOptions} from '../PluginUtils';
 
 import chalk from 'chalk';
-import {BaseOption, config, utils, info} from '@memlab/core';
+import {BaseOption, config, utils, info, OutputFormat} from '@memlab/core';
 import NodeIdOption from '../options/HeapAnalysisNodeIdOption';
 import SnapshotFileOption from '../options/HeapAnalysisSnapshotFileOption';
 import BaseAnalysis from '../BaseAnalysis';
 import pluginUtils from '../PluginUtils';
+import PluginUtils from '../PluginUtils';
 
 class GlobalVariableAnalysis extends BaseAnalysis {
   getCommandName(): string {
@@ -43,7 +44,16 @@ class GlobalVariableAnalysis extends BaseAnalysis {
       info.lowLevel(`Specify an object by --node-id`);
       return;
     }
-    // print object info
+
+    if (config.outputFormat === OutputFormat.Json) {
+      PluginUtils.printNodeInTerminal(node);
+    }
+    else {
+      this.print(node, snapshot);
+    }
+  }
+
+  private print(node: IHeapNode, snapshot: IHeapSnapshot) {
     const id = chalk.grey(`@${node.id}`);
     info.topLevel(`Heap node (${node.type}) ${id}`);
     const name = chalk.grey(`${node.name}`);

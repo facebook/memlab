@@ -101,7 +101,7 @@ export default class CollectionsHoldingStaleAnalysis extends BaseAnalysis {
   async process(options: HeapAnalysisOptions): Promise<void> {
     const snapshot = await pluginUtils.loadHeapSnapshot(options);
     const collectionsStat = this.getCollectionsWithStaleValues(snapshot);
-    if (config.outputFormat == OutputFormat.Json) {
+    if (config.outputFormat === OutputFormat.Json) {
       this.printJson(collectionsStat);
     }
     else {
@@ -173,7 +173,7 @@ export default class CollectionsHoldingStaleAnalysis extends BaseAnalysis {
         staleChildrenIds: stat.staleChildren.map(node => node.id),
       }));
 
-    info.writeRaw(JSON.stringify(output));
-    info.writeRaw('\n');
+    info.writeOutput(JSON.stringify(output));
+    info.writeOutput('\n');
   }
 }

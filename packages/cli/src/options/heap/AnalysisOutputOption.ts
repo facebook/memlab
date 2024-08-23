@@ -34,7 +34,7 @@ export default class AnalysisOutputOption extends BaseOption {
   ): Promise<void> {
     const name = this.getOptionName();
     config.outputFormat = AnalysisOutputOption.parseOutputFormat(args[name]);
-    if (config.outputFormat == OutputFormat.Json){
+    if (config.outputFormat === OutputFormat.Json){
       config.isContinuousTest = true;
     }
   }
