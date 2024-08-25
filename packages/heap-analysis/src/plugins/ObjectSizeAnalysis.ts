@@ -14,6 +14,7 @@ import {BaseOption, utils} from '@memlab/core';
 import BaseAnalysis from '../BaseAnalysis';
 import pluginUtils from '../PluginUtils';
 import SnapshotFileOption from '../options/HeapAnalysisSnapshotFileOption';
+import OutputOption from '../options/HeapAnalysisOutputOption';
 
 class ObjectSizeRankAnalysis extends BaseAnalysis {
   getCommandName(): string {
@@ -27,7 +28,7 @@ class ObjectSizeRankAnalysis extends BaseAnalysis {
 
   /** @internal */
   getOptions(): BaseOption[] {
-    return [new SnapshotFileOption()];
+    return [new SnapshotFileOption(), new OutputOption()];
   }
 
   /** @internal */

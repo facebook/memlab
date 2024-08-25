@@ -15,6 +15,7 @@ import {utils, BaseOption} from '@memlab/core';
 import BaseAnalysis from '../BaseAnalysis';
 import pluginUtils from '../PluginUtils';
 import SnapshotFileOption from '../options/HeapAnalysisSnapshotFileOption';
+import OutputOption from '../options/HeapAnalysisOutputOption';
 
 export default class DetachedDOMElementAnalysis extends BaseAnalysis {
   getCommandName(): string {
@@ -28,7 +29,7 @@ export default class DetachedDOMElementAnalysis extends BaseAnalysis {
 
   /** @internal */
   getOptions(): BaseOption[] {
-    return [new SnapshotFileOption()];
+    return [new SnapshotFileOption(), new OutputOption()];
   }
 
   /** @internal */
