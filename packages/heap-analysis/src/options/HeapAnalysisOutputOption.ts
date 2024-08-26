@@ -27,7 +27,7 @@ export default class HeapAnalysisOutputOption extends BaseOption {
 
   async parse(config: MemLabConfig, args: ParsedArgs): Promise<void> {
     const name = this.getOptionName();
-    const format = `${args[name]}` ?? 'text';
+    const format = args[name] == null ? 'text' : `${args[name]}`;
     config.outputFormat = HeapAnalysisOutputOption.parseOutputFormat(format);
     if (config.outputFormat === OutputFormat.Json) {
       config.isContinuousTest = true;

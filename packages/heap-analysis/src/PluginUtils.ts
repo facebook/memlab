@@ -304,10 +304,8 @@ function printReferencesInTerminal(
   options: AnyOptions & PrintNodeOption = {},
 ): void {
   if (config.outputFormat === OutputFormat.Json) {
-    const jsonEdges = edgeList.map(edge => getEdgeRecord(edge));
-
-    info.writeOutput(JSON.stringify(jsonEdges));
-    info.writeOutput('\n');
+    printEdgesJson(edgeList);
+    return;
   }
 
   const dot = chalk.grey('· ');
@@ -337,6 +335,11 @@ function printReferrersInTerminal(
   edgeList: IHeapEdge[],
   options: AnyOptions & PrintNodeOption = {},
 ): void {
+  if (config.outputFormat === OutputFormat.Json) {
+    printEdgesJson(edgeList);
+    return;
+  }
+
   const dot = chalk.grey('· ');
   const indent = options.indent || '';
   let n = 0;
@@ -351,6 +354,13 @@ function printReferrersInTerminal(
   if (n < edgeList.length) {
     info.lowLevel(`${edgeList.length - n} more referrers...`);
   }
+}
+
+function printEdgesJson(edgeList: IHeapEdge[]) {
+  const jsonEdges = edgeList.map(edge => getEdgeRecord(edge));
+
+  info.writeOutput(JSON.stringify(jsonEdges));
+  info.writeOutput('\n');
 }
 
 function getObjectOutgoingEdgeCount(node: IHeapNode): number {

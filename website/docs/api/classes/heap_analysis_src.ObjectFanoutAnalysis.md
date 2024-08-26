@@ -70,4 +70,4 @@ const name = analysis.getCommandName();
 ```
 
  * **Source**:
-    * heap-analysis/src/plugins/ObjectFanoutAnalysis.ts:21
+    * heap-analysis/src/plugins/ObjectFanoutAnalysis.ts:22

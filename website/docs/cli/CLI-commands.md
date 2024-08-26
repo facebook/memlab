@@ -232,6 +232,7 @@ memlab analyze detached-DOM
 
 **Options**:
  * **`--snapshot`**: set file path of the heap snapshot under analysis
+ * **`--output`**: specify output format of the analysis (defaults to text)
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode
@@ -248,6 +249,7 @@ memlab analyze global-variable
 
 **Options**:
  * **`--snapshot`**: set file path of the heap snapshot under analysis
+ * **`--output`**: specify output format of the analysis (defaults to text)
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode
@@ -282,6 +284,7 @@ memlab analyze object-fanout
 
 **Options**:
  * **`--snapshot`**: set file path of the heap snapshot under analysis
+ * **`--output`**: specify output format of the analysis (defaults to text)
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode
@@ -330,6 +333,7 @@ memlab analyze object-size
 
 **Options**:
  * **`--snapshot`**: set file path of the heap snapshot under analysis
+ * **`--output`**: specify output format of the analysis (defaults to text)
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode
@@ -410,6 +414,7 @@ memlab analyze unmounted-fiber-node
 
 **Options**:
  * **`--snapshot`**: set file path of the heap snapshot under analysis
+ * **`--output`**: specify output format of the analysis (defaults to text)
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode

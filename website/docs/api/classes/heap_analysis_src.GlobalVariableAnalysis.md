@@ -70,4 +70,4 @@ const name = analysis.getCommandName();
 ```
 
  * **Source**:
-    * heap-analysis/src/plugins/GlobalVariableAnalysis/GlobalVariableAnalysis.ts:24
+    * heap-analysis/src/plugins/GlobalVariableAnalysis/GlobalVariableAnalysis.ts:25

@@ -70,4 +70,4 @@ const name = analysis.getCommandName();
 ```
 
  * **Source**:
-    * heap-analysis/src/plugins/ObjectSizeAnalysis.ts:19
+    * heap-analysis/src/plugins/ObjectSizeAnalysis.ts:20

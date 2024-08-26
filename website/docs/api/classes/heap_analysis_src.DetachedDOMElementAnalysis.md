@@ -70,7 +70,7 @@ const name = analysis.getCommandName();
 ```
 
  * **Source**:
-    * heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:20
+    * heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:21
 
 ___
 
@@ -78,4 +78,4 @@ ___
 
  * **Returns**: `IHeapNode`[]
  * **Source**:
-    * heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:47
+    * heap-analysis/src/plugins/DetachedDOMElementAnalysis.ts:48

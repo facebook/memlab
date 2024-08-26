@@ -16,6 +16,7 @@ import type {
 
 import {BaseOption} from '@memlab/core';
 import SnapshotFileOption from '../../options/HeapAnalysisSnapshotFileOption';
+import OutputOption from '../../options/HeapAnalysisOutputOption';
 import BaseAnalysis from '../../BaseAnalysis';
 import pluginUtils from '../../PluginUtils';
 import windowBuiltInVars from './BuiltInGlobalVariables';
@@ -32,7 +33,7 @@ class GlobalVariableAnalysis extends BaseAnalysis {
 
   /** @internal */
   getOptions(): BaseOption[] {
-    return [new SnapshotFileOption()];
+    return [new SnapshotFileOption(), new OutputOption()];
   }
 
   /** @internal */
