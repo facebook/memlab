@@ -1,6 +1,6 @@
 {
   "name": "@memlab/cli",
-  "version": "1.0.39",
+  "version": "1.0.40",
   "license": "MIT",
   "description": "command line interface for memlab",
   "author": "Liang Gong <lgong@fb.com>",
@@ -26,10 +26,10 @@
     "access": "public"
   },
   "dependencies": {
-    "@memlab/api": "^1.0.36",
-    "@memlab/core": "^1.1.37",
-    "@memlab/e2e": "^1.0.37",
-    "@memlab/heap-analysis": "^1.0.34",
+    "@memlab/api": "^1.0.37",
+    "@memlab/core": "^1.1.38",
+    "@memlab/e2e": "^1.0.38",
+    "@memlab/heap-analysis": "^1.0.35",
     "ansi": "^0.3.1",
     "babar": "^0.2.0",
     "blessed": "^0.1.81",
