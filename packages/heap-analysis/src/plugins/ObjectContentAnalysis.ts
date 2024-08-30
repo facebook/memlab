@@ -19,7 +19,7 @@ import BaseAnalysis from '../BaseAnalysis';
 import pluginUtils from '../PluginUtils';
 import OutputOption from '../options/HeapAnalysisOutputOption';
 
-class GlobalVariableAnalysis extends BaseAnalysis {
+export default class ObjectContentAnalysis extends BaseAnalysis {
   getCommandName(): string {
     return 'object';
   }
@@ -36,12 +36,15 @@ class GlobalVariableAnalysis extends BaseAnalysis {
 
   /** @internal */
   async process(options: HeapAnalysisOptions): Promise<void> {
-    const snapshot = await pluginUtils.loadHeapSnapshot(options);
     const nodeId = config.focusFiberNodeId;
+    if (nodeId < 0) {
+      utils.haltOrThrow('Specify an object by --node-id');
+      return;
+    }
+    const snapshot = await pluginUtils.loadHeapSnapshot(options);
     const node = snapshot.getNodeById(nodeId);
     if (!node) {
-      info.error(`Object @${nodeId} is not found.`);
-      info.lowLevel(`Specify an object by --node-id`);
+      utils.haltOrThrow(`Object @${nodeId} is not found.`);
       return;
     }
 
@@ -119,5 +122,3 @@ class GlobalVariableAnalysis extends BaseAnalysis {
     return ret;
   }
 }
-
-export default GlobalVariableAnalysis;
