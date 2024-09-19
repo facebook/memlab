@@ -2446,3 +2446,11 @@ export type JSONifyOptions = {
   forceJSONifyDepth?: number;
   serializationHelper?: ISerializationHelper;
 };
+
+/** @internal */
+export type ConsoleOutputAnnotation = 'stack-trace';
+
+/** @internal */
+export type ConsoleOutputOptions = {
+  annotation?: ConsoleOutputAnnotation;
+};

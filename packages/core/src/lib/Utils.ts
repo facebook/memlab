@@ -1300,7 +1300,9 @@ function callAsync(f: AnyAyncFunction): void {
     promise.catch((e: unknown) => {
       const parsedError = getError(e);
       info.error(parsedError.message);
-      info.lowLevel(parsedError.stack ?? '');
+      info.lowLevel(parsedError.stack ?? '', {
+        annotation: info.annotations.STACK_TRACE,
+      });
     });
   }
 }
@@ -1892,7 +1894,9 @@ function haltOrThrow(
       }
       // only print stack trace in verbose mode
       if (config.verbose) {
-        info.lowLevel(err.stack ?? '');
+        info.lowLevel(err.stack ?? '', {
+          annotation: info.annotations.STACK_TRACE,
+        });
       } else {
         info.topLevel(
           'Use `memlab help` or `memlab <COMMAND> -h` to get helper text',
@@ -2036,7 +2040,9 @@ export function runShell(
     if (config.verbose || config.isContinuousTest) {
       if (ex instanceof Error) {
         info.lowLevel(ex.message);
-        info.lowLevel(ex.stack ?? '');
+        info.lowLevel(ex.stack ?? '', {
+          annotation: info.annotations.STACK_TRACE,
+        });
       }
     }
     if (options.throwError) {

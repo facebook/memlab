@@ -16,7 +16,13 @@ import path from 'path';
 import readline from 'readline';
 import stringWidth from 'string-width';
 import {OutputFormat, type MemLabConfig} from './Config';
-import {AnyValue, Nullable, Optional} from './Types';
+import {
+  AnyValue,
+  ConsoleOutputAnnotation,
+  ConsoleOutputOptions,
+  Nullable,
+  Optional,
+} from './Types';
 
 type Message = {
   lines: number[];
@@ -117,6 +123,9 @@ class MemLabConsole {
   };
 
   private static singleton: MemLabConsole;
+  public annotations: {[key: string]: ConsoleOutputAnnotation} = {
+    STACK_TRACE: 'stack-trace',
+  };
 
   protected constructor() {
     this.sections = {
@@ -442,13 +451,18 @@ class MemLabConsole {
     this.printStr(this.style(msg, 'mid'));
   }
 
-  public lowLevel(msg: string): void {
+  public lowLevel(msg: string, options: ConsoleOutputOptions = {}): void {
     if (this.shouldBeConcise('lowLevel')) {
       return this.overwrite(msg);
     }
     this.logMsg(msg);
     if (this.config.muteConfig?.muteLowLevel) {
-      return;
+      if (
+        options.annotation !== this.annotations.STACK_TRACE ||
+        this.config.muteConfig?.muteError
+      ) {
+        return;
+      }
     }
     this.clearPrevOverwriteMsg();
     this.printStr(this.style(msg, 'low'));
