@@ -100,10 +100,10 @@ export default class CheckLeakCommand extends BaseCommand {
     throw utils.haltOrThrow(
       'No control or test working directory or snapshot location specified, ' +
         'please specify them via: \n' +
-        ` --${new SetControlSnapshotOption().getOptionName()} with ` +
+        ` --${new SetControlSnapshotOption().getOptionName()} and` +
         ` --${new SetTreatmentSnapshotOption().getOptionName()}\n` +
         'alternatively, you can also specify them via: \n' +
-        ` --${new SetControlWorkDirOption().getOptionName()} with ` +
+        ` --${new SetControlWorkDirOption().getOptionName()} and` +
         ` --${new SetTreatmentWorkDirOption().getOptionName()}`,
     );
   }
