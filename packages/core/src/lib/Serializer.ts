@@ -7,14 +7,7 @@
  * @format
  * @oncall web_perf_infra
  */
-
-import fs from 'fs';
-import chalk from 'chalk';
-import config from './Config';
-import utils from './Utils';
-import info from './Console';
-import PathFinder from '../paths/TraceFinder';
-import {
+import type {
   E2EStepInfo,
   HeapNodeIdSet,
   IHeapEdge,
@@ -26,7 +19,15 @@ import {
   LeakTracePathItem,
   Nullable,
   Optional,
+  Undefinable,
 } from './Types';
+
+import fs from 'fs';
+import chalk from 'chalk';
+import config from './Config';
+import utils from './Utils';
+import info from './Console';
+import PathFinder from '../paths/TraceFinder';
 import {EdgeIterationCallback} from '..';
 import SerializationHelper from './SerializationHelper';
 
@@ -125,7 +126,7 @@ function JSONifyDetachedHTMLElement(
   const fiberOptions = {...options};
   const nextDepth = options.forceJSONifyDepth
     ? options.forceJSONifyDepth - 1
-    : undefined;
+    : void 0;
   fiberOptions.forceJSONifyDepth = nextDepth;
 
   // options for elem.__reactProps$xxx
@@ -275,7 +276,7 @@ function JSONifyFiberNode(
 
   const propsOptions = {...options};
   // for FiberNode, force expand a few more levels
-  if (propsOptions.forceJSONifyDepth === undefined) {
+  if (propsOptions.forceJSONifyDepth === void 0) {
     propsOptions.forceJSONifyDepth = 1;
   }
   propsOptions.forceJSONifyDepth--;
@@ -800,11 +801,7 @@ function summarizeTabsOrder(
       tabSummaryString = chalk.bold(tabSummaryString);
     }
     const tabSummaryStringWithSeparator = `${tabSummaryString} ${sep} `;
-    if (
-      options.color &&
-      options.progress !== undefined &&
-      i > options.progress
-    ) {
+    if (options.color && options.progress !== void 0 && i > options.progress) {
       res += chalk.dim(tabSummaryStringWithSeparator);
     } else {
       res += tabSummaryStringWithSeparator;
@@ -887,8 +884,8 @@ function summarizePath(
   let ret = '';
   let p: Optional<LeakTracePathItem> = pathArg;
   let hasWeakMapEdge = false;
-  let weakMapKeyObjectId = undefined;
-  let weakMapEdgeIdx = undefined;
+  let weakMapKeyObjectId: Undefinable<number> = void 0;
+  let weakMapEdgeIdx: Undefinable<number> = void 0;
 
   while (p) {
     const node = p.node;
@@ -933,7 +930,7 @@ function summarizePath(
     // if the shortest path contains the same WeakMap edge,
     // we need to exclude the edge and re-search the shortest path
     if (
-      weakMapEdgeIdx !== undefined &&
+      weakMapEdgeIdx !== void 0 &&
       utils.pathHasEdgeWithIndex(keyNodePath, weakMapEdgeIdx)
     ) {
       finder.annotateShortestPaths(snapshot, excludeKeySet);

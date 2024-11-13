@@ -203,7 +203,7 @@ const runOptions: RunOptions = {
     // type error here if your local puppeeter version is different
     // from the puppeteer used by MemLab
     action: async function (page: Page) {
-      await page.click('button[aria-label="Hotels"]');
+      await page.click('text/Hotels');
     },
   },
 };
@@ -225,7 +225,7 @@ const runOptions: RunOptions = {
     },
     // no type error here
     action: async function (page: Page) {
-      await page.click('button[aria-label="Hotels"]');
+      await page.click('text/Hotels');
     },
   },
 };

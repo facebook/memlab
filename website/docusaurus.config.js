@@ -168,7 +168,7 @@ const config = {
           src: 'img/oss_logo.png',
           href: 'https://opensource.facebook.com',
         },
-        copyright: `Copyright © ${new Date().getFullYear()} Meta Platforms, Inc.`,
+        copyright: `Copyright © 2022 Meta Platforms, Inc.`,
       },
       algolia: {
         // The application ID provided by Algolia

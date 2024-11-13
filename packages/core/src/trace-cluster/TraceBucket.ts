@@ -280,7 +280,7 @@ export default class NormalizedTrace {
     const {allClusters} = NormalizedTrace.diffTraces(leakTraces, [], {
       strategy: config.isMLClustering
         ? new MLTraceSimilarityStrategy()
-        : undefined,
+        : void 0,
     });
 
     return NormalizedTrace.clusteredLeakTracesToRecord(allClusters);

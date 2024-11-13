@@ -62,7 +62,7 @@ test(
     let strRepresentation = concatString?.toJSONString() ?? '{}';
     let rep = JSON.parse(strRepresentation);
     expect(rep.type).toBe('concatenated string');
-    expect(rep.stringValue).toBe(undefined);
+    expect(rep.stringValue).toBe(void 0);
 
     strRepresentation = concatString?.toStringNode()?.toJSONString() ?? '{}';
     rep = JSON.parse(strRepresentation);

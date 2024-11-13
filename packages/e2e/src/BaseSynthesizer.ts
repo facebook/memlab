@@ -22,6 +22,7 @@ import type {
   CheckPageLoadCallback,
   Nullable,
   PageSetupCallback,
+  Undefinable,
 } from '@memlab/core';
 import type {Page} from 'puppeteer';
 
@@ -416,7 +417,7 @@ class BaseSynthesizer implements IE2EScenarioSynthesizer {
         interactions: [scenario.back],
       } as IE2EStepBasic;
 
-      const getRevertStep = (stepType?: string | undefined): E2EStepInfo =>
+      const getRevertStep = (stepType?: Undefinable<string>): E2EStepInfo =>
         scenario.back
           ? this.getActionFromStep(revertStep, stepType)
           : this.getAction(SynthesisUtils.revertStep.name, stepType);

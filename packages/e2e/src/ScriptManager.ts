@@ -147,7 +147,7 @@ export default class ScriptManager {
     this.debounce(() => {
       fs.writeFileSync(
         metaFile,
-        JSON.stringify(this.scriptInfos, undefined, 2),
+        JSON.stringify(this.scriptInfos, void 0, 2),
         'UTF-8',
       );
     }, 1000);

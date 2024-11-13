@@ -4,22 +4,24 @@ memlab is an end-to-end testing and analysis framework for identifying
 JavaScript memory leaks and optimization opportunities.
 
 Online Resources:
-* [Official Website and Demo](https://facebook.github.io/memlab)
-* [Documentation](https://facebook.github.io/memlab/docs/intro)
-* [Meta Engineering Blog Post](https://engineering.fb.com/2022/09/12/open-source/memlab/)
+
+- [Official Website and Demo](https://facebook.github.io/memlab)
+- [Documentation](https://facebook.github.io/memlab/docs/intro)
+- [Meta Engineering Blog Post](https://engineering.fb.com/2022/09/12/open-source/memlab/)
 
 Features:
- * **Browser memory leak detection** - Write test scenarios with the Puppeteer
-   API, and memlab will automatically compare JavaScript heap snapshots, filter
-   out memory leaks, and aggregate the results
- * **Object-oriented heap traversing API** - Supports the creation of
-   self-defined memory leak detector, and enables programmatic analysis JS heap
-   snapshots taken from Chromium-based browsers, Node.js, Electron.js, and Hermes
- * **Memory CLI toolbox** - Built-in toolbox and APIs for finding memory
-   optimization opportunities (not necessarily just memory leaks)
- * **Memory assertions in Node.js** - Enables unit tests or running node.js
-   programs to take a heap snapshot of their own state, perform self memory
-   checking, or write advanced memory assertions
+
+- **Browser memory leak detection** - Write test scenarios with the Puppeteer
+  API, and memlab will automatically compare JavaScript heap snapshots, filter
+  out memory leaks, and aggregate the results
+- **Object-oriented heap traversing API** - Supports the creation of
+  self-defined memory leak detector, and enables programmatic analysis JS heap
+  snapshots taken from Chromium-based browsers, Node.js, Electron.js, and Hermes
+- **Memory CLI toolbox** - Built-in toolbox and APIs for finding memory
+  optimization opportunities (not necessarily just memory leaks)
+- **Memory assertions in Node.js** - Enables unit tests or running node.js
+  programs to take a heap snapshot of their own state, perform self memory
+  checking, or write advanced memory assertions
 
 ## CLI Usage
 
@@ -44,7 +46,7 @@ function url() {
 // action where we want to detect memory leaks: click the Hotels button
 async function action(page) {
   // puppeteer page API
-  await page.click('button[aria-label="Hotels"]');
+  await page.click('text/Hotels');
 }
 
 // action where we want to go back to the step before: click clear search
@@ -90,6 +92,7 @@ MemLab found 46 leak(s)
   --elements (internal)--->  [(object elements)] (array) @182929 [8.3MB]
 ...
 ```
+
 To get readable trace, the web site under test needs to serve non-minified code (or at least minified code
 with readable variables, function name, and property names on objects).
 
@@ -101,6 +104,7 @@ in Chrome DevTool and search for the leaked object ID (`@182929`).
 View memory issues detected by memlab based on a single JavaScript
 heap snapshot taken from Chromium, Hermes, memlab, or any node.js
 or Electron.js program:
+
 ```bash
 memlab view-heap --snapshot <PATH TO .heapsnapshot FILE>
 ```
@@ -116,7 +120,7 @@ object (`node`) allocated by the target interaction.
 function leakFilter(node, heap) {
   // ... your leak detector logic
   // return true to mark the node as a memory leak
-};
+}
 ```
 
 `heap` is the graph representation of the final JavaScript heap snapshot.
@@ -126,6 +130,7 @@ For more details, view the
 ### Heap Analysis and Investigation
 
 View which object keeps growing in size during interaction in the previous run:
+
 ```bash
 memlab analyze unbound-object
 ```
@@ -140,6 +145,7 @@ Use `memlab analyze` to view all built-in memory analyses.
 For extension, view the [doc site](https://facebook.github.io/memlab).
 
 View retainer trace of a particular object:
+
 ```bash
 memlab trace --node-id <HEAP_OBJECT_ID>
 ```
@@ -154,15 +160,15 @@ Use the `memlab` npm package to start a E2E run in browser and detect memory lea
 const memlab = require('memlab');
 
 const scenario = {
-    // initial page load url
-    url: () => 'https://www.google.com/maps/@37.386427,-122.0428214,11z',
+  // initial page load url
+  url: () => 'https://www.google.com/maps/@37.386427,-122.0428214,11z',
 
-    // action where we want to detect memory leaks
-    action: async (page) => await page.click('button[aria-label="Hotels"]'),
+  // action where we want to detect memory leaks
+  action: async page => await page.click('text/Hotels'),
 
-    // action where we want to go back to the step before
-    back: async (page) => await page.click('[aria-label="Close"]'),
-}
+  // action where we want to go back to the step before
+  back: async page => await page.click('[aria-label="Close"]'),
+};
 memlab.run({scenario});
 ```
 
@@ -189,7 +195,7 @@ test('memory test with heap assertion', async () => {
   let heap: IHeapSnapshot = await takeNodeMinimalHeap();
 
   // call some function that may add references to obj
-  rabbitHole(obj)
+  rabbitHole(obj);
 
   expect(heap.hasObjectWithClassName('TestObject')).toBe(true);
   obj = null;
@@ -198,7 +204,6 @@ test('memory test with heap assertion', async () => {
   // if rabbitHole does not have any side effect that
   // adds new references to obj, then obj can be GCed
   expect(heap.hasObjectWithClassName('TestObject')).toBe(false);
-
 }, 30000);
 ```
 

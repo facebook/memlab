@@ -151,7 +151,7 @@ class MemoryAnalyst {
       {
         strategy: config.isMLClustering
           ? new MLTraceSimilarityStrategy()
-          : undefined,
+          : void 0,
       },
     );
     info.midLevel(
@@ -639,7 +639,7 @@ class MemoryAnalyst {
       {
         strategy: config.isMLClustering
           ? new MLTraceSimilarityStrategy()
-          : undefined,
+          : void 0,
       },
     );
     info.midLevel(`MemLab found ${clusters.length} leak(s)`);
@@ -699,7 +699,7 @@ class MemoryAnalyst {
       {
         strategy: config.isMLClustering
           ? new MLTraceSimilarityStrategy()
-          : undefined,
+          : void 0,
       },
     );
     return clusters;

@@ -90,7 +90,7 @@ class ObjectShapeAnalysis extends BaseAnalysis {
       const key = serializer.summarizeNodeShape(node);
       breakdown[key] = breakdown[key] || new Set();
       breakdown[key].add(node.id);
-      if (population[key] === undefined) {
+      if (population[key] === void 0) {
         population[key] = {examples: [], n: 0};
       }
       ++population[key].n;

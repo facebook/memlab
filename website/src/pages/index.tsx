@@ -47,7 +47,7 @@ function url() {
   return 'https://www.google.com/maps/place/Silicon+Valley,+CA/';
 }
 async function action(page) {
-  await page.click('button[aria-label="Hotels"]');
+  await page.click('text/Hotels');
 }
 async function back(page) {
   await page.click('[aria-label="Close"]');

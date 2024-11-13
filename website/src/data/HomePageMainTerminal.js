@@ -589,7 +589,7 @@ const stdouts = [
   {
     time: 90046,
     content:
-      "// Visit Google Maps\r\nfunction url() {\r\n  return 'https://www.google.com/maps/@37.386427,-122.0428214,11z';\r\n}\r\n\r\n// action where we want to detect memory leaks: click the Hotels button\r\nasync function action(page) {\r\n  await page.click('button[aria-label=\"Hotels\"]');\r\n}\r\n\r\n// action where we want to go back to the step before: click clear search\r\nasync function back(page) {\r\n  await page.click('[aria-label=\"Clear search\"]');\r\n}\r\n\r\nmodule.exports = {action, back, url};\r\n",
+      "// Visit Google Maps\r\nfunction url() {\r\n  return 'https://www.google.com/maps/@37.386427,-122.0428214,11z';\r\n}\r\n\r\n// action where we want to detect memory leaks: click the Hotels button\r\nasync function action(page) {\r\n  await page.click('text/Hotels');\r\n}\r\n\r\n// action where we want to go back to the step before: click clear search\r\nasync function back(page) {\r\n  await page.click('[aria-label=\"Close\"]');\r\n}\r\n\r\nmodule.exports = {action, back, url};\r\n",
   },
   {time: 90047, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
   {time: 95735, content: '\r\n'},

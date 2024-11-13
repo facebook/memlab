@@ -16,7 +16,7 @@ function url() {
 
 // action where we want to detect memory leaks
 async function action(page) {
-  await page.click('button[aria-label="Hotels"]');
+  await page.click('text/Hotels');
 }
 
 // action where we want to go back to the step before

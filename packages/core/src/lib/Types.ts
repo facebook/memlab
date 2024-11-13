@@ -176,7 +176,7 @@ export type PuppeteerConfig = LaunchOptions &
  *     // type error here if your local puppeeter version is different
  *     // from the puppeteer used by MemLab
  *     action: async function (page: Page) {
- *       await page.click('button[aria-label="Hotels"]');
+ *       await page.click('text/Hotels');
  *     },
  *   },
  * };
@@ -198,7 +198,7 @@ export type PuppeteerConfig = LaunchOptions &
  *     },
  *     // no type error here
  *     action: async function (page: Page) {
- *       await page.click('button[aria-label="Hotels"]');
+ *       await page.click('text/Hotels');
  *     },
  *   },
  * };

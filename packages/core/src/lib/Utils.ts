@@ -400,7 +400,7 @@ function getReactFiberNode(node: Nullable<IHeapNode>, propName: string) {
     return;
   }
   const targetNode = getToNodeByEdge(node, propName, 'property');
-  return isFiberNode(targetNode) ? targetNode : undefined;
+  return isFiberNode(targetNode) ? targetNode : void 0;
 }
 
 // check if the current node's parent has the node as a child
@@ -805,7 +805,7 @@ function getEdgeByNameAndType(
   return node.findAnyReference(
     (edge: IHeapEdge) =>
       edge.name_or_index === edgeName &&
-      (type === undefined || edge.type === type),
+      (type === void 0 || edge.type === type),
   );
 }
 
@@ -935,14 +935,14 @@ function getNumberNodeValue(node: IHeapNode): Nullable<number> {
 }
 
 function getBooleanNodeValue(node: IHeapNode): Nullable<boolean> {
-  if (node === null || node === undefined) {
+  if (node === null || node === void 0) {
     return null;
   }
   if (config.jsEngine === 'hermes') {
     return node.name === 'true';
   }
   const valueNode = getToNodeByEdge(node, 'value', 'internal');
-  if (valueNode === null || valueNode === undefined) {
+  if (valueNode === null || valueNode === void 0) {
     return null;
   }
   return valueNode.name === 'true';
@@ -1077,7 +1077,7 @@ function getSnapshotSequenceFilePath(): string {
 }
 
 // this should be called only after exploration
-function loadTabsOrder(metaFile: Optional<string> = undefined): E2EStepInfo[] {
+function loadTabsOrder(metaFile: Optional<string> = void 0): E2EStepInfo[] {
   try {
     const file =
       metaFile != null && fs.existsSync(metaFile)
@@ -1203,7 +1203,7 @@ function getReadablePercent(num: number): string {
 
 function getReadableBytes(bytes: Optional<number>): string {
   let n: number, suffix: string;
-  if (bytes === undefined || bytes === null) {
+  if (bytes === void 0 || bytes === null) {
     return '';
   }
   if (bytes >= 1e12) {
