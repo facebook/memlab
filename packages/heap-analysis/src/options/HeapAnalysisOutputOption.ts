@@ -18,7 +18,13 @@ export default class HeapAnalysisOutputOption extends BaseOption {
   }
 
   getDescription(): string {
-    return 'specify output format of the analysis (defaults to text)';
+    const options = this.getExampleValues()
+      .map(v => `'${v}'`)
+      .join(', ');
+    return (
+      'specify output format of the analysis ' +
+      `(available options: ${options}; defaults to 'text')`
+    );
   }
 
   getExampleValues(): string[] {

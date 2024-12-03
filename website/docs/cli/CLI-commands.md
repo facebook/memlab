@@ -215,7 +215,7 @@ memlab analyze collections-with-stale
 
 **Options**:
  * **`--snapshot`**: set file path of the heap snapshot under analysis
- * **`--output`**: specify output format of the analysis (defaults to text)
+ * **`--output`**: specify output format of the analysis (available options: 'text', 'json'; defaults to 'text')
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode
@@ -232,7 +232,7 @@ memlab analyze detached-DOM
 
 **Options**:
  * **`--snapshot`**: set file path of the heap snapshot under analysis
- * **`--output`**: specify output format of the analysis (defaults to text)
+ * **`--output`**: specify output format of the analysis (available options: 'text', 'json'; defaults to 'text')
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode
@@ -249,7 +249,7 @@ memlab analyze global-variable
 
 **Options**:
  * **`--snapshot`**: set file path of the heap snapshot under analysis
- * **`--output`**: specify output format of the analysis (defaults to text)
+ * **`--output`**: specify output format of the analysis (available options: 'text', 'json'; defaults to 'text')
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode
@@ -267,7 +267,7 @@ memlab analyze object
 **Options**:
  * **`--snapshot`**: set file path of the heap snapshot under analysis
  * **`--node-id`**: set heap node ID
- * **`--output`**: specify output format of the analysis (defaults to text)
+ * **`--output`**: specify output format of the analysis (available options: 'text', 'json'; defaults to 'text')
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode
@@ -284,7 +284,7 @@ memlab analyze object-fanout
 
 **Options**:
  * **`--snapshot`**: set file path of the heap snapshot under analysis
- * **`--output`**: specify output format of the analysis (defaults to text)
+ * **`--output`**: specify output format of the analysis (available options: 'text', 'json'; defaults to 'text')
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode
@@ -333,7 +333,7 @@ memlab analyze object-size
 
 **Options**:
  * **`--snapshot`**: set file path of the heap snapshot under analysis
- * **`--output`**: specify output format of the analysis (defaults to text)
+ * **`--output`**: specify output format of the analysis (available options: 'text', 'json'; defaults to 'text')
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode
@@ -414,7 +414,7 @@ memlab analyze unmounted-fiber-node
 
 **Options**:
  * **`--snapshot`**: set file path of the heap snapshot under analysis
- * **`--output`**: specify output format of the analysis (defaults to text)
+ * **`--output`**: specify output format of the analysis (available options: 'text', 'json'; defaults to 'text')
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode

@@ -220,8 +220,8 @@ export default class HelperCommand extends BaseCommand {
     const cmd = docUtils.generateExampleCommand(name, example, {
       descriptionAsBashComment: false,
     });
-    let msg = `${indent}${cmd}`;
-    msg += `\n${indent}${desc}`;
+    let msg = docUtils.indentText(cmd, indent);
+    msg += `\n${docUtils.indentText(desc, indent)}`;
 
     if (options.printOptions && cmdDoc.length > 0) {
       const cmdDocBlock = alignTextInBlock(cmdDoc, {

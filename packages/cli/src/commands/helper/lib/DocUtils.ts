@@ -54,6 +54,72 @@ function exampleFromCliOptionString(
   return `memlab ${command} ${cliExample.trim()}`;
 }
 
+function getCLIWidth() {
+  return process.stdout.columns || 80; // Default to 80 if undefined
+}
+
+function indentText(description: string, indent: string): string {
+  const cliWidth = getCLIWidth();
+  const availableWidth = cliWidth - indent.length;
+  const lines: Array<string> = [];
+
+  // Split the description by \n to handle existing line breaks
+  const descriptionLines = description.split('\n');
+
+  descriptionLines.forEach(descLine => {
+    const words = descLine.split(/\s+/);
+    let line = '';
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
+      if (line.length === 0) {
+        // Start a new line with the word
+        if (word.length > availableWidth) {
+          // The word itself is longer than the available width
+          // Split the word
+          let start = 0;
+          while (start < word.length) {
+            const part = word.substring(start, start + availableWidth);
+            lines.push(indent + part);
+            start += availableWidth;
+          }
+          line = '';
+        } else {
+          line = word;
+        }
+      } else {
+        const potentialLine = line + ' ' + word;
+        if (potentialLine.length <= availableWidth) {
+          line = potentialLine;
+        } else {
+          // Line is full, push it and start new line
+          lines.push(indent + line);
+          if (word.length > availableWidth) {
+            // The word itself is longer than the available width
+            // Split the word
+            let start = 0;
+            while (start < word.length) {
+              const part = word.substring(start, start + availableWidth);
+              lines.push(indent + part);
+              start += availableWidth;
+            }
+            line = '';
+          } else {
+            line = word;
+          }
+        }
+      }
+    }
+    // Push the last line if any
+    if (line.length > 0) {
+      lines.push(indent + line);
+    }
+  });
+
+  // Join all lines with \n
+  return lines.join('\n');
+}
+
 export default {
+  indentText,
   generateExampleCommand,
 };
