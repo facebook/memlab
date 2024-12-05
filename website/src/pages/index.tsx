@@ -131,6 +131,28 @@ function Feature({imageUrl, title, description, docUrl}) {
 const stdouts = nomralizeTypeSpeed(homePageStdouts);
 const MIN_POINTS = 6;
 const MAX_POINTS = 16;
+const BROWSER_SUPPORTS_WIDE_LINE = browserSupportsWideLine();
+const ANIMATION_MAX_DISTANCE = BROWSER_SUPPORTS_WIDE_LINE ? 26 : 30;
+
+function browserSupportsWideLine() {
+  try {
+    // Create a canvas and get its WebGL rendering context
+    const canvas = document.createElement('canvas');
+    const gl =
+      (canvas.getContext('webgl') as WebGLRenderingContext) ||
+      (canvas.getContext('experimental-webgl') as WebGLRenderingContext);
+
+    // Check if WebGL is supported
+    if (!gl) {
+      return false;
+    }
+    // Query the line width range
+    const lineWidthRange = gl.getParameter(gl.ALIASED_LINE_WIDTH_RANGE);
+    return lineWidthRange[1] > 1;
+  } catch {
+    return false;
+  }
+}
 
 export default function Home(): React.ReactElement {
   const {siteConfig} = useDocusaurusContext();
@@ -148,17 +170,17 @@ export default function Home(): React.ReactElement {
           mouseControls: true,
           touchControls: true,
           gyroControls: false,
-          minHeight: 200.0,
-          minWidth: 200.0,
+          minHeight: 170.0,
+          minWidth: 170.0,
           scale: 0.9,
           scaleMobile: 0.4,
-          color: 0x63822b,
+          color: 0x739c2a,
           backgroundColor: 0xf0db4f,
           points: Math.min(
             Math.max(Math.floor((12.0 * width) / 1800), MIN_POINTS),
             MAX_POINTS,
           ),
-          maxDistance: 30.0,
+          maxDistance: ANIMATION_MAX_DISTANCE,
           spacing: 22.0,
         }),
       );
