@@ -1,6 +1,6 @@
 {
   "name": "@memlab/api",
-  "version": "1.0.38",
+  "version": "1.0.39",
   "license": "MIT",
   "description": "memlab API",
   "author": "Liang Gong <lgong@fb.com>",
@@ -27,9 +27,9 @@
     "access": "public"
   },
   "dependencies": {
-    "@memlab/core": "^1.1.39",
-    "@memlab/e2e": "^1.0.39",
-    "@memlab/heap-analysis": "^1.0.36",
+    "@memlab/core": "^1.1.40",
+    "@memlab/e2e": "^1.0.40",
+    "@memlab/heap-analysis": "^1.0.37",
     "ansi": "^0.3.1",
     "babar": "^0.2.0",
     "chalk": "^4.0.0",
