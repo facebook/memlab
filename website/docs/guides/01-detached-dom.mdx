@@ -79,7 +79,7 @@ interactions (navigations) `memlab` performed as specified in our scenario file.
   * **`page-load[6.5MB](baseline)[s1]`** - the JavaScript heap size was
     `6.5MB` on initial page load. The `baseline` heap snapshot will be saved as
     `s1.heapsnapshot` on disk.
-  * **`action-on-page[6.6MB](baseline)[s2]`** - After clicking the
+  * **`action-on-page[6.6MB](target)[s2]`** - After clicking the
     "Create detached DOMs" button, the heap size increased to `6.6MB`.
   * **`revert[7MB](final)[s3]`** - The web page finally reached 7MB
     after navigating away from the page that triggered the memory leak.
