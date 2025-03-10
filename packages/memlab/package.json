@@ -57,14 +57,6 @@
     "publish-patch": "echo 'require manual publish: run npm publish in packages/memlab'",
     "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
   },
-  "devEngines": {
-    "node": "18.x || 19.x || 20.x",
-    "npm": "7.x || 8.x || 9.x || 10.x"
-  },
-  "engines": {
-    "node": "18.x || 19.x || 20.x",
-    "npm": "7.x || 8.x || 9.x || 10.x"
-  },
   "workspaces": [
     "./packages/core",
     "./packages/e2e",

@@ -37,14 +37,6 @@
     "publish-patch": "npm run error",
     "error": "echo 'upgrade node.js to version 16.0.0 or above. Consider using nvm.'; exit 1"
   },
-  "devEngines": {
-    "node": "18.x || 19.x || 20.x",
-    "npm": "7.x || 8.x || 9.x || 10.x"
-  },
-  "engines": {
-    "node": "18.x || 19.x || 20.x",
-    "npm": "7.x || 8.x || 9.x || 10.x"
-  },
   "workspaces": [
     "./packages/core",
     "./packages/e2e",

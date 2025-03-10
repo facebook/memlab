@@ -33,6 +33,8 @@ Features:
   programs to take a heap snapshot of their own state, perform self memory
   checking, or write advanced memory assertions
 
+![](./website/static/img/heap-diff.gif)
+
 ## CLI Usage
 
 Install the CLI
