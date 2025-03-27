@@ -6,7 +6,7 @@
  *
  * @format
  * @nolint
- * @oncall web_perf_infra
+ * @oncall memory_lab
  */
 
 module.exports = {

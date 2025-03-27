@@ -6,7 +6,7 @@
  *
  * @format
  * @lightSyntaxTransform
- * @oncall web_perf_infra
+ * @oncall memory_lab
  */
 
 export default new Set([

@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  *
  * @format
- * @oncall web_perf_infra
+ * @oncall memory_lab
  */
 import type {WorkerOptions} from 'worker_threads';
 import type {IHeapSnapshot, IHeapNode, Nullable, IHeapEdge} from '@memlab/core';

@@ -2,7 +2,7 @@
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * @nolint
- * @oncall web_perf_infra
+ * @oncall memory_lab
  */
 
 // leakFilter is called with each object (node) in browser

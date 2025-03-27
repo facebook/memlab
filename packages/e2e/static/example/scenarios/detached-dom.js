@@ -2,7 +2,7 @@
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * @nolint
- * @oncall web_perf_infra
+ * @oncall memory_lab
  */
 
 // memlab/packages/e2e/static/example/scenario/detached-dom.js
