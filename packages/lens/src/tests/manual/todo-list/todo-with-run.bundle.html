@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>React To-Do</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="../../../../dist/run.bundle.js"></script>
+  <script src="../../lib/react-v18.dev.js"></script>
+  <script src="../../lib/react-dom-v18.dev.js"></script>
+  <script src="../../lib/babel.prod.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 600px;
+      margin: 2rem auto;
+    }
+
+    input {
+      padding: 0.5em;
+      width: 70%;
+    }
+
+    button {
+      padding: 0.5em;
+    }
+
+    li {
+      margin: 0.5em 0;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>To-Do List</h1>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState } = React;
+
+    function TodoApp() {
+      const [todos, setTodos] = useState([]);
+      const [input, setInput] = useState('');
+
+      const handleAdd = () => {
+        if (input.trim() === '') return;
+        setTodos([...todos, { id: Date.now(), text: input }]);
+        setInput('');
+      };
+
+      const handleDelete = (id) => {
+        setTodos(todos.filter(todo => todo.id !== id));
+      };
+
+      return (
+        <div>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Add a task..."
+          />
+          <button onClick={handleAdd}>Add</button>
+          <ul>
+            {todos.map(todo => (
+              <li key={todo.id}>
+                {todo.text}
+                <button onClick={() => handleDelete(todo.id)}> ❌ </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<TodoApp />);
+  </script>
+</body>
+
+</html>

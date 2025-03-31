@@ -1,0 +1,75 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * @flow strict-local
+ * @format
+ * @oncall memory_lab
+ */
+// Core types
+export type BoundingRect = {
+  bottom: number,
+  height: number,
+  left: number,
+  right: number,
+  top: number,
+  width: number,
+  x: number,
+  y: number,
+};
+
+export type DOMElementInfo = {
+  boundingRect: BoundingRect,
+};
+
+export type Nullable<T> = T | null;
+
+// [lib-index.ts]
+export type ReactMemoryScan = {
+  constructor: (options: CreateOptions) => void,
+  start: () => void,
+  stop: () => void,
+  scan: () => void,
+  visualize: () => void,
+  subscribe: (callback: AnalysisResultCallback) => () => void,
+  unsubscribe: (callback: AnalysisResultCallback) => void,
+  isDevMode: () => boolean,
+};
+
+declare export function createReactMemoryScan(
+  options: CreateOptions,
+): ReactMemoryScan;
+
+export type BasicExtension = {
+  beforeScan: () => void,
+  afterScan: (result: AnalysisResult) => void,
+};
+
+export type CreateOptions = {
+  isDevMode?: boolean,
+  subscribers?: Array<AnalysisResultCallback>,
+  extensions?: Array<BasicExtension>,
+  scanIntervalMs?: number,
+};
+
+export type ScanResult = {
+  components: Set<string>,
+  componentToFiberNodeCount: Map<string, number>,
+  totalElements: number,
+  totalDetachedElements: number,
+  detachedComponentToFiberNodeCount: Map<string, number>,
+  fiberNodes: Array<WeakRef<Fiber>>,
+  leakedFibers: Array<WeakRef<Fiber>>,
+};
+
+export type AnalysisResult = {
+  ...ScanResult,
+  start: number,
+  end: number,
+};
+
+export type AnalysisResultCallback = (result: AnalysisResult) => void;
+
+export type DOMObserveCallback = (list: Array<WeakRef<Element>>) => void;

@@ -1,0 +1,8 @@
+.DS_Store
+package-lock.json
+node_modules
+out
+dist/*
+
+# But do not ignore these files
+!dist/*.bundle.*.(js|ts)

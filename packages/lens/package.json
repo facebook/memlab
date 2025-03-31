@@ -1,0 +1,30 @@
+{
+  "name": "@memlab/lens",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "MemLens is a tool for inspecting memory leaks in browser",
+  "author": "Liang Gong <lgong@meta.com>",
+  "main": "index.js",
+  "scripts": {
+    "build": "webpack",
+    "rebuild": "webpack",
+    "reset-build": "rm package-lock.json; rm -rf node_modules; npm i; webpack",
+    "test": "playwright test --output=out",
+    "test:manual": "node src/tests/manual/playwright-open-manual.js todo-list/todo-with-run.bundle.html",
+    "test:e2e": "playwright test --output=out",
+    "test:rebuild": "webpack && playwright test --output=out",
+    "build-pkg": "webpack",
+    "publish-patch": "npm publish",
+    "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo && rm -rf out"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1",
+    "@types/react": "^18.3.12",
+    "@types/react-reconciler": "^0.28.8",
+    "react-reconciler": "^0.31.0",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.7.2",
+    "webpack": "^5.97.1",
+    "webpack-cli": "^5.1.4"
+  }
+}

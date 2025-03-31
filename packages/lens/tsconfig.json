@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES6", // Choose ES5 or ES6 for broad browser support
+    "module": "NodeNext", // Use ESNext for modern module systems; CommonJS for Node.js
+    "moduleResolution": "nodenext",
+    "lib": ["DOM", "ES2021"], // Include DOM for browser types
+    "outDir": "./dist", // Output directory for compiled files
+    "rootDir": "./src", // Source directory for TypeScript files
+    "strict": true, // Enable all strict type-checking options
+    "esModuleInterop": true, // Enable interoperability between CommonJS and ES Modules
+    "skipLibCheck": true, // Skip type-checking of declaration files for performance
+    "forceConsistentCasingInFileNames": true, // Ensure consistent casing in imports
+    "declaration": true // generate .d.ts files
+  },
+  "include": ["src/**/*"], // Include all files in the src directory
+  "exclude": ["node_modules", "dist", "src/lib-index.js.flow"] // Exclude unnecessary directories
+}
