@@ -50,6 +50,7 @@
     "./packages/heap-analysis",
     "./packages/api",
     "./packages/cli",
+    "./packages/lens",
     "./packages/memlab"
   ]
 }

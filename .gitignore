@@ -17,3 +17,6 @@ package-oss.json
 packages/**/dist
 yarn-error.log
 yarn.lock
+
+# But do not ignore these files
+!packages/lens/dist/*.bundle.*.(js|ts)
