@@ -172,6 +172,7 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
     div.style.left = `${rect.left + rect.scrollLeft}px`;
     div.style.border = '1px dotted rgba(75, 192, 192, 0.8)';
     div.style.borderRadius = '1px';
+    div.style.zIndex = '9999';
     // div.style.pointerEvents = "none"; // Ensures it doesn't interfere with UI interactions
 
     // append label div to visualizer div
@@ -191,6 +192,7 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
     labelDiv.style.width = 'auto'; // Ensure it adjusts to text
     labelDiv.style.height = 'auto';
     labelDiv.style.display = 'none'; // Hide by default, display when hovered
+    labelDiv.style.zIndex = '9999';
     setVisualizerElement(labelDiv);
 
     const divRef = new WeakRef(div);
