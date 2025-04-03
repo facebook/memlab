@@ -127,6 +127,8 @@ export function getBoundingClientRect(
   if (rect == null) {
     return null;
   }
+  const scrollTop = window.scrollY;
+  const scrollLeft = window.scrollX;
   const ret: BoundingRect = {} as unknown as BoundingRect;
   ret.bottom = rect.bottom;
   ret.height = rect.height;
@@ -136,6 +138,8 @@ export function getBoundingClientRect(
   ret.width = rect.width;
   ret.x = rect.x;
   ret.y = rect.y;
+  ret.scrollLeft = scrollLeft;
+  ret.scrollTop = scrollTop;
   return ret as BoundingRect;
 }
 

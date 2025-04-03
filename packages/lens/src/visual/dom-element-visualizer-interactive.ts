@@ -49,6 +49,9 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
 
   #initOverlayDiv(): HTMLDivElement {
     const overlayDiv = document.createElement('div');
+    overlayDiv.style.position = 'absolute';
+    overlayDiv.style.top = '0px';
+    overlayDiv.style.left = '0px';
     overlayDiv.id = 'memory-visualization-overlay';
     setVisualizerElement(overlayDiv);
     this.#tryToAttachOverlay(overlayDiv);
@@ -165,23 +168,29 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
     div.style.position = 'absolute';
     div.style.width = `${rect.width}px`;
     div.style.height = `${rect.height}px`;
-    div.style.top = `${rect.top}px`;
-    div.style.left = `${rect.left}px`;
-    div.style.border = '1px dashed rgba(75, 192, 192, 0.8)';
+    div.style.top = `${rect.top + rect.scrollTop}px`;
+    div.style.left = `${rect.left + rect.scrollLeft}px`;
+    div.style.border = '1px dotted rgba(75, 192, 192, 0.8)';
+    div.style.borderRadius = '1px';
     // div.style.pointerEvents = "none"; // Ensures it doesn't interfere with UI interactions
 
     // append label div to visualizer div
     const labelDiv = document.createElement('div');
-    labelDiv.style.font = '9px Inter, system-ui, -apple-system, sans-serif';
-    labelDiv.style.display = 'none';
     div.appendChild(labelDiv);
     const componentName = info.component ?? '';
     const elementIdStr = `memory-id-${elementId}@`;
     labelDiv.textContent = `${componentName} (${elementIdStr})`;
 
     // label div text effect
-    labelDiv.style.color = 'black'; // Set text color to black
-    labelDiv.style.textShadow = '0 0 4px white, 0 0 6px white'; // Adjust glow effect
+    labelDiv.style.color = 'white';
+    labelDiv.style.background = 'rgba(75, 192, 192, 0.8)';
+    labelDiv.style.textShadow = 'none';
+    labelDiv.style.font = '9px Inter, system-ui, -apple-system, sans-serif';
+    labelDiv.style.padding = '2px 6px';
+    labelDiv.style.borderRadius = '2px';
+    labelDiv.style.width = 'auto'; // Ensure it adjusts to text
+    labelDiv.style.height = 'auto';
+    labelDiv.style.display = 'none'; // Hide by default, display when hovered
     setVisualizerElement(labelDiv);
 
     const divRef = new WeakRef(div);
@@ -202,7 +211,7 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
     divRef.deref()?.addEventListener('mouseover', () => {
       const labelDiv = labelDivRef.deref();
       if (labelDiv) {
-        labelDiv.style.display = 'block';
+        labelDiv.style.display = 'inline-block';
       }
       // select the current element
       this.#selectedElementId = elementId;

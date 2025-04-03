@@ -105,6 +105,8 @@ export type AnalysisResultCallback = (result: AnalysisResult) => void;
  * @property {number} right - The distance from the left of the viewport to the element's right edge
  * @property {number} bottom - The distance from the top of the viewport to the element's bottom edge
  * @property {number} left - The distance from the left of the viewport to the element's left edge
+ * @property {number} scrollLeft - The scroll distance from the left of the viewport to the element's left edge
+ * @property {number} scrollTop - The scroll distance from the top of the viewport to the element's top edge
  */
 export interface BoundingRect {
   x: number;
@@ -115,6 +117,8 @@ export interface BoundingRect {
   right: number;
   bottom: number;
   left: number;
+  scrollLeft: number;
+  scrollTop: number;
 }
 
 /**
