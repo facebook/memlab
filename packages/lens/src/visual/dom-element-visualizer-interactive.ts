@@ -9,7 +9,12 @@
  */
 import type {DOMElementInfo, AnyValue} from '../core/types';
 import DOMElementVisualizer from './dom-element-visualizer';
-import {setVisualizerElement} from './visual-utils';
+import {
+  createOverlayDiv,
+  tryToAttachOverlay,
+} from './components/visual-overlay';
+import {createControlWidget} from './components/control-widget';
+import {createOverlayRectangle} from './components/overlay-rectangle';
 
 type ElementVisualizer = {
   elementInfo: DOMElementInfo;
@@ -19,12 +24,21 @@ type ElementVisualizer = {
 export default class DOMElementVisualizerInteractive extends DOMElementVisualizer {
   #elementIdToRectangle: Map<number, ElementVisualizer>;
   #visualizationOverlayDiv: HTMLDivElement;
+  #controlWidget: HTMLDivElement;
   #selectedElementId: number | null;
   #blockedElementIds: Set<number>;
+  #hideAllRef: {value: boolean};
 
   constructor() {
     super();
-    this.#visualizationOverlayDiv = this.#initOverlayDiv();
+    this.#hideAllRef = {value: false};
+    this.#visualizationOverlayDiv = createOverlayDiv();
+    tryToAttachOverlay(this.#visualizationOverlayDiv);
+    this.#controlWidget = createControlWidget(
+      this.#visualizationOverlayDiv,
+      this.#hideAllRef,
+    );
+    tryToAttachOverlay(this.#controlWidget);
     this.#elementIdToRectangle = new Map();
     this.#selectedElementId = null;
     this.#blockedElementIds = new Set();
@@ -39,23 +53,6 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
         }
       }
     });
-  }
-
-  #tryToAttachOverlay(overlayDiv: HTMLDivElement) {
-    if (document.body) {
-      document.body.appendChild(overlayDiv);
-    }
-  }
-
-  #initOverlayDiv(): HTMLDivElement {
-    const overlayDiv = document.createElement('div');
-    overlayDiv.style.position = 'absolute';
-    overlayDiv.style.top = '0px';
-    overlayDiv.style.left = '0px';
-    overlayDiv.id = 'memory-visualization-overlay';
-    setVisualizerElement(overlayDiv);
-    this.#tryToAttachOverlay(overlayDiv);
-    return overlayDiv;
   }
 
   #getElementIdSet(domElementInfoList: Array<DOMElementInfo>): Set<number> {
@@ -103,6 +100,7 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
       }
     }
 
+    // second pass remove all those outlines that won't be painted later
     const willPaintElementIdSet = this.#getElementIdSet(domElementInfoList);
     for (const [elementId] of this.#elementIdToRectangle.entries()) {
       if (elementId == null) {
@@ -140,7 +138,14 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
       if (element.isConnected) {
         continue;
       }
-      const visualizerElementRef = this.#overlayRectangle(elementId, info);
+      const visualizerElementRef = createOverlayRectangle(
+        elementId,
+        info,
+        this.#visualizationOverlayDiv,
+        (selectedId: number | null) => {
+          this.#selectedElementId = selectedId;
+        },
+      );
       if (
         visualizerElementRef == null ||
         visualizerElementRef.deref() == null
@@ -155,84 +160,12 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
     }
   }
 
-  #overlayRectangle(
-    elementId: number,
-    info: DOMElementInfo,
-  ): WeakRef<Element> | null {
-    const rect = info.boundingRect;
-    if (rect == null) {
-      return null;
-    }
-    const div = document.createElement('div');
-    setVisualizerElement(div);
-    div.style.position = 'absolute';
-    div.style.width = `${rect.width}px`;
-    div.style.height = `${rect.height}px`;
-    div.style.top = `${rect.top + rect.scrollTop}px`;
-    div.style.left = `${rect.left + rect.scrollLeft}px`;
-    div.style.border = '1px dotted rgba(75, 192, 192, 0.8)';
-    div.style.borderRadius = '1px';
-    div.style.zIndex = '9999';
-    // div.style.pointerEvents = "none"; // Ensures it doesn't interfere with UI interactions
-
-    // append label div to visualizer div
-    const labelDiv = document.createElement('div');
-    div.appendChild(labelDiv);
-    const componentName = info.component ?? '';
-    const elementIdStr = `memory-id-${elementId}@`;
-    labelDiv.textContent = `${componentName} (${elementIdStr})`;
-
-    // label div text effect
-    labelDiv.style.color = 'white';
-    labelDiv.style.background = 'rgba(75, 192, 192, 0.8)';
-    labelDiv.style.textShadow = 'none';
-    labelDiv.style.font = '9px Inter, system-ui, -apple-system, sans-serif';
-    labelDiv.style.padding = '2px 6px';
-    labelDiv.style.borderRadius = '2px';
-    labelDiv.style.width = 'auto'; // Ensure it adjusts to text
-    labelDiv.style.height = 'auto';
-    labelDiv.style.display = 'none'; // Hide by default, display when hovered
-    labelDiv.style.zIndex = '9999';
-    setVisualizerElement(labelDiv);
-
-    const divRef = new WeakRef(div);
-    const labelDivRef = new WeakRef(labelDiv);
-
-    this.#attachEventListenersToVisualizer(divRef, labelDivRef, elementId);
-
-    this.#visualizationOverlayDiv.appendChild(div);
-    return divRef;
-  }
-
-  #attachEventListenersToVisualizer(
-    divRef: WeakRef<HTMLDivElement>,
-    labelDivRef: WeakRef<HTMLDivElement>,
-    elementId: number,
-  ) {
-    // event listeners
-    divRef.deref()?.addEventListener('mouseover', () => {
-      const labelDiv = labelDivRef.deref();
-      if (labelDiv) {
-        labelDiv.style.display = 'inline-block';
-      }
-      // select the current element
-      this.#selectedElementId = elementId;
-    });
-    divRef.deref()?.addEventListener('mouseout', () => {
-      const labelDiv = labelDivRef.deref();
-      if (labelDiv) {
-        labelDiv.style.display = 'none';
-      }
-      if (this.#selectedElementId === elementId) {
-        this.#selectedElementId = null;
-      }
-    });
-  }
-
   repaint(domElementInfoList: Array<DOMElementInfo>) {
+    this.#controlWidget.remove();
     this.#visualizationOverlayDiv.remove();
     this.#cleanup(domElementInfoList);
     this.#paint(domElementInfoList);
-    this.#tryToAttachOverlay(this.#visualizationOverlayDiv);
+    tryToAttachOverlay(this.#visualizationOverlayDiv);
+    tryToAttachOverlay(this.#controlWidget);
   }
 }
