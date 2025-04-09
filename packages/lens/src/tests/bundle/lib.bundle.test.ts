@@ -9,21 +9,18 @@
  */
 import type {AnyValue} from '../../core/types';
 import {test, expect} from '@playwright/test';
-import path from 'path';
-import {distPath} from '../utils/test-utils';
+import {libBundleFilePath} from '../utils/test-utils';
 
 test('test library in browser via addScriptTag', async ({page}) => {
-  const bundlePath = path.join(distPath, 'lib.bundle.js');
-
   // Navigate to an empty page (or a test page)
   await page.goto('about:blank');
 
-  // Inject the lib.bundle.js file (UMD bundle of the library) into the page
-  await page.addScriptTag({path: bundlePath});
+  // Inject the lib bundle file (UMD bundle of the library) into the page
+  await page.addScriptTag({path: libBundleFilePath});
 
-  // Now the global `MemProbe` should be available in the page
+  // Now the global `MemLens` should be available in the page
   const libraryLoaded = await page.evaluate(() => {
-    const createReactMemoryScan = (window as AnyValue).MemProbe
+    const createReactMemoryScan = (window as AnyValue).MemLens
       .createReactMemoryScan;
     const instance = createReactMemoryScan();
     const analysisResult = instance.scan();

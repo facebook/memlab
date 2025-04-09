@@ -11,13 +11,13 @@ import {AnyValue} from '../../core/types';
 import {test, expect} from '@playwright/test';
 import path from 'path';
 import fs from 'fs';
-import {distPath, srcPath} from '../utils/test-utils';
+import {srcPath} from '../utils/test-utils';
+import {libBundleFilePath} from '../utils/test-utils';
 
 test('scan should identify react components in a complex list fiber tree (React 18 Dev)', async ({
   page,
 }) => {
-  const bundlePath = path.join(distPath, 'lib.bundle.js');
-  const bundleCode = fs.readFileSync(bundlePath, 'utf8');
+  const bundleCode = fs.readFileSync(libBundleFilePath, 'utf8');
 
   const reactDevPath = path.join(srcPath, 'tests', 'lib', 'react-v18.dev.js');
   const reactDevCode = fs.readFileSync(reactDevPath, 'utf8');
@@ -99,9 +99,9 @@ test('scan should identify react components in a complex list fiber tree (React 
     </html>
   `);
 
-  // Now the global `MemProbe` should be available in the page
+  // Now the global `MemLens` should be available in the page
   const componentIdentified = await page.evaluate(() => {
-    const createReactMemoryScan = (window as AnyValue).MemProbe
+    const createReactMemoryScan = (window as AnyValue).MemLens
       .createReactMemoryScan;
     const instance = createReactMemoryScan();
     const analysisResult = instance.scan();

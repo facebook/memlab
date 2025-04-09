@@ -8,15 +8,13 @@
  * @oncall memory_lab
  */
 import {test, expect} from '@playwright/test';
-import path from 'path';
 import fs from 'fs';
-import {distPath, wait} from '../utils/test-utils';
+import {wait} from '../utils/test-utils';
+import {runBundleFilePath} from '../utils/test-utils';
 
 test.describe('run.bundle.js functionality', () => {
   test('should load and execute correctly', async ({page}) => {
-    // Get absolute path to the bundle file
-    const bundlePath = path.join(distPath, 'run.bundle.js');
-    const bundleCode = fs.readFileSync(bundlePath, 'utf8');
+    const bundleCode = fs.readFileSync(runBundleFilePath, 'utf8');
 
     let bundleLoaded = false;
     // Listen for console messages
