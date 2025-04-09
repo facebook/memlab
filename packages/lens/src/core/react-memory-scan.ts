@@ -287,8 +287,15 @@ export default class ReactMemoryScan {
     return [...utils.getDOMElements(), ...this.#domObserver.getDOMElements()];
   }
 
+  #runGC(): void {
+    if ((window as AnyValue)?.gc != null) {
+      (window as AnyValue).gc();
+    }
+  }
+
   scan(): ScanResult {
     const start = Date.now();
+    this.#runGC();
     const weakRefList = this.#elementWeakRefs;
     // TODO: associate elements with URL and other metadata
     const allElements = this.#getTrackedDOMRefs();

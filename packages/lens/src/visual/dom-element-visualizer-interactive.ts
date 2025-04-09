@@ -21,6 +21,14 @@ type ElementVisualizer = {
   visualizerElementRef: WeakRef<Element>;
 };
 
+export type VisualizerData = {
+  detachedDOMElementsCount: number;
+  totalDOMElementsCount: number;
+};
+
+export type DateUpdateCallback = (data: VisualizerData) => void;
+export type RegisterDataUpdateCallback = (cb: DateUpdateCallback) => void;
+
 export default class DOMElementVisualizerInteractive extends DOMElementVisualizer {
   #elementIdToRectangle: Map<number, ElementVisualizer>;
   #visualizationOverlayDiv: HTMLDivElement;
@@ -28,6 +36,7 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
   #selectedElementId: number | null;
   #blockedElementIds: Set<number>;
   #hideAllRef: {value: boolean};
+  #updateDataCallbacks: Array<DateUpdateCallback> = [];
 
   constructor() {
     super();
@@ -37,6 +46,9 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
     this.#controlWidget = createControlWidget(
       this.#visualizationOverlayDiv,
       this.#hideAllRef,
+      cb => {
+        this.#updateDataCallbacks.push(cb);
+      },
     );
     tryToAttachOverlay(this.#controlWidget);
     this.#elementIdToRectangle = new Map();
@@ -160,11 +172,22 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
     }
   }
 
+  #updateVisualizerData() {
+    const data = {
+      detachedDOMElementsCount: this.#elementIdToRectangle.size,
+      totalDOMElementsCount: document.querySelectorAll('*').length,
+    };
+    for (const cb of this.#updateDataCallbacks) {
+      cb(data);
+    }
+  }
+
   repaint(domElementInfoList: Array<DOMElementInfo>) {
     this.#controlWidget.remove();
     this.#visualizationOverlayDiv.remove();
     this.#cleanup(domElementInfoList);
     this.#paint(domElementInfoList);
+    this.#updateVisualizerData();
     tryToAttachOverlay(this.#visualizationOverlayDiv);
     tryToAttachOverlay(this.#controlWidget);
   }

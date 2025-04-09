@@ -7,18 +7,21 @@
  * @format
  * @oncall memory_lab
  */
+import {RegisterDataUpdateCallback} from '../dom-element-visualizer-interactive';
 import {setVisualizerElement} from '../visual-utils';
+import {createStatusText} from './status-text';
 import {createToggleButton} from './toggle-button';
 
 export function createControlWidget(
   overlayDiv: HTMLDivElement,
   hideAllRef: {value: boolean},
+  registerDataUpdateCallback: RegisterDataUpdateCallback,
 ): HTMLDivElement {
   const controlWidget = document.createElement('div');
   controlWidget.style.position = 'fixed';
   controlWidget.style.top = '50px';
   controlWidget.style.right = '50px';
-  controlWidget.style.width = '200px';
+  controlWidget.style.width = '400px';
   controlWidget.style.height = '36px';
   controlWidget.style.background = 'rgba(0, 0, 0, 0.7)';
   controlWidget.style.border = 'none';
@@ -38,6 +41,9 @@ export function createControlWidget(
 
   const toggleButton = createToggleButton(overlayDiv, hideAllRef);
   controlWidget.append(toggleButton);
+
+  const statusText = createStatusText(registerDataUpdateCallback);
+  controlWidget.append(toggleButton, statusText);
 
   return controlWidget;
 }
