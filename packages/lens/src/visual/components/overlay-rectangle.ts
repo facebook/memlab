@@ -15,6 +15,7 @@ export function createOverlayRectangle(
   info: DOMElementInfo,
   container: HTMLDivElement,
   setSelectedId: (id: number | null) => void,
+  zIndex: number,
 ): WeakRef<Element> | null {
   const rect = info.boundingRect;
   if (!rect) return null;
@@ -27,7 +28,7 @@ export function createOverlayRectangle(
   div.style.left = `${rect.left + rect.scrollLeft}px`;
   div.style.border = '1px dotted rgba(75, 192, 192, 0.8)';
   div.style.borderRadius = '1px';
-  div.style.zIndex = '9999';
+  div.style.zIndex = zIndex.toString();
   setVisualizerElement(div);
 
   const labelDiv = document.createElement('div');
@@ -44,7 +45,7 @@ export function createOverlayRectangle(
   labelDiv.style.width = 'auto';
   labelDiv.style.height = 'auto';
   labelDiv.style.display = 'none';
-  labelDiv.style.zIndex = '9999';
+  labelDiv.style.zIndex = zIndex.toString();
   setVisualizerElement(labelDiv);
 
   div.appendChild(labelDiv);

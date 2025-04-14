@@ -129,6 +129,8 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
   }
 
   #paint(domElementInfoList: Array<DOMElementInfo>) {
+    const zIndexBase = 9999;
+
     for (const info of domElementInfoList) {
       const element = info.element.deref() as AnyValue;
       if (element == null) {
@@ -150,6 +152,7 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
       if (element.isConnected) {
         continue;
       }
+      const zIndex = zIndexBase + parseInt(elementId, 10);
       const visualizerElementRef = createOverlayRectangle(
         elementId,
         info,
@@ -157,6 +160,7 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
         (selectedId: number | null) => {
           this.#selectedElementId = selectedId;
         },
+        zIndex,
       );
       if (
         visualizerElementRef == null ||
