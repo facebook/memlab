@@ -16,6 +16,7 @@ import {
   getTopMostFiberWithChild,
 } from '../utils/react-fiber-utils';
 import {ScanResult, AnyValue} from './types';
+import {isValidComponentName} from './valid-component-name';
 
 export default class ReactFiberAnalyzer {
   scan(
@@ -44,7 +45,7 @@ export default class ReactFiberAnalyzer {
 
           // traverse the fiber tree up to find the component name
           const displayName = getDisplayNameOfFiberNode(fiberNode);
-          if (displayName != null) {
+          if (displayName != null && isValidComponentName(displayName)) {
             components.add(displayName);
             utils.addCountbyKey(componentToFiberNodeCount, displayName, 1);
             return true;

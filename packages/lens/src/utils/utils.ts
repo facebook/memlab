@@ -27,6 +27,18 @@ export function getDOMElements(): Array<WeakRef<Element>> {
   return ret;
 }
 
+export function getDOMElementCount(): number {
+  const elements = Array.from(document.querySelectorAll('*'));
+  let ret = 0;
+  for (const element of elements) {
+    if (isVisualizerElement(element)) {
+      continue;
+    }
+    ++ret;
+  }
+  return ret;
+}
+
 export function getMeaningfulName(name: Nullable<string>) {
   if (name == null) {
     return null;
@@ -42,6 +54,9 @@ export function getMeaningfulName(name: Nullable<string>) {
  * @return {boolean} - Returns true if the name is likely minified, otherwise false.
  */
 export function isMinifiedName(name: string): boolean {
+  if (name.length >= 5) {
+    return false;
+  }
   // Minified names are often very short, e.g., "a", "b", "c"
   if (name.length <= 3) {
     return true;

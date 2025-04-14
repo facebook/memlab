@@ -10,6 +10,7 @@
 import type {Fiber} from 'react-reconciler';
 import type {Nullable, Optional, AnyValue} from '../core/types';
 import {getMeaningfulName} from './utils';
+import {isValidComponentName} from '../core/valid-component-name';
 
 export const ClassComponentTag = 1;
 export const FunctionComponentTag = 0;
@@ -106,13 +107,13 @@ export const traverseFiber = (
     return fiber;
   }
 
-  let child = ascending ? fiber.return : fiber.child;
-  while (child) {
-    const match = traverseFiber(child, selector, ascending);
+  let next = ascending ? fiber.return : fiber.child;
+  while (next) {
+    const match = traverseFiber(next, selector, ascending);
     if (match) {
       return match;
     }
-    child = ascending ? null : child.sibling;
+    next = ascending ? null : next.sibling;
   }
   return null;
 };
@@ -161,7 +162,8 @@ export function getDisplayNameOfFiberNode(node: Fiber) {
   if (!displayName && typeof elementType === 'function') {
     displayName = elementType.name;
   }
-  return getMeaningfulName(extractReactComponentName(displayName));
+  const ret = getMeaningfulName(extractReactComponentName(displayName));
+  return isValidComponentName(ret) ? ret : null;
 }
 
 export function isFunctionalComponent(node: Fiber) {

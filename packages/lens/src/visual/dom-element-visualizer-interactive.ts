@@ -7,7 +7,7 @@
  * @format
  * @oncall memory_lab
  */
-import type {DOMElementInfo, AnyValue, Optional} from '../core/types';
+import type {DOMElementInfo, AnyValue, Optional, Nullable} from '../core/types';
 import DOMElementVisualizer from './dom-element-visualizer';
 import {
   createOverlayDiv,
@@ -15,6 +15,7 @@ import {
 } from './components/visual-overlay';
 import {createControlWidget} from './components/control-widget';
 import {createOverlayRectangle} from './components/overlay-rectangle';
+import {getDOMElementCount} from '../utils/utils';
 
 type ElementVisualizer = {
   elementInfo: DOMElementInfo;
@@ -24,6 +25,8 @@ type ElementVisualizer = {
 export type VisualizerData = {
   detachedDOMElementsCount: number;
   totalDOMElementsCount: number;
+  selectedElementId: Nullable<number>;
+  selectedReactComponentStack: Array<ElementVisualizer>;
 };
 
 export type DateUpdateCallback = (data: VisualizerData) => void;
@@ -33,8 +36,8 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
   #elementIdToRectangle: Map<number, ElementVisualizer>;
   #visualizationOverlayDiv: HTMLDivElement;
   #controlWidget: HTMLDivElement;
-  #selectedElementId: number | null;
   #blockedElementIds: Set<number>;
+  #currentVisualData: VisualizerData;
   #hideAllRef: {value: boolean};
   #updateDataCallbacks: Array<DateUpdateCallback> = [];
 
@@ -52,7 +55,7 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
     );
     tryToAttachOverlay(this.#controlWidget);
     this.#elementIdToRectangle = new Map();
-    this.#selectedElementId = null;
+    this.#currentVisualData = this.#initVisualizerData();
     this.#blockedElementIds = new Set();
     this.#listenToKeyboardEvent();
   }
@@ -60,11 +63,22 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
   #listenToKeyboardEvent() {
     document.addEventListener('keydown', event => {
       if (event.key === 'd' || event.key === 'D') {
-        if (this.#selectedElementId != null) {
-          this.#blockedElementIds.add(this.#selectedElementId);
+        if (this.#currentVisualData.selectedElementId != null) {
+          this.#blockedElementIds.add(
+            this.#currentVisualData.selectedElementId,
+          );
         }
       }
     });
+  }
+
+  #initVisualizerData(): VisualizerData {
+    return {
+      detachedDOMElementsCount: 0,
+      totalDOMElementsCount: getDOMElementCount(),
+      selectedElementId: null,
+      selectedReactComponentStack: [],
+    };
   }
 
   #getElementIdSet(domElementInfoList: Array<DOMElementInfo>): Set<number> {
@@ -81,6 +95,38 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
       elementIdSet.add(elementId);
     }
     return elementIdSet;
+  }
+
+  #getComponentStackForElement(
+    elementId: Optional<number>,
+  ): ElementVisualizer[] {
+    const ret: ElementVisualizer[] = [];
+    if (elementId == null) {
+      return ret;
+    }
+    const visualizer = this.#elementIdToRectangle.get(elementId);
+    if (visualizer == null) {
+      return ret;
+    }
+    const element = visualizer.elementInfo.element.deref() as AnyValue;
+    if (element == null) {
+      return ret;
+    }
+    // traverse parent elements
+    let currentElement: Optional<Element> = element;
+    while (currentElement) {
+      if (currentElement.isConnected) {
+        break;
+      }
+      const elementId = (currentElement as AnyValue).detachedElementId;
+      const info = this.#elementIdToRectangle.get(elementId);
+      if (info == null) {
+        break;
+      }
+      ret.push(info);
+      currentElement = currentElement.parentElement;
+    }
+    return ret;
   }
 
   #traverseUpOutlineElements(
@@ -192,7 +238,8 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
         info,
         this.#visualizationOverlayDiv,
         (selectedId: number | null) => {
-          this.#selectedElementId = selectedId;
+          this.#currentVisualData.selectedElementId = selectedId;
+          this.#updateVisualizerData();
           if (selectedId == null) {
             return;
           }
@@ -202,8 +249,9 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
           });
         },
         (unselectedId: number | null) => {
-          if (this.#selectedElementId === unselectedId) {
-            this.#selectedElementId = null;
+          if (this.#currentVisualData.selectedElementId === unselectedId) {
+            this.#currentVisualData.selectedElementId = null;
+            this.#updateVisualizerData();
           }
           if (unselectedId == null) {
             return;
@@ -230,12 +278,14 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
   }
 
   #updateVisualizerData() {
-    const data = {
-      detachedDOMElementsCount: this.#elementIdToRectangle.size,
-      totalDOMElementsCount: document.querySelectorAll('*').length,
-    };
+    const data = this.#currentVisualData;
+    data.detachedDOMElementsCount = this.#elementIdToRectangle.size;
+    data.totalDOMElementsCount = getDOMElementCount();
+    data.selectedReactComponentStack = this.#getComponentStackForElement(
+      data.selectedElementId,
+    );
     for (const cb of this.#updateDataCallbacks) {
-      cb(data);
+      cb({...this.#currentVisualData});
     }
   }
 

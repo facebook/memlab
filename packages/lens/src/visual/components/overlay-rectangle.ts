@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 import type {DOMElementInfo} from '../../core/types';
-import {setVisualizerElement} from '../visual-utils';
+import {createVisualizerElement} from '../visual-utils';
 
 const MAX_Z_INDEX = `${Math.pow(2, 30) - 1}`;
 
@@ -23,7 +23,7 @@ export function createOverlayRectangle(
   const rect = info.boundingRect;
   if (!rect) return null;
 
-  const div = document.createElement('div');
+  const div = createVisualizerElement('div') as HTMLDivElement;
   div.style.position = 'absolute';
   div.style.width = `${rect.width}px`;
   div.style.height = `${rect.height}px`;
@@ -32,9 +32,8 @@ export function createOverlayRectangle(
   div.style.border = '1px dotted rgba(75, 192, 192, 0.8)';
   div.style.borderRadius = '1px';
   div.style.zIndex = zIndex.toString();
-  setVisualizerElement(div);
 
-  const labelDiv = document.createElement('div');
+  const labelDiv = createVisualizerElement('div');
   const componentName = info.component ?? '';
   const elementIdStr = `memory-id-${elementId}@`;
   labelDiv.textContent = `${componentName} (${elementIdStr})`;
@@ -49,7 +48,6 @@ export function createOverlayRectangle(
   labelDiv.style.height = 'auto';
   labelDiv.style.display = 'none';
   labelDiv.style.zIndex = MAX_Z_INDEX;
-  setVisualizerElement(labelDiv);
 
   div.appendChild(labelDiv);
 

@@ -8,42 +8,55 @@
  * @oncall memory_lab
  */
 import {RegisterDataUpdateCallback} from '../dom-element-visualizer-interactive';
-import {setVisualizerElement} from '../visual-utils';
+import {createVisualizerElement} from '../visual-utils';
 import {createStatusText} from './status-text';
 import {createToggleButton} from './toggle-button';
+import {createComponentStackPanel} from './component-stack-panel';
 
 export function createControlWidget(
   overlayDiv: HTMLDivElement,
   hideAllRef: {value: boolean},
   registerDataUpdateCallback: RegisterDataUpdateCallback,
 ): HTMLDivElement {
-  const controlWidget = document.createElement('div');
+  const controlWidget = createVisualizerElement('div') as HTMLDivElement;
   controlWidget.style.position = 'fixed';
   controlWidget.style.top = '50px';
   controlWidget.style.right = '50px';
   controlWidget.style.width = '400px';
-  controlWidget.style.height = '36px';
   controlWidget.style.background = 'rgba(0, 0, 0, 0.7)';
   controlWidget.style.border = 'none';
   controlWidget.style.borderRadius = '8px';
   controlWidget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.3)';
   controlWidget.style.zIndex = '19999';
   controlWidget.style.display = 'flex';
-  controlWidget.style.alignItems = 'center';
-  controlWidget.style.justifyContent = 'flex-start';
-  controlWidget.style.paddingLeft = '10px';
+  controlWidget.style.flexDirection = 'column';
   controlWidget.style.textShadow = 'none';
+  controlWidget.style.boxSizing = 'border-box';
   controlWidget.style.font = '9px Inter, system-ui, -apple-system, sans-serif';
   controlWidget.id = 'memory-visualization-control-widget';
-  setVisualizerElement(controlWidget);
+
+  // Create header section
+  const header = createVisualizerElement('div') as HTMLDivElement;
+  header.style.display = 'flex';
+  header.style.alignItems = 'center';
+  header.style.justifyContent = 'flex-start';
+  header.style.padding = '0 8px';
+  header.style.height = '36px';
+  controlWidget.appendChild(header);
+
+  // Create component stack panel
+  const componentStackPanel = createComponentStackPanel(
+    registerDataUpdateCallback,
+  );
+  controlWidget.appendChild(componentStackPanel);
 
   supportDragging(controlWidget);
 
   const toggleButton = createToggleButton(overlayDiv, hideAllRef);
-  controlWidget.append(toggleButton);
+  header.appendChild(toggleButton);
 
   const statusText = createStatusText(registerDataUpdateCallback);
-  controlWidget.append(toggleButton, statusText);
+  header.appendChild(statusText);
 
   return controlWidget;
 }
@@ -54,6 +67,14 @@ function supportDragging(controlWidget: HTMLDivElement) {
   let offsetY = 0;
 
   controlWidget.addEventListener('mousedown', e => {
+    // Only allow dragging from the header
+    if (
+      !(e.target as HTMLElement).closest(
+        '#memory-visualization-control-widget > div:first-child',
+      )
+    ) {
+      return;
+    }
     isDragging = true;
     offsetX = e.clientX - controlWidget.offsetLeft;
     offsetY = e.clientY - controlWidget.offsetTop;

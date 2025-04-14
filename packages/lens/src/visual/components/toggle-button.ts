@@ -7,13 +7,13 @@
  * @format
  * @oncall memory_lab
  */
-import {setVisualizerElement} from '../visual-utils';
+import {createVisualizerElement} from '../visual-utils';
 
 export function createToggleButton(
   overlayDiv: HTMLDivElement,
   hideAllRef: {value: boolean},
 ): HTMLDivElement {
-  const toggleWrapper = document.createElement('div');
+  const toggleWrapper = createVisualizerElement('div') as HTMLDivElement;
   toggleWrapper.style.width = '40px';
   toggleWrapper.style.height = '24px';
   toggleWrapper.style.borderRadius = '9999px';
@@ -21,9 +21,8 @@ export function createToggleButton(
   toggleWrapper.style.cursor = 'pointer';
   toggleWrapper.style.position = 'relative';
   toggleWrapper.style.transition = 'background-color 0.3s ease';
-  setVisualizerElement(toggleWrapper);
 
-  const knob = document.createElement('div');
+  const knob = createVisualizerElement('div');
   knob.style.width = '18px';
   knob.style.height = '18px';
   knob.style.backgroundColor = 'white';

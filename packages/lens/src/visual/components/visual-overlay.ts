@@ -7,15 +7,14 @@
  * @format
  * @oncall memory_lab
  */
-import {setVisualizerElement} from '../visual-utils';
+import {createVisualizerElement} from '../visual-utils';
 
 export function createOverlayDiv(): HTMLDivElement {
-  const overlayDiv = document.createElement('div');
+  const overlayDiv = createVisualizerElement('div') as HTMLDivElement;
   overlayDiv.style.position = 'absolute';
   overlayDiv.style.top = '0px';
   overlayDiv.style.left = '0px';
   overlayDiv.id = 'memory-visualization-overlay';
-  setVisualizerElement(overlayDiv);
   return overlayDiv;
 }
 

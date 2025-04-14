@@ -9,10 +9,16 @@
  */
 const VISUALIZER_DATA_ATTR = 'data-visualizer';
 
-export function setVisualizerElement(element: Element) {
+function setVisualizerElement(element: Element) {
   element.setAttribute(VISUALIZER_DATA_ATTR, 'true');
 }
 
 export function isVisualizerElement(element: Element): boolean {
   return element.getAttribute(VISUALIZER_DATA_ATTR) === 'true';
+}
+
+export function createVisualizerElement(tag: string): HTMLElement {
+  const element = document.createElement(tag);
+  setVisualizerElement(element);
+  return element;
 }

@@ -28,6 +28,7 @@ import {
   getDisplayNameOfFiberNode,
 } from '../utils/react-fiber-utils';
 import {DOMObserver} from './dom-observer';
+import {isValidComponentName} from './valid-component-name';
 
 const ENABLE_MUTATION_OBSERVER = true;
 const DISABLE_CONSOLE_LOG = !(window as AnyValue)?.TEST_MEMORY_SCAN;
@@ -214,7 +215,7 @@ export default class ReactMemoryScan {
         fiberNode,
         (parent: Fiber) => {
           const displayName = getDisplayNameOfFiberNode(parent);
-          if (displayName != null) {
+          if (displayName != null && isValidComponentName(displayName)) {
             this.#elementToComponent.set(element, displayName);
             return true;
           }

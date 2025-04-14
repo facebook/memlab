@@ -12,7 +12,7 @@ import {
   RegisterDataUpdateCallback,
   VisualizerData,
 } from '../dom-element-visualizer-interactive';
-import {setVisualizerElement} from '../visual-utils';
+import {createVisualizerElement} from '../visual-utils';
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -25,7 +25,7 @@ function formatBytes(bytes: number): string {
 export function createStatusText(
   registerDataUpdateCallback: RegisterDataUpdateCallback,
 ): HTMLDivElement {
-  const statusWidget = document.createElement('div');
+  const statusWidget = createVisualizerElement('div') as HTMLDivElement;
   statusWidget.style.marginLeft = '10px';
   statusWidget.style.color = 'white';
   statusWidget.style.fontSize = '10px';
@@ -49,6 +49,5 @@ export function createStatusText(
       `Heap: ${formatBytes(usedHeap)} / ${formatBytes(totalHeap)}`;
   });
 
-  setVisualizerElement(statusWidget);
   return statusWidget;
 }

@@ -8,6 +8,7 @@
  * @oncall memory_lab
  */
 import type {DOMElementInfo, Nullable, AnyValue} from '../core/types';
+import {createVisualizerElement} from './visual-utils';
 
 export default class DOMElementVisualizer {
   #canvas: Nullable<HTMLCanvasElement>;
@@ -41,7 +42,7 @@ export default class DOMElementVisualizer {
 
   #createAndAppendCanvas() {
     // Create and insert the canvas element
-    const canvas = document.createElement('canvas');
+    const canvas = createVisualizerElement('canvas') as HTMLCanvasElement;
     canvas.id = 'overlayCanvas';
     this.#tryToAttachCanvas(canvas);
 
