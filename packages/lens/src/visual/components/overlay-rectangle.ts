@@ -10,11 +10,14 @@
 import type {DOMElementInfo} from '../../core/types';
 import {setVisualizerElement} from '../visual-utils';
 
+const MAX_Z_INDEX = `${Math.pow(2, 30) - 1}`;
+
 export function createOverlayRectangle(
   elementId: number,
   info: DOMElementInfo,
   container: HTMLDivElement,
   setSelectedId: (id: number | null) => void,
+  setUnSelectedId: (id: number | null) => void,
   zIndex: number,
 ): WeakRef<Element> | null {
   const rect = info.boundingRect;
@@ -45,7 +48,7 @@ export function createOverlayRectangle(
   labelDiv.style.width = 'auto';
   labelDiv.style.height = 'auto';
   labelDiv.style.display = 'none';
-  labelDiv.style.zIndex = zIndex.toString();
+  labelDiv.style.zIndex = MAX_Z_INDEX;
   setVisualizerElement(labelDiv);
 
   div.appendChild(labelDiv);
@@ -55,14 +58,16 @@ export function createOverlayRectangle(
 
   div.addEventListener('mouseover', () => {
     const label = labelDivRef.deref();
-    if (label) label.style.display = 'inline-block';
+    if (label) {
+      label.style.display = 'inline-block';
+    }
     setSelectedId(elementId);
   });
 
   div.addEventListener('mouseout', () => {
     const label = labelDivRef.deref();
     if (label) label.style.display = 'none';
-    setSelectedId(null);
+    setUnSelectedId(elementId);
   });
 
   container.appendChild(div);

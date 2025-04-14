@@ -7,7 +7,7 @@
  * @format
  * @oncall memory_lab
  */
-import type {DOMElementInfo, AnyValue} from '../core/types';
+import type {DOMElementInfo, AnyValue, Optional} from '../core/types';
 import DOMElementVisualizer from './dom-element-visualizer';
 import {
   createOverlayDiv,
@@ -81,6 +81,40 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
       elementIdSet.add(elementId);
     }
     return elementIdSet;
+  }
+
+  #traverseUpOutlineElements(
+    elementId: number,
+    callback: (element: HTMLElement) => void,
+  ): void {
+    const visualizer = this.#elementIdToRectangle.get(elementId);
+    if (visualizer == null) {
+      return;
+    }
+    const visitedElementIds = new Set<number>();
+    let currentElement: Optional<Element> =
+      visualizer.elementInfo.element.deref();
+    while (currentElement) {
+      if (currentElement.isConnected) {
+        break;
+      }
+      const elementIdStr = (currentElement as AnyValue).detachedElementId;
+      const elementId = parseInt(elementIdStr, 10);
+      if (visitedElementIds.has(elementId)) {
+        break;
+      }
+      visitedElementIds.add(elementId);
+      const visualizerInfo = this.#elementIdToRectangle.get(elementId);
+      if (visualizerInfo == null) {
+        break;
+      }
+      const visualizerElement = visualizerInfo.visualizerElementRef.deref();
+      if (visualizerElement == null) {
+        break;
+      }
+      callback(visualizerElement as HTMLElement);
+      currentElement = currentElement.parentElement;
+    }
   }
 
   #removeVisualizerElement(elementId: number) {
@@ -159,6 +193,25 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
         this.#visualizationOverlayDiv,
         (selectedId: number | null) => {
           this.#selectedElementId = selectedId;
+          if (selectedId == null) {
+            return;
+          }
+          this.#traverseUpOutlineElements(selectedId, element => {
+            element.style.border = '1px solid rgba(75, 192, 192, 0.8)';
+            element.style.background = 'rgba(75, 192, 192, 0.02)';
+          });
+        },
+        (unselectedId: number | null) => {
+          if (this.#selectedElementId === unselectedId) {
+            this.#selectedElementId = null;
+          }
+          if (unselectedId == null) {
+            return;
+          }
+          this.#traverseUpOutlineElements(unselectedId, element => {
+            element.style.border = '1px dotted rgba(75, 192, 192, 0.8)';
+            element.style.background = '';
+          });
         },
         zIndex,
       );
