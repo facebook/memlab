@@ -21,7 +21,7 @@ import {isValidComponentName} from './valid-component-name';
 export default class ReactFiberAnalyzer {
   scan(
     elementWeakRefList: Array<WeakRef<Element>>,
-    elementToComponent: WeakMap<Element, string>,
+    elementToComponentStack: WeakMap<Element, string[]>,
   ): ScanResult {
     const visitedRootFibers = new Set<Fiber>();
     const components = new Set<string>();
@@ -64,9 +64,10 @@ export default class ReactFiberAnalyzer {
       ++totalElements;
       // TODO: simplify this logic
       if (!elem.isConnected) {
-        if (elementToComponent.has(elem)) {
-          const component = elementToComponent.get(elem);
+        if (elementToComponentStack.has(elem)) {
+          const componentStack = elementToComponentStack.get(elem) ?? [];
           // set component name
+          const component = componentStack[0];
           (elem as AnyValue).__component_name = component;
           utils.addCountbyKey(detachedComponentToFiberNodeCount, component, 1);
         }

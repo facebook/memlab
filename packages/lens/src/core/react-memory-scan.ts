@@ -23,12 +23,10 @@ import type {BasicExtension} from '../extensions/basic-extension';
 import * as utils from '../utils/utils';
 import ReactFiberAnalyzer from './react-fiber-analysis';
 import {
-  traverseFiber,
   getFiberNodeFromElement,
-  getDisplayNameOfFiberNode,
+  getReactComponentStack,
 } from '../utils/react-fiber-utils';
 import {DOMObserver} from './dom-observer';
-import {isValidComponentName} from './valid-component-name';
 import {config} from '../config/config';
 
 export default class ReactMemoryScan {
@@ -37,7 +35,7 @@ export default class ReactMemoryScan {
   #isActivated: boolean;
   #intervalId: NodeJS.Timeout;
   #elementToBoundingRects: WeakMap<Element, BoundingRect>;
-  #elementToComponent: WeakMap<Element, string>;
+  #elementToComponentStack: WeakMap<Element, string[]>;
   #knownFiberNodes: Array<WeakRef<Fiber>>;
   #fiberAnalyzer: ReactFiberAnalyzer;
   #isDevMode: boolean;
@@ -50,7 +48,7 @@ export default class ReactMemoryScan {
     this.#elementWeakRefs = [];
     this.#isActivated = false;
     this.#elementToBoundingRects = new WeakMap();
-    this.#elementToComponent = new WeakMap();
+    this.#elementToComponentStack = new WeakMap();
     this.#knownFiberNodes = [];
 
     this.#fiberAnalyzer = new ReactFiberAnalyzer();
@@ -186,11 +184,11 @@ export default class ReactMemoryScan {
         elem.detachedElementIdStr = `memory-id-${elementId}@`;
         elem.detachedElementId = elementId;
       }
-      const component = this.#elementToComponent.get(element);
+      const componentStack = this.#elementToComponentStack.get(element) ?? [];
       detachedDOMElements.push({
         element: weakRef,
         boundingRect: this.#elementToBoundingRects.get(element),
-        component,
+        componentStack,
       });
     }
     return detachedDOMElements;
@@ -203,23 +201,16 @@ export default class ReactMemoryScan {
   #updateElementToComponentInfo(elements: Array<WeakRef<Element>>): void {
     for (const elemRef of elements) {
       const element = elemRef.deref();
-      if (element == null || this.#elementToComponent.has(element)) {
+      if (element == null || this.#elementToComponentStack.has(element)) {
         continue;
       }
       const fiberNode = getFiberNodeFromElement(element);
       if (fiberNode == null) {
         continue;
       }
-      traverseFiber(
-        fiberNode,
-        (parent: Fiber) => {
-          const displayName = getDisplayNameOfFiberNode(parent);
-          if (displayName != null && isValidComponentName(displayName)) {
-            this.#elementToComponent.set(element, displayName);
-            return true;
-          }
-        },
-        true,
+      this.#elementToComponentStack.set(
+        element,
+        getReactComponentStack(fiberNode),
       );
     }
   }
@@ -304,7 +295,7 @@ export default class ReactMemoryScan {
     utils.updateWeakRefList(weakRefList, allElements);
     const scanResult = this.#fiberAnalyzer.scan(
       weakRefList,
-      this.#elementToComponent,
+      this.#elementToComponentStack,
     );
     const leakedFibers = this.updateFiberNodes(scanResult.fiberNodes);
     scanResult.leakedFibers = leakedFibers;

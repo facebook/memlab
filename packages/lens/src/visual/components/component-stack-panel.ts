@@ -51,17 +51,10 @@ export function createComponentStackPanel(
     panel.appendChild(title);
 
     let actualComponentStackLength = 0;
-    data.selectedReactComponentStack.forEach(visualizer => {
-      const component = visualizer.elementInfo.component;
-      if (!component) {
-        return;
-      }
-      const tagName = visualizer.visualizerElementRef
-        .deref()
-        ?.tagName?.toLocaleLowerCase();
+    data.selectedReactComponentStack.forEach((component: string) => {
       const componentDiv = createVisualizerElement('div');
       componentDiv.style.marginBottom = '4px';
-      componentDiv.textContent = `${component} (${tagName})`;
+      componentDiv.textContent = component;
       panel.appendChild(componentDiv);
       ++actualComponentStackLength;
     });

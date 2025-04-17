@@ -26,7 +26,7 @@ export type VisualizerData = {
   detachedDOMElementsCount: number;
   totalDOMElementsCount: number;
   selectedElementId: Nullable<number>;
-  selectedReactComponentStack: Array<ElementVisualizer>;
+  selectedReactComponentStack: Array<string>;
 };
 
 export type DateUpdateCallback = (data: VisualizerData) => void;
@@ -298,9 +298,11 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
     const data = this.#currentVisualData;
     data.detachedDOMElementsCount = this.#elementIdToRectangle.size;
     data.totalDOMElementsCount = getDOMElementCount();
-    data.selectedReactComponentStack = this.#getComponentStackForElement(
-      data.selectedElementId,
-    );
+    const selectedElementInfo = this.#elementIdToRectangle.get(
+      data.selectedElementId ?? -1,
+    )?.elementInfo;
+    data.selectedReactComponentStack =
+      selectedElementInfo?.componentStack ?? [];
     for (const cb of this.#updateDataCallbacks) {
       cb({...this.#currentVisualData});
     }

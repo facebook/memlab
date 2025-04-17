@@ -130,7 +130,7 @@ export interface BoundingRect {
 export type DOMElementInfo = {
   element: WeakRef<Element>;
   boundingRect: Optional<BoundingRect>;
-  component: Optional<string>;
+  componentStack: Optional<string[]>;
 };
 
 /** @internal */

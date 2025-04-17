@@ -34,7 +34,8 @@ export function createOverlayRectangle(
   div.style.zIndex = zIndex.toString();
 
   const labelDiv = createVisualizerElement('div');
-  const componentName = info.component ?? '';
+  const componentStack = info.componentStack ?? [];
+  const componentName = componentStack[0] ?? '';
   const elementIdStr = `memory-id-${elementId}@`;
   labelDiv.textContent = `${componentName} (${elementIdStr})`;
 

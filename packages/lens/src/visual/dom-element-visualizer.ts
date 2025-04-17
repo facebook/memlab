@@ -99,12 +99,13 @@ export default class DOMElementVisualizer {
       ctx.fillRect(rect.left, rect.top, rect.width, rect.height);
       ctx.strokeRect(rect.left, rect.top, rect.width, rect.height);
 
-      if (info.component) {
+      const component = info.componentStack?.[0];
+      if (component) {
         // attach detached element id key so that it is easy to search in heap snapshot
         const element = info.element.deref() as AnyValue;
         const elementId = element?.detachedElementId;
         const elementIdText = elementId ? ` (${elementId})` : '';
-        const text = `${info.component}${elementIdText}`;
+        const text = `${component}${elementIdText}`;
         ctx.fillStyle = 'rgba(74, 131, 224, 1)';
         ctx.fillText(text, rect.left + 5, rect.top + 15); // Draw the name
         ctx.fillStyle = 'rgba(75, 192, 192, 0.05)';

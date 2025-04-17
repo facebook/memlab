@@ -139,6 +139,24 @@ export function getFiberNodeFromElement(element: Element) {
   return null;
 }
 
+export function getReactComponentStack(node: Fiber): Array<string> {
+  const stack = [];
+  const visited = new Set<Fiber>();
+  let fiber: Nullable<Fiber> = node;
+  while (fiber) {
+    if (visited.has(fiber)) {
+      break;
+    }
+    visited.add(fiber);
+    const name = getDisplayNameOfFiberNode(fiber);
+    if (name) {
+      stack.push(name);
+    }
+    fiber = fiber.return;
+  }
+  return stack;
+}
+
 export function getDisplayNameOfFiberNode(node: Fiber) {
   const elementType = node.type ?? node.elementType;
 
