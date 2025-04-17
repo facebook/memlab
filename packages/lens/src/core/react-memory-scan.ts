@@ -29,9 +29,7 @@ import {
 } from '../utils/react-fiber-utils';
 import {DOMObserver} from './dom-observer';
 import {isValidComponentName} from './valid-component-name';
-
-const ENABLE_MUTATION_OBSERVER = true;
-const DISABLE_CONSOLE_LOG = !(window as AnyValue)?.TEST_MEMORY_SCAN;
+import {config} from '../config/config';
 
 export default class ReactMemoryScan {
   static nextElementId = 0;
@@ -60,11 +58,12 @@ export default class ReactMemoryScan {
     this.#isDevMode = options.isDevMode ?? false;
     this.#subscribers = options.subscribers ?? [];
     this.#extensions = options.extensions ?? [];
-    this.#scanIntervalMs = options.scanIntervalMs ?? 1000;
+    this.#scanIntervalMs =
+      options.scanIntervalMs ?? config.performance.scanIntervalMs;
   }
 
   #log(...args: AnyValue[]): void {
-    if (this.#isDevMode && !DISABLE_CONSOLE_LOG) {
+    if (this.#isDevMode && config.features.enableConsoleLogs) {
       utils.consoleLog(...args);
     }
   }
@@ -116,7 +115,7 @@ export default class ReactMemoryScan {
       this.#scanCycle.bind(this),
       this.#scanIntervalMs,
     );
-    if (ENABLE_MUTATION_OBSERVER) {
+    if (config.features.enableMutationObserver) {
       if (this.#domObserver == null) {
         this.#domObserver = new DOMObserver();
         // NOTE: do not update the fiber or component information here

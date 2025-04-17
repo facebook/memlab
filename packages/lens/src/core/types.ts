@@ -140,3 +140,21 @@ export type DOMElementStats = {
 };
 
 export type DOMObserveCallback = (list: Array<WeakRef<Element>>) => void;
+
+export type PerformanceConfig = {
+  scanIntervalMs: number;
+  maxComponentStackDepth: number;
+  memoryMeasurementIntervalMs: number;
+};
+
+export type FeatureFlags = {
+  enableMutationObserver: boolean;
+  enableMemoryTracking: boolean;
+  enableComponentStack: boolean;
+  enableConsoleLogs: boolean;
+};
+
+export type Config = {
+  performance: PerformanceConfig;
+  features: FeatureFlags;
+};

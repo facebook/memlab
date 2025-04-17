@@ -27,7 +27,7 @@ export function createControlWidget(
   controlWidget.style.border = 'none';
   controlWidget.style.borderRadius = '8px';
   controlWidget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.3)';
-  controlWidget.style.zIndex = '19999';
+  controlWidget.style.zIndex = '999999999';
   controlWidget.style.display = 'flex';
   controlWidget.style.flexDirection = 'column';
   controlWidget.style.textShadow = 'none';

@@ -208,9 +208,26 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
     }
   }
 
-  #paint(domElementInfoList: Array<DOMElementInfo>) {
+  #getZIndex(info: DOMElementInfo): number {
     const zIndexBase = 9999;
+    const element = info.element.deref() as AnyValue;
+    if (element == null) {
+      return 0;
+    }
+    const elementId = element.detachedElementId;
+    if (elementId == null) {
+      return 0;
+    }
+    const rectangle = info.boundingRect ?? {width: 50, height: 50};
+    let ret = zIndexBase;
+    // element with a higher element id (created later) has a higher z-index
+    ret += parseInt(elementId, 10);
+    // element with bigger area will have a lower z-index
+    ret += Math.floor(10000000 / (rectangle.width * rectangle.height));
+    return ret;
+  }
 
+  #paint(domElementInfoList: Array<DOMElementInfo>) {
     for (const info of domElementInfoList) {
       const element = info.element.deref() as AnyValue;
       if (element == null) {
@@ -232,7 +249,7 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
       if (element.isConnected) {
         continue;
       }
-      const zIndex = zIndexBase + parseInt(elementId, 10);
+      const zIndex = this.#getZIndex(info);
       const visualizerElementRef = createOverlayRectangle(
         elementId,
         info,
