@@ -22,3 +22,9 @@ export function createVisualizerElement(tag: string): HTMLElement {
   setVisualizerElement(element);
   return element;
 }
+
+export function tryToAttachOverlay(overlayDiv: HTMLDivElement) {
+  if (document.body) {
+    document.body.appendChild(overlayDiv);
+  }
+}

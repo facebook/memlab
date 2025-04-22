@@ -7,10 +7,14 @@
  * @format
  * @oncall memory_lab
  */
-import type {DOMElementInfo} from '../../core/types';
+import type {AnyValue, DOMElementInfo} from '../../core/types';
+import {IntersectionObserverManager} from '../../utils/intersection-observer';
 import {createVisualizerElement} from '../visual-utils';
 
 const MAX_Z_INDEX = `${Math.pow(2, 30) - 1}`;
+
+// Set up intersection observer
+const observerManager = IntersectionObserverManager.getInstance();
 
 export function createOverlayRectangle(
   elementId: number,
@@ -68,6 +72,19 @@ export function createOverlayRectangle(
     if (label) label.style.display = 'none';
     setUnSelectedId(elementId);
   });
+
+  observerManager.observe(div, (entry: IntersectionObserverEntry) => {
+    if (!entry.isIntersecting) {
+      div.style.visibility = 'hidden';
+    } else {
+      div.style.visibility = 'visible';
+    }
+  });
+
+  (div as AnyValue).__cleanup = () => {
+    observerManager.unobserve(div);
+    (div as AnyValue).__cleanup = null;
+  };
 
   container.appendChild(div);
   return divRef;

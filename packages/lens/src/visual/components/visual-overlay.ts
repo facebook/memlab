@@ -17,9 +17,3 @@ export function createOverlayDiv(): HTMLDivElement {
   overlayDiv.id = 'memory-visualization-overlay';
   return overlayDiv;
 }
-
-export function tryToAttachOverlay(overlayDiv: HTMLDivElement) {
-  if (document.body) {
-    document.body.appendChild(overlayDiv);
-  }
-}

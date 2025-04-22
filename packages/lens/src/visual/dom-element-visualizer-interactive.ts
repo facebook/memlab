@@ -9,13 +9,11 @@
  */
 import type {DOMElementInfo, AnyValue, Optional, Nullable} from '../core/types';
 import DOMElementVisualizer from './dom-element-visualizer';
-import {
-  createOverlayDiv,
-  tryToAttachOverlay,
-} from './components/visual-overlay';
+import {createOverlayDiv} from './components/visual-overlay';
 import {createControlWidget} from './components/control-widget';
 import {createOverlayRectangle} from './components/overlay-rectangle';
 import {getDOMElementCount} from '../utils/utils';
+import {tryToAttachOverlay} from './visual-utils';
 
 type ElementVisualizer = {
   elementInfo: DOMElementInfo;
@@ -173,6 +171,8 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
     if (visualizerElement == null) {
       return;
     }
+    // invoke the overlay specific code to clean
+    (visualizerElement as AnyValue)?.__cleanup?.();
     visualizerElement.remove();
   }
 
@@ -187,7 +187,7 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
         continue;
       }
       const element = elementVistualizer.elementInfo.element.deref();
-      if (element == null || element?.isConnected) {
+      if (element == null) {
         this.#removeVisualizerElement(elementId);
       }
     }
