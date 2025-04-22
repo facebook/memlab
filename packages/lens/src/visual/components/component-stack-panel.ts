@@ -18,15 +18,17 @@ export function createComponentStackPanel(
 ): HTMLDivElement {
   const panel = createVisualizerElement('div') as HTMLDivElement;
   panel.style.width = '100%';
-  panel.style.maxHeight = '2000px';
-  // panel.style.background = 'rgba(0, 0, 0, 0.5)';
+  // Ensure max height is at most 80% of viewport height
+  panel.style.maxHeight = '80vh';
+  panel.style.background = 'rgba(0, 0, 0, 0.5)';
   panel.style.borderTop = '1px solid rgba(255, 255, 255, 0.1)';
   panel.style.display = 'none';
   panel.style.flexDirection = 'column';
-  panel.style.padding = '8px 8px 0 8px';
+  panel.style.padding = '8px';
   panel.style.boxSizing = 'border-box';
   panel.style.borderRadius = '8px';
-  panel.style.overflowY = 'auto';
+  panel.style.overflowY = 'scroll';
+  panel.style.overflowX = 'hidden';
   panel.style.textShadow = 'none';
   panel.style.font = '9px Inter, system-ui, -apple-system, sans-serif';
   panel.style.color = 'white';

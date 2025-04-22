@@ -11,6 +11,8 @@ import type {AnyValue, DOMElementInfo} from '../../core/types';
 import {IntersectionObserverManager} from '../../utils/intersection-observer';
 import {createVisualizerElement} from '../visual-utils';
 
+type OutlineState = {pinned: boolean; selected: boolean};
+
 const MAX_Z_INDEX = `${Math.pow(2, 30) - 1}`;
 
 // Set up intersection observer
@@ -22,6 +24,7 @@ export function createOverlayRectangle(
   container: HTMLDivElement,
   setSelectedId: (id: number | null) => void,
   setUnSelectedId: (id: number | null) => void,
+  setClickedId: (id: number | null) => void,
   zIndex: number,
 ): WeakRef<Element> | null {
   const rect = info.boundingRect;
@@ -56,6 +59,9 @@ export function createOverlayRectangle(
 
   div.appendChild(labelDiv);
 
+  let pinned = false;
+  let selected = false;
+
   const divRef = new WeakRef(div);
   const labelDivRef = new WeakRef(labelDiv);
 
@@ -73,6 +79,30 @@ export function createOverlayRectangle(
     setUnSelectedId(elementId);
   });
 
+  div.addEventListener('click', () => {
+    setClickedId(elementId);
+  });
+
+  (div as AnyValue).__selected = () => {
+    selected = true;
+    styleOnInteraction(div, {selected, pinned});
+  };
+
+  (div as AnyValue).__unselected = () => {
+    selected = false;
+    styleOnInteraction(div, {selected, pinned});
+  };
+
+  (div as AnyValue).__pinned = () => {
+    pinned = true;
+    styleOnInteraction(div, {selected, pinned});
+  };
+
+  (div as AnyValue).__unpinned = () => {
+    pinned = false;
+    styleOnInteraction(div, {selected, pinned});
+  };
+
   observerManager.observe(div, (entry: IntersectionObserverEntry) => {
     if (!entry.isIntersecting) {
       div.style.visibility = 'hidden';
@@ -88,4 +118,21 @@ export function createOverlayRectangle(
 
   container.appendChild(div);
   return divRef;
+}
+
+function styleOnInteraction(div: HTMLDivElement, state: OutlineState): void {
+  const {pinned, selected} = state;
+  if (!pinned) {
+    if (selected) {
+      div.style.border = '1px solid rgba(75, 192, 192, 0.8)';
+      div.style.background = 'rgba(75, 192, 192, 0.02)';
+    } else {
+      div.style.border = '1px dotted rgba(75, 192, 192, 0.8)';
+      div.style.background = '';
+    }
+  } else {
+    // pinned
+    div.style.border = '1px solid rgba(255, 215, 0, 0.9)';
+    div.style.background = 'rgba(255, 215, 0, 0.08)';
+  }
 }

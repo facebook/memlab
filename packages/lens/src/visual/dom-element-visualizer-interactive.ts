@@ -24,7 +24,9 @@ export type VisualizerData = {
   detachedDOMElementsCount: number;
   totalDOMElementsCount: number;
   selectedElementId: Nullable<number>;
+  pinnedElementId: Nullable<number>;
   selectedReactComponentStack: Array<string>;
+  setPinnedElementId: (elementId: Nullable<number>) => void;
 };
 
 export type DateUpdateCallback = (data: VisualizerData) => void;
@@ -71,12 +73,39 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
   }
 
   #initVisualizerData(): VisualizerData {
-    return {
+    const data: VisualizerData = {
       detachedDOMElementsCount: 0,
       totalDOMElementsCount: getDOMElementCount(),
       selectedElementId: null,
       selectedReactComponentStack: [],
+      pinnedElementId: null,
+      setPinnedElementId: (pinnedElementId: Nullable<number>) => {
+        if (data.pinnedElementId == pinnedElementId) {
+          return;
+        }
+        // unpin the original pinned element
+        const oldPin = this.#getOutlineElementByElementId(data.pinnedElementId);
+        (oldPin as AnyValue)?.__unpinned?.();
+        // pin the newly pinned element
+        const newPin = this.#getOutlineElementByElementId(pinnedElementId);
+        (newPin as AnyValue)?.__pinned?.();
+        data.pinnedElementId = pinnedElementId;
+      },
     };
+    return data;
+  }
+
+  #getOutlineElementByElementId(
+    elementId: Nullable<number>,
+  ): Optional<Element> {
+    if (elementId == null) {
+      return null;
+    }
+    const info = this.#elementIdToRectangle.get(elementId);
+    if (info == null) {
+      return null;
+    }
+    return info.visualizerElementRef.deref();
   }
 
   #getElementIdSet(domElementInfoList: Array<DOMElementInfo>): Set<number> {
@@ -261,8 +290,7 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
             return;
           }
           this.#traverseUpOutlineElements(selectedId, element => {
-            element.style.border = '1px solid rgba(75, 192, 192, 0.8)';
-            element.style.background = 'rgba(75, 192, 192, 0.02)';
+            (element as AnyValue)?.__selected?.();
           });
         },
         (unselectedId: number | null) => {
@@ -274,9 +302,16 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
             return;
           }
           this.#traverseUpOutlineElements(unselectedId, element => {
-            element.style.border = '1px dotted rgba(75, 192, 192, 0.8)';
-            element.style.background = '';
+            (element as AnyValue)?.__unselected?.();
           });
+        },
+        (clickedId: Nullable<number>) => {
+          if (this.#currentVisualData.pinnedElementId === clickedId) {
+            this.#currentVisualData.setPinnedElementId(null);
+          } else {
+            this.#currentVisualData.setPinnedElementId(clickedId);
+          }
+          this.#updateVisualizerData();
         },
         zIndex,
       );
@@ -296,6 +331,9 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
 
   #updateVisualizerData() {
     const data = this.#currentVisualData;
+    if (data.pinnedElementId != null) {
+      data.selectedElementId = data.pinnedElementId;
+    }
     data.detachedDOMElementsCount = this.#elementIdToRectangle.size;
     data.totalDOMElementsCount = getDOMElementCount();
     const selectedElementInfo = this.#elementIdToRectangle.get(
@@ -309,12 +347,12 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
   }
 
   repaint(domElementInfoList: Array<DOMElementInfo>) {
-    this.#controlWidget.remove();
+    // this.#controlWidget.remove();
     this.#visualizationOverlayDiv.remove();
     this.#cleanup(domElementInfoList);
     this.#paint(domElementInfoList);
     this.#updateVisualizerData();
     tryToAttachOverlay(this.#visualizationOverlayDiv);
-    tryToAttachOverlay(this.#controlWidget);
+    // tryToAttachOverlay(this.#controlWidget);
   }
 }
