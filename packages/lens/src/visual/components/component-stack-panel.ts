@@ -11,7 +11,7 @@ import {
   RegisterDataUpdateCallback,
   VisualizerData,
 } from '../dom-element-visualizer-interactive';
-import {createVisualizerElement} from '../visual-utils';
+import {createVisualizerElement, debounce} from '../visual-utils';
 
 export function createComponentStackPanel(
   registerDataUpdateCallback: RegisterDataUpdateCallback,
@@ -34,37 +34,52 @@ export function createComponentStackPanel(
   panel.style.color = 'white';
   panel.id = 'memory-visualization-component-stack-panel';
 
-  // Register data update callback to update component stack panel
-  registerDataUpdateCallback((data: VisualizerData) => {
-    panel.style.display = data.selectedElementId != null ? 'flex' : 'none';
-    panel.innerHTML = '';
+  let pinned = false;
 
-    if (
-      data.selectedElementId == null ||
-      !data.selectedReactComponentStack?.length
-    ) {
-      return;
-    }
-
-    const title = createVisualizerElement('div');
-    title.textContent = 'Component Stack:';
-    title.style.fontWeight = 'bold';
-    title.style.marginBottom = '8px';
-    panel.appendChild(title);
-
-    let actualComponentStackLength = 0;
-    data.selectedReactComponentStack.forEach((component: string) => {
-      const componentDiv = createVisualizerElement('div');
-      componentDiv.style.marginBottom = '4px';
-      componentDiv.textContent = component;
-      panel.appendChild(componentDiv);
-      ++actualComponentStackLength;
-    });
-
-    if (actualComponentStackLength === 0) {
-      title.remove();
-    }
+  panel.addEventListener('mouseenter', () => {
+    pinned = true;
   });
+
+  panel.addEventListener('mouseleave', () => {
+    pinned = false;
+  });
+
+  // Register data update callback to update component stack panel
+  registerDataUpdateCallback(
+    debounce((data: VisualizerData) => {
+      if (pinned) {
+        return;
+      }
+      panel.style.display = data.selectedElementId != null ? 'flex' : 'none';
+      panel.innerHTML = '';
+
+      if (
+        data.selectedElementId == null ||
+        !data.selectedReactComponentStack?.length
+      ) {
+        return;
+      }
+
+      const title = createVisualizerElement('div');
+      title.textContent = 'Component Stack:';
+      title.style.fontWeight = 'bold';
+      title.style.marginBottom = '8px';
+      panel.appendChild(title);
+
+      let actualComponentStackLength = 0;
+      data.selectedReactComponentStack.forEach((component: string) => {
+        const componentDiv = createVisualizerElement('div');
+        componentDiv.style.marginBottom = '4px';
+        componentDiv.textContent = component;
+        panel.appendChild(componentDiv);
+        ++actualComponentStackLength;
+      });
+
+      if (actualComponentStackLength === 0) {
+        title.remove();
+      }
+    }, 1),
+  );
 
   return panel;
 }

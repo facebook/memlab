@@ -9,7 +9,11 @@
  */
 import type {AnyValue, DOMElementInfo} from '../../core/types';
 import {IntersectionObserverManager} from '../../utils/intersection-observer';
-import {createVisualizerElement} from '../visual-utils';
+import {
+  createVisualizerElement,
+  addTrackedListener,
+  removeAllListeners,
+} from '../visual-utils';
 
 type OutlineState = {pinned: boolean; selected: boolean};
 
@@ -64,28 +68,31 @@ export function createOverlayRectangle(
 
   const componentStack = info.componentStack ?? [];
   const componentName = componentStack[0] ?? '';
-  const elementIdStr = `memory-id-${elementId}@`;
 
   let pinned = false;
   let selected = false;
 
   const divRef = new WeakRef(div);
 
-  div.addEventListener('mouseover', () => {
+  addTrackedListener(divRef, 'mouseover', () => {
+    // note that elementIdStr should not be genearated in the
+    // inside the function scope of createOverlayRectangle
+    // to avoid unnecessary retainer path in the heap snapshot
+    const elementIdStr = `memory-id-${elementId}@`;
     labelDiv.remove();
-    div.appendChild(labelDiv);
+    divRef.deref()?.appendChild(labelDiv);
     labelDiv.textContent = `${componentName} (${elementIdStr})`;
     labelDiv.style.display = 'inline-block';
     setSelectedId(elementId);
   });
 
-  div.addEventListener('mouseout', () => {
+  addTrackedListener(divRef, 'mouseout', () => {
     labelDiv.style.display = 'none';
     labelDiv.remove();
     setUnSelectedId(elementId);
   });
 
-  div.addEventListener('click', () => {
+  addTrackedListener(divRef, 'click', () => {
     setClickedId(elementId);
   });
 
@@ -122,6 +129,7 @@ export function createOverlayRectangle(
     if (div == null) {
       return;
     }
+    removeAllListeners(divRef);
     observerManager.unobserve(divRef);
     (div as AnyValue).__cleanup = null;
     (div as AnyValue).__selected = null;
