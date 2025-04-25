@@ -43,14 +43,22 @@ export class IntersectionObserverManager {
   }
 
   public observe(
-    element: HTMLElement,
+    elementRef: WeakRef<HTMLElement>,
     callback: (entry: IntersectionObserverEntry) => void,
   ) {
+    const element = elementRef.deref();
+    if (element == null) {
+      return;
+    }
     this.observedElements.set(element, callback);
     this.observer.observe(element);
   }
 
-  public unobserve(element: HTMLElement) {
+  public unobserve(elementRef: WeakRef<HTMLElement>) {
+    const element = elementRef.deref();
+    if (element == null) {
+      return;
+    }
     this.observedElements.delete(element);
     this.observer.unobserve(element);
   }
