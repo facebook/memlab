@@ -15,6 +15,7 @@
     "types": ["node", "jest"],
     "paths": {
       "@memlab/core": ["./packages/core/src/"],
+      "@memlab/lens": ["./packages/lens/src/"],
       "@memlab/e2e": ["./packages/e2e/src/"],
       "@memlab/api": ["./packages/api/src/"],
       "@memlab/cli": ["./packages/cli/src/"],

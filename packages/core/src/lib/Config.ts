@@ -268,6 +268,7 @@ export class MemLabConfig {
   simplifyCodeSerialization: boolean;
   heapParserDictFastStoreSize: number;
   outputFormat: OutputFormat;
+  displayLeakOutlines: boolean;
 
   constructor(options: ConfigOption = {}) {
     // init properties, they can be configured manually
@@ -446,6 +447,8 @@ export class MemLabConfig {
     this.isAnalyzingMainThread = true;
     // target worker's title
     this.targetWorkerTitle = null;
+    // if true, display leaked component outlines in headful browser
+    this.displayLeakOutlines = false;
 
     // default waiting time when there is no page load checker callback
     this.delayWhenNoPageLoadCheck = 2000;

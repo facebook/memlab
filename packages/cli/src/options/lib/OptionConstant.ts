@@ -22,6 +22,7 @@ const optionNames = {
   DEVICE: 'device',
   DISABLE_WEB_SECURITY: 'disable-web-security',
   DISABLE_XVFB: 'disable-xvfb',
+  DISPLAY_LEAK_OUTLINES: 'display-leak-outlines',
   ENGINE: 'engine',
   FINAL: 'final',
   FULL: 'full',

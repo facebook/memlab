@@ -25,6 +25,7 @@ import DisableXvfbOption from '../options/e2e/DisableXvfbOption';
 import SkipWarmupOption from '../options/e2e/SkipWarmupOption';
 import CheckXvfbSupportCommand from './snapshot/CheckXvfbSupportCommand';
 import HeadfulBrowserOption from '../options/e2e/HeadfulBrowserOption';
+import DisplayLeakOutlinesOptions from '../options/e2e/DisplayLeakOutlinesOptions';
 import DisableWebSecurityOption from '../options/e2e/DisableWebSecurityOption';
 import EnableJSRewriteOption from '../options/e2e/EnableJSRewriteOption';
 import EnableJSInterceptOption from '../options/e2e/EnableJSInterceptOption';
@@ -54,6 +55,7 @@ export default class FBWarmupAppCommand extends BaseCommand {
   getOptions(): BaseOption[] {
     return [
       new HeadfulBrowserOption(),
+      new DisplayLeakOutlinesOptions(),
       new AppOption(),
       new InteractionOption(),
       new RunningModeOption(),

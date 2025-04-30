@@ -3,7 +3,7 @@
   "version": "1.0.38",
   "license": "MIT",
   "description": "heap analysis plugins for memlab",
-  "author": "Liang Gong <lgong@fb.com>",
+  "author": "Liang Gong <lgong@meta.com>",
   "contributors": [],
   "keywords": [
     "heap",

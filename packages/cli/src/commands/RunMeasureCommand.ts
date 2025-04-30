@@ -31,6 +31,7 @@ import SetUserAgentOption from '../options/e2e/SetUserAgentOption';
 import DisableXvfbOption from '../options/e2e/DisableXvfbOption';
 import NumberOfRunsOption from '../options/NumberOfRunsOption';
 import HeadfulBrowserOption from '../options/e2e/HeadfulBrowserOption';
+import DisplayLeakOutlinesOptions from '../options/e2e/DisplayLeakOutlinesOptions';
 import DisableWebSecurityOption from '../options/e2e/DisableWebSecurityOption';
 import EnableJSRewriteOption from '../options/e2e/EnableJSRewriteOption';
 import EnableJSInterceptOption from '../options/e2e/EnableJSInterceptOption';
@@ -61,6 +62,7 @@ export default class RunMeasureCommand extends BaseCommand {
   getOptions(): BaseOption[] {
     return [
       new HeadfulBrowserOption(),
+      new DisplayLeakOutlinesOptions(),
       new NumberOfRunsOption(),
       new AppOption(),
       new InteractionOption(),

@@ -30,6 +30,7 @@ import DisableXvfbOption from '../../options/e2e/DisableXvfbOption';
 import InitDirectoryCommand from '../InitDirectoryCommand';
 import CheckXvfbSupportCommand from './CheckXvfbSupportCommand';
 import HeadfulBrowserOption from '../../options/e2e/HeadfulBrowserOption';
+import DisplayLeakOutlinesOptions from '../../options/e2e/DisplayLeakOutlinesOptions';
 import SetUserAgentOption from '../../options/e2e/SetUserAgentOption';
 import DisableWebSecurityOption from '../../options/e2e/DisableWebSecurityOption';
 import EnableJSRewriteOption from '../../options/e2e/EnableJSRewriteOption';
@@ -66,6 +67,7 @@ export default class TakeSnapshotCommand extends BaseCommand {
   getOptions(): BaseOption[] {
     return [
       new HeadfulBrowserOption(),
+      new DisplayLeakOutlinesOptions(),
       new AppOption(),
       new InteractionOption(),
       new FullExecutionOption(),

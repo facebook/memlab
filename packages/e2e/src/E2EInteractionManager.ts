@@ -25,6 +25,7 @@ import fs from 'fs';
 import path from 'path';
 import E2EUtils from './lib/E2EUtils';
 import {utils, info, serializer, browserInfo, config} from '@memlab/core';
+import {getBundleContent} from '@memlab/lens';
 import interactUtils from './lib/operations/InteractionUtils';
 import defaultTestPlanner, {TestPlanner} from './lib/operations/TestPlanner';
 import NetworkManager from './NetworkManager';
@@ -133,6 +134,17 @@ export default class E2EInteractionManager {
     this.evalFuncAfterInitLoad = func;
   }
 
+  private async enableLeakOutlineDisplay(): Promise<void> {
+    if (config.displayLeakOutlines) {
+      info.lowLevel('Enabling leak outlines display...');
+      // import the code from memlens
+      const leakVisualizationScript = getBundleContent();
+      await this.page.evaluate((script: string) => {
+        eval(script);
+      }, leakVisualizationScript);
+    }
+  }
+
   protected async initialLoad(
     page: Page,
     url: string,
@@ -154,6 +166,7 @@ export default class E2EInteractionManager {
       await page.evaluate(this.evalFuncAfterInitLoad);
     }
     await interactUtils.waitUntilLoaded(page, opArgs);
+    await this.enableLeakOutlineDisplay();
   }
 
   private async beforeInteractions(): Promise<void> {

@@ -39,6 +39,38 @@ const createConfig = ({entry, filename, minimize}) => ({
   },
 });
 
+const createNodeConfig = ({entry, filename, minimize}) => ({
+  entry,
+  output: {
+    filename,
+    path: path.resolve(__dirname, 'dist'),
+    library: {
+      type: 'commonjs2',
+    },
+  },
+  target: 'node',
+  resolve: {
+    extensions: ['.ts', '.js'],
+  },
+  module: {
+    rules: [
+      {
+        test: /\.ts$/,
+        use: 'ts-loader',
+        exclude: /node_modules/,
+      },
+    ],
+  },
+  mode: 'production',
+  optimization: {
+    minimize,
+  },
+  externals: {
+    fs: 'commonjs fs',
+    path: 'commonjs path',
+  },
+});
+
 /** Export 4 builds: lib (min/non-min), run (min/non-min) */
 module.exports = [
   createConfig({
@@ -64,5 +96,10 @@ module.exports = [
     filename: 'memlens.run.bundle.min.js', // minified
     mode: 'production',
     minimize: true,
+  }),
+  createNodeConfig({
+    entry: {index: './src/index.ts'},
+    filename: 'index.js',
+    minimize: false,
   }),
 ];

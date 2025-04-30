@@ -3,7 +3,7 @@
   "version": "1.0.43",
   "license": "MIT",
   "description": "command line interface for memlab",
-  "author": "Liang Gong <lgong@fb.com>",
+  "author": "Liang Gong <lgong@meta.com>",
   "contributors": [],
   "keywords": [
     "cli",
