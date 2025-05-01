@@ -9,9 +9,13 @@
  */
 import ReactMemoryScan from './core/react-memory-scan';
 import {DOMVisualizationExtension} from './extensions/dom-visualization-extension';
+import {hasRunInSession, setRunInSession} from './utils/utils';
 
-const memoryScan = new ReactMemoryScan({isDevMode: true});
-const domVisualizer = new DOMVisualizationExtension(memoryScan);
-memoryScan.registerExtension(domVisualizer);
+if (!hasRunInSession()) {
+  const memoryScan = new ReactMemoryScan({isDevMode: true});
+  const domVisualizer = new DOMVisualizationExtension(memoryScan);
+  memoryScan.registerExtension(domVisualizer);
 
-memoryScan.start();
+  memoryScan.start();
+  setRunInSession();
+}
