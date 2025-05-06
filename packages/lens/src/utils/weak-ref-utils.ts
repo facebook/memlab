@@ -8,7 +8,13 @@
  * @oncall memory_lab
  */
 
-import {AnyValue} from '../core/types';
+import {
+  AnyValue,
+  Entry,
+  FallbackMode,
+  Nullable,
+  WeakMapPlusOptions,
+} from '../core/types';
 
 const globalScope: typeof globalThis =
   typeof window !== 'undefined' ? window : self;
@@ -141,4 +147,162 @@ export function isWeakRefNative(): boolean {
 
 export function isWeakAPINative(): boolean {
   return _weakAPIsAreNative;
+}
+
+export class WeakMapPlus<K extends object, V> {
+  private isWeak: boolean;
+  private fallbackMode: FallbackMode;
+  private strongMap: Nullable<Map<K, V>> = null;
+  private noopMap = false;
+
+  private entriesMap: Map<symbol, Entry<K, V>> = new Map();
+  private keyToId: WeakMap<K, symbol> = new WeakMap();
+  private cleanupInterval: number;
+
+  constructor(options: WeakMapPlusOptions = {}) {
+    const {fallback = 'strong', cleanupMs = 1000} = options;
+    this.isWeak = _weakAPIsAreNative;
+    this.fallbackMode = fallback;
+
+    if (!this.isWeak) {
+      if (fallback === 'strong') {
+        this.strongMap = new Map<K, V>();
+      } else if (fallback === 'noop') {
+        this.noopMap = true;
+      }
+      this.cleanupInterval = -1;
+    } else {
+      this.cleanupInterval = setInterval(
+        () => this.cleanup(),
+        cleanupMs,
+      ) as unknown as number;
+    }
+  }
+
+  private getOrCreateId(key: K): symbol {
+    let id = this.keyToId.get(key);
+    if (!id) {
+      id = Symbol();
+      this.keyToId.set(key, id);
+    }
+    return id;
+  }
+
+  set(key: K, value: V): this {
+    if (!this.isWeak) {
+      if (this.noopMap) return this;
+      this.strongMap?.set(key, value);
+      return this;
+    }
+
+    const id = this.getOrCreateId(key);
+    this.entriesMap.set(id, {ref: new WeakRef(key), value});
+    return this;
+  }
+
+  get(key: K): V | undefined {
+    if (!this.isWeak) {
+      if (this.noopMap) return undefined;
+      return this.strongMap?.get(key);
+    }
+
+    const id = this.keyToId.get(key);
+    if (!id) return undefined;
+
+    const entry = this.entriesMap.get(id);
+    const derefKey = entry?.ref?.deref();
+    return derefKey ? entry?.value : undefined;
+  }
+
+  has(key: K): boolean {
+    if (!this.isWeak) {
+      if (this.noopMap) return false;
+      return this.strongMap?.has(key) ?? false;
+    }
+
+    const id = this.keyToId.get(key);
+    if (!id) return false;
+
+    const entry = this.entriesMap.get(id);
+    return !!(entry && entry.ref.deref());
+  }
+
+  delete(key: K): boolean {
+    if (!this.isWeak) {
+      if (this.noopMap) return false;
+      return this.strongMap?.delete(key) ?? false;
+    }
+
+    const id = this.keyToId.get(key);
+    if (!id) return false;
+
+    this.keyToId.delete(key);
+    return this.entriesMap.delete(id);
+  }
+
+  private *liveEntries(): IterableIterator<[K, V]> {
+    for (const [, entry] of this.entriesMap) {
+      const key = entry.ref.deref();
+      if (key) {
+        yield [key, entry.value];
+      }
+    }
+  }
+
+  entries(): IterableIterator<[K, V]> {
+    if (!this.isWeak) {
+      if (this.noopMap) return [][Symbol.iterator]();
+      return this.strongMap?.entries() ?? [][Symbol.iterator]();
+    }
+    return this.liveEntries();
+  }
+
+  keys(): IterableIterator<K> {
+    return (function* (self: WeakMapPlus<K, V>) {
+      for (const [key] of self.entries()) yield key;
+    })(this);
+  }
+
+  values(): IterableIterator<V> {
+    return (function* (self: WeakMapPlus<K, V>) {
+      for (const [, value] of self.entries()) yield value;
+    })(this);
+  }
+
+  [Symbol.iterator](): IterableIterator<[K, V]> {
+    return this.entries();
+  }
+
+  get size(): number {
+    if (!this.isWeak) {
+      if (this.noopMap) return 0;
+      return this.strongMap?.size ?? 0;
+    }
+    let count = 0;
+    // eslint-disable-next-line
+    for (const _ of this.liveEntries()) {
+      count++;
+    }
+    return count;
+  }
+
+  getFallbackMode(): FallbackMode {
+    return this.fallbackMode;
+  }
+
+  cleanup(): void {
+    if (!this.isWeak) return;
+
+    for (const [id, entry] of this.entriesMap) {
+      if (!entry.ref.deref()) {
+        this.entriesMap.delete(id);
+      }
+    }
+  }
+
+  destroy(): void {
+    if (this.isWeak) {
+      clearInterval(this.cleanupInterval);
+    }
+  }
 }

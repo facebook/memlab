@@ -17,6 +17,8 @@ import type {
   Optional,
   ScanResult,
   AnyValue,
+  EventListenerLeak,
+  Nullable,
 } from './types';
 import type {BasicExtension} from '../extensions/basic-extension';
 
@@ -28,6 +30,7 @@ import {
 } from '../utils/react-fiber-utils';
 import {DOMObserver} from './dom-observer';
 import {config} from '../config/config';
+import {EventListenerTracker} from './event-listener-tracker';
 
 export default class ReactMemoryScan {
   static nextElementId = 0;
@@ -43,6 +46,7 @@ export default class ReactMemoryScan {
   #extensions: Array<BasicExtension>;
   #scanIntervalMs: number;
   #domObserver: Optional<DOMObserver>;
+  #eventListenerTracker: Nullable<EventListenerTracker>;
 
   constructor(options: CreateOptions = {}) {
     this.#elementWeakRefs = [];
@@ -50,6 +54,9 @@ export default class ReactMemoryScan {
     this.#elementToBoundingRects = new WeakMap();
     this.#elementToComponentStack = new WeakMap();
     this.#knownFiberNodes = [];
+    this.#eventListenerTracker = options.trackEventListenerLeaks
+      ? EventListenerTracker.getInstance()
+      : null;
 
     this.#fiberAnalyzer = new ReactFiberAnalyzer();
     this.#intervalId = 0 as unknown as NodeJS.Timeout;
@@ -215,6 +222,19 @@ export default class ReactMemoryScan {
     }
   }
 
+  getCachedComponentName(elementRef: WeakRef<Element>): string {
+    const FALLBACK_NAME = '<Unknown>';
+    const element = elementRef.deref();
+    if (element == null) {
+      return FALLBACK_NAME;
+    }
+    const componentStack = this.#elementToComponentStack.get(element);
+    if (componentStack == null) {
+      return FALLBACK_NAME;
+    }
+    return componentStack[0] ?? FALLBACK_NAME;
+  }
+
   updateFiberNodes(fiberNodes: Array<WeakRef<Fiber>>): Array<WeakRef<Fiber>> {
     const knownFiberSet = new WeakSet<Fiber>();
     for (const fiberNode of this.#knownFiberNodes) {
@@ -284,6 +304,32 @@ export default class ReactMemoryScan {
     }
   }
 
+  #scanEventListenerLeaks(): EventListenerLeak[] {
+    if (this.#eventListenerTracker == null) {
+      return [];
+    }
+    // Scan for event listener leaks
+    const detachedListeners = this.#eventListenerTracker.scan(
+      this.getCachedComponentName.bind(this),
+    );
+    const eventListenerLeaks: EventListenerLeak[] = [];
+    for (const [componentName, listeners] of detachedListeners.entries()) {
+      const typeCount = new Map<string, number>();
+      for (const listener of listeners) {
+        const count = typeCount.get(listener.type) ?? 0;
+        typeCount.set(listener.type, count + 1);
+      }
+      for (const [type, count] of typeCount.entries()) {
+        eventListenerLeaks.push({
+          type,
+          componentName,
+          count,
+        });
+      }
+    }
+    return eventListenerLeaks;
+  }
+
   scan(): ScanResult {
     const start = Date.now();
     this.#runGC();
@@ -299,6 +345,11 @@ export default class ReactMemoryScan {
     );
     const leakedFibers = this.updateFiberNodes(scanResult.fiberNodes);
     scanResult.leakedFibers = leakedFibers;
+
+    // scan for event listener leaks
+    // TODO: show the results in the UI widget
+    scanResult.eventListenerLeaks = this.#scanEventListenerLeaks();
+
     (window as AnyValue).leakedFibers = this.packLeakedFibers(leakedFibers);
     const end = Date.now();
     this.#log(`scan took ${end - start}ms`);

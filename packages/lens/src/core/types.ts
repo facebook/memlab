@@ -58,6 +58,7 @@ export type CreateOptions = {
   subscribers?: Array<AnalysisResultCallback>;
   extensions?: Array<BasicExtension>;
   scanIntervalMs?: number;
+  trackEventListenerLeaks?: boolean;
 };
 
 /**
@@ -68,6 +69,12 @@ export type CreateOptions = {
  * @property {number} totalDetachedElements - Number of detached DOM elements found
  * @property {Map<string, number>} detachedComponentToFiberNodeCount - Map of component names to their detached instance counts
  */
+export type EventListenerLeak = {
+  type: string;
+  componentName: string;
+  count: number;
+};
+
 export type ScanResult = {
   components: Set<string>;
   componentToFiberNodeCount: Map<string, number>;
@@ -76,6 +83,7 @@ export type ScanResult = {
   detachedComponentToFiberNodeCount: Map<string, number>;
   fiberNodes: Array<WeakRef<Fiber>>;
   leakedFibers: Array<WeakRef<Fiber>>;
+  eventListenerLeaks?: EventListenerLeak[];
 };
 
 /**
@@ -157,4 +165,16 @@ export type FeatureFlags = {
 export type Config = {
   performance: PerformanceConfig;
   features: FeatureFlags;
+};
+
+export type Entry<K extends object, V> = {
+  ref: WeakRef<K>;
+  value: V;
+};
+
+export type FallbackMode = 'strong' | 'noop';
+
+export type WeakMapPlusOptions = {
+  fallback?: FallbackMode;
+  cleanupMs?: number;
 };
