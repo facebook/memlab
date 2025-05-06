@@ -384,7 +384,7 @@ function iterateSelectedEdges(
         return;
       }
     }
-    if (edgesProcessed++ > 100) {
+    if (edgesProcessed++ > config.maxNumOfEdgesToJSONifyPerNode) {
       return {stop: true};
     }
     return callback(edge);
@@ -422,41 +422,60 @@ function JSONifyOrdinaryValue(
   return info;
 }
 
+function reduceOptionDepths(options: JSONifyOptions) {
+  const ret = {...options};
+  if (options.forceJSONifyDepth != null) {
+    const delta = options.forceJSONifyDepth <= 0 ? 0 : -1;
+    options.forceJSONifyDepth += delta;
+  }
+  return ret;
+}
+
+function reachedMaxDepth(options: JSONifyOptions): boolean {
+  if (options.forceJSONifyDepth == null) {
+    return false;
+  }
+  return options.forceJSONifyDepth <= 0;
+}
+
 function JSONifyNode(
   node: IHeapNode,
   args: JSONifyArgs,
-  options: JSONifyOptions,
+  inputOptions: JSONifyOptions,
 ): ISerializedInfo {
   if (!node) {
     return {};
   }
   let info: ISerializedInfo;
+  const options = reduceOptionDepths(inputOptions);
   // defense against infinite recursion
   if (options.processedNodeId.has(node.id)) {
     info = JSONifyNodeShallow(node);
     return info;
   }
   options.processedNodeId.add(node.id);
-  const depths = options.forceJSONifyDepth;
-  if (utils.isDetachedDOMNode(node) && depths !== 0) {
+  const reachedDepthLimit = reachedMaxDepth(options);
+  if (utils.isDetachedDOMNode(node) && !reachedDepthLimit) {
     info = JSONifyDetachedHTMLElement(node, args, {
       ...EMPTY_JSONIFY_OPTIONS,
       processedNodeId: options.processedNodeId,
     });
-  } else if (utils.isFiberNode(node) && depths !== 0) {
+  } else if (utils.isFiberNode(node) && !reachedDepthLimit) {
     info = JSONifyFiberNode(node, args, options);
   } else if (utils.shouldShowMoreInfo(node)) {
     info = JSONifyNodeOneLevel(node);
-  } else if (node.type === 'closure') {
+  } else if (node.type === 'closure' && !reachedDepthLimit) {
     info = JSONifyClosure(node, args, options);
-  } else if (node.type === 'code') {
+  } else if (node.type === 'code' && !reachedDepthLimit) {
     info = JSONifyCode(node, args, options);
-  } else if (node.name === 'system / Context') {
+  } else if (node.name === 'system / Context' && !reachedDepthLimit) {
     info = JSONifyContext(node, args, options);
   } else if (node.type === 'number') {
     info = JSONifyNumberNode(node, args, options);
-  } else {
+  } else if (!reachedDepthLimit) {
     info = JSONifyOrdinaryValue(node, args, options);
+  } else {
+    info = JSONifyNodeInShort(node);
   }
   options.processedNodeId.delete(node.id);
 
@@ -533,6 +552,7 @@ function JSONifyPath(
       ...EMPTY_JSONIFY_OPTIONS,
       processedNodeId: new Set(),
       serializationHelper,
+      forceJSONifyDepth: config.maxLevelsOfTraceToJSONify,
     });
     pathItem = pathItem.next;
   }

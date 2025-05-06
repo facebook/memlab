@@ -269,6 +269,8 @@ export class MemLabConfig {
   heapParserDictFastStoreSize: number;
   outputFormat: OutputFormat;
   displayLeakOutlines: boolean;
+  maxNumOfEdgesToJSONifyPerNode: number;
+  maxLevelsOfTraceToJSONify: number;
 
   constructor(options: ConfigOption = {}) {
     // init properties, they can be configured manually
@@ -405,6 +407,12 @@ export class MemLabConfig {
     // if true, serialized leak trace will have a simplified representation
     // for code object, which could be large and cause OOM during serualization
     this.simplifyCodeSerialization = !constant.isFB;
+    // when JSONify the leak trace for each node (object), we serialize at most
+    // the specified number of edges (references)
+    this.maxNumOfEdgesToJSONifyPerNode = 80;
+    // when JSONifying the leak trace, we serialize by invoking JSONifyNode up
+    // to the specified depth within the objects in the trace
+    this.maxLevelsOfTraceToJSONify = 4;
   }
 
   // initialize configurable parameters
