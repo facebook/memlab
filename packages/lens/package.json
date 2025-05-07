@@ -1,11 +1,18 @@
 {
   "name": "@memlab/lens",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "license": "MIT",
   "description": "MemLens is a tool for inspecting memory leaks in browser",
   "author": "Liang Gong <lgong@meta.com>",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "webpack",
     "rebuild": "webpack",
