@@ -34,6 +34,8 @@ const config = {
           '../packages/api/src/index.ts',
           '../packages/heap-analysis/src/index.ts',
           '../packages/core/src/index.ts',
+          // '../packages/lens/src/index.ts',
+          // '../packages/e2e/src/index.ts',
         ],
         categorizeByGroup: false,
         cleanOutputDir: true,

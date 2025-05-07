@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "./packages/core" },
+    { "path": "./packages/lens" },
     { "path": "./packages/e2e" },
     { "path": "./packages/heap-analysis" },
     { "path": "./packages/api" },
