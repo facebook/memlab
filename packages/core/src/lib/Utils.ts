@@ -261,6 +261,7 @@ const svgElementRegex = /^SVG.*Element$/;
 const htmlCollectionRegex = /^HTML.*Collection$/;
 const cssElementRegex = /^CSS/;
 const styleSheetRegex = /StyleSheet/;
+const newDOMNodeRegex = /^<[a-zA-Z]+.*>$/;
 // special DOM element names that are not
 // included in the previous regex definitions
 const domElementSpecialNames = new Set([
@@ -281,13 +282,15 @@ function isDOMNodeIncomplete(node: IHeapNode): boolean {
   if (name.startsWith(detachedPrefix)) {
     name = name.substring(detachedPrefix.length);
   }
+  name = name.trim();
   return (
     htmlElementRegex.test(name) ||
     svgElementRegex.test(name) ||
     cssElementRegex.test(name) ||
     styleSheetRegex.test(name) ||
     htmlCollectionRegex.test(name) ||
-    domElementSpecialNames.has(name)
+    domElementSpecialNames.has(name) ||
+    newDOMNodeRegex.test(name)
   );
 }
 
@@ -918,6 +921,48 @@ function extractFiberNodeInfo(node: IHeapNode): string {
   // replace all [, ], (, and )
   name = name.replace(/[[\]()]/g, '');
   return prefix + name;
+}
+
+function getSimplifiedDOMNodeName(node: IHeapNode): string {
+  if (isDetachedDOMNode(node) || isDOMNodeIncomplete(node)) {
+    return stripTagAttributes(node.name);
+  }
+  return node.name;
+}
+
+// remove all attributes from the tag name
+// so Detached <div prop1="xyz" prop2="xyz" ...>
+// becomes Detached <div>
+function stripTagAttributes(str: string): string {
+  let result = '';
+  let i = 0;
+
+  while (i < str.length) {
+    const open = str.indexOf('<', i);
+    if (open === -1) {
+      result += str.slice(i);
+      break;
+    }
+
+    const close = str.indexOf('>', open);
+    if (close === -1) {
+      result += str.slice(i);
+      break;
+    }
+
+    // Find the tag name
+    const space = str.indexOf(' ', open);
+    if (space !== -1 && space < close) {
+      const tagName = str.slice(open + 1, space);
+      result += str.slice(i, open) + `<${tagName}>`;
+    } else {
+      result += str.slice(i, close + 1);
+    }
+
+    i = close + 1;
+  }
+
+  return result;
 }
 
 function getNumberNodeValue(node: IHeapNode): Nullable<number> {
@@ -2198,6 +2243,7 @@ export default {
   getReadableTime,
   getRetainedSize,
   getScenarioName,
+  getSimplifiedDOMNodeName,
   getSingleSnapshotFileForAnalysis,
   getSnapshotDirForAnalysis,
   getSnapshotFilePath,
@@ -2278,6 +2324,7 @@ export default {
   setIsRegularFiberNode,
   shouldShowMoreInfo,
   shuffleArray,
+  stripTagAttributes,
   throwError,
   tryToMutePuppeteerWarning,
   upperCaseFirstCharacter,

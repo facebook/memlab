@@ -49,7 +49,9 @@ function getNodeNameInJSON(node: IHeapNode, args: JSONifyArgs = {}): string {
 
   const nodeImpact = JSONifyNodeRetainSize(node);
 
-  if (utils.isFiberNode(node)) {
+  if (utils.isDetachedDOMNode(node) || utils.isDOMNodeIncomplete(node)) {
+    name = utils.getSimplifiedDOMNodeName(node);
+  } else if (utils.isFiberNode(node)) {
     name = utils.extractFiberNodeInfo(node);
   } else if (node.type === 'closure') {
     name = utils.extractClosureNodeInfo(node);
@@ -457,8 +459,8 @@ function JSONifyNode(
   const reachedDepthLimit = reachedMaxDepth(options);
   if (utils.isDetachedDOMNode(node) && !reachedDepthLimit) {
     info = JSONifyDetachedHTMLElement(node, args, {
+      ...options,
       ...EMPTY_JSONIFY_OPTIONS,
-      processedNodeId: options.processedNodeId,
     });
   } else if (utils.isFiberNode(node) && !reachedDepthLimit) {
     info = JSONifyFiberNode(node, args, options);
@@ -832,7 +834,10 @@ function summarizeTabsOrder(
 
 function summarizeNodeName(node: IHeapNode, options: SummarizeOptions): string {
   const name = getNodeTypeShortName(node);
-  const nodeStr = name.split('@')[0].trim();
+  let nodeStr = name.split('@')[0].trim();
+  if (utils.isDetachedDOMNode(node) || utils.isDOMNodeIncomplete(node)) {
+    nodeStr = utils.stripTagAttributes(nodeStr);
+  }
   return options.color ? chalk.green(nodeStr) : nodeStr;
 }
 
