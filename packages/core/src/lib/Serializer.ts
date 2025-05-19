@@ -836,7 +836,7 @@ function summarizeNodeName(node: IHeapNode, options: SummarizeOptions): string {
   const name = getNodeTypeShortName(node);
   let nodeStr = name.split('@')[0].trim();
   if (utils.isDetachedDOMNode(node) || utils.isDOMNodeIncomplete(node)) {
-    nodeStr = utils.stripTagAttributes(nodeStr);
+    nodeStr = utils.simplifyTagAttributes(nodeStr);
   }
   return options.color ? chalk.green(nodeStr) : nodeStr;
 }

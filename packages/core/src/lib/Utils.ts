@@ -11,8 +11,11 @@
 import type {
   HaltOrThrowOptions,
   HeapNodeIdSet,
+  ParsedAttribute,
+  ParsedTag,
   ShellOptions,
   StringRecord,
+  TagType,
 } from './Types';
 
 import fs from 'fs';
@@ -925,9 +928,171 @@ function extractFiberNodeInfo(node: IHeapNode): string {
 
 function getSimplifiedDOMNodeName(node: IHeapNode): string {
   if (isDetachedDOMNode(node) || isDOMNodeIncomplete(node)) {
-    return stripTagAttributes(node.name);
+    return simplifyTagAttributes(node.name);
   }
   return node.name;
+}
+
+function limitStringLength(str: string, len: number): string {
+  if (str.length > len) {
+    return str.substring(0, len) + '...';
+  }
+  return str;
+}
+
+function simplifyTagAttributes(
+  str: string,
+  prioritizedAttributes: Set<string> = config.defaultPrioritizedHTMLTagAttributes,
+): string {
+  const outputLengthLimit = 100;
+  const prefixEnd = str.indexOf('<');
+  if (prefixEnd <= 0) {
+    return str;
+  }
+  try {
+    const prefix = str.substring(0, prefixEnd);
+    const tagStr = str.substring(prefixEnd).trim();
+    const parsedTag = parseHTMLTags(tagStr)[0];
+    if (parsedTag == null) {
+      return limitStringLength(str, outputLengthLimit);
+    }
+
+    // Build maps for quick lookup
+    const attrMap = new Map(parsedTag.attributes.map(attr => [attr.key, attr]));
+
+    const prioritized: ParsedAttribute[] = [];
+    for (const key of prioritizedAttributes) {
+      const attr = attrMap.get(key);
+      if (attr != null) {
+        prioritized.push(attr);
+        attrMap.delete(key);
+      }
+    }
+
+    const remaining = parsedTag.attributes.filter(attr =>
+      attrMap.has(attr.key),
+    );
+
+    parsedTag.attributes = [...prioritized, ...remaining];
+
+    const finalStr = prefix + serializeParsedTags([parsedTag]);
+    return limitStringLength(finalStr, outputLengthLimit);
+  } catch {
+    return limitStringLength(str, outputLengthLimit);
+  }
+}
+
+function parseHTMLTags(html: string): ParsedTag[] {
+  const result: ParsedTag[] = [];
+  let i = 0;
+
+  while (i < html.length) {
+    if (html[i] === '<') {
+      i++; // skip '<'
+
+      // Determine if this is a closing tag
+      let isClosing = false;
+      if (html[i] === '/') {
+        isClosing = true;
+        i++;
+      }
+
+      // Extract tag name
+      let tagName = '';
+      while (i < html.length && /[a-zA-Z0-9:-]/.test(html[i])) {
+        tagName += html[i++];
+      }
+
+      // Skip whitespace
+      while (i < html.length && /\s/.test(html[i])) i++;
+
+      // Parse attributes
+      const attributes: ParsedAttribute[] = [];
+      while (i < html.length && html[i] !== '>' && html[i] !== '/') {
+        // Extract key
+        let key = '';
+        while (i < html.length && /[^\s=>]/.test(html[i])) {
+          key += html[i++];
+        }
+
+        // Skip whitespace
+        while (i < html.length && /\s/.test(html[i])) i++;
+
+        // Extract value
+        let value: string | boolean = true;
+        if (html[i] === '=') {
+          i++; // skip '='
+          while (i < html.length && /\s/.test(html[i])) i++;
+
+          if (html[i] === '"' || html[i] === "'") {
+            const quote = html[i++];
+            value = '';
+            while (i < html.length && html[i] !== quote) {
+              value += html[i++];
+            }
+            i++; // skip closing quote
+          } else {
+            value = '';
+            while (i < html.length && /[^\s>]/.test(html[i])) {
+              value += html[i++];
+            }
+          }
+        }
+
+        if (key) {
+          attributes.push({key, value});
+        }
+
+        // Skip whitespace
+        while (i < html.length && /\s/.test(html[i])) i++;
+      }
+
+      // Check for self-closing
+      let isSelfClosing = false;
+      if (html[i] === '/') {
+        isSelfClosing = true;
+        i++; // skip '/'
+      }
+
+      // Skip '>'
+      if (html[i] === '>') i++;
+
+      const type: TagType = isClosing
+        ? 'closing'
+        : isSelfClosing
+        ? 'self-closing'
+        : 'opening';
+
+      result.push({tagName, attributes, type});
+    } else {
+      i++;
+    }
+  }
+
+  return result;
+}
+
+function serializeParsedTags(tags: ParsedTag[]): string {
+  return tags
+    .map(tag => {
+      if (tag.type === 'closing') {
+        return `</${tag.tagName}>`;
+      }
+
+      const attrString = tag.attributes
+        .map(({key, value}) => {
+          if (value === true) return key;
+          const escaped = String(value).replace(/"/g, '&quot;');
+          return `${key}="${escaped}"`;
+        })
+        .join(' ');
+
+      const space = attrString ? ' ' : '';
+      return tag.type === 'self-closing'
+        ? `<${tag.tagName}${space}${attrString}/>`
+        : `<${tag.tagName}${space}${attrString}>`;
+    })
+    .join('');
 }
 
 // remove all attributes from the tag name
@@ -2324,6 +2489,7 @@ export default {
   setIsRegularFiberNode,
   shouldShowMoreInfo,
   shuffleArray,
+  simplifyTagAttributes,
   stripTagAttributes,
   throwError,
   tryToMutePuppeteerWarning,

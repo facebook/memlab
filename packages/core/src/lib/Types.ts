@@ -2454,3 +2454,19 @@ export type ConsoleOutputAnnotation = 'stack-trace';
 export type ConsoleOutputOptions = {
   annotation?: ConsoleOutputAnnotation;
 };
+
+/** @internal */
+export type TagType = 'opening' | 'closing' | 'self-closing';
+
+/** @internal */
+export interface ParsedAttribute {
+  key: string;
+  value: string | boolean;
+}
+
+/** @internal */
+export interface ParsedTag {
+  tagName: string;
+  attributes: ParsedAttribute[];
+  type: TagType;
+}

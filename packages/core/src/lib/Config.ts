@@ -271,6 +271,7 @@ export class MemLabConfig {
   displayLeakOutlines: boolean;
   maxNumOfEdgesToJSONifyPerNode: number;
   maxLevelsOfTraceToJSONify: number;
+  defaultPrioritizedHTMLTagAttributes: Set<string>;
 
   constructor(options: ConfigOption = {}) {
     // init properties, they can be configured manually
@@ -413,6 +414,18 @@ export class MemLabConfig {
     // when JSONifying the leak trace, we serialize by invoking JSONifyNode up
     // to the specified depth within the objects in the trace
     this.maxLevelsOfTraceToJSONify = 4;
+    // HTML tags prioritized for display in MemLab's leak trace when showing
+    // DOM and detached DOM elements. If the representation is too long,
+    // lower-priority tags may be omitted.
+    this.defaultPrioritizedHTMLTagAttributes = new Set([
+      'id',
+      'role',
+      'type',
+      'data-testid',
+      'data-testids',
+      'name',
+      'class',
+    ]);
   }
 
   // initialize configurable parameters
