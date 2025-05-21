@@ -86,7 +86,7 @@ export default class RunMeasureCommand extends BaseCommand {
     ];
   }
 
-  getDocumenation(): string {
+  getDocumentation(): string {
     return (
       'In some web apps, the heap size can show considerable variability' +
       ' across various runs. This fluctuation can often make it hard to' +

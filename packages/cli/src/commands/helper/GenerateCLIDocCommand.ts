@@ -128,7 +128,7 @@ npm install -g memlab
   ): void {
     const name = command.getFullCommand();
     const desc = utils.upperCaseFirstCharacter(command.getDescription().trim());
-    const cmdDoc = command.getDocumenation().trim();
+    const cmdDoc = command.getDocumentation().trim();
 
     // write command title
     this.writeTextWithNewLine(docFile, `\n###${indent} memlab ${name}\n`);

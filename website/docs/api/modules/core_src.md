@@ -34,7 +34,7 @@ this callback until it returns `true`. This is an async callback, you can
 also `await` and returns `true` until some async logic is resolved.
 
  * **Source**:
-    * core/src/lib/Types.ts:1166
+    * core/src/lib/Types.ts:1168
 
 ___
 
@@ -86,7 +86,7 @@ or [forEachReferrer](../interfaces/core_src.IHeapNode.md#foreachreferrer).
  * **Returns**: [`Optional`](core_src.md#optional)<{ `stop`: `boolean`  }\> \| `void` | this API returns void
 
  * **Source**:
-    * core/src/lib/Types.ts:1795
+    * core/src/lib/Types.ts:1797
 
 ___
 
@@ -244,8 +244,8 @@ ___
 | :------ | :------ |
 | `T` | the type of the entity to be checked |
 
-the predicate callback is used to decide if a
-entity of type `T`.
+the predicate callback is used to decide if an
+entity of type `T` meets certain criteria.
 For more concrete examples on where it is used,
 check out [findAnyReference](../interfaces/core_src.IHeapNode.md#findanyreference), [findAnyReferrer](../interfaces/core_src.IHeapNode.md#findanyreferrer),
 and [findReferrers](../interfaces/core_src.IHeapNode.md#findreferrers).
@@ -309,7 +309,7 @@ You can retrieve the instance of this type through [getRunMetaInfo](../classes/a
 | `type` | `string` | type of the memlab run |
 
  * **Source**:
-    * core/src/lib/Types.ts:1247
+    * core/src/lib/Types.ts:1249
 
 ___
 

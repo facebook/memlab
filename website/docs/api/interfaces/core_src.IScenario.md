@@ -69,8 +69,10 @@ const scenario = {
 
 module.exports = scenario;
 ```
-Note: always clean up external puppeteer references to JS objects
-      in the browser context.
+Note: Always dispose of puppeteer element handles (e.g., from page.$x or
+page.$) to prevent memory leaks in the browser context. Use
+element.dispose() or Promise.all(elements.map(e => e.dispose())) to
+clean up.
 ```typescript
 const scenario = {
   url: () => 'https://www.npmjs.com/',
@@ -90,7 +92,7 @@ module.exports = scenario;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:841
+    * core/src/lib/Types.ts:843
 
 ___
 
@@ -121,7 +123,7 @@ Check out [this page](/docs/how-memlab-works) on why
 memlab needs to undo/revert the `action` callback.
 
  * **Source**:
-    * core/src/lib/Types.ts:867
+    * core/src/lib/Types.ts:869
 
 ___
 
@@ -189,7 +191,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:953
+    * core/src/lib/Types.ts:955
 
 ___
 
@@ -233,7 +235,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:925
+    * core/src/lib/Types.ts:927
 
 ___
 
@@ -283,7 +285,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:998
+    * core/src/lib/Types.ts:1000
 
 ___
 
@@ -334,7 +336,7 @@ module.exports = {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1044
+    * core/src/lib/Types.ts:1046
 
 ___
 
@@ -430,7 +432,7 @@ module.exports = {
 
  * **Returns**: `number`
  * **Source**:
-    * core/src/lib/Types.ts:886
+    * core/src/lib/Types.ts:888
 
 ___
 

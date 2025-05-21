@@ -23,7 +23,7 @@ import * as Three from 'three';
 import NET from 'vanta/dist/vanta.net.min';
 import useWindowSize from '../lib/useWindowSize';
 
-import nomralizeTypeSpeed from '../lib/TypeSpeedNormalization';
+import normalizeTypeSpeed from '../lib/TypeSpeedNormalization';
 import homePageStdouts from '../data/HomePageMainTerminal';
 
 interface FeatureItem {
@@ -128,7 +128,7 @@ function Feature({imageUrl, title, description, docUrl}) {
   );
 }
 
-const stdouts = nomralizeTypeSpeed(homePageStdouts);
+const stdouts = normalizeTypeSpeed(homePageStdouts);
 const MIN_POINTS = 6;
 const MAX_POINTS = 16;
 const BROWSER_SUPPORTS_WIDE_LINE = browserSupportsWideLine();

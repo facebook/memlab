@@ -112,7 +112,7 @@ export default class BaseCommand extends Command {
   // More detailed description or documentation about this command.
   // This will be printed as helper text in CLI for a specific command.
   // Documentation generator will also use the description returned here.
-  getDocumenation(): string {
+  getDocumentation(): string {
     return '';
   }
 

@@ -25,7 +25,7 @@ export default class WarmupAndSnapshotCommand extends BaseCommand {
     return 'Warm up server and take heap snapshots';
   }
 
-  getDocumenation(): string {
+  getDocumentation(): string {
     const warmupCommand = new WarmupAppCommand();
     const warmupCLI = `memlab ${warmupCommand.getCommandName()}`;
     const takeSnapshotCommand = new TakeSnapshotCommand();

@@ -30,7 +30,7 @@ export default function OversizedObject() {
       <br />
       <div className="row">
         Object<code>bigArray</code>is leaked. Please check <code>Memory</code>{' '}
-        tab in devtools
+        tab in DevTools
       </div>
     </div>
   );

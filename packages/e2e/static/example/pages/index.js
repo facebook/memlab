@@ -29,7 +29,7 @@ export default function Home() {
         </div>
       </div>
       <div className="row alert alert-secondary" role="alert">
-        Make sure to open your <code>Console</code> tab in devtools.
+        Make sure to open your <code>Console</code> tab in DevTools.
       </div>
     </>
   );

@@ -88,7 +88,7 @@ export default class CheckLeakCommand extends BaseCommand {
       },
       {
         description:
-          'specifies the directory that holds all three heap snapshot files',
+          'specifies the directory that contains all three heap snapshot files',
         cliOptionExample: `${snapshotDirOption} /dir/containing/heapsnapshot/files/`,
       },
       {
@@ -103,7 +103,7 @@ export default class CheckLeakCommand extends BaseCommand {
     return 'find memory leaks in heap snapshots';
   }
 
-  getDocumenation(): string {
+  getDocumentation(): string {
     const optionNames = OptionConstant.optionNames;
     const workDirOption = `--${optionNames.WORK_DIR}`;
     const snapshotDirOption = `--${optionNames.SNAPSHOT_DIR}`;
@@ -113,7 +113,7 @@ export default class CheckLeakCommand extends BaseCommand {
 
     return `There are three ways to specify inputs for the \`memlab ${this.getCommandName()}\` command:
  1. \`${baselineOption}\`, \`${targetOption}\`, \`${finalOption}\` specifies each heap snapshot input individually;
- 2. \`${snapshotDirOption}\` specifies the directory that holds all three heap snapshot files (MemLab will assign baseline, target, and final based on alphabetic order of the file);
+ 2. \`${snapshotDirOption}\` specifies the directory that contains all three heap snapshot files (MemLab will assign baseline, target, and final based on alphabetic order of the file);
  3. \`${workDirOption}\` specifies the output working directory of the \`memlab run\` or the \`memlab snapshot\` command;
 
 Please only use one of the three ways to specify the input.

@@ -14,7 +14,7 @@ const shiftCharacters = new Set('~!@#$%^&*()_+{}:"<>?|'.split(''));
 /**
  * normalize the typing speed and make the type input feel more natural
  */
-module.exports = function nomralizeTypeSpeed(events, speedFactor = 1) {
+module.exports = function normalizeTypeSpeed(events, speedFactor = 1) {
   const deltas = [0];
   for (let i = 1; i < events.length; ++i) {
     deltas[i] = events[i].time - events[i - 1].time;

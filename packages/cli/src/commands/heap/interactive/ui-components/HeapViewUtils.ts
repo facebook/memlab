@@ -127,7 +127,7 @@ export class ComponentDataItem {
     if (data.referenceEdge) {
       ret += this.getHeapEdgeTextContent(data.referenceEdge);
     }
-    return ret === '' ? chalk.grey('<undefinied>') : ret;
+    return ret === '' ? chalk.grey('<undefined>') : ret;
   }
 }
 

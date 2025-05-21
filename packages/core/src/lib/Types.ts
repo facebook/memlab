@@ -207,8 +207,8 @@ export type PuppeteerConfig = LaunchOptions &
 export type Page = PuppeteerPage;
 
 /**
- * the predicate callback is used to decide if a
- * entity of type `T`.
+ * the predicate callback is used to decide if an
+ * entity of type `T` meets certain criteria.
  * For more concrete examples on where it is used,
  * check out {@link findAnyReference}, {@link findAnyReferrer},
  * and {@link findReferrers}.
@@ -818,8 +818,10 @@ export interface IScenario {
    *
    * module.exports = scenario;
    * ```
-   * Note: always clean up external puppeteer references to JS objects
-   *       in the browser context.
+   * Note: Always dispose of puppeteer element handles (e.g., from page.$x or
+   * page.$) to prevent memory leaks in the browser context. Use
+   * element.dispose() or Promise.all(elements.map(e => e.dispose())) to
+   * clean up.
    * ```typescript
    * const scenario = {
    *   url: () => 'https://www.npmjs.com/',

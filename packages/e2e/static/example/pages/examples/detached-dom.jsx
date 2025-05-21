@@ -17,7 +17,7 @@ export default function DetachedDom() {
       window.leakedObjects.push(document.createElement('div'));
     }
     console.log(
-      'Detached DOMs are created. Please check Memory tab in devtools',
+      'Detached DOMs are created. Please check Memory tab in Chrome DevTools',
     );
   };
 

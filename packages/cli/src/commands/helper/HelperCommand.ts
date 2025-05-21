@@ -211,7 +211,7 @@ export default class HelperCommand extends BaseCommand {
     const indent = '  ' + extraIndent;
     const name = command.getFullCommand();
     const desc = utils.upperCaseFirstCharacter(command.getDescription().trim());
-    const cmdDoc = command.getDocumenation().trim();
+    const cmdDoc = command.getDocumentation().trim();
 
     // get example
     const examples = command.getExamples();

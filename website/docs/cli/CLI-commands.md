@@ -64,7 +64,7 @@ Find memory leaks in heap snapshots
 
 There are three ways to specify inputs for the `memlab find-leaks` command:
  1. `--baseline`, `--target`, `--final` specifies each heap snapshot input individually;
- 2. `--snapshot-dir` specifies the directory that holds all three heap snapshot files (MemLab will assign baseline, target, and final based on alphabetic order of the file);
+ 2. `--snapshot-dir` specifies the directory that contains all three heap snapshot files (MemLab will assign baseline, target, and final based on alphabetic order of the file);
  3. `--work-dir` specifies the output working directory of the `memlab run` or the `memlab snapshot` command;
 
 Please only use one of the three ways to specify the input.
@@ -84,7 +84,7 @@ memlab find-leaks
 ```bash
 # specify the baseline, target, and final heap snapshot file path separately
 memlab find-leaks --baseline /tmp/baseline.heapsnapshot --target /tmp/target.heapsnapshot --final /tmp/final.heapsnapshot
-# specifies the directory that holds all three heap snapshot files
+# specifies the directory that contains all three heap snapshot files
 memlab find-leaks --snapshot-dir /dir/containing/heapsnapshot/files/
 # specifies the output working directory of the `memlab run` or the `memlab snapshot` command
 memlab find-leaks --work-dir /memlab/working/dir/generated/by/memlab/
