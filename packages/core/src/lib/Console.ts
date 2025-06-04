@@ -8,21 +8,21 @@
  * @oncall memory_lab
  */
 
-'use strict';
+"use strict";
 
-import chalk, {Chalk} from 'chalk';
-import fs from 'fs';
-import path from 'path';
-import readline from 'readline';
-import stringWidth from 'string-width';
-import {OutputFormat, type MemLabConfig} from './Config';
+import chalk, { Chalk } from "chalk";
+import fs from "fs";
+import path from "path";
+import readline from "readline";
+import stringWidth from "string-width";
+import { OutputFormat, type MemLabConfig } from "./Config";
 import {
   AnyValue,
   ConsoleOutputAnnotation,
   ConsoleOutputOptions,
   Nullable,
   Optional,
-} from './Types';
+} from "./Types";
 
 type Message = {
   lines: number[];
@@ -47,28 +47,28 @@ type Sections = {
 
 const TABLE_MAX_WIDTH = 50;
 const LOG_BUFFER_LENGTH = 100;
-const prevLine = '\x1b[F';
-const eraseLine = '\x1b[K';
-const barComplete = chalk.green('\u2588');
-const barIncomplete = chalk.grey('\u2591');
+const prevLine = "\x1b[F";
+const eraseLine = "\x1b[K";
+const barComplete = chalk.green("\u2588");
+const barIncomplete = chalk.grey("\u2591");
 
 function formatTableArg(arg: AnyValue): void {
   if (!Array.isArray(arg)) {
     return arg;
   }
-  arg.forEach(obj => {
-    if (typeof obj !== 'object') {
+  arg.forEach((obj) => {
+    if (typeof obj !== "object") {
       return;
     }
     for (const key of Object.keys(obj)) {
       const value = obj[key];
-      if (typeof value !== 'string') {
+      if (typeof value !== "string") {
         continue;
       }
       if (value.length <= TABLE_MAX_WIDTH) {
         continue;
       }
-      obj[key] = value.substring(0, TABLE_MAX_WIDTH) + '...';
+      obj[key] = value.substring(0, TABLE_MAX_WIDTH) + "...";
     }
   });
 }
@@ -82,19 +82,19 @@ type ExitHandler = (options: ExitOptions, exitCode: number | string) => void;
 
 function registerExitCleanup(
   inst: MemLabConsole,
-  exitHandler: ExitHandler,
+  exitHandler: ExitHandler
 ): void {
   const p = process;
 
   // normal exit
-  p.on('exit', exitHandler.bind(null, {cleanup: true}));
+  p.on("exit", exitHandler.bind(null, { cleanup: true }));
 
   // ctrl + c event
-  p.on('SIGINT', exitHandler.bind(null, {exit: true}));
+  p.on("SIGINT", exitHandler.bind(null, { exit: true }));
 
   // kill pid
-  p.on('SIGUSR1', exitHandler.bind(null, {exit: true}));
-  p.on('SIGUSR2', exitHandler.bind(null, {exit: true}));
+  p.on("SIGUSR1", exitHandler.bind(null, { exit: true }));
+  p.on("SIGUSR2", exitHandler.bind(null, { exit: true }));
 }
 
 interface MemlabConsoleStyles {
@@ -123,14 +123,14 @@ class MemLabConsole {
   };
 
   private static singleton: MemLabConsole;
-  public annotations: {[key: string]: ConsoleOutputAnnotation} = {
-    STACK_TRACE: 'stack-trace',
+  public annotations: { [key: string]: ConsoleOutputAnnotation } = {
+    STACK_TRACE: "stack-trace",
   };
 
   protected constructor() {
     this.sections = {
       dict: Object.create(null),
-      arr: [{name: 'header', msgs: []}],
+      arr: [{ name: "header", msgs: [] }],
     };
     this.init();
   }
@@ -147,9 +147,9 @@ class MemLabConsole {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       _options: ExitOptions,
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      _exitCode: number | string,
+      _exitCode: number | string
     ) => {
-      inst.flushLog({sync: true});
+      inst.flushLog({ sync: true });
       inst.clearPrevOverwriteMsg();
     };
     registerExitCleanup(inst, exitHandler);
@@ -173,7 +173,7 @@ class MemLabConsole {
   }
 
   private init(): void {
-    this.beginSection('main-section-DO-NOT-USE');
+    this.beginSection("main-section-DO-NOT-USE");
   }
 
   private getLastSection(): Optional<Section> {
@@ -192,11 +192,14 @@ class MemLabConsole {
 
   private logMsg(msg: string): void {
     // remove control characters
-    const lines = msg.split('\n').map(line =>
+    if (typeof msg !== "string") {
+      return;
+    }
+    const lines = msg.split("\n").map((line) =>
       line
         // eslint-disable-next-line no-control-regex
-        .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
-        .replace(/\[\d{1,3}m/g, ''),
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
+        .replace(/\[\d{1,3}m/g, "")
     );
     this.log.push(...lines);
     this.tryFlush();
@@ -204,12 +207,12 @@ class MemLabConsole {
 
   private tryFlush(): void {
     if (this.log.length > LOG_BUFFER_LENGTH) {
-      this.flushLog({sync: true});
+      this.flushLog({ sync: true });
     }
   }
 
-  private flushLog(options: {sync?: boolean} = {}): void {
-    const str = this.log.join('\n');
+  private flushLog(options: { sync?: boolean } = {}): void {
+    const str = this.log.join("\n");
     this.log = [];
 
     if (str.length === 0) {
@@ -220,7 +223,7 @@ class MemLabConsole {
     if (options.sync) {
       for (const logFile of this.logFileSet) {
         try {
-          fs.appendFileSync(logFile, str + '\n', 'UTF-8');
+          fs.appendFileSync(logFile, str + "\n", "UTF-8");
         } catch {
           // fail silently
         }
@@ -232,7 +235,7 @@ class MemLabConsole {
       };
       for (const logFile of this.logFileSet) {
         try {
-          fs.appendFile(logFile, str + '\n', 'UTF-8', emptyCallback);
+          fs.appendFile(logFile, str + "\n", "UTF-8", emptyCallback);
         } catch {
           // fail silently
         }
@@ -245,9 +248,9 @@ class MemLabConsole {
       return;
     }
     // calculate each line's visible width
-    const lines = msg.split('\n').map(line => stringWidth(line));
+    const lines = msg.split("\n").map((line) => stringWidth(line));
     const section = this.getLastSection();
-    section?.msgs.push({lines, options});
+    section?.msgs.push({ lines, options });
   }
 
   private clearPrevMsgInLastSection(): void {
@@ -330,7 +333,7 @@ class MemLabConsole {
         console.log(msg);
       } else {
         this.outStream.write(msg);
-        this.outStream.write('\n');
+        this.outStream.write("\n");
       }
     }
   }
@@ -346,12 +349,12 @@ class MemLabConsole {
   }
 
   public registerLogFile(logFile: string): void {
-    this.flushLog({sync: true});
+    this.flushLog({ sync: true });
     this.logFileSet.add(path.resolve(logFile));
   }
 
   public unregisterLogFile(logFile: string): void {
-    this.flushLog({sync: true});
+    this.flushLog({ sync: true });
     this.logFileSet.delete(path.resolve(logFile));
   }
 
@@ -363,7 +366,7 @@ class MemLabConsole {
     if (this.sections.dict[name]) {
       this.endSection(name);
     }
-    const section = {name, msgs: []};
+    const section = { name, msgs: [] };
     this.sections.dict[name] = section;
     this.sections.arr.push(section);
   }
@@ -388,7 +391,7 @@ class MemLabConsole {
 
   public table(...args: AnyValue[]): void {
     if (
-      this.shouldBeConcise('table') ||
+      this.shouldBeConcise("table") ||
       this.config.isTest ||
       this.config.muteConsole ||
       this.config.muteConfig?.muteTable
@@ -416,7 +419,7 @@ class MemLabConsole {
   }
 
   public topLevel(msg: string): void {
-    if (this.shouldBeConcise('topLevel')) {
+    if (this.shouldBeConcise("topLevel")) {
       return this.overwrite(msg);
     }
     this.logMsg(msg);
@@ -424,11 +427,11 @@ class MemLabConsole {
       return;
     }
     this.clearPrevOverwriteMsg();
-    this.printStr(this.style(msg, 'top'));
+    this.printStr(this.style(msg, "top"));
   }
 
   public highLevel(msg: string): void {
-    if (this.shouldBeConcise('highLevel')) {
+    if (this.shouldBeConcise("highLevel")) {
       return this.overwrite(msg);
     }
     this.logMsg(msg);
@@ -436,11 +439,11 @@ class MemLabConsole {
       return;
     }
     this.clearPrevOverwriteMsg();
-    this.printStr(this.style(msg, 'high'));
+    this.printStr(this.style(msg, "high"));
   }
 
   public midLevel(msg: string): void {
-    if (this.shouldBeConcise('midLevel')) {
+    if (this.shouldBeConcise("midLevel")) {
       return this.overwrite(msg);
     }
     this.logMsg(msg);
@@ -448,11 +451,11 @@ class MemLabConsole {
       return;
     }
     this.clearPrevOverwriteMsg();
-    this.printStr(this.style(msg, 'mid'));
+    this.printStr(this.style(msg, "mid"));
   }
 
   public lowLevel(msg: string, options: ConsoleOutputOptions = {}): void {
-    if (this.shouldBeConcise('lowLevel')) {
+    if (this.shouldBeConcise("lowLevel")) {
       return this.overwrite(msg);
     }
     this.logMsg(msg);
@@ -465,11 +468,11 @@ class MemLabConsole {
       }
     }
     this.clearPrevOverwriteMsg();
-    this.printStr(this.style(msg, 'low'));
+    this.printStr(this.style(msg, "low"));
   }
 
   public success(msg: string): void {
-    if (this.shouldBeConcise('success')) {
+    if (this.shouldBeConcise("success")) {
       return this.overwrite(msg);
     }
     this.logMsg(msg);
@@ -477,7 +480,7 @@ class MemLabConsole {
       return;
     }
     this.clearPrevOverwriteMsg();
-    this.printStr(this.style(msg, 'success'));
+    this.printStr(this.style(msg, "success"));
   }
 
   // top level error, only used before halting the execution
@@ -493,7 +496,7 @@ class MemLabConsole {
       return;
     }
     this.clearPrevOverwriteMsg();
-    this.printStr(this.style(msg, 'error'));
+    this.printStr(this.style(msg, "error"));
   }
 
   public warning(msg: string): void {
@@ -502,37 +505,37 @@ class MemLabConsole {
       return;
     }
     this.clearPrevOverwriteMsg();
-    this.printStr(this.style(msg, 'warning'));
+    this.printStr(this.style(msg, "warning"));
   }
 
   public nextLine(): void {
-    if (this.shouldBeConcise('nextLine')) {
-      return this.overwrite('');
+    if (this.shouldBeConcise("nextLine")) {
+      return this.overwrite("");
     }
-    this.logMsg('');
+    this.logMsg("");
     this.clearPrevOverwriteMsg();
-    this.printStr('');
+    this.printStr("");
   }
 
   public overwrite(
     msg: string,
-    options: {level?: keyof MemlabConsoleStyles} = {},
+    options: { level?: keyof MemlabConsoleStyles } = {}
   ): void {
     this.logMsg(msg);
     if (this.config.muteConfig?.muteLowLevel) {
       return;
     }
-    const str = this.style(msg, options.level || 'low');
+    const str = this.style(msg, options.level || "low");
     if (this.config.isContinuousTest) {
-      this.printStr(msg, {isOverwrite: false});
+      this.printStr(msg, { isOverwrite: false });
       return;
     }
     if (this.config.isTest || this.config.muteConsole) {
-      this.printStr(str, {isOverwrite: true});
+      this.printStr(str, { isOverwrite: true });
       return;
     }
     this.clearPrevOverwriteMsg();
-    this.printStr(str, {isOverwrite: true});
+    this.printStr(str, { isOverwrite: true });
   }
 
   public waitForConsole(query: string): Promise<string> {
@@ -542,23 +545,23 @@ class MemLabConsole {
     });
     this.pushMsg(query);
     this.logMsg(query);
-    return new Promise(resolve =>
-      rl.question(query, ans => {
+    return new Promise((resolve) =>
+      rl.question(query, (ans) => {
         rl.close();
         resolve(ans);
-      }),
+      })
     );
   }
 
   public progress(
     cur: number,
     total: number,
-    options: {message?: string} = {},
+    options: { message?: string } = {}
   ): void {
     let width = Math.floor(this.outStream.columns * 0.8);
     width = Math.min(width, 80);
     const messageMaxWidth = Math.floor(width * 0.3);
-    let message = options.message || '';
+    let message = options.message || "";
     const messageWidth = Math.min(message.length, messageMaxWidth);
     message = message.substring(0, messageWidth);
 
@@ -566,13 +569,13 @@ class MemLabConsole {
     const barWidth = width - messageWidth - 1;
     const barBodyWidth = barWidth - 2;
     const changeIndex = Math.floor((cur / total) * barBodyWidth);
-    let bar = '';
+    let bar = "";
     for (let i = 0; i < barBodyWidth; ++i) {
       bar += i < changeIndex ? barComplete : barIncomplete;
     }
     const percent = Math.floor((cur / total) * 100);
     const progress = `${message}: |${bar}| ${percent}/100`;
-    this.overwrite(progress, {level: 'top'});
+    this.overwrite(progress, { level: "top" });
   }
 
   public flush(): void {
