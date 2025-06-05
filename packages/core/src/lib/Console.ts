@@ -192,6 +192,9 @@ class MemLabConsole {
 
   private logMsg(msg: string): void {
     // remove control characters
+    if (typeof msg !== 'string') {
+      return;
+    }
     const lines = msg.split('\n').map(line =>
       line
         // eslint-disable-next-line no-control-regex
