@@ -191,6 +191,9 @@ class MemLabConsole {
   }
 
   private logMsg(msg: string): void {
+    if (typeof msg !== 'string') {
+      return;
+    }
     // remove control characters
     const lines = msg.split('\n').map(line =>
       line
