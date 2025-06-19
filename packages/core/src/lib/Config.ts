@@ -272,6 +272,7 @@ export class MemLabConfig {
   maxNumOfEdgesToJSONifyPerNode: number;
   maxLevelsOfTraceToJSONify: number;
   defaultPrioritizedHTMLTagAttributes: Set<string>;
+  defaultRunTimeoutInSec: number;
 
   constructor(options: ConfigOption = {}) {
     // init properties, they can be configured manually
@@ -426,6 +427,8 @@ export class MemLabConfig {
       'name',
       'class',
     ]);
+    // set the default running timeout if used
+    this.defaultRunTimeoutInSec = 30 * 60;
   }
 
   // initialize configurable parameters
