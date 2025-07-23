@@ -1060,8 +1060,8 @@ function parseHTMLTags(html: string): ParsedTag[] {
       const type: TagType = isClosing
         ? 'closing'
         : isSelfClosing
-        ? 'self-closing'
-        : 'opening';
+          ? 'self-closing'
+          : 'opening';
 
       result.push({tagName, attributes, type});
     } else {

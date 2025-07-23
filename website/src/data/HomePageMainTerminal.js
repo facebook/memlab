@@ -13,7 +13,10 @@
 /* generated */
 
 const stdouts = [
-  {time: 1146, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ #'},
+  {
+    time: 1146,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ #',
+  },
   {time: 2158, content: ' '},
   {time: 2438, content: 'W'},
   {time: 2502, content: 'e'},
@@ -56,7 +59,10 @@ const stdouts = [
   {time: 8998, content: 'r'},
   {time: 9583, content: 'e'},
   {time: 10110, content: '\r\n'},
-  {time: 10110, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 10110,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 10863, content: '#'},
   {time: 10943, content: ' '},
   {time: 11350, content: 'I'},
@@ -111,7 +117,10 @@ const stdouts = [
   {time: 19486, content: 'd'},
   {time: 19536, content: 's'},
   {time: 20005, content: '\r\n'},
-  {time: 20005, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 20005,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 21702, content: '#'},
   {time: 21776, content: ' '},
   {time: 22110, content: 'f'},
@@ -167,7 +176,10 @@ const stdouts = [
   {time: 26942, content: 'n'},
   {time: 26942, content: ')'},
   {time: 27158, content: '\r\n'},
-  {time: 27158, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 27158,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 27702, content: 'n'},
   {time: 28054, content: 'p'},
   {time: 28262, content: 'm'},
@@ -192,51 +204,63 @@ const stdouts = [
   },
   {
     time: 31804,
-    content: '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠸ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
+    content:
+      '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠸ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
   },
   {
     time: 31854,
-    content: '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠸ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
+    content:
+      '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠸ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
   },
   {
     time: 31905,
-    content: '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠸ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
+    content:
+      '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠸ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
   },
   {
     time: 31960,
-    content: '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠸ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
+    content:
+      '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠸ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
   },
   {
     time: 32024,
-    content: '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠏ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
+    content:
+      '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠏ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
   },
   {
     time: 32076,
-    content: '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠏ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
+    content:
+      '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠏ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
   },
   {
     time: 32135,
-    content: '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠹ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
+    content:
+      '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠹ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
   },
   {
     time: 32185,
-    content: '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠇ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
+    content:
+      '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠇ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
   },
   {
     time: 32237,
-    content: '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠇ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
+    content:
+      '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠇ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
   },
   {
     time: 32287,
-    content: '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠏ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
+    content:
+      '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠏ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
   },
   {
     time: 32337,
-    content: '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠋ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
+    content:
+      '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠋ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
   },
   {
     time: 32387,
-    content: '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠹ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
+    content:
+      '⸨[100;90m⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂⠂[0m⸩ ⠹ idealTree:lib: [7msill[0m [35midealTree[0m buildDeps[0m[K\r',
   },
   {
     time: 32477,
@@ -476,7 +500,10 @@ const stdouts = [
   {time: 69257, content: '  run `npm fund` for details\r\n'},
   {time: 69257, content: '\r\n44 packages are looking for funding\r\n'},
   {time: 69258, content: '\r\nfound [32m[1m0[22m[39m vulnerabilities\r\n'},
-  {time: 69264, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 69264,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 70895, content: 'c', timeGapFromPreviousStep: 3000},
   {time: 71069, content: 'l'},
   {time: 71141, content: 'e'},
@@ -484,7 +511,10 @@ const stdouts = [
   {time: 71278, content: 'r'},
   {time: 71470, content: '\r\n'},
   {time: 71471, content: '[H[2J'},
-  {time: 71472, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 71472,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 73520, content: '#'},
   {time: 73582, content: ' '},
   {time: 74045, content: 'n'},
@@ -522,7 +552,10 @@ const stdouts = [
   {time: 79094, content: 'o'},
   {time: 79148, content: 'n'},
   {time: 79598, content: '\r\n'},
-  {time: 79598, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 79598,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 79925, content: '#'},
   {time: 80166, content: ' '},
   {time: 80493, content: 'h'},
@@ -566,7 +599,10 @@ const stdouts = [
   {time: 85092, content: 'g'},
   {time: 85150, content: 'e'},
   {time: 85316, content: '\r\n'},
-  {time: 85317, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 85317,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 86590, content: 'c'},
   {time: 86653, content: 'a'},
   {time: 86837, content: 't'},
@@ -591,9 +627,15 @@ const stdouts = [
     content:
       "// Visit Google Maps\r\nfunction url() {\r\n  return 'https://www.google.com/maps/@37.386427,-122.0428214,11z';\r\n}\r\n\r\n// action where we want to detect memory leaks: click the Hotels button\r\nasync function action(page) {\r\n  await page.click('text/Hotels');\r\n}\r\n\r\n// action where we want to go back to the step before: click clear search\r\nasync function back(page) {\r\n  await page.click('[aria-label=\"Close\"]');\r\n}\r\n\r\nmodule.exports = {action, back, url};\r\n",
   },
-  {time: 90047, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 90047,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 95735, content: '\r\n'},
-  {time: 95735, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 95735,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 96444, content: '#'},
   {time: 96638, content: ' '},
   {time: 97187, content: 'a'},
@@ -630,7 +672,10 @@ const stdouts = [
   {time: 102515, content: 'k'},
   {time: 102644, content: 's'},
   {time: 102990, content: '\r\n'},
-  {time: 102990, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 102990,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 103357, content: '#'},
   {time: 103484, content: ' '},
   {time: 103918, content: 'i'},
@@ -654,7 +699,10 @@ const stdouts = [
   {time: 107147, content: 'i'},
   {time: 107189, content: 'o'},
   {time: 107868, content: '\r\n'},
-  {time: 107868, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 107868,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 108267, content: '#'},
   {time: 108437, content: ' '},
   {time: 108788, content: 'm'},
@@ -692,7 +740,10 @@ const stdouts = [
   {time: 113622, content: 'e'},
   {time: 113691, content: 'r'},
   {time: 115317, content: '\r\n'},
-  {time: 115317, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 115317,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 115611, content: '#'},
   {time: 115748, content: ' '},
   {time: 115972, content: 'a'},
@@ -728,7 +779,10 @@ const stdouts = [
   {time: 121509, content: 'n'},
   {time: 121573, content: 'd'},
   {time: 122334, content: '\r\n'},
-  {time: 122334, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 122334,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 122596, content: '#'},
   {time: 122717, content: ' '},
   {time: 122964, content: 'm'},
@@ -744,7 +798,10 @@ const stdouts = [
   {time: 125731, content: 'k'},
   {time: 125804, content: 's'},
   {time: 128116, content: '\r\n'},
-  {time: 128116, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 128116,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 129091, content: 'm'},
   {time: 129189, content: 'e'},
   {time: 129253, content: 'm'},
@@ -1275,12 +1332,14 @@ const stdouts = [
   {time: 216192, content: '\r\n'},
   {
     time: 216199,
-    content: '[90mlightweight parsing /tmp/memlab/data/cur/s1.heapsnapshot ...[39m\r\n',
+    content:
+      '[90mlightweight parsing /tmp/memlab/data/cur/s1.heapsnapshot ...[39m\r\n',
   },
   {time: 216756, content: '[K[F[K'},
   {
     time: 216757,
-    content: '[90mlightweight parsing /tmp/memlab/data/cur/s2.heapsnapshot ...[39m\r\n',
+    content:
+      '[90mlightweight parsing /tmp/memlab/data/cur/s2.heapsnapshot ...[39m\r\n',
   },
   {time: 217427, content: '[K[F[K'},
   {
@@ -1303,9 +1362,15 @@ const stdouts = [
   {time: 219723, content: '[K[F[K'},
   {time: 219724, content: '[K[F[K'},
   {time: 219724, content: '[90midentifying snapshot engine...[39m\r\n'},
-  {time: 220097, content: '[K[F[K[90mannotating shortest path for all nodes[39m\r\n'},
+  {
+    time: 220097,
+    content: '[K[F[K[90mannotating shortest path for all nodes[39m\r\n',
+  },
   {time: 221263, content: '[K'},
-  {time: 221264, content: '[F[K[90mcalculating dominators and retained sizes...[39m\r\n'},
+  {
+    time: 221264,
+    content: '[F[K[90mcalculating dominators and retained sizes...[39m\r\n',
+  },
   {time: 223071, content: '[90mmarking all detached Fiber nodes...[39m\r\n'},
   {time: 223071, content: '[K[F[K'},
   {time: 223097, content: '[K'},
@@ -1448,7 +1513,10 @@ const stdouts = [
     content:
       '0m[[39m[34m252 bytes[39m[90m][39m\r\n  [90m--[39m[37m10[39m [90m(element)[39m[90m---[39m>  [32m[Detached Text][39m [90m(native)[39m [90m@1106716992[39m [90m[[39m[34m96 bytes[39m[90m][39m\r\n  [90m--[39m[37m2[39m [90m(element)[39m[90m---[39m>  [32m[Detached HTMLSpanElement][39m [90m(native)[39m [90m@2554781[39m [90m[[39m[34m252 bytes[39m[90m][39m\r\n  [90m--[39m[37m7[39m [90m(element)[39m[90m---[39m>  [32m[Detached HTMLSpanElement][39m [90m(native)[39m [90m@2554779[39m [90m[[39m[34m256 bytes[39m[90m][39m\r\n  [90m--[39m[37m6[39m [90m(element)[39m[90m---[39m>  [32m[Detached Text][39m [90m(native)[39m [90m@1106721792[39m [90m[[39m[34m96 bytes[39m[90m][39m\r\n\r\n',
   },
-  {time: 223460, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 223460,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 225025, content: '#'},
   {time: 225129, content: ' '},
   {time: 225738, content: 'v'},
@@ -1490,7 +1558,10 @@ const stdouts = [
   {time: 232545, content: 'u'},
   {time: 232730, content: 'n'},
   {time: 233139, content: '\r\n'},
-  {time: 233139, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 233139,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 234331, content: 'm'},
   {time: 234385, content: 'e'},
   {time: 234497, content: 'm'},
@@ -1520,7 +1591,10 @@ const stdouts = [
   {time: 238113, content: 'r'},
   {time: 238288, content: '\r\n'},
   {time: 238484, content: '/tmp/memlab\r\n'},
-  {time: 238495, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 238495,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 240337, content: 't'},
   {time: 240513, content: 'r'},
   {time: 240690, content: 'e'},
@@ -1541,12 +1615,19 @@ const stdouts = [
   {time: 243084, content: 'a'},
   {time: 243258, content: 'b'},
   {time: 243402, content: '\r\n'},
-  {time: 243404, content: '[01;34m/tmp/memlab[00m\r\n├── [01;34mchrome[00m\r\n'},
-  {time: 243404, content: '├── [01;34mdata[00m\r\n'},
-  {time: 243404, content: '│   ├── [01;34mcur[00m\r\n│   ├── [01;34mdataBuilder[00m\r\n'},
   {
     time: 243404,
-    content: '│   ├── [01;34mgen-files[00m\r\n│   ├── [01;34mlogger[00m\r\n│   │   ├── [01;34mmetrics[00m\r\n',
+    content: '[01;34m/tmp/memlab[00m\r\n├── [01;34mchrome[00m\r\n',
+  },
+  {time: 243404, content: '├── [01;34mdata[00m\r\n'},
+  {
+    time: 243404,
+    content: '│   ├── [01;34mcur[00m\r\n│   ├── [01;34mdataBuilder[00m\r\n',
+  },
+  {
+    time: 243404,
+    content:
+      '│   ├── [01;34mgen-files[00m\r\n│   ├── [01;34mlogger[00m\r\n│   │   ├── [01;34mmetrics[00m\r\n',
   },
   {
     time: 243404,
@@ -1570,7 +1651,8 @@ const stdouts = [
   },
   {
     time: 243405,
-    content: '│       │   └── [01;34m7439[00m\r\n│       │       └── [01;34m_metadata[00m\r\n',
+    content:
+      '│       │   └── [01;34m7439[00m\r\n│       │       └── [01;34m_metadata[00m\r\n',
   },
   {time: 243405, content: '│       │   └── [01;34m2020.11.2.164946[00m\r\n'},
   {
@@ -1580,7 +1662,8 @@ const stdouts = [
   },
   {
     time: 243406,
-    content: '│       ├── [01;34mCrowd Deny[00m\r\n│       │   └── [01;34m2022.6.6.1142[00m\r\n',
+    content:
+      '│       ├── [01;34mCrowd Deny[00m\r\n│       │   └── [01;34m2022.6.6.1142[00m\r\n',
   },
   {time: 243406, content: '│       │       └── [01;34m_metadata[00m\r\n'},
   {
@@ -1653,7 +1736,10 @@ const stdouts = [
     content:
       '│       │       └── [01;34m9.36.0[00m\r\n│       │           └── [01;34m_metadata[00m\r\n│       ├── [01;34mTrustTokenKeyCommitments[00m\r\n│       │   └── [01;34m2022.7.5.2[00m\r\n│       │       └── [01;34m_metadata[00m\r\n│       └── [01;34mZxcvbnData[00m\r\n│           └── [01;34m1[00m\r\n│               └── [01;34m_metadata[00m\r\n└── [01;34minput[00m\r\n\r\n128 directories\r\n',
   },
-  {time: 243410, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 243410,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 246081, content: '#'},
   {time: 246145, content: ' '},
   {time: 246394, content: 's'},
@@ -1703,7 +1789,10 @@ const stdouts = [
   {time: 252330, content: 'r'},
   {time: 252401, content: 'e'},
   {time: 252721, content: '\r\n'},
-  {time: 252721, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 252721,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 254513, content: 'l'},
   {time: 254571, content: 's'},
   {time: 254682, content: ' '},
@@ -1734,7 +1823,10 @@ const stdouts = [
     content:
       'browser-info.txt  run-meta.json    s3.heapsnapshot   [0m[01;35mscreenshot-3.png[0m\r\nconsole-log.txt   s1.heapsnapshot  [01;35mscreenshot-1.png[0m  snap-seq.json\r\nleaks.txt         s2.heapsnapshot  [01;35mscreenshot-2.png[0m\r\n',
   },
-  {time: 260885, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 260885,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 263218, content: '#'},
   {time: 263264, content: ' '},
   {time: 263584, content: 's'},
@@ -1786,7 +1878,10 @@ const stdouts = [
   {time: 270457, content: 'm'},
   {time: 270520, content: 'e'},
   {time: 270704, content: '\r\n'},
-  {time: 270704, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 270704,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 271407, content: 'm'},
   {time: 271457, content: 'e'},
   {time: 271560, content: 'm'},
@@ -1851,7 +1946,10 @@ const stdouts = [
   {time: 278271, content: '[K'},
   {time: 278271, content: '[F[K[90midentifying snapshot engine...[39m\r\n'},
   {time: 278290, content: '[K[F[K'},
-  {time: 278290, content: '[90mcalculating dominators and retained sizes...[39m\r\n'},
+  {
+    time: 278290,
+    content: '[90mcalculating dominators and retained sizes...[39m\r\n',
+  },
   {time: 280049, content: '[K'},
   {time: 280049, content: '[F[K'},
   {
@@ -1873,7 +1971,10 @@ const stdouts = [
   {time: 282256, content: '[90mbuilding extra meta info...[39m\r\n'},
   {time: 282258, content: '[K[F[K[90midentifying snapshot engine...[39m\r\n'},
   {time: 282355, content: '[K[F[K'},
-  {time: 282356, content: '[90mcalculating dominators and retained sizes...[39m\r\n'},
+  {
+    time: 282356,
+    content: '[90mcalculating dominators and retained sizes...[39m\r\n',
+  },
   {time: 284378, content: '[K'},
   {
     time: 284378,
@@ -1895,7 +1996,10 @@ const stdouts = [
   {time: 286573, content: '[K[F[K'},
   {time: 286575, content: '[K'},
   {time: 286576, content: '[F[K[90midentifying snapshot engine...[39m\r\n'},
-  {time: 286695, content: '[F[K[90mcalculating dominators and retained sizes...[39m\r\n'},
+  {
+    time: 286695,
+    content: '[F[K[90mcalculating dominators and retained sizes...[39m\r\n',
+  },
   {time: 286695, content: '[K'},
   {time: 288809, content: '[K'},
   {time: 288810, content: '[F[K'},
@@ -1964,7 +2068,10 @@ const stdouts = [
   {time: 297832, content: 'o'},
   {time: 298007, content: 'm'},
   {time: 298624, content: '\r\n'},
-  {time: 298624, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 298624,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 299215, content: '#'},
   {time: 299295, content: ' '},
   {time: 299776, content: '1'},
@@ -1982,7 +2089,10 @@ const stdouts = [
   {time: 302385, content: 'B'},
   {time: 303015, content: '!'},
   {time: 303327, content: '\r\n'},
-  {time: 303328, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 303328,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 305673, content: '#'},
   {time: 305751, content: ' '},
   {time: 306272, content: 'y'},
@@ -2036,7 +2146,10 @@ const stdouts = [
   {time: 312473, content: 'c'},
   {time: 312633, content: 't'},
   {time: 312776, content: '\r\n'},
-  {time: 312776, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 312776,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 313145, content: '#'},
   {time: 313286, content: ' '},
   {time: 314255, content: 'i'},
@@ -2059,7 +2172,10 @@ const stdouts = [
   {time: 317614, content: 'h'},
   {time: 317760, content: 'o'},
   {time: 317847, content: 't'},
-  {time: 318096, content: '\r\n]0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 318096,
+    content: '\r\n]0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 320126, content: 'm'},
   {time: 320192, content: 'e'},
   {time: 320272, content: 'm'},
@@ -2118,7 +2234,10 @@ const stdouts = [
   {time: 330579, content: '[K'},
   {time: 330579, content: '[F[K'},
   {time: 330579, content: '[90mannotating shortest path for all nodes[39m\r\n'},
-  {time: 331717, content: '[90mcalculating dominators and retained sizes...[39m\r\n'},
+  {
+    time: 331717,
+    content: '[90mcalculating dominators and retained sizes...[39m\r\n',
+  },
   {time: 331717, content: '[K[F[K'},
   {time: 333496, content: '[K[F[K'},
   {time: 333496, content: '[90mmarking all detached Fiber nodes...[39m\r\n'},
@@ -2130,7 +2249,10 @@ const stdouts = [
     content:
       '[32m[Window][39m [90m(native)[39m [90m@95751[39m [90m[[39m[34m10.7KB[39m[90m][39m\r\n  [90m--[39m[37mmap[39m [90m(internal)[39m[90m---[39m>  [32m[system / Map][39m [90m(hidden)[39m [90m@443093[39m [90m[[39m[34m236 bytes[39m[90m][39m\r\n  [90m--[39m[37mprototype[39m [90m(internal)[39m[90m---[39m>  [32m[Window / https://www.google.com][39m [90m(object)[39m [90m@9825[39m [90m[[39m[34m87KB[39m[90m][39m\r\n  [90m--[39m[37mlatLngToXY[39m [90m(property)[39m[90m---[39m>  [32m[<closure>][39m [90m(closure)[39m [90m@536395[39m [90m[[39m[34m132 bytes[39m[90m][39m\r\n  [90m--[39m[37mcontext[39m [90m(internal)[39m[90m---[39m>  [32m[<function scope>][39m [90m(object)[39m [90m@955491[39m [90m[[39m[34m68 bytes[39m[90m][39m\r\n  [90m--[39m[37mthis[39m [90m(variable)[39m[90m---[39m>  [32m[nIh][39m [90m(object)[39m [90m@836337[39m [90m[[39m[34m7.2KB[39m[90m][39m\r\n  [90m--[39m[37mH[39m [90m(property)[39m[90m---[39m>  [32m[C1h][39m [90m(object)[39m [90m@844325[39m [90m[[39m[34m1.1KB[39m[90m][39m\r\n  [90m--[39m[37mN[39m [90m(property)[39m[90m---[39m>  [32m[x8h][39m [90m(object)[39m [90m@829419[39m [90m[[39m[34m3.1KB[39m[90m][39m\r\n  [90m--[39m[37mha[39m [90m(property)[39m[90m---[39m>  [32m[r8h][39m [90m(object)[39m [90m@829777[39m [90m[[39m[34m6.8MB[39m[90m][39m\r\n\r\n',
   },
-  {time: 333589, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 333589,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 334871, content: '#'},
   {time: 334943, content: ' '},
   {time: 335639, content: 'a'},
@@ -2180,7 +2302,10 @@ const stdouts = [
   {time: 344047, content: 'c'},
   {time: 344214, content: 'e'},
   {time: 344384, content: '\r\n'},
-  {time: 344385, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 344385,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 346110, content: '#'},
   {time: 346177, content: ' '},
   {time: 346455, content: 'b'},
@@ -2227,7 +2352,10 @@ const stdouts = [
   {time: 353583, content: 'm'},
   {time: 353653, content: 'e'},
   {time: 354336, content: '\r\n'},
-  {time: 354336, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 354336,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 354640, content: '#'},
   {time: 354839, content: ' '},
   {time: 355406, content: 'D'},
@@ -2259,9 +2387,15 @@ const stdouts = [
   {time: 360152, content: ' '},
   {time: 360614, content: '@829777'},
   {time: 360975, content: '\r\n'},
-  {time: 360975, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 360975,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 363510, content: '\r\n'},
-  {time: 363510, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 363510,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 368767, content: ''},
   {time: 371054, content: '#'},
   {time: 371165, content: ' '},
@@ -2320,7 +2454,10 @@ const stdouts = [
   {time: 378709, content: 'o'},
   {time: 378783, content: 't'},
   {time: 379725, content: '\r\n'},
-  {time: 379725, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 379725,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 382262, content: 'm'},
   {time: 382278, content: 'e'},
   {time: 382399, content: 'm'},
@@ -2415,7 +2552,10 @@ const stdouts = [
   {time: 399421, content: '[F[K'},
   {time: 399421, content: '[90mannotating shortest path for all nodes[39m\r\n'},
   {time: 400358, content: '[K[F[K'},
-  {time: 400359, content: '[90mcalculating dominators and retained sizes...[39m\r\n'},
+  {
+    time: 400359,
+    content: '[90mcalculating dominators and retained sizes...[39m\r\n',
+  },
   {time: 401889, content: '[K[F[K'},
   {time: 401889, content: '[90mmarking all detached Fiber nodes...[39m\r\n'},
   {time: 401912, content: '[K[F[K'},
@@ -2646,7 +2786,10 @@ const stdouts = [
     content:
       '[90m· [39m[90m@91997[39m native [34m[1mDetached HTMLCanvasElement[22m[39m[90m:[39m 5 edges[90m,[39m 1.1KB[90m,[39m refs: [90m[[39mcanvas[90m][39m\r\n',
   },
-  {time: 402010, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 402010,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 403685, content: '#'},
   {time: 403735, content: ' '},
   {time: 404020, content: 't'},
@@ -2672,7 +2815,10 @@ const stdouts = [
   {time: 406292, content: 'd'},
   {time: 406349, content: 's'},
   {time: 407245, content: '\r\n'},
-  {time: 407245, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 407245,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 407854, content: 'm'},
   {time: 407887, content: 'e'},
   {time: 407998, content: 'm'},
@@ -2702,7 +2848,10 @@ const stdouts = [
       '[90m[1m    Options:[22m --work-dir --app --interaction --full --skip-snapshot[39m\r\n[90m             --skip-screenshot --skip-gc --skip-scroll[39m\r\n[90m             --skip-extra-ops --run-mode --local-puppeteer --scenario[39m\r\n[90m             --device --disable-xvfb --baseline --target --final[39m\r\n[90m             --snapshot-dir --engine --leak-filter[39m\r\n[90m             --oversize-threshold --trace-all-objects[39m\r\n[90m             --save-trace-as-unclassified-cluster[39m\r\n',
   },
   {time: 409414, content: '\r\n'},
-  {time: 409414, content: '    [32mmemlab list[39m\r\n    List all test scenarios\r\n'},
+  {
+    time: 409414,
+    content: '    [32mmemlab list[39m\r\n    List all test scenarios\r\n',
+  },
   {time: 409414, content: '\r\n'},
   {
     time: 409414,
@@ -2711,7 +2860,8 @@ const stdouts = [
   },
   {
     time: 409415,
-    content: '[90m[1m    Options:[22m --snapshot --snapshot-dir --engine --node-id[39m\r\n',
+    content:
+      '[90m[1m    Options:[22m --snapshot --snapshot-dir --engine --node-id[39m\r\n',
   },
   {time: 409415, content: '\r\n'},
   {
@@ -2746,13 +2896,15 @@ const stdouts = [
   {time: 409417, content: '[1m  MISC COMMANDS[22m\r\n'},
   {
     time: 409417,
-    content: '    [32mmemlab reset[39m\r\n    Reset and initialize all directories\r\n',
+    content:
+      '    [32mmemlab reset[39m\r\n    Reset and initialize all directories\r\n',
   },
   {time: 409417, content: '[90m[1m    Options:[22m --work-dir[39m\r\n'},
   {time: 409417, content: '\r\n'},
   {
     time: 409417,
-    content: '    [32mmemlab measure[39m\r\n    Run test scenario in measure mode\r\n',
+    content:
+      '    [32mmemlab measure[39m\r\n    Run test scenario in measure mode\r\n',
   },
   {
     time: 409417,
@@ -2775,7 +2927,10 @@ const stdouts = [
     content:
       '    [32mmemlab get-default-work-dir[39m\r\n    Query the default working directory\r\n\r\n    [32mmemlab snapshot[39m\r\n    Interact with web app and take heap snapshots\r\n[90m[1m    Options:[22m --app --interaction --full --skip-snapshot[39m\r\n[90m             --skip-screenshot --skip-gc --skip-scroll[39m\r\n[90m             --skip-extra-ops --run-mode --local-puppeteer --scenario[39m\r\n[90m             --device --disable-xvfb --work-dir[39m\r\n\r\n    [32mmemlab warmup-and-snapshot[39m\r\n    Warm up server and take heap snapshots\r\n[90m[1m    Options:[22m --work-dir --app --interaction --run-mode[39m\r\n[90m             --local-puppeteer --scenario --device --disable-xvfb[39m\r\n[90m             --skip-warmup --full --skip-snapshot --skip-screenshot[39m\r\n[90m             --skip-gc --skip-scroll --skip-extra-ops[39m\r\n\r\n\r\n',
   },
-  {time: 409429, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 409429,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 410926, content: '#'},
   {time: 411037, content: ' '},
   {time: 411389, content: 'o'},
@@ -2832,7 +2987,10 @@ const stdouts = [
   {time: 419214, content: 'n'},
   {time: 419263, content: 'd'},
   {time: 419677, content: '\r\n'},
-  {time: 419677, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 419677,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 420517, content: 'm'},
   {time: 420550, content: 'e'},
   {time: 420663, content: 'm'},
@@ -2865,13 +3023,22 @@ const stdouts = [
     content:
       '\r\n       [32m--work-dir[39m  set the working directory of the current run\r\n',
   },
-  {time: 423065, content: '\r\n       [32m--help, -h[39m  print helper text\r\n'},
-  {time: 423065, content: '\r\n    [32m--verbose, -v[39m  show more details\r\n'},
+  {
+    time: 423065,
+    content: '\r\n       [32m--help, -h[39m  print helper text\r\n',
+  },
+  {
+    time: 423065,
+    content: '\r\n    [32m--verbose, -v[39m  show more details\r\n',
+  },
   {
     time: 423065,
     content: '\r\n             [32m--sc[39m  set to continuous test mode\r\n',
   },
-  {time: 423065, content: '\r\n          [32m--debug[39m  enable manual debugging\r\n'},
+  {
+    time: 423065,
+    content: '\r\n          [32m--debug[39m  enable manual debugging\r\n',
+  },
   {
     time: 423065,
     content: '\r\n     [32m--silent, -s[39m  mute all terminal output\r\n',
@@ -2942,7 +3109,8 @@ const stdouts = [
   {time: 423068, content: '\r\n'},
   {
     time: 423068,
-    content: '    [32mmemlab analyze string[39m\r\n    Analyze string in heap\r\n',
+    content:
+      '    [32mmemlab analyze string[39m\r\n    Analyze string in heap\r\n',
   },
   {time: 423069, content: '[90m[1m    Options:[22m --snapshot[39m\r\n'},
   {time: 423069, content: '\r\n'},
@@ -2953,7 +3121,10 @@ const stdouts = [
   },
   {time: 423069, content: '[90m[1m    Options:[22m --snapshot[39m\r\n'},
   {time: 423069, content: '\r\n'},
-  {time: 423085, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 423085,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 423733, content: 'm'},
   {time: 423798, content: 'e'},
   {time: 423879, content: 'm'},
@@ -2990,8 +3161,14 @@ const stdouts = [
     content:
       '\r\n       [32m--snapshot[39m  set file path of the heap snapshot under analysis\r\n',
   },
-  {time: 428096, content: '\r\n       [32m--help, -h[39m  print helper text\r\n'},
-  {time: 428096, content: '\r\n    [32m--verbose, -v[39m  show more details\r\n'},
+  {
+    time: 428096,
+    content: '\r\n       [32m--help, -h[39m  print helper text\r\n',
+  },
+  {
+    time: 428096,
+    content: '\r\n    [32m--verbose, -v[39m  show more details\r\n',
+  },
   {
     time: 428096,
     content:
@@ -3001,7 +3178,10 @@ const stdouts = [
     time: 428096,
     content: '\r\n     [32m--silent, -s[39m  mute all terminal output\r\n\r\n',
   },
-  {time: 428108, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 428108,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 430309, content: '#'},
   {time: 430405, content: ' '},
   {time: 430702, content: 'f'},
@@ -3043,7 +3223,10 @@ const stdouts = [
   {time: 437982, content: 't'},
   {time: 438069, content: 'e'},
   {time: 439045, content: '\r\n'},
-  {time: 439045, content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ '},
+  {
+    time: 439045,
+    content: ']0;demo@memlab: ~[01;32mdemo@memlab[00m:[01;34m~[00m$ ',
+  },
   {time: 439437, content: 'T'},
   {time: 439573, content: 'h'},
   {time: 439669, content: 'a'},

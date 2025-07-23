@@ -357,9 +357,8 @@ class TraceFinder {
       }
       const childNodeIndex = (forwardEdges.get(edgeIndex) as IHeapEdge).toNode
         .nodeIndex;
-      nodesWithOutdatedDominatorInfo[
-        nodeIndex2PostOrderIndex[childNodeIndex]
-      ] = 1;
+      nodesWithOutdatedDominatorInfo[nodeIndex2PostOrderIndex[childNodeIndex]] =
+        1;
     }
 
     // now iterate through all nodes in the heap

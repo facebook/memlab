@@ -68,7 +68,7 @@ export default class NetworkManager {
               urlPattern: pattern,
               resourceType: 'Script',
               interceptionStage: 'HeadersReceived',
-            } as AnyValue),
+            }) as AnyValue,
         ),
         // .css stylesheets
         ...patterns.map(
@@ -77,7 +77,7 @@ export default class NetworkManager {
               urlPattern: pattern,
               resourceType: 'Stylesheet',
               interceptionStage: 'HeadersReceived',
-            } as AnyValue),
+            }) as AnyValue,
         ),
         // .html documents
         ...patterns.map(
@@ -86,7 +86,7 @@ export default class NetworkManager {
               urlPattern: pattern,
               resourceType: 'Document',
               interceptionStage: 'HeadersReceived',
-            } as AnyValue),
+            }) as AnyValue,
         ),
       ],
     });

@@ -78,8 +78,8 @@ export default class HelperCommand extends BaseCommand {
       const commandsToPrintFirst = heapConfig.isCliInteractiveMode
         ? []
         : item
-        ? item.commands
-        : [];
+          ? item.commands
+          : [];
       this.printCategory(
         category as CommandCategory,
         commandsToPrintFirst,

@@ -18,7 +18,10 @@ import {throwError} from './HeapUtils';
 import HeapNode from './HeapNode';
 
 export default class HeapEdge implements IHeapEdge {
-  constructor(private heapSnapshot: HeapSnapshot, private idx: number) {}
+  constructor(
+    private heapSnapshot: HeapSnapshot,
+    private idx: number,
+  ) {}
 
   get snapshot(): HeapSnapshot {
     return this.heapSnapshot;

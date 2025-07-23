@@ -16,8 +16,8 @@ import {config, constant, utils} from '@memlab/core';
 const puppeteer = constant.isFRL
   ? {}
   : constant.isFB
-  ? require('puppeteer-core')
-  : require('puppeteer');
+    ? require('puppeteer-core')
+    : require('puppeteer');
 
 async function getBrowser(
   options: {config?: MemLabConfig; warmup?: boolean} = {},

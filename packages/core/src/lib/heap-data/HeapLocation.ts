@@ -22,7 +22,10 @@ import type HeapSnapshot from './HeapSnapshot';
 import type HeapNode from './HeapNode';
 
 export default class HeapLocation implements IHeapLocation {
-  constructor(private heapSnapshot: HeapSnapshot, private idx: number) {}
+  constructor(
+    private heapSnapshot: HeapSnapshot,
+    private idx: number,
+  ) {}
 
   get snapshot(): HeapSnapshot {
     return this.heapSnapshot;

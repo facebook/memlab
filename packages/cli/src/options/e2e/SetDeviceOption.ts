@@ -16,9 +16,9 @@ import optionConstants from '../lib/OptionConstant';
 const devices = constant.isFRL
   ? {}
   : constant.isFB
-  ? require('puppeteer-core/DeviceDescriptors')
-  : // eslint-disable-next-line @typescript-eslint/no-var-requires
-    require('puppeteer').KnownDevices;
+    ? require('puppeteer-core/DeviceDescriptors')
+    : // eslint-disable-next-line @typescript-eslint/no-var-requires
+      require('puppeteer').KnownDevices;
 
 export default class SetDeviceOption extends BaseOption {
   getOptionName(): string {

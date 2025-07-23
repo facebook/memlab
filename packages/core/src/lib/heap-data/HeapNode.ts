@@ -32,7 +32,10 @@ export function isHeapStringType(type: string): boolean {
 }
 
 export default class HeapNode implements IHeapNode {
-  constructor(private heapSnapshot: HeapSnapshot, private idx: number) {}
+  constructor(
+    private heapSnapshot: HeapSnapshot,
+    private idx: number,
+  ) {}
 
   get snapshot(): HeapSnapshot {
     return this.heapSnapshot;

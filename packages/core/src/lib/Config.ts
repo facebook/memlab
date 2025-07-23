@@ -52,9 +52,9 @@ type ConfigOption = {
 const devices = constant.isFRL
   ? {}
   : constant.isFB
-  ? require('puppeteer-core/DeviceDescriptors')
-  : // eslint-disable-next-line @typescript-eslint/no-var-requires
-    require('puppeteer').KnownDevices;
+    ? require('puppeteer-core/DeviceDescriptors')
+    : // eslint-disable-next-line @typescript-eslint/no-var-requires
+      require('puppeteer').KnownDevices;
 
 // default viewport config for desktop
 const windowWidth = 1680;
