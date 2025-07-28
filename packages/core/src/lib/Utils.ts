@@ -671,7 +671,7 @@ function checkScenarioInstance(s: AnyValue): IScenario {
       typeof s.beforeInitialPageLoad !== 'function') ||
     (s.setup && typeof s.setup !== 'function')
   ) {
-    throw new Error('Invalid senario');
+    throw new Error('Invalid scenario');
   }
   return s as IScenario;
 }

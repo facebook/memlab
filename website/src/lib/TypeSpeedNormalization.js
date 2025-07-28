@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 
-// all characters that needs to press SHIFT first
+// all characters that need SHIFT to be pressed first
 const shiftCharacters = new Set('~!@#$%^&*()_+{}:"<>?|'.split(''));
 
 /**
@@ -35,7 +35,7 @@ module.exports = function normalizeTypeSpeed(events, speedFactor = 1) {
         deltas[i] = 1000;
       }
 
-      // speed up the empty space, which feel more natural
+      // speed up the empty space, which feels more natural
     } else if (content === ' ') {
       deltas[i] = 30;
 

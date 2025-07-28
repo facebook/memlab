@@ -36,8 +36,8 @@ Other features provided by memlab:
  * **Memory CLI toolbox** - Built-in [CLI toolbox](./cli/CLI-commands.md#memlab-analyze)
    and [APIs](./api/classes/heap_analysis_src.BaseAnalysis.md) for finding memory
    optimization opportunities (not necessarily memory leaks)
- * **Memory assertions in Node.js** - Enables unit test or running node.js
-   program to take a heap snapshot of its own state, do self memory checking,
+ * **Memory assertions in Node.js** - Enables unit tests or running node.js
+   programs to take a heap snapshot of their own state, do self memory checking,
    and write memory assertions
    ([doc](./api/interfaces/core_src.IHeapSnapshot.md#hasobjectwithclassnameclassname))
 

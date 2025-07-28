@@ -15,7 +15,7 @@ Features:
   API, and memlab will automatically compare JavaScript heap snapshots, filter
   out memory leaks, and aggregate the results
 - **Object-oriented heap traversing API** - Supports the creation of
-  self-defined memory leak detector, and enables programmatic analysis JS heap
+  self-defined memory leak detector, and enables programmatic analysis of JS heap
   snapshots taken from Chromium-based browsers, Node.js, Electron.js, and Hermes
 - **Memory CLI toolbox** - Built-in toolbox and APIs for finding memory
   optimization opportunities (not necessarily just memory leaks)

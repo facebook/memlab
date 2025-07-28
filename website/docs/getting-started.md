@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Getting Started
 In this section, you will learn how to use memlab to detect a memory leak.
-Please make sure you have completed a [installation](./installation.md)
+Please make sure you have completed the [installation](./installation.md)
 step in your local machine. We start with defining the scenario file where we
 specify how memlab should interact with our page.
 
@@ -56,7 +56,7 @@ It is highly recommended that the web app under test serves unminified code,
 which makes the retainer trace and symbols in leak report easier to understand.
 :::
 
-memlab will lively update a breadcrumb showing the progress of interaction
+memlab will live-update a breadcrumb showing the progress of interaction
 with the target web page:
 
 ```bash
