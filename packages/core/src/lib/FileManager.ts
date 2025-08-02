@@ -327,9 +327,8 @@ export class FileManager {
   }
 
   public rmDir(dir: string): void {
-    if (fs.existsSync(dir)) {
-      fs.removeSync(dir);
-    }
+    // no need to check if the dir exists as fs-extra already handles it.
+    fs.removeSync(dir);
   }
 
   public getExperimentsDir(): string {

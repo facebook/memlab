@@ -2122,7 +2122,7 @@ function haltOrThrow(
         options.printCallback();
       }
     }
-    throw process.exit(1);
+    process.exit(1);
   };
   const throwErr = () => {
     let message = '';
