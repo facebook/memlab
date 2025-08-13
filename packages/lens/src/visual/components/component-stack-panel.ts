@@ -50,15 +50,15 @@ export function createComponentStackPanel(
       if (pinned) {
         return;
       }
-      panel.style.display = data.selectedElementId != null ? 'flex' : 'none';
       panel.innerHTML = '';
-
       if (
         data.selectedElementId == null ||
         !data.selectedReactComponentStack?.length
       ) {
+        panel.style.display = 'none';
         return;
       }
+      panel.style.display = 'flex';
 
       const title = createVisualizerElement('div');
       title.textContent = 'Component Stack:';
