@@ -49,15 +49,15 @@ For concrete use case, please check out [cookies](../interfaces/core_src.IScenar
 
 | Name | Type | Description |
 | :------ | :------ | :------ |
-| `domain?` | `string` | Add when possible: Defines the domain associated with the cookie |
+| `domain?` | `string` | Optional: Defines the domain associated with the cookie |
 | `expires?` | [`Undefinable`](core_src.md#undefinable)<`number`\> | Optional: Indicates when the cookie will expire, in Unix time (seconds) |
 | `httpOnly?` | [`Undefinable`](core_src.md#undefinable)<`boolean`\> | Optional: Flag to determine if the cookie is accessible only over HTTP |
 | `name` | `string` | Mandatory: Represents the name of the cookie |
-| `path?` | [`Undefinable`](core_src.md#undefinable)<`string`\> | Optional: Defines the domain associated with the cookie |
+| `path?` | [`Undefinable`](core_src.md#undefinable)<`string`\> | Optional: Defines the path associated with the cookie |
 | `sameSite?` | [`Undefinable`](core_src.md#undefinable)<``"Strict"`` \| ``"Lax"``\> | Optional: Determines if a cookie is transmitted with cross-site requests, offering a degree of defense against cross-site request forgery attacks. |
-| `secure?` | [`Undefinable`](core_src.md#undefinable)<`boolean`\> | Optional: Flag to indicate if the cookie transmission requires a secure protocol (e.g., HTTPS) |
+| `secure?` | [`Undefinable`](core_src.md#undefinable)<`boolean`\> | Optional: Flag to indicate if the cookie transmission requires a secure protocol (e.g., HTTPS). |
 | `session?` | [`Undefinable`](core_src.md#undefinable)<`boolean`\> | Optional: Flag to check if the cookie is a session cookie |
-| `url?` | [`Undefinable`](core_src.md#undefinable)<`string`\> | Optional: Specifies the request-URI linked with the cookie setup. This can influence the cookie's default domain and path |
+| `url?` | [`Undefinable`](core_src.md#undefinable)<`string`\> | Optional: Specifies the request-URI linked with the cookie setup. This can influence the cookie's default domain and path. |
 | `value` | `string` | Mandatory: Represents the value assigned to the cookie |
 
  * **Source**:
@@ -152,7 +152,7 @@ ___
 
 ### <a id="nullable" name="nullable"></a> **Nullable**<`T`\>: `T` \| ``null``
 
-Given any type `T`, return the union type `T` and `null`
+Given any type `T`, returns the union type `T` and `null`.
 
 #### Type parameters
 
@@ -167,7 +167,7 @@ ___
 
 ### <a id="optional" name="optional"></a> **Optional**<`T`\>: `T` \| ``null`` \| `undefined`
 
-Given any type `T`, return the union type `T`, `null`, and `undefined`.
+Given any type `T`, returns the union type `T`, `null`, and `undefined`.
 
 #### Type parameters
 
@@ -315,7 +315,7 @@ ___
 
 ### <a id="undefinable" name="undefinable"></a> **Undefinable**<`T`\>: `T` \| `undefined`
 
-Given any type `T`, return the union type `T` and `undefined`.
+Given any type `T`, returns the union type `T` and `undefined`.
 
 #### Type parameters
 

@@ -26,19 +26,19 @@ export type RecordValue =
   | {[key: string]: RecordValue};
 
 /**
- * Given any type `T`, return the union type `T` and `null`
+ * Given any type `T`, returns the union type `T` and `null`.
  * @typeParam T - The type that will be made nullable.
  */
 export type Nullable<T> = T | null;
 
 /**
- * Given any type `T`, return the union type `T`, `null`, and `undefined`.
+ * Given any type `T`, returns the union type `T`, `null`, and `undefined`.
  * @typeParam T - The type that will be made both nullable and undefinable.
  */
 export type Optional<T> = T | null | undefined;
 
 /**
- * Given any type `T`, return the union type `T` and `undefined`.
+ * Given any type `T`, returns the union type `T` and `undefined`.
  * @typeParam T - The type that will be made undefinable.
  */
 export type Undefinable<T> = T | undefined;
@@ -238,14 +238,14 @@ export type Cookie = {
   name: string;
   /** Mandatory: Represents the value assigned to the cookie */
   value: string;
-  /** Add when possible: Defines the domain associated with the cookie */
+  /** Optional: Defines the domain associated with the cookie */
   domain?: string;
   /**
    * Optional: Specifies the request-URI linked with the cookie setup.
-   * This can influence the cookie's default domain and path
+   * This can influence the cookie's default domain and path.
    */
   url?: Undefinable<string>;
-  /** Optional: Defines the domain associated with the cookie */
+  /** Optional: Defines the path associated with the cookie */
   path?: Undefinable<string>;
   /** Optional: Indicates when the cookie will expire, in Unix time (seconds) */
   expires?: Undefinable<number>;
@@ -255,7 +255,7 @@ export type Cookie = {
   session?: Undefinable<boolean>;
   /**
    * Optional: Flag to indicate if the cookie transmission
-   * requires a secure protocol (e.g., HTTPS)
+   * requires a secure protocol (e.g., HTTPS).
    */
   secure?: Undefinable<boolean>;
   /**
@@ -1768,7 +1768,7 @@ export interface IHeapEdges {
 /** @internal */
 export interface IHeapNodeBasic {
   /**
-   * the type of the heap node object. All possible types:
+   * The type of the heap node object. All possible types:
    * This is engine-specific, for example all types in V8:
    * `hidden`, `array`, `string`, `object`, `code`, `closure`, `regexp`,
    * `number`, `native`, `synthetic`, `concatenated string`, `sliced string`,
@@ -1776,13 +1776,13 @@ export interface IHeapNodeBasic {
    */
   type: string;
   /**
-   * this is the `name` field associated with the heap object,
-   * for JS object instances (type `object`), `name` is the constructor's name
-   * of the object instance. for `string`, `name` is the string value.
+   * This is the `name` field associated with the heap object.
+   * For JS object instances (type `object`), `name` is the constructor's name
+   * of the object instance. For `string`, `name` is the string value.
    */
   name: string;
   /**
-   * unique id of the heap object
+   * Unique id of the heap object.
    */
   id: number;
 }
@@ -1797,7 +1797,6 @@ export interface IHeapNodeBasic {
 export type EdgeIterationCallback = (
   edge: IHeapEdge,
 ) => Optional<{stop: boolean}> | void;
-
 /**
  * An `IHeapNode` instance represents a JS heap object in a heap snapshot.
  * A heap snapshot is generally a graph where graph nodes are JS heap objects
@@ -1829,7 +1828,7 @@ export type EdgeIterationCallback = (
  */
 export interface IHeapNode extends IHeapNodeBasic {
   /**
-   * get the {@link IHeapSnapshot} containing this heap object
+   * Gets the {@link IHeapSnapshot} containing this heap object.
    */
   snapshot: IHeapSnapshot;
   /**
@@ -1837,7 +1836,7 @@ export interface IHeapNode extends IHeapNodeBasic {
    * from the DOM tree, `is_detached` will be `true`;
    * * If the heap object is a React Fiber node and the Fiber node is unmounted
    * from the React Fiber tree, `is_detached` will be `true`;
-   * otherwise it will be `false`
+   * otherwise it will be `false`.
    */
   is_detached: boolean;
   /** @internal */
@@ -1848,7 +1847,7 @@ export interface IHeapNode extends IHeapNodeBasic {
   attributes: number;
   /**
    * The *shallow size* of the heap object (i.e., the size of memory that is held
-   * by the object itself.). For difference between **shallow size** and
+   * by the object itself). For difference between **shallow size** and
    * **retained size**, check out
    * [this doc](https://developer.chrome.com/docs/devtools/memory-problems/memory-101/#object_sizes).
    */
@@ -1861,22 +1860,22 @@ export interface IHeapNode extends IHeapNodeBasic {
   /** @internal */
   trace_node_id: number;
   /**
-   * Get a JS array containing all outgoing JS references from this heap object
+   * Gets a JS array containing all outgoing JS references from this heap object
    * (including engine-internal, native, and JS references).
    */
   references: IHeapEdge[];
   /**
-   * Get a JS array containing all incoming JS references pointing to this heap
+   * Gets a JS array containing all incoming JS references pointing to this heap
    * object (including engine-internal, native, and JS references).
    */
   referrers: IHeapEdge[];
   /**
-   * Get the number of all incoming references pointing to this heap object
+   * Gets the number of all incoming references pointing to this heap object
    * (including engine-internal, native, and JS references).
    */
   numOfReferrers: number;
   /**
-   * returns true if the heap node has been set an incoming edge
+   * Returns true if the heap node has been set an incoming edge
    * which leads to the parent node on the shortest path to GC root.
    */
   hasPathEdge: boolean;
@@ -1886,7 +1885,7 @@ export interface IHeapNode extends IHeapNodeBasic {
    */
   pathEdge: IHeapEdge | null;
   /**
-   * index of this heap object inside the `node.snapshot.nodes` pseudo array
+   * Index of this heap object inside the `node.snapshot.nodes` pseudo array.
    */
   nodeIndex: number;
   /**
@@ -1897,7 +1896,7 @@ export interface IHeapNode extends IHeapNodeBasic {
    */
   retainedSize: number;
   /**
-   * get the dominator node of this node. If the dominator node gets released
+   * Gets the dominator node of this node. If the dominator node gets released
    * there will be no path from GC to this node, and therefore this node can
    * also be released.
    * For more information on what a dominator node is, please check out
@@ -1905,34 +1904,33 @@ export interface IHeapNode extends IHeapNodeBasic {
    */
   dominatorNode: Nullable<IHeapNode>;
   /**
-   * source location information of this heap object (if it is recorded by
+   * Source location information of this heap object (if it is recorded by
    * the heap snapshot).
    */
   location: Nullable<IHeapLocation>;
   /** @internal */
   highlight?: boolean;
   /**
-   * check if this a string node (normal string node, concatenated string node
-   * or sliced string node)
+   * Checks if this is a string node (normal string node, concatenated string node
+   * or sliced string node).
    */
   isString: boolean;
   /**
-   * convert to an {@link IHeapStringNode} object if this node is a string node.
+   * Converts to an {@link IHeapStringNode} object if this node is a string node.
    * The {@link IHeapStringNode} object supports querying the string content
    * inside the string node.
    */
   toStringNode(): Nullable<IHeapStringNode>;
   /**
-   * convert to a concise readable object that can be used for serialization
+   * Converts to a concise readable object that can be used for serialization
    * (like calling `JSON.stringify(node, ...args)`).
    *
    * This API does not contain all the information
    * captured by the hosting object.
    */
-
   getJSONifyableObject(): AnyRecord;
   /**
-   * convert to a concise readable string output
+   * Converts to a concise readable string output
    * (like calling `JSON.stringify(node, ...args)`).
    *
    * Note: Please be aware that using `JSON.stringify(node, ...args)` is
@@ -1945,8 +1943,8 @@ export interface IHeapNode extends IHeapNodeBasic {
    */
   toJSONString(...args: Array<AnyValue>): string;
   /**
-   * executes a provided callback once for each JavaScript reference in the
-   * hosting node (or outgoing edges from the node)
+   * Executes a provided callback once for each JavaScript reference in the
+   * hosting node (or outgoing edges from the node).
    * @param callback the callback for each outgoing JavaScript reference
    * @returns this API returns void
    *
@@ -1963,8 +1961,8 @@ export interface IHeapNode extends IHeapNodeBasic {
    */
   forEachReference(callback: EdgeIterationCallback): void;
   /**
-   * executes a provided callback once for each JavaScript reference pointing
-   * to the hosting node (or incoming edges to the node)
+   * Executes a provided callback once for each JavaScript reference pointing
+   * to the hosting node (or incoming edges to the node).
    * @param callback the callback for each incoming JavaScript reference
    * @returns this API returns void
    *
@@ -1981,9 +1979,9 @@ export interface IHeapNode extends IHeapNodeBasic {
    */
   forEachReferrer(callback: EdgeIterationCallback): void;
   /**
-   * executes a provided predicate callback once for each JavaScript reference
+   * Executes a provided predicate callback once for each JavaScript reference
    * in the hosting node (or outgoing edges from the node) until the predicate
-   * returns `true`
+   * returns `true`.
    * @param predicate the callback for each outgoing JavaScript reference
    * @returns the first outgoing edge for which the predicate returns `true`,
    * otherwise returns `null` if no such edge is found.
@@ -1998,9 +1996,9 @@ export interface IHeapNode extends IHeapNodeBasic {
    */
   findAnyReference: (predicate: Predicator<IHeapEdge>) => Nullable<IHeapEdge>;
   /**
-   * executes a provided predicate callback once for each JavaScript reference
+   * Executes a provided predicate callback once for each JavaScript reference
    * pointing to the hosting node (or incoming edges to the node) until the
-   * predicate returns `true`
+   * predicate returns `true`.
    * @param predicate the callback for each incoming JavaScript reference
    * @returns the first incoming edge for which the predicate returns `true`,
    * otherwise returns `null` if no such edge is found.
@@ -2015,10 +2013,10 @@ export interface IHeapNode extends IHeapNodeBasic {
    */
   findAnyReferrer: (predicate: Predicator<IHeapEdge>) => Nullable<IHeapEdge>;
   /**
-   * executes a provided predicate callback once for each JavaScript heap
+   * Executes a provided predicate callback once for each JavaScript heap
    * object (heap graph node) pointing to the hosting node
    * (or nodes having edges to the hosting node) until the predicate
-   * returns `true`
+   * returns `true`.
    * @param predicate the callback for each incoming JavaScript heap object
    * @returns the first referring node for which the predicate returns `true`,
    * otherwise returns `null` if no such node is found.
@@ -2033,8 +2031,8 @@ export interface IHeapNode extends IHeapNodeBasic {
    */
   findAnyReferrerNode(predicate: Predicator<IHeapNode>): Nullable<IHeapNode>;
   /**
-   * executes a provided predicate callback once for each JavaScript reference
-   * pointing to the hosting node (or incoming edges to the node)
+   * Executes a provided predicate callback once for each JavaScript reference
+   * pointing to the hosting node (or incoming edges to the node).
    * @param predicate the callback for each incoming JavaScript reference
    * @returns an array containing all the incoming edges for which the
    * predicate returns `true`, otherwise returns an empty array if no such
@@ -2050,9 +2048,9 @@ export interface IHeapNode extends IHeapNodeBasic {
    */
   findReferrers: (predicate: Predicator<IHeapEdge>) => IHeapEdge[];
   /**
-   * executes a provided predicate callback once for each JavaScript heap
+   * Executes a provided predicate callback once for each JavaScript heap
    * object (heap graph node) pointing to the hosting node
-   * (or nodes having edges to the hosting node)
+   * (or nodes having edges to the hosting node).
    * @param predicate the callback for each referrer nodes
    * @returns an array containing all the referrer nodes for which the
    * predicate returns `true`, otherwise returns an empty array if no such
@@ -2150,7 +2148,7 @@ export interface IHeapNode extends IHeapNodeBasic {
   ) => Nullable<IHeapNode>;
   /**
    * Given a JS reference's name and type, this API finds all the incoming JS
-   * reference pointing to the hosting node.
+   * references pointing to the hosting node.
    * @param edgeName the name of the incoming JavaScript reference
    * @param edgeType optional parameter specifying the type of the incoming
    * JavaScript reference
@@ -2159,7 +2157,7 @@ export interface IHeapNode extends IHeapNodeBasic {
    *
    * * **Examples**:
    * ```typescript
-   * // find all of of the JS reference named "ref" pointing to node
+   * // find all of the JS references named "ref" pointing to node
    * const referrers = node.getReferrers('ref', 'property');
    * ```
    */
@@ -2176,7 +2174,7 @@ export interface IHeapNode extends IHeapNodeBasic {
    *
    * * **Examples**:
    * ```typescript
-   * // find all of the JS heap object with a JS reference
+   * // find all of the JS heap objects with a JS reference
    * // named "ref" pointing to node
    * const nodes1 = node.getReferrerNodes('ref', 'property');
    * // this is equivalent to
@@ -2212,7 +2210,7 @@ export interface IHeapNode extends IHeapNodeBasic {
  *   // iterate over each node (heap object)
  *   heap.nodes.forEach((node: IHeapNode, i: number) => {
  *     if (node.isString) {
- *       const stringNode: IheapStringNode = node.toStringNode();
+ *       const stringNode: IHeapStringNode = node.toStringNode();
  *       // get the string value
  *       stringNode.stringValue;
  *     }
@@ -2222,8 +2220,8 @@ export interface IHeapNode extends IHeapNodeBasic {
  */
 export interface IHeapStringNode extends IHeapNode {
   /**
-   * get the string value of the JS string heap object associated with
-   * this `IHeapStringNode` instance in heap
+   * Gets the string value of the JS string heap object associated with
+   * this `IHeapStringNode` instance in heap.
    */
   stringValue: string;
 }
@@ -2264,7 +2262,7 @@ export interface IHeapNodes {
    */
   length: number;
   /**
-   * get an {@link IHeapNode} element at the specified index
+   * Gets an {@link IHeapNode} element at the specified index.
    * @param index the index of an element in the pseudo array, the index ranges
    * from 0 to array length - 1. Notice that this is not the heap node id.
    * @returns When 0 <= `index` < array.length, this API returns the element
@@ -2272,7 +2270,7 @@ export interface IHeapNodes {
    */
   get(index: number): Nullable<IHeapNode>;
   /**
-   * Iterate over all array elements and apply the callback
+   * Iterates over all array elements and applies the callback
    * to each element in ascending order of element index.
    * @param callback the callback does not need to return any value, if
    * the callback returns `false` when iterating on element at index `i`,
@@ -2287,22 +2285,31 @@ export interface IHeapNodes {
 
 /** @internal */
 export type HeapNodeFields = string[];
+
 /** @internal */
 export type HeapNodeTypes = string[];
+
 /** @internal */
 export type RawHeapNodeTypes = Array<HeapNodeTypes | string>;
+
 /** @internal */
 export type HeapEdgeFields = string[];
+
 /** @internal */
 export type HeapEdgeTypes = string[] | string;
+
 /** @internal */
 export type RawHeapEdgeTypes = Array<HeapEdgeTypes | string>;
+
 /** @internal */
 export type HeapTraceFunctionInfoFields = string[];
+
 /** @internal */
 export type HeapTraceNodeFields = string[];
+
 /** @internal */
 export type HeapSampleFields = string[];
+
 /** @internal */
 export type HeapLocationFields = string[];
 

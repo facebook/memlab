@@ -26,7 +26,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
   // iterate over each node (heap object)
   heap.nodes.forEach((node: IHeapNode, i: number) => {
     if (node.isString) {
-      const stringNode: IheapStringNode = node.toStringNode();
+      const stringNode: IHeapStringNode = node.toStringNode();
       // get the string value
       stringNode.stringValue;
     }
@@ -44,14 +44,14 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 ### <a id="dominatornode" name="dominatornode"></a> **dominatorNode**: [`Nullable`](../modules/core_src.md#nullable)<[`IHeapNode`](core_src.IHeapNode.md)\>
 
-get the dominator node of this node. If the dominator node gets released
+Gets the dominator node of this node. If the dominator node gets released
 there will be no path from GC to this node, and therefore this node can
 also be released.
 For more information on what a dominator node is, please check out
 [this doc](https://developer.chrome.com/docs/devtools/memory-problems/memory-101/#dominators).
 
  * **Source**:
-    * core/src/lib/Types.ts:1906
+    * core/src/lib/Types.ts:1905
 
 ___
 
@@ -61,23 +61,23 @@ The total number of outgoing JS references (including engine-internal,
 native, and JS references).
 
  * **Source**:
-    * core/src/lib/Types.ts:1860
+    * core/src/lib/Types.ts:1859
 
 ___
 
 ### <a id="haspathedge" name="haspathedge"></a> **hasPathEdge**: `boolean`
 
-returns true if the heap node has been set an incoming edge
+Returns true if the heap node has been set an incoming edge
 which leads to the parent node on the shortest path to GC root.
 
  * **Source**:
-    * core/src/lib/Types.ts:1882
+    * core/src/lib/Types.ts:1881
 
 ___
 
 ### <a id="id" name="id"></a> **id**: `number`
 
-unique id of the heap object
+Unique id of the heap object.
 
  * **Source**:
     * core/src/lib/Types.ts:1787
@@ -86,11 +86,11 @@ ___
 
 ### <a id="isstring" name="isstring"></a> **isString**: `boolean`
 
-check if this a string node (normal string node, concatenated string node
-or sliced string node)
+Checks if this is a string node (normal string node, concatenated string node
+or sliced string node).
 
  * **Source**:
-    * core/src/lib/Types.ts:1918
+    * core/src/lib/Types.ts:1917
 
 ___
 
@@ -100,28 +100,28 @@ ___
 from the DOM tree, `is_detached` will be `true`;
 * If the heap object is a React Fiber node and the Fiber node is unmounted
 from the React Fiber tree, `is_detached` will be `true`;
-otherwise it will be `false`
+otherwise it will be `false`.
 
  * **Source**:
-    * core/src/lib/Types.ts:1842
+    * core/src/lib/Types.ts:1841
 
 ___
 
 ### <a id="location" name="location"></a> **location**: [`Nullable`](../modules/core_src.md#nullable)<[`IHeapLocation`](core_src.IHeapLocation.md)\>
 
-source location information of this heap object (if it is recorded by
+Source location information of this heap object (if it is recorded by
 the heap snapshot).
 
  * **Source**:
-    * core/src/lib/Types.ts:1911
+    * core/src/lib/Types.ts:1910
 
 ___
 
 ### <a id="name" name="name"></a> **name**: `string`
 
-this is the `name` field associated with the heap object,
-for JS object instances (type `object`), `name` is the constructor's name
-of the object instance. for `string`, `name` is the string value.
+This is the `name` field associated with the heap object.
+For JS object instances (type `object`), `name` is the constructor's name
+of the object instance. For `string`, `name` is the string value.
 
  * **Source**:
     * core/src/lib/Types.ts:1783
@@ -130,20 +130,20 @@ ___
 
 ### <a id="nodeindex" name="nodeindex"></a> **nodeIndex**: `number`
 
-index of this heap object inside the `node.snapshot.nodes` pseudo array
+Index of this heap object inside the `node.snapshot.nodes` pseudo array.
 
  * **Source**:
-    * core/src/lib/Types.ts:1891
+    * core/src/lib/Types.ts:1890
 
 ___
 
 ### <a id="numofreferrers" name="numofreferrers"></a> **numOfReferrers**: `number`
 
-Get the number of all incoming references pointing to this heap object
+Gets the number of all incoming references pointing to this heap object
 (including engine-internal, native, and JS references).
 
  * **Source**:
-    * core/src/lib/Types.ts:1877
+    * core/src/lib/Types.ts:1876
 
 ___
 
@@ -153,27 +153,27 @@ The incoming edge which leads to the parent node
 on the shortest path to GC root.
 
  * **Source**:
-    * core/src/lib/Types.ts:1887
+    * core/src/lib/Types.ts:1886
 
 ___
 
 ### <a id="references" name="references"></a> **references**: [`IHeapEdge`](core_src.IHeapEdge.md)[]
 
-Get a JS array containing all outgoing JS references from this heap object
+Gets a JS array containing all outgoing JS references from this heap object
 (including engine-internal, native, and JS references).
 
  * **Source**:
-    * core/src/lib/Types.ts:1867
+    * core/src/lib/Types.ts:1866
 
 ___
 
 ### <a id="referrers" name="referrers"></a> **referrers**: [`IHeapEdge`](core_src.IHeapEdge.md)[]
 
-Get a JS array containing all incoming JS references pointing to this heap
+Gets a JS array containing all incoming JS references pointing to this heap
 object (including engine-internal, native, and JS references).
 
  * **Source**:
-    * core/src/lib/Types.ts:1872
+    * core/src/lib/Types.ts:1871
 
 ___
 
@@ -185,44 +185,44 @@ could be released if this object is released). For difference between
 [this doc](https://developer.chrome.com/docs/devtools/memory-problems/memory-101/#object_sizes).
 
  * **Source**:
-    * core/src/lib/Types.ts:1898
+    * core/src/lib/Types.ts:1897
 
 ___
 
 ### <a id="self\_size" name="self\_size"></a> **self\_size**: `number`
 
 The *shallow size* of the heap object (i.e., the size of memory that is held
-by the object itself.). For difference between **shallow size** and
+by the object itself). For difference between **shallow size** and
 **retained size**, check out
 [this doc](https://developer.chrome.com/docs/devtools/memory-problems/memory-101/#object_sizes).
 
  * **Source**:
-    * core/src/lib/Types.ts:1855
+    * core/src/lib/Types.ts:1854
 
 ___
 
 ### <a id="snapshot" name="snapshot"></a> **snapshot**: [`IHeapSnapshot`](core_src.IHeapSnapshot.md)
 
-get the [IHeapSnapshot](core_src.IHeapSnapshot.md) containing this heap object
+Gets the [IHeapSnapshot](core_src.IHeapSnapshot.md) containing this heap object.
 
  * **Source**:
-    * core/src/lib/Types.ts:1834
+    * core/src/lib/Types.ts:1833
 
 ___
 
 ### <a id="stringvalue" name="stringvalue"></a> **stringValue**: `string`
 
-get the string value of the JS string heap object associated with
-this `IHeapStringNode` instance in heap
+Gets the string value of the JS string heap object associated with
+this `IHeapStringNode` instance in heap.
 
  * **Source**:
-    * core/src/lib/Types.ts:2228
+    * core/src/lib/Types.ts:2226
 
 ___
 
 ### <a id="type" name="type"></a> **type**: `string`
 
-the type of the heap node object. All possible types:
+The type of the heap node object. All possible types:
 This is engine-specific, for example all types in V8:
 `hidden`, `array`, `string`, `object`, `code`, `closure`, `regexp`,
 `number`, `native`, `synthetic`, `concatenated string`, `sliced string`,
@@ -235,9 +235,9 @@ This is engine-specific, for example all types in V8:
 
 ### <a id="findanyreference"></a>**findAnyReference**(`predicate`)
 
-executes a provided predicate callback once for each JavaScript reference
+Executes a provided predicate callback once for each JavaScript reference
 in the hosting node (or outgoing edges from the node) until the predicate
-returns `true`
+returns `true`.
 
  * **Parameters**:
     * `predicate`: [`Predicator`](../modules/core_src.md#predicator)<[`IHeapEdge`](core_src.IHeapEdge.md)\> | the callback for each outgoing JavaScript reference
@@ -253,15 +253,15 @@ const reference = node.findAnyReference((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1999
+    * core/src/lib/Types.ts:1997
 
 ___
 
 ### <a id="findanyreferrer"></a>**findAnyReferrer**(`predicate`)
 
-executes a provided predicate callback once for each JavaScript reference
+Executes a provided predicate callback once for each JavaScript reference
 pointing to the hosting node (or incoming edges to the node) until the
-predicate returns `true`
+predicate returns `true`.
 
  * **Parameters**:
     * `predicate`: [`Predicator`](../modules/core_src.md#predicator)<[`IHeapEdge`](core_src.IHeapEdge.md)\> | the callback for each incoming JavaScript reference
@@ -277,16 +277,16 @@ const referrer = node.findAnyReferrer((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:2016
+    * core/src/lib/Types.ts:2014
 
 ___
 
 ### <a id="findanyreferrernode"></a>**findAnyReferrerNode**(`predicate`)
 
-executes a provided predicate callback once for each JavaScript heap
+Executes a provided predicate callback once for each JavaScript heap
 object (heap graph node) pointing to the hosting node
 (or nodes having edges to the hosting node) until the predicate
-returns `true`
+returns `true`.
 
  * **Parameters**:
     * `predicate`: [`Predicator`](../modules/core_src.md#predicator)<[`IHeapNode`](core_src.IHeapNode.md)\> | the callback for each incoming JavaScript heap object
@@ -302,15 +302,15 @@ const referrer = node.findAnyReferrerNode((node: IHeapNode) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:2034
+    * core/src/lib/Types.ts:2032
 
 ___
 
 ### <a id="findreferrernodes"></a>**findReferrerNodes**(`predicate`)
 
-executes a provided predicate callback once for each JavaScript heap
+Executes a provided predicate callback once for each JavaScript heap
 object (heap graph node) pointing to the hosting node
-(or nodes having edges to the hosting node)
+(or nodes having edges to the hosting node).
 
  * **Parameters**:
     * `predicate`: [`Predicator`](../modules/core_src.md#predicator)<[`IHeapNode`](core_src.IHeapNode.md)\> | the callback for each referrer nodes
@@ -327,14 +327,14 @@ const referrerNodes = node.findReferrerNodes((node: IHeapNode) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:2069
+    * core/src/lib/Types.ts:2067
 
 ___
 
 ### <a id="findreferrers"></a>**findReferrers**(`predicate`)
 
-executes a provided predicate callback once for each JavaScript reference
-pointing to the hosting node (or incoming edges to the node)
+Executes a provided predicate callback once for each JavaScript reference
+pointing to the hosting node (or incoming edges to the node).
 
  * **Parameters**:
     * `predicate`: [`Predicator`](../modules/core_src.md#predicator)<[`IHeapEdge`](core_src.IHeapEdge.md)\> | the callback for each incoming JavaScript reference
@@ -351,14 +351,14 @@ const referrers = node.findReferrers((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:2051
+    * core/src/lib/Types.ts:2049
 
 ___
 
 ### <a id="foreachreference"></a>**forEachReference**(`callback`)
 
-executes a provided callback once for each JavaScript reference in the
-hosting node (or outgoing edges from the node)
+Executes a provided callback once for each JavaScript reference in the
+hosting node (or outgoing edges from the node).
 
  * **Parameters**:
     * `callback`: [`EdgeIterationCallback`](../modules/core_src.md#edgeiterationcallback) | the callback for each outgoing JavaScript reference
@@ -376,14 +376,14 @@ node.forEachReference((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1964
+    * core/src/lib/Types.ts:1962
 
 ___
 
 ### <a id="foreachreferrer"></a>**forEachReferrer**(`callback`)
 
-executes a provided callback once for each JavaScript reference pointing
-to the hosting node (or incoming edges to the node)
+Executes a provided callback once for each JavaScript reference pointing
+to the hosting node (or incoming edges to the node).
 
  * **Parameters**:
     * `callback`: [`EdgeIterationCallback`](../modules/core_src.md#edgeiterationcallback) | the callback for each incoming JavaScript reference
@@ -401,7 +401,7 @@ node.forEachReferrer((edge: IHeapEdge) => {
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:1982
+    * core/src/lib/Types.ts:1980
 
 ___
 
@@ -422,7 +422,7 @@ const reference = node.getAnyReferrer('ref', 'property');
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:2124
+    * core/src/lib/Types.ts:2122
 
 ___
 
@@ -448,13 +448,13 @@ const n2 = node.getAnyReferrer('ref', 'property')?.fromNode;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:2147
+    * core/src/lib/Types.ts:2145
 
 ___
 
 ### <a id="getjsonifyableobject"></a>**getJSONifyableObject**()
 
-convert to a concise readable object that can be used for serialization
+Converts to a concise readable object that can be used for serialization
 (like calling `JSON.stringify(node, ...args)`).
 
 This API does not contain all the information
@@ -462,7 +462,7 @@ captured by the hosting object.
 
  * **Returns**: `AnyRecord`
  * **Source**:
-    * core/src/lib/Types.ts:1933
+    * core/src/lib/Types.ts:1931
 
 ___
 
@@ -483,7 +483,7 @@ const reference = node.getReference('map', 'hidden');
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:2084
+    * core/src/lib/Types.ts:2082
 
 ___
 
@@ -508,7 +508,7 @@ const hiddenClassNode2 = node.getReference('map', 'hidden')?.toNode;
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:2106
+    * core/src/lib/Types.ts:2104
 
 ___
 
@@ -526,7 +526,7 @@ to each incoming JS reference that meets the specification
 
 * **Examples**:
 ```typescript
-// find all of the JS heap object with a JS reference
+// find all of the JS heap objects with a JS reference
 // named "ref" pointing to node
 const nodes1 = node.getReferrerNodes('ref', 'property');
 // this is equivalent to
@@ -535,14 +535,14 @@ const nodes2 = node.getReferrers('ref', 'property')
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:2187
+    * core/src/lib/Types.ts:2185
 
 ___
 
 ### <a id="getreferrers"></a>**getReferrers**(`edgeName`, `edgeType?`)
 
 Given a JS reference's name and type, this API finds all the incoming JS
-reference pointing to the hosting node.
+references pointing to the hosting node.
 
  * **Parameters**:
     * `edgeName`: `string` \| `number` | the name of the incoming JavaScript reference
@@ -552,18 +552,18 @@ meet the specification
 
 * **Examples**:
 ```typescript
-// find all of of the JS reference named "ref" pointing to node
+// find all of the JS references named "ref" pointing to node
 const referrers = node.getReferrers('ref', 'property');
 ```
 
  * **Source**:
-    * core/src/lib/Types.ts:2166
+    * core/src/lib/Types.ts:2164
 
 ___
 
 ### <a id="tojsonstring"></a>**toJSONString**(...`args`)
 
-convert to a concise readable string output
+Converts to a concise readable string output
 (like calling `JSON.stringify(node, ...args)`).
 
 Note: Please be aware that using `JSON.stringify(node, ...args)` is
@@ -578,16 +578,16 @@ captured by the hosting object.
     * `...args`: `any`[]
  * **Returns**: `string`
  * **Source**:
-    * core/src/lib/Types.ts:1946
+    * core/src/lib/Types.ts:1944
 
 ___
 
 ### <a id="tostringnode"></a>**toStringNode**()
 
-convert to an [IHeapStringNode](core_src.IHeapStringNode.md) object if this node is a string node.
+Converts to an [IHeapStringNode](core_src.IHeapStringNode.md) object if this node is a string node.
 The [IHeapStringNode](core_src.IHeapStringNode.md) object supports querying the string content
 inside the string node.
 
  * **Returns**: [`Nullable`](../modules/core_src.md#nullable)<[`IHeapStringNode`](core_src.IHeapStringNode.md)\>
  * **Source**:
-    * core/src/lib/Types.ts:1924
+    * core/src/lib/Types.ts:1923
