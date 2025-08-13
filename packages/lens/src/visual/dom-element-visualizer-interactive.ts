@@ -355,4 +355,24 @@ export default class DOMElementVisualizerInteractive extends DOMElementVisualize
     tryToAttachOverlay(this.#visualizationOverlayDiv);
     // tryToAttachOverlay(this.#controlWidget);
   }
+
+  cleanup(): void {
+    // Clean up the visualization overlay
+    if (this.#visualizationOverlayDiv) {
+      this.#visualizationOverlayDiv.remove();
+    }
+
+    // Clean up the control widget
+    if (this.#controlWidget) {
+      this.#controlWidget.remove();
+    }
+
+    // Clear all element references
+    this.#elementIdToRectangle.clear();
+    this.#blockedElementIds.clear();
+    this.#updateDataCallbacks = [];
+
+    // Call parent cleanup
+    super.cleanup();
+  }
 }

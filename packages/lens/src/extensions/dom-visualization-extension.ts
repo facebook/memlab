@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 import type ReactMemoryScan from '../core/react-memory-scan';
-import type {AnalysisResult} from '../core/types';
+import type {AnalysisResult, Nullable} from '../core/types';
 
 import DOMElementVisualizer from '../visual/dom-element-visualizer';
 import DOMElementVisualizerInteractive from '../visual/dom-element-visualizer-interactive';
@@ -17,7 +17,7 @@ import {BasicExtension} from './basic-extension';
 const USE_INTERACTIVE_VISUALIZER = true;
 
 export class DOMVisualizationExtension extends BasicExtension {
-  #domVirtualizer: DOMElementVisualizer;
+  #domVirtualizer: Nullable<DOMElementVisualizer>;
 
   constructor(scanner: ReactMemoryScan) {
     super(scanner);
@@ -34,9 +34,21 @@ export class DOMVisualizationExtension extends BasicExtension {
     const scanner = this.scanner;
     if (scanner.isDevMode()) {
       const detachedDOMInfo = scanner.getDetachedDOMInfo();
-      this.#domVirtualizer.repaint(detachedDOMInfo);
+      this.#domVirtualizer?.repaint(detachedDOMInfo);
     }
     // const end = Date.now();
     // console.log(`repaint took ${end - start}ms`);
+  }
+
+  cleanup(): void {
+    // Clean up the visualizer to prevent memory leaks
+    if (
+      this.#domVirtualizer &&
+      typeof this.#domVirtualizer.cleanup === 'function'
+    ) {
+      this.#domVirtualizer.cleanup();
+    }
+    // Clear the reference
+    this.#domVirtualizer = null;
   }
 }

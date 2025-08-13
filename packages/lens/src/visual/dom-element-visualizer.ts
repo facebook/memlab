@@ -123,6 +123,10 @@ export default class DOMElementVisualizer {
     this.#canvas = null;
   }
 
+  cleanup(): void {
+    this.#cleanup();
+  }
+
   repaint(domElementInfoList: Array<DOMElementInfo>) {
     this.#cleanup();
     this.#paint(domElementInfoList);

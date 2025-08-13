@@ -36,7 +36,7 @@ export default class ReactMemoryScan {
   static nextElementId = 0;
   #elementWeakRefs: Array<WeakRef<Element>>;
   #isActivated: boolean;
-  #intervalId: NodeJS.Timeout;
+  #intervalId: Nullable<NodeJS.Timeout>;
   #elementToBoundingRects: WeakMap<Element, BoundingRect>;
   #elementToComponentStack: WeakMap<Element, string[]>;
   #knownFiberNodes: Array<WeakRef<Fiber>>;
@@ -47,6 +47,7 @@ export default class ReactMemoryScan {
   #scanIntervalMs: number;
   #domObserver: Optional<DOMObserver>;
   #eventListenerTracker: Nullable<EventListenerTracker>;
+  #isDisposed: boolean;
 
   constructor(options: CreateOptions = {}) {
     this.#elementWeakRefs = [];
@@ -57,9 +58,10 @@ export default class ReactMemoryScan {
     this.#eventListenerTracker = options.trackEventListenerLeaks
       ? EventListenerTracker.getInstance()
       : null;
+    this.#intervalId = null;
+    this.#isDisposed = false;
 
     this.#fiberAnalyzer = new ReactFiberAnalyzer();
-    this.#intervalId = 0 as unknown as NodeJS.Timeout;
     this.#isDevMode = options.isDevMode ?? false;
     this.#subscribers = options.subscribers ?? [];
     this.#extensions = options.extensions ?? [];
@@ -115,6 +117,13 @@ export default class ReactMemoryScan {
   }
 
   start() {
+    if (this.#isDisposed) {
+      console.warn(
+        '[Memory] ReactMemoryScan has been disposed and cannot be started again',
+      );
+      return;
+    }
+
     this.#isActivated = true;
     this.#intervalId = setInterval(
       this.#scanCycle.bind(this),
@@ -159,9 +168,55 @@ export default class ReactMemoryScan {
 
   stop() {
     this.#isActivated = false;
-    clearInterval(this.#intervalId);
+
+    // Clear the interval
+    if (this.#intervalId !== null) {
+      clearInterval(this.#intervalId);
+      this.#intervalId = null;
+    }
+
+    // Clear element references to allow garbage collection
     this.#elementWeakRefs = [];
-    this.#domObserver?.stopMonitoring();
+    this.#knownFiberNodes = [];
+
+    // Stop DOM observer
+    if (this.#domObserver) {
+      this.#domObserver.stopMonitoring();
+      this.#domObserver = null;
+    }
+
+    // Clear WeakMaps to allow garbage collection
+    this.#elementToBoundingRects = new WeakMap();
+    this.#elementToComponentStack = new WeakMap();
+
+    console.log('[Memory] ReactMemoryScan stopped');
+  }
+
+  dispose() {
+    // Stop all monitoring
+    this.stop();
+
+    // Clear all subscribers
+    this.#subscribers = [];
+
+    // Clean up all extensions
+    for (const extension of this.#extensions) {
+      if (extension && typeof (extension as AnyValue).cleanup === 'function') {
+        (extension as AnyValue).cleanup();
+      }
+    }
+    this.#extensions = [];
+
+    // Dispose event listener tracker if it exists
+    if (this.#eventListenerTracker) {
+      this.#eventListenerTracker.destroy();
+      this.#eventListenerTracker = null;
+    }
+
+    // Mark as disposed to prevent reuse
+    this.#isDisposed = true;
+
+    console.log('[Memory] ReactMemoryScan disposed');
   }
 
   recordBoundingRectangles(elementRefs: Array<WeakRef<Element>>) {
