@@ -14,9 +14,20 @@ build.log
 node_modules
 package-lock.json
 package-oss.json
-packages/**/dist
 yarn-error.log
 yarn.lock
 
-# But do not ignore these files
-!packages/lens/dist/*.bundle.*.(js|ts)
+# ignore all dist folders under packages
+packages/**/dist/
+
+# unignore the lens/dist directory
+!packages/lens/dist/
+
+# re-ignore everything inside lens/dist
+packages/lens/dist/*
+
+# But do not ignore these bundle files
+!packages/lens/dist/memlens.run.bundle.min.js
+!packages/lens/dist/memlens.run.bundle.js
+!packages/lens/dist/memlens.lib.bundle.min.js
+!packages/lens/dist/memlens.lib.bundle.js

@@ -1,0 +1,78 @@
+---
+id: 'visually-debug-memory-leaks-with-memlens'
+---
+
+# Visual Debugging for Memory Leaks
+
+Memory Lens (MemLens) is a utility tool that helps visually debug memory leaks
+in web browsers. It highlights leaking components with an overlay,
+allowing you to identify leaked elements right after interactions and
+trace their retainer paths in the browser’s DevTools using memory IDs
+annotated by MemLens.
+
+You can use MemLens in two ways:
+1. Manually copy and paste MemLens’ code into the browser console
+to debug leaks in the current page.
+2. Run MemLens through MemLab.
+
+The sections below explain how to use MemLens for browser memory leak debugging.
+
+## Manually Running MemLens in a Browser
+
+1. Copy and paste the [MemLens bundle code](https://github.com/facebook/memlab/tree/main/packages/lens/dist/memlens.run.bundle.min.js)
+into your browser’s console (close DevTools to avoid leaks caused by
+Chrome DevTools).
+2. Interact with the page without triggering a full refresh, as a hard
+refresh clears the entire JS heap and makes leak debugging unnecessary.
+3. When MemLens outlines possible memory leaks, take a heap snapshot and
+search for the displayed memory IDs.
+
+To build the bundle yourself, clone the
+[MemLab repository](https://github.com/facebook/memlab),
+run `npm run build`, and copy the MemLens bundle code from
+`packages/lens/dist/memlens.run.bundle.min.js` or
+`packages/lens/dist/memlens.run.bundle.js`.
+
+The screen recording below demonstrates how to use MemLens on a web page.
+
+<div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', maxWidth: '100%' }}>
+  <iframe
+    src="https://player.vimeo.com/video/1110113648?title=0&byline=0&portrait=0"
+    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
+    frameBorder="0"
+    allow="autoplay; fullscreen; picture-in-picture"
+    allowFullScreen
+  />
+</div>
+
+Once MemLens is active, it tracks React components that leak DOM elements and
+outlines them on the page. Each outline includes a memory ID. Hover over the
+outline to view the memory ID and the corresponding React component stack,
+or click to pin it.
+
+With the memory ID, take a heap snapshot in Chrome DevTools and search for
+it in the Memory panel. This will reveal the leaked component’s retained
+path in the JS heap, helping you understand why it remains in memory.
+
+
+**Note:** The target page should ideally be a React app serving minified
+JS code. When searching for the memory ID in Chrome DevTools, the detached
+DOM element’s retainer path will also appear minified.
+
+## Using MemLens with MemLab
+
+MemLens can also run during MemLab executions in headful mode to display
+leak outlines:
+
+```bash
+memlab run --scenario your_test_scenario_file_path.js --headful --display-leak-outlines
+````
+
+* `--headful`: Runs the browser in visible mode so you can see the UI.
+* `--display-leak-outlines`: Enables MemLens to track and display outlines
+of leaked components in the test page.
+
+If you want to pause a MemLab run at steps defined in your scenario file
+and interact with MemLens in the headful browser session, use the `--debug`
+option. This pauses automated browser actions before each step until you
+press **Enter** in the terminal.

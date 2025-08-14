@@ -5,4 +5,7 @@ out
 dist/*
 
 # But do not ignore these files
-!dist/*.bundle.*.(js|ts)
+!dist/memlens.run.bundle.min.js
+!dist/memlens.run.bundle.js
+!dist/memlens.lib.bundle.min.js
+!dist/memlens.lib.bundle.js
