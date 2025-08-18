@@ -5,7 +5,8 @@ id: 'visually-debug-memory-leaks-with-memlens'
 # Visual Debugging for Memory Leaks
 
 Memory Lens (MemLens) is a utility tool that helps visually debug memory leaks
-in web browsers. It highlights leaking components with an overlay,
+in web browsers. It highlights detached DOM elements still retained in memory
+and leaking React components with an overlay,
 allowing you to identify leaked elements right after interactions and
 trace their retainer paths in the browser’s DevTools using memory IDs
 annotated by MemLens.
