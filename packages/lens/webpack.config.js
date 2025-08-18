@@ -7,9 +7,45 @@
  * @format
  * @oncall memory_lab
  */
+const fs = require('fs');
 const path = require('path');
 
-const createConfig = ({entry, filename, minimize}) => ({
+const copyrightHeader = getHeaderBanner();
+
+function getHeaderBanner() {
+  const licensePath = path.resolve(__dirname, 'LICENSE');
+  try {
+    if (fs.existsSync(licensePath)) {
+      const content = fs.readFileSync(licensePath, 'utf-8');
+      const lines = content.split(/\r?\n/);
+      lines.unshift('@license MemLab');
+      const commented = lines.map(line => ` * ${line}`).join('\n');
+      return `/**\n${commented}\n */\n`;
+    }
+  } catch {
+    // ignore errors
+  }
+  return '';
+}
+
+class InjectHeaderPlugin {
+  apply(compiler) {
+    compiler.hooks.afterEmit.tapAsync('MyPlugin', (compilation, callback) => {
+      const outputPath = compiler.outputPath; // absolute directory path
+      for (const asset of compilation.getAssets()) {
+        if (!asset.name.endsWith('.js')) {
+          continue;
+        }
+        const filePath = path.join(outputPath, asset.name);
+        const content = fs.readFileSync(filePath, 'UTF-8');
+        fs.writeFileSync(filePath, `${copyrightHeader}${content}`, 'UTF-8');
+      }
+      callback();
+    });
+  }
+}
+
+const createConfig = ({entry, filename, minimize, plugins}) => ({
   entry,
   output: {
     filename,
@@ -37,6 +73,7 @@ const createConfig = ({entry, filename, minimize}) => ({
   optimization: {
     minimize,
   },
+  plugins,
 });
 
 const createNodeConfig = ({entry, filename, minimize}) => ({
@@ -78,24 +115,28 @@ module.exports = [
     filename: 'memlens.lib.bundle.js', // non-minified
     mode: 'production',
     minimize: false,
+    plugins: [new InjectHeaderPlugin()],
   }),
   createConfig({
     entry: {lib: './src/memlens.lib.ts'},
     filename: 'memlens.lib.bundle.min.js', // minified
     mode: 'production',
     minimize: true,
+    plugins: [new InjectHeaderPlugin()],
   }),
   createConfig({
     entry: {run: './src/memlens.run.ts'},
     filename: 'memlens.run.bundle.js', // non-minified
     mode: 'production',
     minimize: false,
+    plugins: [new InjectHeaderPlugin()],
   }),
   createConfig({
     entry: {run: './src/memlens.run.ts'},
     filename: 'memlens.run.bundle.min.js', // minified
     mode: 'production',
     minimize: true,
+    plugins: [new InjectHeaderPlugin()],
   }),
   createNodeConfig({
     entry: {index: './src/index.ts'},
