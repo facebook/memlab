@@ -1,6 +1,6 @@
 {
   "name": "memlab",
-  "version": "1.1.60",
+  "version": "1.1.61",
   "license": "MIT",
   "description": "memlab is a framework that analyzes memory and finds memory leaks in JavaScript applications.",
   "author": "Liang Gong <lgong@meta.com>",
@@ -27,12 +27,12 @@
     "snapshot"
   ],
   "dependencies": {
-    "@memlab/api": "^1.0.42",
-    "@memlab/cli": "^1.0.45",
-    "@memlab/core": "^1.1.43",
-    "@memlab/e2e": "^1.0.43",
-    "@memlab/heap-analysis": "^1.0.40",
-    "@memlab/lens": "^1.0.3",
+    "@memlab/api": "^1.0.43",
+    "@memlab/cli": "^1.0.46",
+    "@memlab/core": "^1.1.44",
+    "@memlab/e2e": "^1.0.44",
+    "@memlab/heap-analysis": "^1.0.41",
+    "@memlab/lens": "^1.0.4",
     "ansi": "^0.3.1",
     "babar": "^0.2.0",
     "chalk": "^4.0.0",
