@@ -40,7 +40,7 @@ const TerminalDemo = ({stdouts}) => {
   return (
     <div className="terminal-content">
       <div id={id} className="terminal-inner">
-        <div xterm className="content"></div>
+        <div xterm={true} className="content"></div>
       </div>
     </div>
   );
