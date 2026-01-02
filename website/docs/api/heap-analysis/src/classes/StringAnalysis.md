@@ -1,6 +1,6 @@
 # Class: StringAnalysis
 
-Defined in: heap-analysis/src/plugins/StringAnalysis.ts:57
+Defined in: heap-analysis/src/plugins/StringAnalysis.ts:59
 
 This analysis finds duplicated string instance in JavaScript heap
 and rank them based on the duplicated string size and count.
@@ -86,7 +86,7 @@ const result = await analysis.analyzeSnapshotFromFile(snapshotFile, {
 
 > **getCommandName**(): `string`
 
-Defined in: heap-analysis/src/plugins/StringAnalysis.ts:118
+Defined in: heap-analysis/src/plugins/StringAnalysis.ts:120
 
 get CLI command name for this memory analysis;
 use it with `memlab analyze <ANALYSIS_NAME>` in CLI
@@ -107,7 +107,7 @@ command name
 
 > **getTopDuplicatedStringsInCount**(): `StringRecord`[]
 
-Defined in: heap-analysis/src/plugins/StringAnalysis.ts:68
+Defined in: heap-analysis/src/plugins/StringAnalysis.ts:70
 
 get the top duplicated string in terms of duplicated string count
 

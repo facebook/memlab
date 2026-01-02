@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 
-import type {IHeapSnapshot, IHeapNode} from '@memlab/core';
+import type {IHeapSnapshot, IHeapNode, Optional} from '@memlab/core';
 import type {AnalyzeSnapshotResult, HeapAnalysisOptions} from '../PluginUtils';
 
 import chalk from 'chalk';
@@ -35,6 +35,8 @@ type StringPatternRecord = {
   size: number;
   dupSize: number;
 };
+
+type HeapNodeFilter = (node: IHeapNode) => boolean;
 
 /**
  * duplicated string pattern information
@@ -162,19 +164,29 @@ export default class StringAnalysis extends BaseAnalysis {
   async process(options: HeapAnalysisOptions): Promise<void> {
     const snapshot = await pluginUtils.loadHeapSnapshot(options);
     const stringMap = this.getPreprocessedStringMap(snapshot);
-    this.calculateStringPatternsStatistics(stringMap);
+    const sourceCodeStringMap = this.getPreprocessedStringMap(
+      snapshot,
+      utils.isJSSourceStringNode,
+    );
+    this.calculateStringPatternsStatistics(stringMap, sourceCodeStringMap);
     this.calculateTopDuplicatedStringsInCount(stringMap);
     this.calculateTopDuplicatedStringsInSize(stringMap);
     this.print();
   }
 
-  private getPreprocessedStringMap(snapshot: IHeapSnapshot): StringMap {
+  private getPreprocessedStringMap(
+    snapshot: IHeapSnapshot,
+    filter: Optional<HeapNodeFilter> = null,
+  ): StringMap {
     info.overwrite('building string map...');
     const stringMap = Object.create(null);
 
     // going through string nodes
     snapshot.nodes.forEach((node: IHeapNode) => {
       if (StringAnalysis.shouldIgnoreNode(node)) {
+        return;
+      }
+      if (filter && filter(node) === false) {
         return;
       }
 
@@ -236,10 +248,29 @@ export default class StringAnalysis extends BaseAnalysis {
     );
   }
 
-  private calculateStringPatternsStatistics(stringMap: StringMap): void {
+  private calculateStringPatternsStatistics(
+    stringMap: StringMap,
+    sourceStringMap: StringMap,
+  ): void {
     info.overwrite('calculating statistics for specified string patterns...');
 
     const strPatternStat = Object.create(null);
+    function aggregatePatternStat(patternName: string, record: StringRecord) {
+      strPatternStat[patternName] = strPatternStat[patternName] || {
+        n: 0,
+        dupN: 0,
+        size: 0,
+        dupSize: 0,
+      };
+      const item = strPatternStat[patternName];
+      item.n += record.n;
+      item.size += record.size;
+      if (record.n > 1) {
+        item.dupN += record.n - 1;
+        item.dupSize += (record.size * (record.n - 1)) / record.n;
+      }
+    }
+    // calculate pattern stats for normal strings
     for (const [str, record] of Object.entries(stringMap)) {
       patternLoop: for (const [patternName, patternCheck] of Object.entries(
         StringAnalysis.stringPatternsToObserve,
@@ -247,20 +278,13 @@ export default class StringAnalysis extends BaseAnalysis {
         if (!patternCheck(str)) {
           continue patternLoop;
         }
-        strPatternStat[patternName] = strPatternStat[patternName] || {
-          n: 0,
-          dupN: 0,
-          size: 0,
-          dupSize: 0,
-        };
-        const item = strPatternStat[patternName];
-        item.n += record.n;
-        item.size += record.size;
-        if (record.n > 1) {
-          item.dupN += record.n - 1;
-          item.dupSize += (record.size * (record.n - 1)) / record.n;
-        }
+        aggregatePatternStat(patternName, record);
       }
+    }
+    // calculate pattern stats for source code strings
+    for (const [, record] of Object.entries(sourceStringMap)) {
+      const patternName = 'JS code string';
+      aggregatePatternStat(patternName, record);
     }
     this.stringPatternsStat = strPatternStat;
   }

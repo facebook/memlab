@@ -837,6 +837,29 @@ function isSlicedStringNode(node: IHeapNode): boolean {
   return node.type === 'sliced string';
 }
 
+function isCompiledCodeNode(node: IHeapNode): boolean {
+  return node.type === 'code';
+}
+
+function isJSSourceStringNode(node: IHeapNode): boolean {
+  if (!utils.isStringNode(node) || utils.isSlicedStringNode(node)) {
+    return false;
+  }
+
+  let isSourceString = false;
+
+  node.forEachReferrer((referrerEdge: IHeapEdge) => {
+    if (
+      referrerEdge.name_or_index === 'source' &&
+      isCompiledCodeNode(referrerEdge.fromNode)
+    ) {
+      isSourceString = true;
+      return {stop: true};
+    }
+  });
+  return isSourceString;
+}
+
 function getStringNodeValue(node: Optional<IHeapNode>): string {
   if (!node) {
     return '';
@@ -2426,6 +2449,7 @@ export default {
   hasReactEdges,
   isAlternateNode,
   isBlinkRootNode,
+  isCompiledCodeNode,
   isCppRootsNode,
   isDOMInternalNode,
   isDOMNodeIncomplete,
@@ -2442,6 +2466,7 @@ export default {
   isHTMLDocumentNode,
   isHermesInternalObject,
   isHostRoot,
+  isJSSourceStringNode,
   isMeaningfulEdge,
   isMeaningfulNode,
   isNodeDominatedByDeletionsArray,
