@@ -10,7 +10,7 @@
 
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 
-import {Page} from 'puppeteer';
+import {Page} from 'puppeteer-core';
 import {ShapeUnboundGrowthAnalysis, run} from '../../index';
 
 const scenario = {

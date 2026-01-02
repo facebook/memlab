@@ -24,7 +24,7 @@ import type {
   PageSetupCallback,
   Undefinable,
 } from '@memlab/core';
-import type {Page} from 'puppeteer';
+import type {Page} from 'puppeteer-core';
 
 import {utils} from '@memlab/core';
 import SynthesisUtils from './lib/SynthesisUtils';

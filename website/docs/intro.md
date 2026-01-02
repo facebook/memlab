@@ -13,7 +13,7 @@ continuously. We built memlab to automate and ease the process in
 
 ## Features
 Memlab is a memory testing framework for JavaScript. It supports
-defining a [test scenario](./api/interfaces/core_src.IScenario.md)
+defining a [test scenario](./api/core/src/interfaces/IScenario)
 (using [Puppeteer API](https://pptr.dev/api/puppeteer.page#methods))
 that teaches Memlab how to interact with your Single-page Application (SPA),
 Memlab can handle the rest for memory leak checking automatically:
@@ -30,16 +30,16 @@ For more details on how memlab finds memory leaks, please check out
 Other features provided by memlab:
 
  * **Object-oriented heap traversing API** - Supports [self-defined memory leak
-   detector](./api/interfaces/core_src.ILeakFilter.md) and programmatically
+   detector](./api/core/src/interfaces/ILeakFilter) and programmatically
    analyzing JS heap snapshots taken from
    Chromium-based browsers, Node.js, Electron.js, and Hermes.
  * **Memory CLI toolbox** - Built-in [CLI toolbox](./cli/CLI-commands.md#memlab-analyze)
-   and [APIs](./api/classes/heap_analysis_src.BaseAnalysis.md) for finding memory
+   and [APIs](./api/heap-analysis/src/classes/BaseAnalysis) for finding memory
    optimization opportunities (not necessarily memory leaks)
  * **Memory assertions in Node.js** - Enables unit tests or running node.js
    programs to take a heap snapshot of their own state, do self memory checking,
    and write memory assertions
-   ([doc](./api/interfaces/core_src.IHeapSnapshot.md#hasobjectwithclassnameclassname))
+   ([doc](./api/core/src/interfaces/IHeapSnapshot#hasobjectwithclassname))
 
 Trying out memlab:
 - [Install the npm package](./installation.md) and read the

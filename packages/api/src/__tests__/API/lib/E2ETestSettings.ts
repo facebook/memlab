@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 
-import type {Page} from 'puppeteer';
+import type {Page} from 'puppeteer-core';
 import {config, ErrorHandling} from '@memlab/core';
 
 export const testTimeout = 5 * 60 * 1000;

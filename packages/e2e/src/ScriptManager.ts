@@ -51,7 +51,9 @@ export default class ScriptManager {
       return false;
     }
     try {
-      const metaContent = fs.readFileSync(webSourceMetaFile, 'UTF-8');
+      const metaContent = fs.readFileSync(webSourceMetaFile, {
+        encoding: 'utf8',
+      });
       this.scriptInfos = JSON.parse(metaContent);
       for (const scriptInfo of this.scriptInfos) {
         this.urlToScriptMap.set(scriptInfo.url, scriptInfo);
@@ -71,7 +73,9 @@ export default class ScriptManager {
       return scriptInfo.code;
     }
     try {
-      scriptInfo.code = fs.readFileSync(scriptInfo.codePath, 'UTF-8');
+      scriptInfo.code = fs.readFileSync(scriptInfo.codePath, {
+        encoding: 'utf8',
+      });
     } catch {
       // do nothing
     }
@@ -140,16 +144,14 @@ export default class ScriptManager {
     };
     this.urlToScriptMap.set(url, scriptInfo);
     this.scriptInfos.push(scriptInfo);
-    fs.writeFile(file, code, 'UTF-8', () => {
+    fs.writeFile(file, code, {encoding: 'utf8'}, () => {
       // async write, do nothing here
     });
     // only write the latest version of the meta file state
     this.debounce(() => {
-      fs.writeFileSync(
-        metaFile,
-        JSON.stringify(this.scriptInfos, void 0, 2),
-        'UTF-8',
-      );
+      fs.writeFileSync(metaFile, JSON.stringify(this.scriptInfos, void 0, 2), {
+        encoding: 'utf8',
+      });
     }, 1000);
   }
 

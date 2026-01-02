@@ -28,7 +28,7 @@ const config = {
   },
   plugins: [
     [
-      '@memlab/memlab-docusaurus-plugin-typedoc',
+      'docusaurus-plugin-typedoc',
       {
         entryPoints: [
           '../packages/api/src/index.ts',
@@ -44,7 +44,7 @@ const config = {
         excludeProtected: true,
         excludeInternal: true,
         tsconfig: '../tsconfig.json',
-        out: 'api',
+        out: 'docs/api',
         readme: 'none',
       },
     ],

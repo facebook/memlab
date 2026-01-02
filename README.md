@@ -48,7 +48,7 @@ npm install -g memlab
 ### Find Memory Leaks
 
 To find memory leaks in Google Maps, you can create a
-[scenario file](https://facebook.github.io/memlab/docs/api/interfaces/core_src.IScenario) defining how
+[scenario file](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IScenario) defining how
 to interact with the Google Maps, let's name it `test-google-maps.js`:
 
 ```javascript
@@ -128,7 +128,7 @@ You can optionally specify a specific heap object with the object's id: `--node-
 ![heap-view](./website/static/img/heap-view.png)
 
 **Self-defined leak detector**: If you want to use a self-defined leak detector, add a `leakFilter` callback
-([doc](https://facebook.github.io/memlab/docs/api/interfaces/core_src.IScenario/#-optional-leakfilter-leakfiltercallback))
+([doc](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IScenario/#leakfilter))
 in the scenario file. `leakFilter` will be called for every unreleased heap
 object (`node`) allocated by the target interaction.
 
@@ -141,7 +141,7 @@ function leakFilter(node, heap) {
 
 `heap` is the graph representation of the final JavaScript heap snapshot.
 For more details, view the
-[doc site](https://facebook.github.io/memlab/docs/api/interfaces/core_src.IHeapSnapshot).
+[doc site](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IHeapSnapshot).
 
 ### Heap Analysis and Investigation
 
@@ -232,7 +232,7 @@ test('memory test with heap assertion', async () => {
 ```
 
 For other APIs check out the
-[API documentation](https://facebook.github.io/memlab/docs/api/interfaces/core_src.IHeapSnapshot#hasobjectwithclassnameclassname).
+[API documentation](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IHeapSnapshot#hasobjectwithclassname).
 
 ## Development
 

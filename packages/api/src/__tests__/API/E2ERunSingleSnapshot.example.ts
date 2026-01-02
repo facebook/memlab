@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 
-import {Page} from 'puppeteer';
+import {Page} from 'puppeteer-core';
 import {StringAnalysis, warmupAndTakeSnapshots} from '../../index';
 
 const scenario = {

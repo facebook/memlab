@@ -41,7 +41,7 @@ async function displaySourceCode(): Promise<void> {
   }
 
   const file = fileManager.getDebugSourceFile();
-  fs.writeFileSync(file, code, 'UTF-8');
+  fs.writeFileSync(file, code, {encoding: 'utf8'});
 
   iterateClosures(scope, closureScope => {
     const varSet = new Set(closureScope.variablesDefined);

@@ -41,7 +41,7 @@ export default class PrintSummaryCommand extends BaseCommand {
         'No MemLab leak summary found. Please make sure "memlab find-leaks" runs successfully first.',
       );
     }
-    const content = fs.readFileSync(summaryFile, 'UTF-8');
+    const content = fs.readFileSync(summaryFile, {encoding: 'utf8'});
     info.topLevel(content);
   }
 }

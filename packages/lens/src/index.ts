@@ -12,5 +12,5 @@ import * as path from 'path';
 
 export function getBundleContent(): string {
   const bundlePath = path.join(__dirname, 'memlens.run.bundle.min.js');
-  return fs.readFileSync(bundlePath, 'utf-8');
+  return fs.readFileSync(bundlePath, {encoding: 'utf8'});
 }

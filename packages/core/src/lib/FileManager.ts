@@ -538,7 +538,7 @@ export class FileManager {
       'visit-order-single-snapshot.json',
     );
     const visitOrder = JSON.parse(
-      fs.readFileSync(singleSnapshotMetaFile, 'UTF-8'),
+      fs.readFileSync(singleSnapshotMetaFile, {encoding: 'utf8'}),
     ) as E2EStepInfo[];
     // fill in snapshot file name for each entry with snapshot: true
     visitOrder.forEach(step => {
@@ -547,11 +547,9 @@ export class FileManager {
       }
     });
     // save the snapshot meta file
-    fs.writeFileSync(
-      snapshotSeqMetaFile,
-      JSON.stringify(visitOrder, null, 2),
-      'UTF-8',
-    );
+    fs.writeFileSync(snapshotSeqMetaFile, JSON.stringify(visitOrder, null, 2), {
+      encoding: 'utf8',
+    });
   }
 
   /**
@@ -565,7 +563,7 @@ export class FileManager {
   ): E2EStepInfo[] {
     const snapshotTemplateFile = this.getSnapshotSequenceExternalTemplateFile();
     const visitOrder = JSON.parse(
-      fs.readFileSync(snapshotTemplateFile, 'UTF-8'),
+      fs.readFileSync(snapshotTemplateFile, {encoding: 'utf8'}),
     ) as E2EStepInfo[];
     // fill in snapshot file name for each entry with snapshot: true
     visitOrder.forEach(step => {

@@ -60,7 +60,7 @@ class StringLoader {
     const readCallback = function (err: NodeFSError, bytes: number) {
       _errHandler(err);
 
-      const str = _buffer.slice(0, bytes).toString('UTF-8');
+      const str = _buffer.slice(0, bytes).toString('utf8');
 
       if (!_begin && !_startSig) {
         // start reserving content if no start signature is specified
@@ -146,7 +146,7 @@ class StringLoader {
     const readCallback = function (err: NodeFSError, bytes: number) {
       _errHandler(err);
 
-      let str = _buffer.slice(0, bytes).toString('UTF-8');
+      let str = _buffer.slice(0, bytes).toString('utf8');
 
       // look for end of field
       if (_curFieldToIgnore) {
@@ -272,7 +272,7 @@ class StringLoader {
 
       const buf =
         bytes === _buffer.byteLength ? _buffer : _buffer.slice(0, bytes);
-      const str = buf.toString('UTF-8');
+      const str = buf.toString('utf8');
 
       _strBuf += str;
 

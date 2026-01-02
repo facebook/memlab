@@ -1,6 +1,6 @@
 {
   "name": "@memlab/lens",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "license": "MIT",
   "description": "MemLens is a tool for inspecting memory leaks in browser",
   "author": "Liang Gong <lgong@meta.com>",
@@ -31,7 +31,7 @@
     "@types/react-reconciler": "^0.28.8",
     "react-reconciler": "^0.31.0",
     "ts-loader": "^9.5.1",
-    "typescript": "^5.7.2",
+    "typescript": "^5.9.3",
     "webpack": "^5.97.1",
     "webpack-cli": "^5.1.4"
   },

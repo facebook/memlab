@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 
-import type {Browser} from 'puppeteer';
+import type {Browser} from 'puppeteer-core';
 import type {MemLabConfig} from '@memlab/core';
 
 import {config, constant, utils} from '@memlab/core';

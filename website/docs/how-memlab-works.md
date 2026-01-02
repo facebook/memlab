@@ -11,12 +11,12 @@ following order:
  * Visit a different page - let's call it baseline page `BP` and take a
    heap snapshot named `SBP`
    *(the baseline page is specified by the **`url`**
-   callback in [test scenario](api/interfaces/core_src.IScenario.md))*
+   callback in [test scenario](./api/core/src/interfaces/IScenario))*
  * Visit the target page `TP` or trigger the target interactions and take
    another heap snapshot `STP`
    *(navigating to the target page or triggering the target interactions are
    specified by the **`action`** callback in
-   [test scenario](api/interfaces/core_src.IScenario.md))*
+   [test scenario](./api/core/src/interfaces/IScenario))*
  * Finally, navigate to a different page or use any in-page interaction to
    trigger the releasing of memory that is supposed to be released from the
    target page. Here we reach the final state (`FP`), and take the final heap
@@ -24,7 +24,7 @@ following order:
    For example, in this step, you can close the widget opened by the target
    interactions, or return to the baseline page.
    *(the final navigation or interaction is specified by the **`back`**
-   callback in [test scenario](api/interfaces/core_src.IScenario.md))*
+   callback in [test scenario](./api/core/src/interfaces/IScenario))*
 
 
 With these heap snapshots, memlab finds memory leaks as explained
@@ -33,7 +33,7 @@ in the next section.
 ## 2. Heap Analysis
 
 **Snapshot decoding**: memlab decodes V8 (or hermes) heap snapshots and
-provides [APIs](./api/interfaces/core_src.IHeapSnapshot.md) that allows
+provides [APIs](./api/core/src/interfaces/IHeapSnapshot) that allows
 querying JavaScript heap.
 
 **Leak detection**: A superset of objects leaked from the target page can

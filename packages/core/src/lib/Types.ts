@@ -10,7 +10,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import {ParsedArgs} from 'minimist';
-import type {LaunchOptions, Page as PuppeteerPage} from 'puppeteer';
+import type {LaunchOptions, Page as PuppeteerPage} from 'puppeteer-core';
 import type {ErrorHandling, MemLabConfig} from './Config';
 
 /** @internal */
@@ -164,7 +164,7 @@ export type PuppeteerConfig = LaunchOptions &
  * the puppeteer used by MemLab. This may cause some type errors, for example:
  *
  * ```typescript
- * import type {Page} from 'puppeteer';
+ * import type {Page} from 'puppeteer-core';
  * import type {RunOptions} from '@memlab/api';
  *
  * const runOptions: RunOptions = {

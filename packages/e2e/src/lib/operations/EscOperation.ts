@@ -9,7 +9,7 @@
  */
 
 import BaseOperation from './BaseOperation';
-import type {Page} from 'puppeteer';
+import type {Page} from 'puppeteer-core';
 
 export default class EscOperation extends BaseOperation {
   kind: string;

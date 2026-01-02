@@ -503,7 +503,7 @@ function JSONifyNode(
 
 function JSONifyTabsOrder(): string {
   const file = utils.getSnapshotSequenceFilePath();
-  return fs.readFileSync(file, 'UTF-8');
+  return fs.readFileSync(file, {encoding: 'utf8'});
 }
 
 function shouldHighlight(node: IHeapNode): boolean {

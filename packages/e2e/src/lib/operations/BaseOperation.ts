@@ -11,7 +11,7 @@
 import {info, config} from '@memlab/core';
 import interactUtils from './InteractionUtils';
 
-import type {Page} from 'puppeteer';
+import type {Page} from 'puppeteer-core';
 import type {E2EOperation, OperationArgs} from '@memlab/core';
 
 let opId = 1; // operation index used in debug mode

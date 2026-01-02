@@ -8,7 +8,13 @@
  * @oncall memory_lab
  */
 
-import type {ConsoleMessage, Dialog, LaunchOptions, Page} from 'puppeteer';
+import type {
+  ConsoleMessage,
+  Dialog,
+  Handler,
+  LaunchOptions,
+  Page,
+} from 'puppeteer-core';
 import type {IBrowserInfo} from './Types';
 type Options = {color?: boolean};
 
@@ -92,7 +98,7 @@ class BrowserInfo {
     const file = config.browserInfoSummary;
     const consoleSummary = this.summarizeConsoleMessage();
     const summary = `Web Console Output:\n${consoleSummary}`;
-    fs.writeFileSync(file, summary, 'utf-8');
+    fs.writeFileSync(file, summary, {encoding: 'utf8'});
   }
 
   monitorWebConsole(page: Page): void {
@@ -111,7 +117,7 @@ class BrowserInfo {
       this._consoleMessages.push(err.toString());
       info.error(err.message);
     };
-    page.on('pageerror', handleError);
+    page.on('pageerror', handleError as unknown as Handler<unknown>);
     page.on('error', handleError);
 
     page.on('dialog', async (dialog: Dialog) => {

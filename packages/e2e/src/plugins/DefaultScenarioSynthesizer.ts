@@ -14,7 +14,7 @@ import type {
   IE2EScenarioVisitPlan,
   IE2EStepBasic,
 } from '@memlab/core';
-import type {Page} from 'puppeteer';
+import type {Page} from 'puppeteer-core';
 import BaseSynthesizer from '../BaseSynthesizer';
 import interactUtils from '../lib/operations/InteractionUtils';
 import E2EUtils from '../lib/E2EUtils';

@@ -48,16 +48,14 @@ export class RunMetaInfoManager {
         ...utils.mapToObject(options?.extraRunInfo ?? new Map()),
       },
     };
-    fs.writeFileSync(
-      runMetaFile,
-      JSON.stringify(serializable, null, 2),
-      'UTF-8',
-    );
+    fs.writeFileSync(runMetaFile, JSON.stringify(serializable, null, 2), {
+      encoding: 'utf8',
+    });
     return runMetaFile;
   }
 
   private loadRunMetaInfoFromFile(file: string): RunMetaInfo {
-    const content = fs.readFileSync(file, 'UTF-8');
+    const content = fs.readFileSync(file, {encoding: 'utf8'});
     const runMetaInfo = JSON.parse(content) as RunMetaInfo;
     if (runMetaInfo && runMetaInfo.extraInfo) {
       config.extraRunInfoMap = utils.objectToMap(runMetaInfo.extraInfo);
@@ -98,7 +96,7 @@ export class RunMetaInfoManager {
   loadRunMetaExternalTemplate(): RunMetaInfo {
     const runMetaTemplateFile = fileManager.getRunMetaExternalTemplateFile();
     return JSON.parse(
-      fs.readFileSync(runMetaTemplateFile, 'UTF-8'),
+      fs.readFileSync(runMetaTemplateFile, {encoding: 'utf8'}),
     ) as RunMetaInfo;
   }
 

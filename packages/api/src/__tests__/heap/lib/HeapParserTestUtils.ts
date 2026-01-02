@@ -9,7 +9,7 @@
  */
 
 import type {IHeapSnapshot} from '@memlab/core';
-import type {Page} from 'puppeteer';
+import type {Page} from 'puppeteer-core';
 
 import fs from 'fs';
 import path from 'path';
@@ -47,7 +47,7 @@ async function saveSnapshotToFile(page: Page, file: string): Promise<void> {
   });
 
   return new Promise<void>((resolve, reject) => {
-    fs.writeFile(file, heap, 'UTF-8', err => {
+    fs.writeFile(file, heap, {encoding: 'utf8'}, err => {
       if (err) {
         reject(err);
       } else {

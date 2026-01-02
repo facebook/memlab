@@ -64,7 +64,9 @@ export default class SnapshotResultReader extends BaseResultReader {
     fileManager.initDirs(config, {workDir});
     const visitOrder = this.getInteractionSteps();
     const snapSeqFile = fileManager.getSnapshotSequenceMetaFile({workDir});
-    fs.writeFileSync(snapSeqFile, JSON.stringify(visitOrder, null, 2), 'UTF-8');
+    fs.writeFileSync(snapSeqFile, JSON.stringify(visitOrder, null, 2), {
+      encoding: 'utf8',
+    });
   }
 
   private checkSnapshotFiles(): void {

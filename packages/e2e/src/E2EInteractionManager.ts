@@ -8,10 +8,9 @@
  * @oncall memory_lab
  */
 
-import type {Browser, CDPSession, Page, Target} from 'puppeteer';
+import type {Browser, CDPSession, Page, Target} from 'puppeteer-core';
 import type {
   AnyFunction,
-  AnyValue,
   E2EOperation,
   E2EStepInfo,
   InteractionsCallback,
@@ -24,6 +23,7 @@ import type {
 import fs from 'fs';
 import path from 'path';
 import E2EUtils from './lib/E2EUtils';
+import {TargetType} from 'puppeteer-core';
 import {utils, info, serializer, browserInfo, config} from '@memlab/core';
 import {getBundleContent} from '@memlab/lens';
 import interactUtils from './lib/operations/InteractionUtils';
@@ -91,11 +91,20 @@ export default class E2EInteractionManager {
     }
     // get web worker thread target
     const cdpSession = await this.selectCDPSession(target => {
-      const t = target as AnyValue;
-      const isWorker = t._targetInfo?.type === 'worker';
+      const targetType = target.type();
+      // note that in puppeteer, web worker's target type is
+      // neither 'service_worker' nor 'shared_worker'
+      const isWorker = targetType === TargetType.OTHER;
+      const targetUnknown = target as unknown as {
+        _getTargetInfo: () => {title: string};
+      };
+      if (typeof targetUnknown?._getTargetInfo !== 'function') {
+        return false;
+      }
+      const title = targetUnknown?._getTargetInfo().title;
       let isTitleMatch = true;
       if (config.targetWorkerTitle != null) {
-        isTitleMatch = t._targetInfo?.title === config.targetWorkerTitle;
+        isTitleMatch = title === config.targetWorkerTitle;
       }
       return isWorker && isTitleMatch;
     });
@@ -415,7 +424,7 @@ export default class E2EInteractionManager {
     file: string,
     session: CDPSession,
   ) {
-    const writeStream = fs.createWriteStream(file, {encoding: 'UTF-8'});
+    const writeStream = fs.createWriteStream(file, {encoding: 'utf8'});
     let lastChunk = '';
     const dataHandler: PuppeteerDataHandler = data => {
       writeStream.write(data.chunk);

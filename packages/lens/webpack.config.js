@@ -16,7 +16,7 @@ function getHeaderBanner() {
   const licensePath = path.resolve(__dirname, 'LICENSE');
   try {
     if (fs.existsSync(licensePath)) {
-      const content = fs.readFileSync(licensePath, 'utf-8');
+      const content = fs.readFileSync(licensePath, {encoding: 'utf8'});
       const lines = content.split(/\r?\n/);
       lines.unshift('@license MemLab');
       const commented = lines.map(line => ` * ${line}`).join('\n');
@@ -37,8 +37,10 @@ class InjectHeaderPlugin {
           continue;
         }
         const filePath = path.join(outputPath, asset.name);
-        const content = fs.readFileSync(filePath, 'UTF-8');
-        fs.writeFileSync(filePath, `${copyrightHeader}${content}`, 'UTF-8');
+        const content = fs.readFileSync(filePath, {encoding: 'utf8'});
+        fs.writeFileSync(filePath, `${copyrightHeader}${content}`, {
+          encoding: 'utf8',
+        });
       }
       callback();
     });

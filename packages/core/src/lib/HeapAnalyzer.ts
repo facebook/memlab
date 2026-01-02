@@ -370,11 +370,9 @@ class MemoryAnalyst {
       fileManager.getSnapshotSequenceMetaFile(options),
     );
     const tabsOrderStr = serializer.summarizeTabsOrder(tabsOrder);
-    fs.writeFileSync(
-      fileManager.getLeakSummaryFile(options),
-      tabsOrderStr,
-      'UTF-8',
-    );
+    fs.writeFileSync(fileManager.getLeakSummaryFile(options), tabsOrderStr, {
+      encoding: 'utf8',
+    });
   }
 
   // summarize the leak and print the info in console
@@ -562,7 +560,7 @@ class MemoryAnalyst {
     fs.appendFileSync(
       fileManager.getLeakSummaryFile(options),
       `\n\n${pathStr}\n\n`,
-      'UTF-8',
+      {encoding: 'utf8'},
     );
   }
 
@@ -744,7 +742,7 @@ class MemoryAnalyst {
     const nodeIdInPaths: HeapNodeIdSet = new Set();
     const idSet = new Set([id]);
     traceDetailsLogger.setTraceFileEmpty(pathLoaderFile);
-    fs.writeFileSync(summaryFile, 'no path found', 'UTF-8');
+    fs.writeFileSync(summaryFile, 'no path found', {encoding: 'utf8'});
     utils.applyToNodes(idSet, snapshot, node => {
       const path = finder.getPathToGCRoots(snapshot, node);
       if (!path) {
@@ -776,7 +774,7 @@ class MemoryAnalyst {
       const summary =
         `Page Interaction: \n${interactionSummary}\n\n` +
         `Path from GC Root to Leaked Object:\n${pathSummary}`;
-      fs.writeFileSync(summaryFile, summary, 'UTF-8');
+      fs.writeFileSync(summaryFile, summary, {encoding: 'utf8'});
     });
   }
 }

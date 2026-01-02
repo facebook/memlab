@@ -12,7 +12,7 @@ import BaseMode from './BaseMode';
 import fs from 'fs';
 import path from 'path';
 
-import type {Page} from 'puppeteer';
+import type {Page} from 'puppeteer-core';
 import type {E2EStepInfo, IE2EScenarioVisitPlan} from '../lib/Types';
 
 // mode for running quick measurement or experiments
@@ -49,7 +49,7 @@ class MeasureMode extends BaseMode {
     const filename = `metrics-${Date.now()}-${process.pid}.json`;
     const filepath = path.join(this.config.metricsOutDir, filename);
     const content = JSON.stringify(visitPlan.tabsOrder, null, 2);
-    fs.writeFileSync(filepath, content, 'UTF-8');
+    fs.writeFileSync(filepath, content, {encoding: 'utf8'});
   }
 }
 

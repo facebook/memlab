@@ -9,7 +9,7 @@
  */
 
 import BaseOperation from './BaseOperation';
-import type {Page} from 'puppeteer';
+import type {Page} from 'puppeteer-core';
 
 class BackspaceOperation extends BaseOperation {
   kind: string;

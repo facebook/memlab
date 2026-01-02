@@ -13,7 +13,7 @@
 import {info, config} from '@memlab/core';
 import path from 'path';
 
-import type {Page, ElementHandle} from 'puppeteer';
+import type {Page, ElementHandle} from 'puppeteer-core';
 import type {
   CheckPageLoadCallback,
   OperationArgs,

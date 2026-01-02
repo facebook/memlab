@@ -29,7 +29,7 @@ import parser from './HeapParser';
 
 const memCache: Record<string, AnyValue> = Object.create(null);
 
-import type {Browser, Page} from 'puppeteer';
+import type {Browser, Page} from 'puppeteer-core';
 import type {
   AnyAyncFunction,
   AnyOptions,
@@ -1293,7 +1293,7 @@ function loadTabsOrder(metaFile: Optional<string> = void 0): E2EStepInfo[] {
       metaFile != null && fs.existsSync(metaFile)
         ? metaFile
         : getSnapshotSequenceFilePath();
-    const content = fs.readFileSync(file, 'UTF-8');
+    const content = fs.readFileSync(file, {encoding: 'utf8'});
     return JSON.parse(content);
   } catch {
     throw haltOrThrow('snapshot meta data invalid or missing');
@@ -1998,23 +1998,21 @@ function getLeakedNode(path: LeakTracePathItem): IHeapNode | null {
 
 // print snapshot to file for local testing
 function dumpSnapshot(file: string, snapshot: RawHeapSnapshot): void {
-  fs.writeFileSync(
-    file,
-    JSON.stringify(snapshot.snapshot.meta, null, 0),
-    'UTF-8',
-  );
+  fs.writeFileSync(file, JSON.stringify(snapshot.snapshot.meta, null, 0), {
+    encoding: 'utf8',
+  });
 
   const dumpSection = (name: string, arr: number[]) => {
     let buf = '';
-    fs.appendFileSync(file, `\n\n ${name}:\n\n`, 'UTF-8');
+    fs.appendFileSync(file, `\n\n ${name}:\n\n`, {encoding: 'utf8'});
     for (let i = 0; i < arr.length; ++i) {
       buf += arr[i] + ',';
       if (buf.length > 1024 * 1024) {
-        fs.appendFileSync(file, '\n\n' + buf, 'UTF-8');
+        fs.appendFileSync(file, '\n\n' + buf, {encoding: 'utf8'});
         buf = '';
       }
     }
-    fs.appendFileSync(file, '\n\n' + buf, 'UTF-8');
+    fs.appendFileSync(file, '\n\n' + buf, {encoding: 'utf8'});
     buf = '';
   };
 
@@ -2263,7 +2261,7 @@ export function runShell(
     }
     utils.haltOrThrow(`Error when executing command: ${command}`);
   }
-  return ret && ret.toString('UTF-8');
+  return ret && ret.toString('utf8');
 }
 
 function getRetainedSize(node: IHeapNode): number {

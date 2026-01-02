@@ -15,7 +15,7 @@ import type {
   IE2EStepBasic,
 } from '@memlab/core';
 import path from 'path';
-import type {Page} from 'puppeteer';
+import type {Page} from 'puppeteer-core';
 import BaseSynthesizer from '../BaseSynthesizer';
 import ClickOperation from '../lib/operations/ClickOperation';
 import interactUtils from '../lib/operations/InteractionUtils';

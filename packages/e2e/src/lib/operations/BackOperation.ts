@@ -9,7 +9,7 @@
  */
 
 import BaseOperation from './BaseOperation';
-import type {Page} from 'puppeteer';
+import type {Page} from 'puppeteer-core';
 import {config} from '@memlab/core';
 
 export default class BackOperation extends BaseOperation {

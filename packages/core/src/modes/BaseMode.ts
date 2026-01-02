@@ -14,7 +14,7 @@ import type {
   IE2EScenarioVisitPlan,
   Optional,
 } from '../lib/Types';
-import type {Page} from 'puppeteer';
+import type {Page} from 'puppeteer-core';
 import defaultConfig from '../lib/Config';
 
 // the regular mode for conventional MemLab runs

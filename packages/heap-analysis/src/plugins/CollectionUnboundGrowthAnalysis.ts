@@ -179,7 +179,7 @@ class CollectionUnboundGrowthAnalysis extends BaseAnalysis {
     info.topLevel('\n' + str);
     // save results to file
     const csv = serializer.summarizeUnboundedObjectsToCSV(ids);
-    fs.writeFileSync(config.unboundObjectCSV, csv, 'UTF-8');
+    fs.writeFileSync(config.unboundObjectCSV, csv, {encoding: 'utf8'});
   }
 }
 

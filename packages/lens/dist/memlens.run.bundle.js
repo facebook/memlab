@@ -29,8 +29,8 @@
 /******/ 	"use strict";
 /******/ 	var __webpack_modules__ = ({
 
-/***/ 23:
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+/***/ 23
+(__unused_webpack_module, exports, __webpack_require__) {
 
 
 var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
@@ -91,10 +91,10 @@ exports.DOMVisualizationExtension = DOMVisualizationExtension;
 _DOMVisualizationExtension_domVirtualizer = new WeakMap();
 
 
-/***/ }),
+/***/ },
 
-/***/ 54:
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+/***/ 54
+(__unused_webpack_module, exports, __webpack_require__) {
 
 
 var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
@@ -188,7 +188,7 @@ class DOMObserver {
             if (document.body) {
                 // observe changes in DOM tree
                 (_a = __classPrivateFieldGet(this, _DOMObserver_mutationObserver, "f")) === null || _a === void 0 ? void 0 : _a.observe(document.body, {
-                    childList: true,
+                    childList: true, // Detect direct additions/removals
                     subtree: true, // Observe all descendants
                 });
             }
@@ -286,10 +286,10 @@ _DOMObserver_elementCount = new WeakMap(), _DOMObserver_detachedElementCount = n
 };
 
 
-/***/ }),
+/***/ },
 
-/***/ 150:
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+/***/ 150
+(__unused_webpack_module, exports, __webpack_require__) {
 
 
 var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
@@ -320,7 +320,6 @@ class DOMElementVisualizer {
         __classPrivateFieldGet(this, _DOMElementVisualizer_instances, "m", _DOMElementVisualizer_paint).call(this, domElementInfoList);
     }
 }
-exports["default"] = DOMElementVisualizer;
 _DOMElementVisualizer_canvas = new WeakMap(), _DOMElementVisualizer_instances = new WeakSet(), _DOMElementVisualizer_paint = function _DOMElementVisualizer_paint(domElementInfoList) {
     if (!__classPrivateFieldGet(this, _DOMElementVisualizer_canvas, "f")) {
         const canvas = __classPrivateFieldGet(this, _DOMElementVisualizer_instances, "m", _DOMElementVisualizer_createAndAppendCanvas).call(this);
@@ -411,12 +410,13 @@ _DOMElementVisualizer_canvas = new WeakMap(), _DOMElementVisualizer_instances = 
     }
     __classPrivateFieldSet(this, _DOMElementVisualizer_canvas, null, "f");
 };
+exports["default"] = DOMElementVisualizer;
 
 
-/***/ }),
+/***/ },
 
-/***/ 271:
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+/***/ 271
+(__unused_webpack_module, exports, __webpack_require__) {
 
 
 var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
@@ -490,7 +490,6 @@ class DOMElementVisualizerInteractive extends dom_element_visualizer_1.default {
         super.cleanup();
     }
 }
-exports["default"] = DOMElementVisualizerInteractive;
 _DOMElementVisualizerInteractive_elementIdToRectangle = new WeakMap(), _DOMElementVisualizerInteractive_visualizationOverlayDiv = new WeakMap(), _DOMElementVisualizerInteractive_controlWidget = new WeakMap(), _DOMElementVisualizerInteractive_blockedElementIds = new WeakMap(), _DOMElementVisualizerInteractive_currentVisualData = new WeakMap(), _DOMElementVisualizerInteractive_hideAllRef = new WeakMap(), _DOMElementVisualizerInteractive_updateDataCallbacks = new WeakMap(), _DOMElementVisualizerInteractive_instances = new WeakSet(), _DOMElementVisualizerInteractive_listenToKeyboardEvent = function _DOMElementVisualizerInteractive_listenToKeyboardEvent() {
     document.addEventListener('keydown', event => {
         if (event.key === 'd' || event.key === 'D') {
@@ -735,12 +734,13 @@ _DOMElementVisualizerInteractive_elementIdToRectangle = new WeakMap(), _DOMEleme
         cb(Object.assign({}, __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f")));
     }
 };
+exports["default"] = DOMElementVisualizerInteractive;
 
 
-/***/ }),
+/***/ },
 
-/***/ 282:
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+/***/ 282
+(__unused_webpack_module, exports, __webpack_require__) {
 
 
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
@@ -759,13 +759,23 @@ var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (
 }) : function(o, v) {
     o["default"] = v;
 });
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
     if (kind === "m") throw new TypeError("Private method is not writable");
     if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
@@ -1038,7 +1048,6 @@ class ReactMemoryScan {
         return scanResult;
     }
 }
-exports["default"] = ReactMemoryScan;
 _ReactMemoryScan_elementWeakRefs = new WeakMap(), _ReactMemoryScan_isActivated = new WeakMap(), _ReactMemoryScan_intervalId = new WeakMap(), _ReactMemoryScan_elementToBoundingRects = new WeakMap(), _ReactMemoryScan_elementToComponentStack = new WeakMap(), _ReactMemoryScan_knownFiberNodes = new WeakMap(), _ReactMemoryScan_fiberAnalyzer = new WeakMap(), _ReactMemoryScan_isDevMode = new WeakMap(), _ReactMemoryScan_subscribers = new WeakMap(), _ReactMemoryScan_extensions = new WeakMap(), _ReactMemoryScan_scanIntervalMs = new WeakMap(), _ReactMemoryScan_domObserver = new WeakMap(), _ReactMemoryScan_eventListenerTracker = new WeakMap(), _ReactMemoryScan_isDisposed = new WeakMap(), _ReactMemoryScan_instances = new WeakSet(), _ReactMemoryScan_log = function _ReactMemoryScan_log(...args) {
     if (__classPrivateFieldGet(this, _ReactMemoryScan_isDevMode, "f") && config_1.config.features.enableConsoleLogs) {
         utils.consoleLog(...args);
@@ -1119,6 +1128,7 @@ _ReactMemoryScan_elementWeakRefs = new WeakMap(), _ReactMemoryScan_isActivated =
     return eventListenerLeaks;
 };
 ReactMemoryScan.nextElementId = 0;
+exports["default"] = ReactMemoryScan;
 class LeakedFiber {
     constructor(fiber) {
         this.leakedFiber = fiber;
@@ -1126,10 +1136,10 @@ class LeakedFiber {
 }
 
 
-/***/ }),
+/***/ },
 
-/***/ 302:
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+/***/ 302
+(__unused_webpack_module, exports, __webpack_require__) {
 
 
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
@@ -1148,13 +1158,23 @@ var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (
 }) : function(o, v) {
     o["default"] = v;
 });
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
@@ -1256,10 +1276,10 @@ class ReactFiberAnalyzer {
 exports["default"] = ReactFiberAnalyzer;
 
 
-/***/ }),
+/***/ },
 
-/***/ 313:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ 313
+(__unused_webpack_module, exports) {
 
 
 /**
@@ -1273,7 +1293,17 @@ exports["default"] = ReactFiberAnalyzer;
  */
 var _a, _b, _c;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.WeakMapPlus = exports.isWeakAPINative = exports.isWeakRefNative = exports.isWeakSetNative = exports.isWeakMapNative = exports.getNativeWeakRefOrFallback = exports.getNativeWeakRef = exports.getNativeWeakSetOrFallback = exports.getNativeWeakSet = exports.getNativeWeakMapOrFallback = exports.getNativeWeakMap = exports.WeakMapNoOp = exports.WeakSetNoOp = exports.WeakRefNoOp = void 0;
+exports.WeakMapPlus = exports.WeakMapNoOp = exports.WeakSetNoOp = exports.WeakRefNoOp = void 0;
+exports.getNativeWeakMap = getNativeWeakMap;
+exports.getNativeWeakMapOrFallback = getNativeWeakMapOrFallback;
+exports.getNativeWeakSet = getNativeWeakSet;
+exports.getNativeWeakSetOrFallback = getNativeWeakSetOrFallback;
+exports.getNativeWeakRef = getNativeWeakRef;
+exports.getNativeWeakRefOrFallback = getNativeWeakRefOrFallback;
+exports.isWeakMapNative = isWeakMapNative;
+exports.isWeakSetNative = isWeakSetNative;
+exports.isWeakRefNative = isWeakRefNative;
+exports.isWeakAPINative = isWeakAPINative;
 const globalScope = typeof window !== 'undefined' ? window : self;
 const _weakMap = (_a = globalScope.WeakMap) !== null && _a !== void 0 ? _a : null;
 const _weakMapIsNative = isWeakMapNative();
@@ -1337,27 +1367,21 @@ exports.WeakMapNoOp = WeakMapNoOp;
 function getNativeWeakMap() {
     return _weakMapIsNative ? _weakMap : null;
 }
-exports.getNativeWeakMap = getNativeWeakMap;
 function getNativeWeakMapOrFallback() {
     return _weakMapIsNative && _weakMap ? _weakMap : WeakMapNoOp;
 }
-exports.getNativeWeakMapOrFallback = getNativeWeakMapOrFallback;
 function getNativeWeakSet() {
     return _weakSetIsNative ? _weakSet : null;
 }
-exports.getNativeWeakSet = getNativeWeakSet;
 function getNativeWeakSetOrFallback() {
     return _weakSetIsNative && _weakSet ? _weakSet : WeakSetNoOp;
 }
-exports.getNativeWeakSetOrFallback = getNativeWeakSetOrFallback;
 function getNativeWeakRef() {
     return _weakRefIsNative ? _weakRef : null;
 }
-exports.getNativeWeakRef = getNativeWeakRef;
 function getNativeWeakRefOrFallback() {
     return _weakRefIsNative && _weakRef ? _weakRef : WeakRefNoOp;
 }
-exports.getNativeWeakRefOrFallback = getNativeWeakRefOrFallback;
 function normalize(input) {
     return typeof input.replace === 'function'
         ? input.replace(/\n/g, ' ').replace(/\s+/g, ' ')
@@ -1368,23 +1392,19 @@ function isWeakMapNative() {
         typeof _weakMap.toString === 'function' &&
         normalize(_weakMap.toString()) === 'function WeakMap() { [native code] }');
 }
-exports.isWeakMapNative = isWeakMapNative;
 function isWeakSetNative() {
     return (_weakSet !== null &&
         typeof _weakSet.toString === 'function' &&
         normalize(_weakSet.toString()) === 'function WeakSet() { [native code] }');
 }
-exports.isWeakSetNative = isWeakSetNative;
 function isWeakRefNative() {
     return (_weakRef !== null &&
         typeof _weakRef.toString === 'function' &&
         normalize(_weakRef.toString()) === 'function WeakRef() { [native code] }');
 }
-exports.isWeakRefNative = isWeakRefNative;
 function isWeakAPINative() {
     return _weakAPIsAreNative;
 }
-exports.isWeakAPINative = isWeakAPINative;
 class WeakMapPlus {
     constructor(options = {}) {
         this.strongMap = null;
@@ -1534,14 +1554,14 @@ class WeakMapPlus {
 exports.WeakMapPlus = WeakMapPlus;
 
 
-/***/ }),
+/***/ },
 
-/***/ 341:
-/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+/***/ 341
+(__unused_webpack_module, exports, __webpack_require__) {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.createControlWidget = void 0;
+exports.createControlWidget = createControlWidget;
 const visual_utils_1 = __webpack_require__(498);
 const status_text_1 = __webpack_require__(775);
 const toggle_button_1 = __webpack_require__(946);
@@ -1581,7 +1601,6 @@ function createControlWidget(overlayDiv, hideAllRef, registerDataUpdateCallback)
     header.appendChild(statusText);
     return controlWidget;
 }
-exports.createControlWidget = createControlWidget;
 function supportDragging(controlWidget) {
     let isDragging = false;
     let offsetX = 0;
@@ -1610,10 +1629,10 @@ function supportDragging(controlWidget) {
 }
 
 
-/***/ }),
+/***/ },
 
-/***/ 346:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ 346
+(__unused_webpack_module, exports) {
 
 
 /**
@@ -1647,14 +1666,14 @@ exports.config = {
 };
 
 
-/***/ }),
+/***/ },
 
-/***/ 368:
-/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+/***/ 368
+(__unused_webpack_module, exports, __webpack_require__) {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.createOverlayDiv = void 0;
+exports.createOverlayDiv = createOverlayDiv;
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -1673,17 +1692,25 @@ function createOverlayDiv() {
     overlayDiv.id = 'memory-visualization-overlay';
     return overlayDiv;
 }
-exports.createOverlayDiv = createOverlayDiv;
 
 
-/***/ }),
+/***/ },
 
-/***/ 476:
-/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+/***/ 476
+(__unused_webpack_module, exports, __webpack_require__) {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.setRunInSession = exports.hasRunInSession = exports.consoleLog = exports.getBoundingClientRect = exports.updateWeakRefList = exports.addCountbyKey = exports.isMinifiedName = exports.getMeaningfulName = exports.getDOMElementCount = exports.getDOMElements = void 0;
+exports.getDOMElements = getDOMElements;
+exports.getDOMElementCount = getDOMElementCount;
+exports.getMeaningfulName = getMeaningfulName;
+exports.isMinifiedName = isMinifiedName;
+exports.addCountbyKey = addCountbyKey;
+exports.updateWeakRefList = updateWeakRefList;
+exports.getBoundingClientRect = getBoundingClientRect;
+exports.consoleLog = consoleLog;
+exports.hasRunInSession = hasRunInSession;
+exports.setRunInSession = setRunInSession;
 const visual_utils_1 = __webpack_require__(498);
 function getDOMElements() {
     const elements = Array.from(document.querySelectorAll('*'));
@@ -1696,7 +1723,6 @@ function getDOMElements() {
     }
     return ret;
 }
-exports.getDOMElements = getDOMElements;
 function getDOMElementCount() {
     const elements = Array.from(document.querySelectorAll('*'));
     let ret = 0;
@@ -1708,7 +1734,6 @@ function getDOMElementCount() {
     }
     return ret;
 }
-exports.getDOMElementCount = getDOMElementCount;
 function getMeaningfulName(name) {
     if (name == null) {
         return null;
@@ -1716,7 +1741,6 @@ function getMeaningfulName(name) {
     const isMinified = isMinifiedName(name);
     return isMinified ? null : name;
 }
-exports.getMeaningfulName = getMeaningfulName;
 /**
  * Determines if a given function or class name is minified.
  *
@@ -1739,12 +1763,10 @@ function isMinifiedName(name) {
     const hasMeaningfulPattern = /^[A-Z][a-z]+([A-Z][a-z]*)*$|^[a-z]+([A-Z][a-z]*)*$/.test(name);
     return !hasMeaningfulPattern;
 }
-exports.isMinifiedName = isMinifiedName;
 function addCountbyKey(map, key, count) {
     var _a;
     map.set(key, ((_a = map.get(key)) !== null && _a !== void 0 ? _a : 0) + count);
 }
-exports.addCountbyKey = addCountbyKey;
 function updateWeakRefList(weakRefList, elementRefs) {
     consolidateWeakRefList(weakRefList);
     const set = getElementsSet(weakRefList);
@@ -1758,7 +1780,6 @@ function updateWeakRefList(weakRefList, elementRefs) {
     }
     return weakRefList;
 }
-exports.updateWeakRefList = updateWeakRefList;
 function getElementsSet(weakRefList) {
     const set = new Set();
     for (const weakRef of weakRefList) {
@@ -1815,13 +1836,11 @@ function getBoundingClientRect(element) {
     ret.scrollTop = scrollTop;
     return ret;
 }
-exports.getBoundingClientRect = getBoundingClientRect;
 const _console = console;
 const _consoleLog = _console.log;
 function consoleLog(...args) {
     _consoleLog.apply(_console, args);
 }
-exports.consoleLog = consoleLog;
 const SESSION_STORAGE_KEY = 'memory_lens_session';
 function isSessionStorageAvailable() {
     try {
@@ -1845,7 +1864,6 @@ function hasRunInSession() {
         return false;
     }
 }
-exports.hasRunInSession = hasRunInSession;
 function setRunInSession() {
     if (!isSessionStorageAvailable()) {
         return;
@@ -1857,17 +1875,21 @@ function setRunInSession() {
         // do nothing
     }
 }
-exports.setRunInSession = setRunInSession;
 
 
-/***/ }),
+/***/ },
 
-/***/ 498:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ 498
+(__unused_webpack_module, exports) {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.debounce = exports.removeAllListeners = exports.addTrackedListener = exports.tryToAttachOverlay = exports.createVisualizerElement = exports.isVisualizerElement = void 0;
+exports.isVisualizerElement = isVisualizerElement;
+exports.createVisualizerElement = createVisualizerElement;
+exports.tryToAttachOverlay = tryToAttachOverlay;
+exports.addTrackedListener = addTrackedListener;
+exports.removeAllListeners = removeAllListeners;
+exports.debounce = debounce;
 const VISUALIZER_DATA_ATTR = 'data-visualizer';
 function setVisualizerElement(element) {
     element.setAttribute(VISUALIZER_DATA_ATTR, 'true');
@@ -1876,19 +1898,16 @@ function setVisualizerElement(element) {
 function isVisualizerElement(element) {
     return element.getAttribute(VISUALIZER_DATA_ATTR) === 'true';
 }
-exports.isVisualizerElement = isVisualizerElement;
 function createVisualizerElement(tag) {
     const element = document.createElement(tag);
     setVisualizerElement(element);
     return element;
 }
-exports.createVisualizerElement = createVisualizerElement;
 function tryToAttachOverlay(overlayDiv) {
     if (document.body) {
         document.body.appendChild(overlayDiv);
     }
 }
-exports.tryToAttachOverlay = tryToAttachOverlay;
 const listenerMap = new WeakMap();
 function addTrackedListener(elRef, type, cb, options) {
     var _a;
@@ -1901,7 +1920,6 @@ function addTrackedListener(elRef, type, cb, options) {
     }
     (_a = listenerMap.get(el)) === null || _a === void 0 ? void 0 : _a.push({ type, cb, options });
 }
-exports.addTrackedListener = addTrackedListener;
 function removeAllListeners(elRef) {
     const el = elRef.deref();
     if (!el)
@@ -1914,7 +1932,6 @@ function removeAllListeners(elRef) {
     }
     listenerMap.delete(el);
 }
-exports.removeAllListeners = removeAllListeners;
 function debounce(callback, delay) {
     let timer = null;
     return (...args) => {
@@ -1926,17 +1943,16 @@ function debounce(callback, delay) {
         }, delay);
     };
 }
-exports.debounce = debounce;
 
 
-/***/ }),
+/***/ },
 
-/***/ 701:
-/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+/***/ 701
+(__unused_webpack_module, exports, __webpack_require__) {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.createOverlayRectangle = void 0;
+exports.createOverlayRectangle = createOverlayRectangle;
 const intersection_observer_1 = __webpack_require__(979);
 const visual_utils_1 = __webpack_require__(498);
 const MAX_Z_INDEX = `${Math.pow(2, 30) - 1}`;
@@ -2039,7 +2055,6 @@ function createOverlayRectangle(elementId, info, container, setSelectedId, setUn
     container.appendChild(div);
     return divRef;
 }
-exports.createOverlayRectangle = createOverlayRectangle;
 function styleOnInteraction(divRef, state) {
     const div = divRef.deref();
     if (div == null) {
@@ -2064,14 +2079,19 @@ function styleOnInteraction(divRef, state) {
 }
 
 
-/***/ }),
+/***/ },
 
-/***/ 737:
-/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+/***/ 737
+(__unused_webpack_module, exports, __webpack_require__) {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.extractReactComponentName = exports.isFunctionalComponent = exports.getDisplayNameOfFiberNode = exports.getReactComponentStack = exports.getFiberNodeFromElement = exports.traverseFiber = exports.getTopMostFiberWithChild = exports.getTopMostHostFiber = exports.getNearestHostFiber = exports.isHostFiber = exports.MutationMask = exports.Visibility = exports.Snapshot = exports.Ref = exports.ContentReset = exports.ChildDeletion = exports.Cloned = exports.Update = exports.Hydrating = exports.DidCapture = exports.Placement = exports.PerformedWork = exports.DEPRECATED_ASYNC_MODE_SYMBOL_STRING = exports.CONCURRENT_MODE_SYMBOL_STRING = exports.CONCURRENT_MODE_NUMBER = exports.HostRoot = exports.OffscreenComponent = exports.LegacyHiddenComponent = exports.Fragment = exports.HostText = exports.DehydratedSuspenseComponent = exports.HostSingletonTag = exports.HostHoistableTag = exports.HostComponentTag = exports.SimpleMemoComponentTag = exports.MemoComponentTag = exports.ForwardRefTag = exports.OffscreenComponentTag = exports.SuspenseComponentTag = exports.ContextConsumerTag = exports.FunctionComponentTag = exports.ClassComponentTag = void 0;
+exports.traverseFiber = exports.getTopMostFiberWithChild = exports.getTopMostHostFiber = exports.getNearestHostFiber = exports.isHostFiber = exports.MutationMask = exports.Visibility = exports.Snapshot = exports.Ref = exports.ContentReset = exports.ChildDeletion = exports.Cloned = exports.Update = exports.Hydrating = exports.DidCapture = exports.Placement = exports.PerformedWork = exports.DEPRECATED_ASYNC_MODE_SYMBOL_STRING = exports.CONCURRENT_MODE_SYMBOL_STRING = exports.CONCURRENT_MODE_NUMBER = exports.HostRoot = exports.OffscreenComponent = exports.LegacyHiddenComponent = exports.Fragment = exports.HostText = exports.DehydratedSuspenseComponent = exports.HostSingletonTag = exports.HostHoistableTag = exports.HostComponentTag = exports.SimpleMemoComponentTag = exports.MemoComponentTag = exports.ForwardRefTag = exports.OffscreenComponentTag = exports.SuspenseComponentTag = exports.ContextConsumerTag = exports.FunctionComponentTag = exports.ClassComponentTag = void 0;
+exports.getFiberNodeFromElement = getFiberNodeFromElement;
+exports.getReactComponentStack = getReactComponentStack;
+exports.getDisplayNameOfFiberNode = getDisplayNameOfFiberNode;
+exports.isFunctionalComponent = isFunctionalComponent;
+exports.extractReactComponentName = extractReactComponentName;
 const utils_1 = __webpack_require__(476);
 const valid_component_name_1 = __webpack_require__(847);
 exports.ClassComponentTag = 1;
@@ -2173,8 +2193,8 @@ const traverseFiber = (fiber, selector, ascending = false) => {
 exports.traverseFiber = traverseFiber;
 // React internal property keys
 const internalKeys = [
-    '__reactFiber$',
-    '__reactInternalInstance$',
+    '__reactFiber$', // React 17+
+    '__reactInternalInstance$', // React 16
     '_reactRootContainer', // React Root
 ];
 const getOwnPropertyNames = Object.getOwnPropertyNames.bind(Object);
@@ -2188,7 +2208,6 @@ function getFiberNodeFromElement(element) {
     }
     return null;
 }
-exports.getFiberNodeFromElement = getFiberNodeFromElement;
 function getReactComponentStack(node) {
     const stack = [];
     const visited = new Set();
@@ -2206,7 +2225,6 @@ function getReactComponentStack(node) {
     }
     return stack;
 }
-exports.getReactComponentStack = getReactComponentStack;
 function getDisplayNameOfFiberNode(node) {
     var _a, _b, _c, _d;
     const elementType = (_a = node.type) !== null && _a !== void 0 ? _a : node.elementType;
@@ -2231,12 +2249,10 @@ function getDisplayNameOfFiberNode(node) {
     const ret = (0, utils_1.getMeaningfulName)(extractReactComponentName(displayName));
     return (0, valid_component_name_1.isValidComponentName)(ret) ? ret : null;
 }
-exports.getDisplayNameOfFiberNode = getDisplayNameOfFiberNode;
 function isFunctionalComponent(node) {
     const elementType = node === null || node === void 0 ? void 0 : node.elementType;
     return typeof elementType === 'function';
 }
-exports.isFunctionalComponent = isFunctionalComponent;
 // dom-element [from component.react] --> component.react
 function extractReactComponentName(displayName) {
     if (typeof displayName !== 'string') {
@@ -2256,17 +2272,16 @@ function extractReactComponentName(displayName) {
     }
     return name;
 }
-exports.extractReactComponentName = extractReactComponentName;
 
 
-/***/ }),
+/***/ },
 
-/***/ 775:
-/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+/***/ 775
+(__unused_webpack_module, exports, __webpack_require__) {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.createStatusText = void 0;
+exports.createStatusText = createStatusText;
 const visual_utils_1 = __webpack_require__(498);
 function formatBytes(bytes) {
     if (bytes === 0)
@@ -2300,13 +2315,12 @@ function createStatusText(registerDataUpdateCallback) {
     });
     return statusWidget;
 }
-exports.createStatusText = createStatusText;
 
 
-/***/ }),
+/***/ },
 
-/***/ 847:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ 847
+(__unused_webpack_module, exports) {
 
 
 /**
@@ -2319,18 +2333,17 @@ exports.createStatusText = createStatusText;
  * @oncall memory_lab
  */
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.isValidComponentName = void 0;
+exports.isValidComponentName = isValidComponentName;
 const displayNameBlockList = new Set();
 function isValidComponentName(name) {
     return name != null && !displayNameBlockList.has(name);
 }
-exports.isValidComponentName = isValidComponentName;
 
 
-/***/ }),
+/***/ },
 
-/***/ 860:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ 860
+(__unused_webpack_module, exports) {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
@@ -2363,14 +2376,14 @@ class BasicExtension {
 exports.BasicExtension = BasicExtension;
 
 
-/***/ }),
+/***/ },
 
-/***/ 904:
-/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+/***/ 904
+(__unused_webpack_module, exports, __webpack_require__) {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.createComponentStackPanel = void 0;
+exports.createComponentStackPanel = createComponentStackPanel;
 const visual_utils_1 = __webpack_require__(498);
 function createComponentStackPanel(registerDataUpdateCallback) {
     const panel = (0, visual_utils_1.createVisualizerElement)('div');
@@ -2429,13 +2442,12 @@ function createComponentStackPanel(registerDataUpdateCallback) {
     }, 1));
     return panel;
 }
-exports.createComponentStackPanel = createComponentStackPanel;
 
 
-/***/ }),
+/***/ },
 
-/***/ 933:
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+/***/ 933
+(__unused_webpack_module, exports, __webpack_require__) {
 
 
 var __importDefault = (this && this.__importDefault) || function (mod) {
@@ -2463,14 +2475,14 @@ if (!(0, utils_1.hasRunInSession)()) {
 }
 
 
-/***/ }),
+/***/ },
 
-/***/ 946:
-/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+/***/ 946
+(__unused_webpack_module, exports, __webpack_require__) {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.createToggleButton = void 0;
+exports.createToggleButton = createToggleButton;
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -2521,13 +2533,12 @@ function createToggleButton(overlayDiv, hideAllRef) {
     });
     return toggleWrapper;
 }
-exports.createToggleButton = createToggleButton;
 
 
-/***/ }),
+/***/ },
 
-/***/ 953:
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+/***/ 953
+(__unused_webpack_module, exports, __webpack_require__) {
 
 
 var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
@@ -2659,10 +2670,10 @@ _EventListenerTracker_listenerMap = new WeakMap(), _EventListenerTracker_detache
 EventListenerTracker.instance = null;
 
 
-/***/ }),
+/***/ },
 
-/***/ 979:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ 979
+(__unused_webpack_module, exports) {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
@@ -2720,7 +2731,7 @@ class IntersectionObserverManager {
 exports.IntersectionObserverManager = IntersectionObserverManager;
 
 
-/***/ })
+/***/ }
 
 /******/ 	});
 /************************************************************************/

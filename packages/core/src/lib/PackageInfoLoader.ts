@@ -36,7 +36,7 @@ export class PackageInfoLoader {
       throw utils.haltOrThrow(`package.json doesn't exist: ${packageJSONFile}`);
     }
     try {
-      const metaData = await fs.readJSON(packageJSONFile, 'UTF-8');
+      const metaData = await fs.readJSON(packageJSONFile, {encoding: 'utf8'});
       return {...metaData, packageLocation: packageDirectory};
     } catch (ex) {
       throw utils.haltOrThrow(utils.getError(ex));

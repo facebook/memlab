@@ -59,7 +59,7 @@ three snapshots and get file dumped onto disk.
 ## Pipe Files into MemLab
 Once you have the `takeJSHeapSnapshot` implementation dumped heap snapshots
 and meta files onto disk, you can find memory leaks with this
-[memlab core API](https://facebook.github.io/memlab/docs/api/modules/api_src/#findleaksrunresult):
+[memlab core API](https://facebook.github.io/memlab/docs/api/api/src/functions/findLeaksBySnapshotFilePaths):
 
 ```javascript
 const {findLeaks, BrowserInteractionResultReader} = require('@memlab/api');

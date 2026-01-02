@@ -223,7 +223,7 @@ class MemLabConsole {
     if (options.sync) {
       for (const logFile of this.logFileSet) {
         try {
-          fs.appendFileSync(logFile, str + '\n', 'UTF-8');
+          fs.appendFileSync(logFile, str + '\n', {encoding: 'utf8'});
         } catch {
           // fail silently
         }
@@ -235,7 +235,7 @@ class MemLabConsole {
       };
       for (const logFile of this.logFileSet) {
         try {
-          fs.appendFile(logFile, str + '\n', 'UTF-8', emptyCallback);
+          fs.appendFile(logFile, str + '\n', {encoding: 'utf8'}, emptyCallback);
         } catch {
           // fail silently
         }

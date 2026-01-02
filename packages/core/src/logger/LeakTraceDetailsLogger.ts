@@ -28,7 +28,7 @@ class LeakTraceDetailsLogger {
 
   setTraceFileEmpty(filepath: string): void {
     const content = this._wrapPathJSONInLoader('');
-    fs.writeFile(filepath, content, 'UTF-8', () => {
+    fs.writeFile(filepath, content, {encoding: 'utf8'}, () => {
       // noop
     });
   }
@@ -45,7 +45,7 @@ class LeakTraceDetailsLogger {
     try {
       const traceJSON = JSON.stringify(gcTrace, null, 2);
       const content = this._wrapPathJSONInLoader(traceJSON);
-      fs.writeFile(filepath, content, 'UTF-8', () => {
+      fs.writeFile(filepath, content, {encoding: 'utf8'}, () => {
         // noop
       });
     } catch (ex) {

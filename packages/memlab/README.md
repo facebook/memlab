@@ -34,7 +34,7 @@ npm install -g memlab
 ### Find Memory Leaks
 
 To find memory leaks in Google Maps, you can create a
-[scenario file](https://facebook.github.io/memlab/docs/api/interfaces/core_src.IScenario) defining how
+[scenario file](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IScenario) defining how
 to interact with the Google Maps, let's name it `test-google-maps.js`:
 
 ```javascript
@@ -112,7 +112,7 @@ memlab view-heap --snapshot <PATH TO .heapsnapshot FILE>
 You can optionally specify a specific heap object with the object's id: `--node-id @28173` to pinpoint a specific object.
 
 **Self-defined leak detector**: If you want to use a self-defined leak detector, add a `leakFilter` callback
-([doc](https://facebook.github.io/memlab/docs/api/interfaces/core_src.IScenario/#-optional-leakfilter-leakfiltercallback))
+([doc](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IScenario/#-optional-leakfilter-leakfiltercallback))
 in the scenario file. `filterLeak` will be called for every unreleased heap
 object (`node`) allocated by the target interaction.
 

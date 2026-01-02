@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 
-import type {Page} from 'puppeteer';
+import type {Page} from 'puppeteer-core';
 import type {AnyValue} from '@memlab/core';
 
 import {utils} from '@memlab/core';

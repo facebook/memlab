@@ -36,7 +36,7 @@ interface FeatureItem {
 const features: FeatureItem[] = [
   {
     title: 'Define Your Test',
-    docUrl: 'docs/api/interfaces/core_src.IScenario',
+    docUrl: 'docs/api/core/src/interfaces/IScenario',
     description: (
       <>
         Define E2E test scenarios on browser interaction:
@@ -85,7 +85,7 @@ $ memlab analyze -h`}
   },
   {
     title: 'Programming API',
-    docUrl: 'docs/api/modules/api_src',
+    docUrl: 'docs/api/',
     description: (
       <>
         Memory analysis for JavaScript heap snapshots:

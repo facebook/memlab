@@ -35,9 +35,7 @@ test(
     let analysis = new DetachedDOMElementAnalysis();
     await analysis.run();
     let domElems = analysis.getDetachedElements();
-    expect(
-      domElems.some(node => node.name === 'Detached HTMLTableElement'),
-    ).toBe(true);
+    expect(domElems.some(node => node.name === 'Detached <table>')).toBe(true);
 
     // test analysis from file
     const snapshotFile = result.getSnapshotFiles().pop() as string;
@@ -49,15 +47,13 @@ test(
     expect(fs.existsSync(ret.analysisOutputFile)).toBe(true);
     expect(
       fs
-        .readFileSync(ret.analysisOutputFile, 'UTF-8')
-        .includes('Detached HTMLTableElement'),
+        .readFileSync(ret.analysisOutputFile, {encoding: 'utf8'})
+        .includes('Detached <table>'),
     ).toBe(true);
 
     // check if the query result API works as expected
     domElems = analysis.getDetachedElements();
-    expect(
-      domElems.some(node => node.name === 'Detached HTMLTableElement'),
-    ).toBe(true);
+    expect(domElems.some(node => node.name === 'Detached <table>')).toBe(true);
   },
   testTimeout,
 );

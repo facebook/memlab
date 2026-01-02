@@ -87,9 +87,9 @@ export default class MemLabRunCommand extends BaseCommand {
     const workDir = options.configFromOptions?.workDir as Optional<string>;
     const outDir = fileManager.getDataOutDir({workDir});
     const leakSrcFile = path.join(outDir, 'leaks.txt');
-    const content = fs.readFileSync(leakSrcFile, 'UTF-8');
+    const content = fs.readFileSync(leakSrcFile, {encoding: 'utf8'});
     const curDataDir = fileManager.getCurDataDir({workDir});
     const leakDestFile = path.join(curDataDir, 'leaks.txt');
-    fs.writeFileSync(leakDestFile, content, 'UTF-8');
+    fs.writeFileSync(leakDestFile, content, {encoding: 'utf8'});
   }
 }

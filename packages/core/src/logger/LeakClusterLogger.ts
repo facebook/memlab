@@ -37,7 +37,7 @@ class LeakClusterLogger {
     return Promise.all(
       files.map(async (file: string) => {
         const p = path.join(dir, file);
-        const content = await readFile(p, 'UTF-8');
+        const content = await readFile(p, {encoding: 'utf8'});
         return JSON.parse(content);
       }),
     );
@@ -70,7 +70,7 @@ class LeakClusterLogger {
   }
 
   async loadClusterMeta(file: string): Promise<TraceClusterMetaInfo> {
-    const content = await readFile(file, 'UTF-8');
+    const content = await readFile(file, {encoding: 'utf8'});
     return JSON.parse(content);
   }
 
@@ -129,7 +129,7 @@ class LeakClusterLogger {
         content += traceSummary + '\n\n';
       }
     }
-    fs.writeFileSync(file, content, 'UTF-8');
+    fs.writeFileSync(file, content, {encoding: 'utf8'});
   }
 
   logClusterDiff(clusterDiff: TraceClusterDiff): void {
@@ -152,7 +152,7 @@ class LeakClusterLogger {
       config.staleUniqueClusterDir,
       `cluster-${cluster.id}.json`,
     );
-    fs.writeFileSync(file, JSON.stringify(info, null, 2), 'UTF-8');
+    fs.writeFileSync(file, JSON.stringify(info, null, 2), {encoding: 'utf8'});
   }
 
   _logClusterToAdd(cluster: TraceCluster) {
@@ -171,7 +171,7 @@ class LeakClusterLogger {
     fs.appendFileSync(
       config.exploreResultFile,
       `\n------${clusters.length} clusters------\n`,
-      'UTF-8',
+      {encoding: 'utf8'},
     );
     const opt = {color: !config.isContinuousTest};
     for (const cluster of clusters) {
@@ -186,7 +186,9 @@ class LeakClusterLogger {
         info.topLevel(stat + trace);
         // dump plain text train in files
         trace = serializer.summarizePath(path, new Set(), snapshot);
-        fs.appendFileSync(config.exploreResultFile, stat + trace, 'UTF-8');
+        fs.appendFileSync(config.exploreResultFile, stat + trace, {
+          encoding: 'utf8',
+        });
       }
     }
   }
@@ -217,7 +219,7 @@ class LeakClusterLogger {
         trace_record: NormalizedTrace.pathToTrace(cluster.path),
       }),
     };
-    fs.writeFileSync(file, JSON.stringify(info, null, 2), 'UTF-8');
+    fs.writeFileSync(file, JSON.stringify(info, null, 2), {encoding: 'utf8'});
   }
 
   _getTraceFilePath(cluster: TraceCluster): string {
@@ -251,7 +253,7 @@ class LeakClusterLogger {
         trace_record: NormalizedTrace.pathToTrace(cluster.path),
       }),
     };
-    fs.writeFileSync(file, JSON.stringify(info, null, 2), 'UTF-8');
+    fs.writeFileSync(file, JSON.stringify(info, null, 2), {encoding: 'utf8'});
   }
 
   _getUnclassifiedTraceFilePath(cluster: TraceCluster): string {

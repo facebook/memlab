@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 
-import type {CDPSession, Page} from 'puppeteer';
+import type {CDPSession, Page} from 'puppeteer-core';
 import type {AnyValue, Nullable} from '@memlab/core';
 
 import {config, info} from '@memlab/core';

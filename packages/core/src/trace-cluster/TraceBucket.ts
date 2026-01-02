@@ -587,7 +587,7 @@ export default class NormalizedTrace {
       return ret;
     }
     try {
-      const content = fs.readFileSync(file, 'UTF-8');
+      const content = fs.readFileSync(file, {encoding: 'utf8'});
       ret = JSON.parse(content);
     } catch (ex) {
       throw utils.haltOrThrow(utils.getError(ex));
@@ -598,6 +598,6 @@ export default class NormalizedTrace {
   static saveCluster(clusters: NormalizedTrace[]): void {
     const file = config.traceClusterFile;
     const content = JSON.stringify(clusters, null, 2);
-    fs.writeFileSync(file, content, 'UTF-8');
+    fs.writeFileSync(file, content, {encoding: 'utf8'});
   }
 }

@@ -20,7 +20,7 @@ import {
   runInfoUtils,
   RunMetaInfo,
 } from '@memlab/core';
-import type {CDPSession, Page} from 'puppeteer';
+import type {CDPSession, Page} from 'puppeteer-core';
 
 import fs from 'fs';
 import {utils, info, serializer, browserInfo, config} from '@memlab/core';
@@ -98,7 +98,7 @@ function serializeVisitPlan(visitPlan: IE2EScenarioVisitPlan): void {
   fs.writeFileSync(
     config.snapshotSequenceFile,
     JSON.stringify(visitPlan.tabsOrder, null, 2),
-    'UTF-8',
+    {encoding: 'utf8'},
   );
 }
 
@@ -283,11 +283,11 @@ async function startTrackingHeapAllocation(
   file: string,
 ): Promise<CDPSession> {
   const heap = '';
-  fs.writeFileSync(file, heap, 'UTF-8');
+  fs.writeFileSync(file, heap, {encoding: 'utf8'});
   info.lowLevel('tracking heap allocation...');
   const cdpSession = await page.target().createCDPSession();
   cdpSession.on('HeapProfiler.addHeapSnapshotChunk', data => {
-    fs.appendFileSync(file, data.chunk, 'UTF-8');
+    fs.appendFileSync(file, data.chunk, {encoding: 'utf8'});
   });
   await cdpSession.send('HeapProfiler.startTrackingHeapObjects', {
     trackAllocations: true,

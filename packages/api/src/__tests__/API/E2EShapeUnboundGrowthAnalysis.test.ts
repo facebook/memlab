@@ -80,7 +80,9 @@ async function testAnalysisFromFileDir(
   // to contain the expected results
   expect(fs.existsSync(ret.analysisOutputFile)).toBe(true);
   expect(
-    fs.readFileSync(ret.analysisOutputFile, 'UTF-8').includes('LeakObject'),
+    fs
+      .readFileSync(ret.analysisOutputFile, {encoding: 'utf8'})
+      .includes('LeakObject'),
   ).toBe(true);
 
   // expect the query API works
@@ -122,7 +124,9 @@ async function testAnalysisWithSpecifiedWorkDir(
   ).toBe(true);
   // output file contains the expected result
   expect(
-    fs.readFileSync(ret.analysisOutputFile, 'UTF-8').includes('LeakObject'),
+    fs
+      .readFileSync(ret.analysisOutputFile, {encoding: 'utf8'})
+      .includes('LeakObject'),
   ).toBe(true);
 
   // expect the query API works

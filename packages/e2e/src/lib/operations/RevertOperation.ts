@@ -9,7 +9,7 @@
  */
 
 import BaseOperation from './BaseOperation';
-import type {Page} from 'puppeteer';
+import type {Page} from 'puppeteer-core';
 import EscOperation from './EscOperation';
 import type {OperationArgs} from '@memlab/core';
 import BackOperation from './BackOperation';

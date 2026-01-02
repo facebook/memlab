@@ -169,12 +169,12 @@ npm install -g memlab
 
   private writeTextWithNewLine(docFile: string, content: string): void {
     this.touchFile(docFile);
-    fs.appendFileSync(docFile, `${content}\n`, 'UTF-8');
+    fs.appendFileSync(docFile, `${content}\n`, {encoding: 'utf8'});
   }
 
   private touchFile(docFile: string): void {
     if (!fs.existsSync(docFile)) {
-      fs.writeFileSync(docFile, '', 'UTF-8');
+      fs.writeFileSync(docFile, '', {encoding: 'utf8'});
     }
   }
 
@@ -187,7 +187,7 @@ npm install -g memlab
     fs.appendFileSync(
       docFile,
       '```' + codeType + '\n' + normalizedCode + '\n```\n',
-      'UTF-8',
+      {encoding: 'utf8'},
     );
   }
 

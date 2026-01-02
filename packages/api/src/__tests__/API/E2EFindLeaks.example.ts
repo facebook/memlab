@@ -11,7 +11,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 
 import {info} from '@memlab/core';
-import {Page} from 'puppeteer';
+import {Page} from 'puppeteer-core';
 import {run} from '../../index';
 
 const scenario = {

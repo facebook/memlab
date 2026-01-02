@@ -10,7 +10,7 @@
 
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 
-import type {Page} from 'puppeteer';
+import type {Page} from 'puppeteer-core';
 import {fileManager} from '@memlab/core';
 
 import path from 'path';

@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 
-import type {Page, Browser} from 'puppeteer';
+import type {Page, Browser} from 'puppeteer-core';
 import type {ParsedArgs} from 'minimist';
 import type {
   AnyFunction,

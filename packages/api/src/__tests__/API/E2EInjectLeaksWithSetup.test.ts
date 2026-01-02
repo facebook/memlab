@@ -10,7 +10,7 @@
 
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 
-import type {Page} from 'puppeteer';
+import type {Page} from 'puppeteer-core';
 import type {IHeapNode, IScenario} from '@memlab/core';
 
 import os from 'os';

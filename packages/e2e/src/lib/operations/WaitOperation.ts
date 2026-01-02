@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 
-import {Page} from 'puppeteer';
+import {Page} from 'puppeteer-core';
 import {info} from '@memlab/core';
 import BaseOperation from './BaseOperation';
 import interactUtils from './InteractionUtils';

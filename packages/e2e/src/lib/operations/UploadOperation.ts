@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 
-import type {ElementHandle, Page} from 'puppeteer';
+import type {ElementHandle, Page} from 'puppeteer-core';
 
 import path from 'path';
 import {config, utils} from '@memlab/core';

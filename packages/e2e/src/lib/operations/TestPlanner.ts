@@ -171,7 +171,9 @@ export class TestPlanner {
       utils.haltOrThrow(`cookie file doesn't exist: ${cookieFile}`);
     }
 
-    const cookies = JSON.parse(fs.readFileSync(cookieFile, 'UTF-8')) as Cookies;
+    const cookies = JSON.parse(
+      fs.readFileSync(cookieFile, {encoding: 'utf8'}),
+    ) as Cookies;
     return this.populateDomainInCookies(
       cookies,
       synthesizer.getDomain(),
