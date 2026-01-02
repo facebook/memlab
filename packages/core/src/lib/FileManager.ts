@@ -84,8 +84,22 @@ export class FileManager {
     return path.resolve(workDir);
   }
 
-  public getChromeBinaryZipFile(): string {
-    return path.join(this.getDefaultWorkDir(), 'chrome.tar.gz');
+  public getChromeFBPkgDir(): string {
+    return path.join(this.getChromeBinaryDir(), 'fbpkg');
+  }
+
+  public getChromeBinaryFile(): string {
+    return path.join(this.getChromeBinaryDir(), 'chrome');
+  }
+
+  public getChromeBinaryFileInFBPkg(): string {
+    return path.join(
+      this.getChromeFBPkgDir(),
+      'opt',
+      'google',
+      'chrome',
+      'chrome',
+    );
   }
 
   public getChromeBinaryTimeStampFile(): string {
@@ -431,12 +445,10 @@ export class FileManager {
   public resetBrowserDir(): void {
     try {
       const browserDir = this.getChromeBinaryDir();
-      const browserBinary = this.getChromeBinaryZipFile();
-      if (fs.existsSync(browserBinary)) {
-        fs.unlinkSync(browserBinary);
-      }
       this.rmDir(browserDir);
       joinAndProcessDir({}, browserDir);
+      const chromeFBPkgDir = this.getChromeFBPkgDir();
+      joinAndProcessDir({}, chromeFBPkgDir);
     } catch (e) {
       info.error(utils.getError(e).message);
     }
