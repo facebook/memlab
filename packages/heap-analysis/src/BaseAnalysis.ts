@@ -228,6 +228,11 @@ class BaseAnalysis extends Analysis {
   getOptions(): BaseOption[] {
     return [];
   }
+
+  /** @internal */
+  isInternal(): boolean {
+    return false;
+  }
 }
 
 export default BaseAnalysis;

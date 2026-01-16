@@ -22,6 +22,10 @@ export default class HeapAnalysisSubCommandWrapper extends BaseCommand {
     this.heapAnalysis = analysis;
   }
 
+  isInternalCommand(): boolean {
+    return this.heapAnalysis.isInternal();
+  }
+
   getCommandName(): string {
     return this.heapAnalysis.getCommandName();
   }

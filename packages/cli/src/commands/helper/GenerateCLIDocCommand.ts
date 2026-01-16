@@ -163,7 +163,9 @@ npm install -g memlab
 
     const subCommands = command.getSubCommands() ?? [];
     for (const subCommand of subCommands) {
-      this.writeCommand(docFile, subCommand, indent + '#');
+      if (!subCommand.isInternalCommand()) {
+        this.writeCommand(docFile, subCommand, indent + '#');
+      }
     }
   }
 
