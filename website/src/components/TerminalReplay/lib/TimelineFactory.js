@@ -25,7 +25,7 @@ export default function createTimeline(term, stdouts) {
   }
 
   for (let i = 0; i < stdouts.length; i++) {
-    const {time, content} = stdouts[i];
+    const {content, time} = stdouts[i];
     timeline.markers.push(new Marker(time, content));
   }
   return timeline;

@@ -22,7 +22,7 @@ const _window =
       };
 
 function getWindowSize() {
-  const {innerWidth: width, innerHeight: height} = _window;
+  const {innerHeight: height, innerWidth: width} = _window;
   return {
     width,
     height,

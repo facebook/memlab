@@ -12,7 +12,7 @@ import styles from '../pages/styles.module.css';
 import useBaseUrl from '@docusaurus/useBaseUrl';
 import React from 'react';
 
-const Logo = ({i, infoUrl, imageUrl, caption}) => {
+const Logo = ({caption, i, imageUrl, infoUrl}) => {
   return (
     <a key={i} className={styles.showcaseLogo} href={infoUrl}>
       <img src={useBaseUrl(imageUrl)} title={caption} />
