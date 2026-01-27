@@ -28,7 +28,7 @@ function getClosure(i) {
   };
 }
 
-function App() {
+export default function App() {
   return (
     <div>
       {[1, 2, 3, 4, 5, 6, 7, 8].map(i => {
@@ -44,5 +44,3 @@ function App() {
     </div>
   );
 }
-
-export default App;

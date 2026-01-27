@@ -11,12 +11,10 @@
 import Layout from '../components/layout.jsx';
 import React from 'react';
 
-function MyApp({Component, pageProps}) {
+export default function MyApp({Component, pageProps}) {
   return (
     <Layout>
       <Component {...pageProps} />
     </Layout>
   );
 }
-
-export default MyApp;
