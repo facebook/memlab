@@ -1,4 +1,4 @@
-# Variable: snapshotMapReduce()
+# Variable: snapshotMapReduce
 
 > **snapshotMapReduce**: \<`T1`, `T2`\>(`mapCallback`, `reduceCallback`, `options`) => `Promise`\<`T2`\>
 

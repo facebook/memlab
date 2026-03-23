@@ -234,7 +234,7 @@ const {takeSnapshots} = require('@memlab/api');
 
 ### from()
 
-> `static` **from**(`workDir`): `BrowserInteractionResultReader`
+> `static` **from**(`workDir?`): `BrowserInteractionResultReader`
 
 Defined in: api/src/result-reader/BrowserInteractionResultReader.ts:39
 
@@ -243,7 +243,7 @@ and generated files of a memlab run were stored
 
 #### Parameters
 
-##### workDir
+##### workDir?
 
 `string` = `''`
 

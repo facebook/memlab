@@ -37,7 +37,7 @@ Defined in: heap-analysis/src/BaseAnalysis.ts:174
 
 ### analyzeSnapshotFromFile()
 
-> **analyzeSnapshotFromFile**(`file`, `options`): `Promise`\<[`AnalyzeSnapshotResult`](../type-aliases/AnalyzeSnapshotResult.md)\>
+> **analyzeSnapshotFromFile**(`file`, `options?`): `Promise`\<[`AnalyzeSnapshotResult`](../type-aliases/AnalyzeSnapshotResult.md)\>
 
 Defined in: heap-analysis/src/BaseAnalysis.ts:95
 
@@ -51,7 +51,7 @@ Run heap analysis for a single heap snapshot file
 
 the absolute path of a `.heapsnapshot` file.
 
-##### options
+##### options?
 
 [`RunHeapAnalysisOptions`](../type-aliases/RunHeapAnalysisOptions.md) = `{}`
 
@@ -94,7 +94,7 @@ const result = await analysis.analyzeSnapshotFromFile(snapshotFile, {
 
 ### analyzeSnapshotsInDirectory()
 
-> **analyzeSnapshotsInDirectory**(`directory`, `options`): `Promise`\<[`AnalyzeSnapshotResult`](../type-aliases/AnalyzeSnapshotResult.md)\>
+> **analyzeSnapshotsInDirectory**(`directory`, `options?`): `Promise`\<[`AnalyzeSnapshotResult`](../type-aliases/AnalyzeSnapshotResult.md)\>
 
 Defined in: heap-analysis/src/BaseAnalysis.ts:148
 
@@ -110,7 +110,7 @@ the absolute path of the directory holding a series of
 `.heapsnapshot` files, all snapshot files will be loaded and analyzed
 in the alphanumerically ascending order of those snapshot file names.
 
-##### options
+##### options?
 
 [`RunHeapAnalysisOptions`](../type-aliases/RunHeapAnalysisOptions.md) = `{}`
 

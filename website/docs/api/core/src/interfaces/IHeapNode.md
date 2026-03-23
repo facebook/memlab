@@ -61,7 +61,7 @@ native, and JS references).
 
 ***
 
-### findAnyReference()
+### findAnyReference
 
 > **findAnyReference**: (`predicate`) => [`Nullable`](../type-aliases/Nullable.md)\<[`IHeapEdge`](IHeapEdge.md)\>
 
@@ -96,7 +96,7 @@ const reference = node.findAnyReference((edge: IHeapEdge) => {
 
 ***
 
-### findAnyReferrer()
+### findAnyReferrer
 
 > **findAnyReferrer**: (`predicate`) => [`Nullable`](../type-aliases/Nullable.md)\<[`IHeapEdge`](IHeapEdge.md)\>
 
@@ -131,7 +131,7 @@ const referrer = node.findAnyReferrer((edge: IHeapEdge) => {
 
 ***
 
-### findReferrerNodes()
+### findReferrerNodes
 
 > **findReferrerNodes**: (`predicate`) => `IHeapNode`[]
 
@@ -167,7 +167,7 @@ const referrerNodes = node.findReferrerNodes((node: IHeapNode) => {
 
 ***
 
-### findReferrers()
+### findReferrers
 
 > **findReferrers**: (`predicate`) => [`IHeapEdge`](IHeapEdge.md)[]
 
@@ -202,7 +202,7 @@ const referrers = node.findReferrers((edge: IHeapEdge) => {
 
 ***
 
-### getAnyReferrer()
+### getAnyReferrer
 
 > **getAnyReferrer**: (`edgeName`, `edgeType?`) => [`Nullable`](../type-aliases/Nullable.md)\<[`IHeapEdge`](IHeapEdge.md)\>
 
@@ -215,9 +215,9 @@ reference pointing to the hosting node.
 
 ##### edgeName
 
-the name of the incoming JavaScript reference
+`string` \| `number`
 
-`string` | `number`
+the name of the incoming JavaScript reference
 
 ##### edgeType?
 
@@ -240,7 +240,7 @@ const reference = node.getAnyReferrer('ref', 'property');
 
 ***
 
-### getAnyReferrerNode()
+### getAnyReferrerNode
 
 > **getAnyReferrerNode**: (`edgeName`, `edgeType?`) => [`Nullable`](../type-aliases/Nullable.md)\<`IHeapNode`\>
 
@@ -254,9 +254,9 @@ containing the incoming reference.
 
 ##### edgeName
 
-the name of the incoming JavaScript reference
+`string` \| `number`
 
-`string` | `number`
+the name of the incoming JavaScript reference
 
 ##### edgeType?
 
@@ -283,7 +283,7 @@ const n2 = node.getAnyReferrer('ref', 'property')?.fromNode;
 
 ***
 
-### getReference()
+### getReference
 
 > **getReference**: (`edgeName`, `edgeType?`) => [`Nullable`](../type-aliases/Nullable.md)\<[`IHeapEdge`](IHeapEdge.md)\>
 
@@ -296,9 +296,9 @@ reference from the hosting node.
 
 ##### edgeName
 
-the name of the outgoing JavaScript reference
+`string` \| `number`
 
-`string` | `number`
+the name of the outgoing JavaScript reference
 
 ##### edgeType?
 
@@ -321,7 +321,7 @@ const reference = node.getReference('map', 'hidden');
 
 ***
 
-### getReferenceNode()
+### getReferenceNode
 
 > **getReferenceNode**: (`edgeName`, `edgeType?`) => [`Nullable`](../type-aliases/Nullable.md)\<`IHeapNode`\>
 
@@ -335,9 +335,9 @@ by the outgoing JS reference.
 
 ##### edgeName
 
-the name of the outgoing JavaScript reference
+`string` \| `number`
 
-`string` | `number`
+the name of the outgoing JavaScript reference
 
 ##### edgeType?
 
@@ -363,7 +363,7 @@ const hiddenClassNode2 = node.getReference('map', 'hidden')?.toNode;
 
 ***
 
-### getReferrerNodes()
+### getReferrerNodes
 
 > **getReferrerNodes**: (`edgeName`, `edgeType?`) => `IHeapNode`[]
 
@@ -377,9 +377,9 @@ the hosting node for each of the incoming JS references.
 
 ##### edgeName
 
-the name of the incoming JavaScript reference
+`string` \| `number`
 
-`string` | `number`
+the name of the incoming JavaScript reference
 
 ##### edgeType?
 
@@ -407,7 +407,7 @@ const nodes2 = node.getReferrers('ref', 'property')
 
 ***
 
-### getReferrers()
+### getReferrers
 
 > **getReferrers**: (`edgeName`, `edgeType?`) => [`IHeapEdge`](IHeapEdge.md)[]
 
@@ -420,9 +420,9 @@ references pointing to the hosting node.
 
 ##### edgeName
 
-the name of the incoming JavaScript reference
+`string` \| `number`
 
-`string` | `number`
+the name of the incoming JavaScript reference
 
 ##### edgeType?
 

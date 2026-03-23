@@ -55,7 +55,7 @@ const constants = {
 
 Object.assign(constants.supportedBrowsers, {
   chromium: 'chrome',
-  chrome: 'google-chrome',
+  chrome: 'chrome',
 });
 
 export type Constants = typeof constants;

@@ -1,4 +1,4 @@
-# Variable: getFullHeapFromFile()
+# Variable: getFullHeapFromFile
 
 > **getFullHeapFromFile**: (`file`) => `Promise`\<`IHeapSnapshot`\>
 

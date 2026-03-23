@@ -11,7 +11,7 @@ and analyzeSnapshotsInDirectory.
 
 ### workDir?
 
-> `optional` **workDir**: `string`
+> `optional` **workDir?**: `string`
 
 Defined in: heap-analysis/src/PluginUtils.ts:86
 

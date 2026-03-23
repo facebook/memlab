@@ -1,4 +1,4 @@
-# Type Alias: CheckPageLoadCallback()
+# Type Alias: CheckPageLoadCallback
 
 > **CheckPageLoadCallback** = (`page`) => `Promise`\<`boolean`\>
 

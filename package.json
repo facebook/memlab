@@ -52,6 +52,7 @@
     "./packages/heap-analysis",
     "./packages/api",
     "./packages/cli",
-    "./packages/memlab"
+    "./packages/memlab",
+    "./packages/mcp-server"
   ]
 }

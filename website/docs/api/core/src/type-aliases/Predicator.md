@@ -1,4 +1,4 @@
-# Type Alias: Predicator()\<T\>
+# Type Alias: Predicator\<T\>
 
 > **Predicator**\<`T`\> = (`entity`) => `boolean`
 

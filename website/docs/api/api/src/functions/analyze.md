@@ -1,6 +1,6 @@
 # Function: analyze()
 
-> **analyze**(`runResult`, `heapAnalyzer`, `args`): `Promise`\<`void`\>
+> **analyze**(`runResult`, `heapAnalyzer`, `args?`): `Promise`\<`void`\>
 
 Defined in: api/src/API.ts:328
 
@@ -21,7 +21,7 @@ return value of a browser interaction run
 
 instance of a heap analysis
 
-### args
+### args?
 
 `ParsedArgs` = `...`
 

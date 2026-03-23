@@ -29,66 +29,39 @@
 /******/ 	"use strict";
 /******/ 	var __webpack_modules__ = ({
 
-/***/ 23
-(__unused_webpack_module, exports, __webpack_require__) {
+/***/ 346
+(__unused_webpack_module, exports) {
 
 
-var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
-    if (kind === "m") throw new TypeError("Private method is not writable");
-    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
-    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
-    return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
-};
-var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (receiver, state, kind, f) {
-    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
-    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
-    return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
-};
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-var _DOMVisualizationExtension_domVirtualizer;
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * @format
+ * @oncall memory_lab
+ */
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.DOMVisualizationExtension = void 0;
-const dom_element_visualizer_1 = __importDefault(__webpack_require__(150));
-const dom_element_visualizer_interactive_1 = __importDefault(__webpack_require__(271));
-const basic_extension_1 = __webpack_require__(860);
-const USE_INTERACTIVE_VISUALIZER = true;
-class DOMVisualizationExtension extends basic_extension_1.BasicExtension {
-    constructor(scanner) {
-        super(scanner);
-        _DOMVisualizationExtension_domVirtualizer.set(this, void 0);
-        if (USE_INTERACTIVE_VISUALIZER) {
-            __classPrivateFieldSet(this, _DOMVisualizationExtension_domVirtualizer, new dom_element_visualizer_interactive_1.default(), "f");
-        }
-        else {
-            __classPrivateFieldSet(this, _DOMVisualizationExtension_domVirtualizer, new dom_element_visualizer_1.default(), "f");
-        }
-    }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    afterScan(_analysisResult) {
-        var _a;
-        // const start = Date.now();
-        const scanner = this.scanner;
-        if (scanner.isDevMode()) {
-            const detachedDOMInfo = scanner.getDetachedDOMInfo();
-            (_a = __classPrivateFieldGet(this, _DOMVisualizationExtension_domVirtualizer, "f")) === null || _a === void 0 ? void 0 : _a.repaint(detachedDOMInfo);
-        }
-        // const end = Date.now();
-        // console.log(`repaint took ${end - start}ms`);
-    }
-    cleanup() {
-        // Clean up the visualizer to prevent memory leaks
-        if (__classPrivateFieldGet(this, _DOMVisualizationExtension_domVirtualizer, "f") &&
-            typeof __classPrivateFieldGet(this, _DOMVisualizationExtension_domVirtualizer, "f").cleanup === 'function') {
-            __classPrivateFieldGet(this, _DOMVisualizationExtension_domVirtualizer, "f").cleanup();
-        }
-        // Clear the reference
-        __classPrivateFieldSet(this, _DOMVisualizationExtension_domVirtualizer, null, "f");
-    }
-}
-exports.DOMVisualizationExtension = DOMVisualizationExtension;
-_DOMVisualizationExtension_domVirtualizer = new WeakMap();
+exports.config = exports.featureFlags = exports.performanceConfig = void 0;
+// Performance Configuration
+exports.performanceConfig = {
+    scanIntervalMs: 1000,
+    maxComponentStackDepth: 100,
+    memoryMeasurementIntervalMs: 5000,
+};
+// Feature Flags
+exports.featureFlags = {
+    enableMutationObserver: true,
+    enableMemoryTracking: true,
+    enableComponentStack: true,
+    enableConsoleLogs: window === null || window === void 0 ? void 0 : window.TEST_MEMORY_SCAN,
+};
+// overall Config
+exports.config = {
+    performance: exports.performanceConfig,
+    features: exports.featureFlags,
+};
 
 
 /***/ },
@@ -288,7 +261,7 @@ _DOMObserver_elementCount = new WeakMap(), _DOMObserver_detachedElementCount = n
 
 /***/ },
 
-/***/ 150
+/***/ 953
 (__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -303,438 +276,262 @@ var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (
     if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
     return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
 };
-var _DOMElementVisualizer_instances, _DOMElementVisualizer_canvas, _DOMElementVisualizer_paint, _DOMElementVisualizer_cleanupExistingCanvas, _DOMElementVisualizer_tryToAttachCanvas, _DOMElementVisualizer_createAndAppendCanvas, _DOMElementVisualizer_paintKey, _DOMElementVisualizer_paintRectangles, _DOMElementVisualizer_cleanup;
+var _EventListenerTracker_instances, _EventListenerTracker_listenerMap, _EventListenerTracker_detachedListeners, _EventListenerTracker_originalAddEventListener, _EventListenerTracker_originalRemoveEventListener, _EventListenerTracker_patchEventListeners, _EventListenerTracker_unpatchEventListeners;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const visual_utils_1 = __webpack_require__(498);
-class DOMElementVisualizer {
+exports.EventListenerTracker = void 0;
+const react_fiber_utils_1 = __webpack_require__(737);
+const weak_ref_utils_1 = __webpack_require__(313);
+class EventListenerTracker {
     constructor() {
-        _DOMElementVisualizer_instances.add(this);
-        _DOMElementVisualizer_canvas.set(this, void 0);
-        __classPrivateFieldSet(this, _DOMElementVisualizer_canvas, null, "f");
+        _EventListenerTracker_instances.add(this);
+        _EventListenerTracker_listenerMap.set(this, void 0);
+        _EventListenerTracker_detachedListeners.set(this, void 0);
+        _EventListenerTracker_originalAddEventListener.set(this, void 0);
+        _EventListenerTracker_originalRemoveEventListener.set(this, void 0);
+        __classPrivateFieldSet(this, _EventListenerTracker_listenerMap, new weak_ref_utils_1.WeakMapPlus({ fallback: 'noop', cleanupMs: 100 }), "f");
+        __classPrivateFieldSet(this, _EventListenerTracker_detachedListeners, new Map(), "f");
+        __classPrivateFieldSet(this, _EventListenerTracker_originalAddEventListener, EventTarget.prototype.addEventListener, "f");
+        __classPrivateFieldSet(this, _EventListenerTracker_originalRemoveEventListener, EventTarget.prototype.removeEventListener, "f");
+        __classPrivateFieldGet(this, _EventListenerTracker_instances, "m", _EventListenerTracker_patchEventListeners).call(this);
     }
-    cleanup() {
-        __classPrivateFieldGet(this, _DOMElementVisualizer_instances, "m", _DOMElementVisualizer_cleanup).call(this);
+    static getInstance() {
+        if (!EventListenerTracker.instance) {
+            EventListenerTracker.instance = new EventListenerTracker();
+        }
+        return EventListenerTracker.instance;
     }
-    repaint(domElementInfoList) {
-        __classPrivateFieldGet(this, _DOMElementVisualizer_instances, "m", _DOMElementVisualizer_cleanup).call(this);
-        __classPrivateFieldGet(this, _DOMElementVisualizer_instances, "m", _DOMElementVisualizer_paint).call(this, domElementInfoList);
+    addListener(el, type, cb, options) {
+        el.addEventListener(type, cb, options);
+    }
+    removeListener(el, type, cb, options) {
+        el.removeEventListener(type, cb, options);
+    }
+    scan(getComponentName) {
+        const detachedListeners = new Map();
+        for (const [el, listeners] of __classPrivateFieldGet(this, _EventListenerTracker_listenerMap, "f").entries()) {
+            if (el instanceof Element && !el.isConnected) {
+                for (const listener of listeners) {
+                    // Skip if the callback has been garbage collected
+                    if (!listener.cb.deref())
+                        continue;
+                    const componentName = getComponentName(new WeakRef(el));
+                    if (!detachedListeners.has(componentName)) {
+                        detachedListeners.set(componentName, []);
+                    }
+                    const groups = detachedListeners.get(componentName);
+                    let group = groups === null || groups === void 0 ? void 0 : groups.find(g => g.type === listener.type);
+                    if (!group) {
+                        group = {
+                            type: listener.type,
+                            count: 0,
+                            entries: [],
+                        };
+                        groups === null || groups === void 0 ? void 0 : groups.push(group);
+                    }
+                    group.count++;
+                    group.entries.push(new WeakRef(listener));
+                }
+            }
+        }
+        __classPrivateFieldSet(this, _EventListenerTracker_detachedListeners, detachedListeners, "f");
+        return detachedListeners;
+    }
+    getDetachedListeners() {
+        return __classPrivateFieldGet(this, _EventListenerTracker_detachedListeners, "f");
+    }
+    destroy() {
+        __classPrivateFieldGet(this, _EventListenerTracker_instances, "m", _EventListenerTracker_unpatchEventListeners).call(this);
+        __classPrivateFieldGet(this, _EventListenerTracker_listenerMap, "f").destroy();
+        __classPrivateFieldGet(this, _EventListenerTracker_detachedListeners, "f").clear();
+        EventListenerTracker.instance = null;
     }
 }
-_DOMElementVisualizer_canvas = new WeakMap(), _DOMElementVisualizer_instances = new WeakSet(), _DOMElementVisualizer_paint = function _DOMElementVisualizer_paint(domElementInfoList) {
-    if (!__classPrivateFieldGet(this, _DOMElementVisualizer_canvas, "f")) {
-        const canvas = __classPrivateFieldGet(this, _DOMElementVisualizer_instances, "m", _DOMElementVisualizer_createAndAppendCanvas).call(this);
-        __classPrivateFieldSet(this, _DOMElementVisualizer_canvas, canvas, "f");
-    }
-    __classPrivateFieldGet(this, _DOMElementVisualizer_instances, "m", _DOMElementVisualizer_paintRectangles).call(this, domElementInfoList);
-}, _DOMElementVisualizer_cleanupExistingCanvas = function _DOMElementVisualizer_cleanupExistingCanvas() {
-    // Clean up any existing canvas
-    if (__classPrivateFieldGet(this, _DOMElementVisualizer_canvas, "f")) {
-        const ctx = __classPrivateFieldGet(this, _DOMElementVisualizer_canvas, "f").getContext('2d');
-        ctx === null || ctx === void 0 ? void 0 : ctx.clearRect(0, 0, __classPrivateFieldGet(this, _DOMElementVisualizer_canvas, "f").width, __classPrivateFieldGet(this, _DOMElementVisualizer_canvas, "f").height);
-        __classPrivateFieldGet(this, _DOMElementVisualizer_canvas, "f").remove();
-        __classPrivateFieldSet(this, _DOMElementVisualizer_canvas, null, "f");
-    }
-}, _DOMElementVisualizer_tryToAttachCanvas = function _DOMElementVisualizer_tryToAttachCanvas(canvas) {
-    if (document.body) {
-        document.body.appendChild(canvas);
-    }
-}, _DOMElementVisualizer_createAndAppendCanvas = function _DOMElementVisualizer_createAndAppendCanvas() {
-    // Create and insert the canvas element
-    const canvas = (0, visual_utils_1.createVisualizerElement)('canvas');
-    canvas.id = 'overlayCanvas';
-    __classPrivateFieldGet(this, _DOMElementVisualizer_instances, "m", _DOMElementVisualizer_tryToAttachCanvas).call(this, canvas);
-    // Style the canvas to cover the entire page
-    canvas.style.position = 'absolute';
-    canvas.style.top = '0';
-    canvas.style.left = '0';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
-    canvas.style.pointerEvents = 'none';
-    canvas.style.zIndex = '99999';
-    // Set canvas dimensions to match the window dimensions
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    return canvas;
-}, _DOMElementVisualizer_paintKey = function _DOMElementVisualizer_paintKey(info) {
-    const { boundingRect } = info;
-    return JSON.stringify({ boundingRect });
-}, _DOMElementVisualizer_paintRectangles = function _DOMElementVisualizer_paintRectangles(domElementInfoList) {
-    const canvas = __classPrivateFieldGet(this, _DOMElementVisualizer_canvas, "f");
-    if (!canvas) {
-        return;
-    }
-    // Get the 2D drawing context
-    const ctx = canvas.getContext('2d');
-    if (ctx == null) {
-        return;
-    }
-    // Set rectangle styles
-    ctx.strokeStyle = 'rgba(75, 192, 192, 0.8)';
-    ctx.lineWidth = 2;
-    ctx.fillStyle = 'rgba(75, 192, 192, 0.05)';
-    ctx.font = '11px Inter, system-ui, -apple-system, sans-serif';
-    const paintedInfo = new Set();
-    // Draw the rectangles
-    domElementInfoList.forEach((info) => {
+exports.EventListenerTracker = EventListenerTracker;
+_EventListenerTracker_listenerMap = new WeakMap(), _EventListenerTracker_detachedListeners = new WeakMap(), _EventListenerTracker_originalAddEventListener = new WeakMap(), _EventListenerTracker_originalRemoveEventListener = new WeakMap(), _EventListenerTracker_instances = new WeakSet(), _EventListenerTracker_patchEventListeners = function _EventListenerTracker_patchEventListeners() {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
+    EventTarget.prototype.addEventListener = function (type, listener, options) {
         var _a;
-        const rect = info.boundingRect;
-        if (rect == null) {
-            return;
+        __classPrivateFieldGet(self, _EventListenerTracker_originalAddEventListener, "f").call(this, type, listener, options);
+        if (this instanceof Element) {
+            const fiber = (0, react_fiber_utils_1.getFiberNodeFromElement)(this);
+            const entry = {
+                type,
+                cb: new WeakRef(listener),
+                options,
+                fiber: fiber ? new WeakRef(fiber) : undefined,
+            };
+            const listeners = (_a = __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").get(this)) !== null && _a !== void 0 ? _a : [];
+            listeners.push(entry);
+            __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").set(this, listeners);
         }
-        const key = __classPrivateFieldGet(this, _DOMElementVisualizer_instances, "m", _DOMElementVisualizer_paintKey).call(this, info);
-        if (paintedInfo.has(key)) {
-            return;
+    };
+    EventTarget.prototype.removeEventListener = function (type, listener, options) {
+        __classPrivateFieldGet(self, _EventListenerTracker_originalRemoveEventListener, "f").call(this, type, listener, options);
+        if (this instanceof Element) {
+            const listeners = __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").get(this);
+            if (listeners) {
+                const index = listeners.findIndex(entry => entry.type === type &&
+                    entry.cb.deref() === listener &&
+                    entry.options === options);
+                if (index !== -1) {
+                    listeners.splice(index, 1);
+                }
+                if (listeners.length === 0) {
+                    __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").delete(this);
+                }
+                else {
+                    __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").set(this, listeners);
+                }
+            }
         }
-        paintedInfo.add(key);
-        ctx.fillRect(rect.left, rect.top, rect.width, rect.height);
-        ctx.strokeRect(rect.left, rect.top, rect.width, rect.height);
-        const component = (_a = info.componentStack) === null || _a === void 0 ? void 0 : _a[0];
-        if (component) {
-            // attach detached element id key so that it is easy to search in heap snapshot
-            const element = info.element.deref();
-            const elementId = element === null || element === void 0 ? void 0 : element.detachedElementId;
-            const elementIdText = elementId ? ` (${elementId})` : '';
-            const text = `${component}${elementIdText}`;
-            ctx.fillStyle = 'rgba(74, 131, 224, 1)';
-            ctx.fillText(text, rect.left + 5, rect.top + 15); // Draw the name
-            ctx.fillStyle = 'rgba(75, 192, 192, 0.05)';
-        }
-    });
-}, _DOMElementVisualizer_cleanup = function _DOMElementVisualizer_cleanup() {
-    var _a;
-    const canvas = __classPrivateFieldGet(this, _DOMElementVisualizer_canvas, "f");
-    if (canvas) {
-        const ctx = canvas.getContext('2d');
-        ctx === null || ctx === void 0 ? void 0 : ctx.clearRect(0, 0, canvas.width, canvas.height);
-        (_a = canvas.parentNode) === null || _a === void 0 ? void 0 : _a.removeChild(canvas);
-    }
-    __classPrivateFieldSet(this, _DOMElementVisualizer_canvas, null, "f");
+    };
+}, _EventListenerTracker_unpatchEventListeners = function _EventListenerTracker_unpatchEventListeners() {
+    EventTarget.prototype.addEventListener = __classPrivateFieldGet(this, _EventListenerTracker_originalAddEventListener, "f");
+    EventTarget.prototype.removeEventListener =
+        __classPrivateFieldGet(this, _EventListenerTracker_originalRemoveEventListener, "f");
 };
-exports["default"] = DOMElementVisualizer;
+EventListenerTracker.instance = null;
 
 
 /***/ },
 
-/***/ 271
+/***/ 302
 (__unused_webpack_module, exports, __webpack_require__) {
 
 
-var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
-    if (kind === "m") throw new TypeError("Private method is not writable");
-    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
-    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
-    return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
-};
-var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (receiver, state, kind, f) {
-    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
-    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
-    return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
-};
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-var _DOMElementVisualizerInteractive_instances, _DOMElementVisualizerInteractive_elementIdToRectangle, _DOMElementVisualizerInteractive_visualizationOverlayDiv, _DOMElementVisualizerInteractive_controlWidget, _DOMElementVisualizerInteractive_blockedElementIds, _DOMElementVisualizerInteractive_currentVisualData, _DOMElementVisualizerInteractive_hideAllRef, _DOMElementVisualizerInteractive_updateDataCallbacks, _DOMElementVisualizerInteractive_listenToKeyboardEvent, _DOMElementVisualizerInteractive_initVisualizerData, _DOMElementVisualizerInteractive_getOutlineElementByElementId, _DOMElementVisualizerInteractive_getElementIdSet, _DOMElementVisualizerInteractive_getComponentStackForElement, _DOMElementVisualizerInteractive_traverseUpOutlineElements, _DOMElementVisualizerInteractive_removeVisualizerElement, _DOMElementVisualizerInteractive_cleanup, _DOMElementVisualizerInteractive_getZIndex, _DOMElementVisualizerInteractive_paint, _DOMElementVisualizerInteractive_updateVisualizerData;
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const dom_element_visualizer_1 = __importDefault(__webpack_require__(150));
-const visual_overlay_1 = __webpack_require__(368);
-const control_widget_1 = __webpack_require__(341);
-const overlay_rectangle_1 = __webpack_require__(701);
-const utils_1 = __webpack_require__(476);
-const visual_utils_1 = __webpack_require__(498);
-class DOMElementVisualizerInteractive extends dom_element_visualizer_1.default {
-    constructor() {
-        super();
-        _DOMElementVisualizerInteractive_instances.add(this);
-        _DOMElementVisualizerInteractive_elementIdToRectangle.set(this, void 0);
-        _DOMElementVisualizerInteractive_visualizationOverlayDiv.set(this, void 0);
-        _DOMElementVisualizerInteractive_controlWidget.set(this, void 0);
-        _DOMElementVisualizerInteractive_blockedElementIds.set(this, void 0);
-        _DOMElementVisualizerInteractive_currentVisualData.set(this, void 0);
-        _DOMElementVisualizerInteractive_hideAllRef.set(this, void 0);
-        _DOMElementVisualizerInteractive_updateDataCallbacks.set(this, []);
-        __classPrivateFieldSet(this, _DOMElementVisualizerInteractive_hideAllRef, { value: false }, "f");
-        __classPrivateFieldSet(this, _DOMElementVisualizerInteractive_visualizationOverlayDiv, (0, visual_overlay_1.createOverlayDiv)(), "f");
-        (0, visual_utils_1.tryToAttachOverlay)(__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_visualizationOverlayDiv, "f"));
-        __classPrivateFieldSet(this, _DOMElementVisualizerInteractive_controlWidget, (0, control_widget_1.createControlWidget)(__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_visualizationOverlayDiv, "f"), __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_hideAllRef, "f"), cb => {
-            __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_updateDataCallbacks, "f").push(cb);
-        }), "f");
-        (0, visual_utils_1.tryToAttachOverlay)(__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_controlWidget, "f"));
-        __classPrivateFieldSet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, new Map(), "f");
-        __classPrivateFieldSet(this, _DOMElementVisualizerInteractive_currentVisualData, __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_initVisualizerData).call(this), "f");
-        __classPrivateFieldSet(this, _DOMElementVisualizerInteractive_blockedElementIds, new Set(), "f");
-        __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_listenToKeyboardEvent).call(this);
-    }
-    repaint(domElementInfoList) {
-        // this.#controlWidget.remove();
-        __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_visualizationOverlayDiv, "f").remove();
-        __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_cleanup).call(this, domElementInfoList);
-        __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_paint).call(this, domElementInfoList);
-        __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_updateVisualizerData).call(this);
-        (0, visual_utils_1.tryToAttachOverlay)(__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_visualizationOverlayDiv, "f"));
-        // tryToAttachOverlay(this.#controlWidget);
-    }
-    cleanup() {
-        // Clean up the visualization overlay
-        if (__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_visualizationOverlayDiv, "f")) {
-            __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_visualizationOverlayDiv, "f").remove();
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * @format
+ * @oncall memory_lab
+ */
+const utils = __importStar(__webpack_require__(476));
+const react_fiber_utils_1 = __webpack_require__(737);
+const valid_component_name_1 = __webpack_require__(847);
+class ReactFiberAnalyzer {
+    scan(elementWeakRefList, elementToComponentStack) {
+        var _a;
+        const visitedRootFibers = new Set();
+        const components = new Set();
+        const componentToFiberNodeCount = new Map();
+        const detachedComponentToFiberNodeCount = new Map();
+        const topDownVisited = new Set();
+        const analyzedFibers = new Set();
+        const fiberNodes = [];
+        let totalElements = 0;
+        let totalDetachedElements = 0;
+        function analyzeFiber(fiberNode) {
+            (0, react_fiber_utils_1.traverseFiber)(fiberNode, (fiberNode) => {
+                // skip if the fiber node has already been analyzed
+                if (analyzedFibers.has(fiberNode)) {
+                    return true;
+                }
+                analyzedFibers.add(fiberNode);
+                // traverse the fiber tree up to find the component name
+                const displayName = (0, react_fiber_utils_1.getDisplayNameOfFiberNode)(fiberNode);
+                if (displayName != null && (0, valid_component_name_1.isValidComponentName)(displayName)) {
+                    components.add(displayName);
+                    utils.addCountbyKey(componentToFiberNodeCount, displayName, 1);
+                    return true;
+                }
+            }, true);
         }
-        // Clean up the control widget
-        if (__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_controlWidget, "f")) {
-            __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_controlWidget, "f").remove();
+        for (const weakRef of elementWeakRefList) {
+            const elem = weakRef.deref();
+            if (elem == null) {
+                continue;
+            }
+            // elements stats
+            ++totalElements;
+            // TODO: simplify this logic
+            if (!elem.isConnected) {
+                if (elementToComponentStack.has(elem)) {
+                    const componentStack = (_a = elementToComponentStack.get(elem)) !== null && _a !== void 0 ? _a : [];
+                    // set component name
+                    const component = componentStack[0];
+                    elem.__component_name = component;
+                    utils.addCountbyKey(detachedComponentToFiberNodeCount, component, 1);
+                }
+                ++totalDetachedElements;
+            }
+            // analyze fiber nodes
+            const fiberNode = (0, react_fiber_utils_1.getFiberNodeFromElement)(elem);
+            if (fiberNode == null) {
+                continue;
+            }
+            analyzeFiber(fiberNode);
+            // try to traverse each fiber node in the entire fiber tree
+            const rootFiber = (0, react_fiber_utils_1.getTopMostFiberWithChild)(fiberNode);
+            if (rootFiber == null) {
+                continue;
+            }
+            if (visitedRootFibers.has(rootFiber)) {
+                continue;
+            }
+            visitedRootFibers.add(rootFiber);
+            // start traversing fiber tree from the know root host
+            (0, react_fiber_utils_1.traverseFiber)(rootFiber, (node) => {
+                if (topDownVisited.has(node)) {
+                    return true;
+                }
+                topDownVisited.add(node);
+                fiberNodes.push(new WeakRef(node));
+                analyzeFiber(node);
+            }, false);
         }
-        // Clear all element references
-        __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").clear();
-        __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_blockedElementIds, "f").clear();
-        __classPrivateFieldSet(this, _DOMElementVisualizerInteractive_updateDataCallbacks, [], "f");
-        // Call parent cleanup
-        super.cleanup();
+        topDownVisited.clear();
+        analyzedFibers.clear();
+        visitedRootFibers.clear();
+        return {
+            components,
+            componentToFiberNodeCount,
+            totalElements,
+            totalDetachedElements,
+            detachedComponentToFiberNodeCount,
+            fiberNodes,
+            leakedFibers: [],
+        };
     }
 }
-_DOMElementVisualizerInteractive_elementIdToRectangle = new WeakMap(), _DOMElementVisualizerInteractive_visualizationOverlayDiv = new WeakMap(), _DOMElementVisualizerInteractive_controlWidget = new WeakMap(), _DOMElementVisualizerInteractive_blockedElementIds = new WeakMap(), _DOMElementVisualizerInteractive_currentVisualData = new WeakMap(), _DOMElementVisualizerInteractive_hideAllRef = new WeakMap(), _DOMElementVisualizerInteractive_updateDataCallbacks = new WeakMap(), _DOMElementVisualizerInteractive_instances = new WeakSet(), _DOMElementVisualizerInteractive_listenToKeyboardEvent = function _DOMElementVisualizerInteractive_listenToKeyboardEvent() {
-    document.addEventListener('keydown', event => {
-        if (event.key === 'd' || event.key === 'D') {
-            if (__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f").selectedElementId != null) {
-                __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_blockedElementIds, "f").add(__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f").selectedElementId);
-            }
-        }
-    });
-}, _DOMElementVisualizerInteractive_initVisualizerData = function _DOMElementVisualizerInteractive_initVisualizerData() {
-    const data = {
-        detachedDOMElementsCount: 0,
-        totalDOMElementsCount: (0, utils_1.getDOMElementCount)(),
-        selectedElementId: null,
-        selectedReactComponentStack: [],
-        pinnedElementId: null,
-        setPinnedElementId: (pinnedElementId) => {
-            var _a, _b;
-            if (data.pinnedElementId == pinnedElementId) {
-                return;
-            }
-            // unpin the original pinned element
-            const oldPin = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_getOutlineElementByElementId).call(this, data.pinnedElementId);
-            (_a = oldPin === null || oldPin === void 0 ? void 0 : oldPin.__unpinned) === null || _a === void 0 ? void 0 : _a.call(oldPin);
-            // pin the newly pinned element
-            const newPin = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_getOutlineElementByElementId).call(this, pinnedElementId);
-            (_b = newPin === null || newPin === void 0 ? void 0 : newPin.__pinned) === null || _b === void 0 ? void 0 : _b.call(newPin);
-            data.pinnedElementId = pinnedElementId;
-        },
-    };
-    return data;
-}, _DOMElementVisualizerInteractive_getOutlineElementByElementId = function _DOMElementVisualizerInteractive_getOutlineElementByElementId(elementId) {
-    if (elementId == null) {
-        return null;
-    }
-    const info = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").get(elementId);
-    if (info == null) {
-        return null;
-    }
-    return info.visualizerElementRef.deref();
-}, _DOMElementVisualizerInteractive_getElementIdSet = function _DOMElementVisualizerInteractive_getElementIdSet(domElementInfoList) {
-    const elementIdSet = new Set();
-    for (const info of domElementInfoList) {
-        const element = info.element.deref();
-        if (element == null) {
-            continue;
-        }
-        const elementId = element.detachedElementId;
-        if (elementId == null) {
-            continue;
-        }
-        elementIdSet.add(elementId);
-    }
-    return elementIdSet;
-}, _DOMElementVisualizerInteractive_getComponentStackForElement = function _DOMElementVisualizerInteractive_getComponentStackForElement(elementId) {
-    const ret = [];
-    if (elementId == null) {
-        return ret;
-    }
-    const visualizer = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").get(elementId);
-    if (visualizer == null) {
-        return ret;
-    }
-    const element = visualizer.elementInfo.element.deref();
-    if (element == null) {
-        return ret;
-    }
-    // traverse parent elements
-    let currentElement = element;
-    while (currentElement) {
-        if (currentElement.isConnected) {
-            break;
-        }
-        const elementId = currentElement.detachedElementId;
-        const info = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").get(elementId);
-        if (info == null) {
-            break;
-        }
-        ret.push(info);
-        currentElement = currentElement.parentElement;
-    }
-    return ret;
-}, _DOMElementVisualizerInteractive_traverseUpOutlineElements = function _DOMElementVisualizerInteractive_traverseUpOutlineElements(elementId, callback) {
-    const visualizer = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").get(elementId);
-    if (visualizer == null) {
-        return;
-    }
-    const visitedElementIds = new Set();
-    let currentElement = visualizer.elementInfo.element.deref();
-    while (currentElement) {
-        if (currentElement.isConnected) {
-            break;
-        }
-        const elementIdStr = currentElement.detachedElementId;
-        const elementId = parseInt(elementIdStr, 10);
-        if (visitedElementIds.has(elementId)) {
-            break;
-        }
-        visitedElementIds.add(elementId);
-        const visualizerInfo = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").get(elementId);
-        if (visualizerInfo == null) {
-            break;
-        }
-        const visualizerElement = visualizerInfo.visualizerElementRef.deref();
-        if (visualizerElement == null) {
-            break;
-        }
-        callback(visualizerElement);
-        currentElement = currentElement.parentElement;
-    }
-}, _DOMElementVisualizerInteractive_removeVisualizerElement = function _DOMElementVisualizerInteractive_removeVisualizerElement(elementId) {
-    var _a;
-    const visualizer = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").get(elementId);
-    __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").delete(elementId);
-    if (visualizer == null) {
-        return;
-    }
-    const visualizerElement = visualizer.visualizerElementRef.deref();
-    if (visualizerElement == null) {
-        return;
-    }
-    // invoke the overlay specific code to clean
-    (_a = visualizerElement === null || visualizerElement === void 0 ? void 0 : visualizerElement.__cleanup) === null || _a === void 0 ? void 0 : _a.call(visualizerElement);
-    visualizerElement.remove();
-}, _DOMElementVisualizerInteractive_cleanup = function _DOMElementVisualizerInteractive_cleanup(domElementInfoList) {
-    // first pass remove all those painted visualizer for elements
-    // that either 1) is GCed or 2) is connected to the DOM tree
-    for (const [elementId, elementVistualizer,] of __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").entries()) {
-        if (elementId == null) {
-            continue;
-        }
-        const element = elementVistualizer.elementInfo.element.deref();
-        if (element == null) {
-            __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_removeVisualizerElement).call(this, elementId);
-        }
-    }
-    // second pass remove all those outlines that won't be painted later
-    const willPaintElementIdSet = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_getElementIdSet).call(this, domElementInfoList);
-    for (const [elementId] of __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").entries()) {
-        if (elementId == null) {
-            continue;
-        }
-        if (willPaintElementIdSet.has(elementId) &&
-            !__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_blockedElementIds, "f").has(elementId)) {
-            continue;
-        }
-        __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_removeVisualizerElement).call(this, elementId);
-    }
-}, _DOMElementVisualizerInteractive_getZIndex = function _DOMElementVisualizerInteractive_getZIndex(info) {
-    var _a;
-    const zIndexBase = 9999;
-    const element = info.element.deref();
-    if (element == null) {
-        return 0;
-    }
-    const elementId = element.detachedElementId;
-    if (elementId == null) {
-        return 0;
-    }
-    const rectangle = (_a = info.boundingRect) !== null && _a !== void 0 ? _a : { width: 50, height: 50 };
-    let ret = zIndexBase;
-    // element with a higher element id (created later) has a higher z-index
-    ret += parseInt(elementId, 10);
-    // element with bigger area will have a lower z-index
-    ret += Math.floor(10000000 / (rectangle.width * rectangle.height));
-    return ret;
-}, _DOMElementVisualizerInteractive_paint = function _DOMElementVisualizerInteractive_paint(domElementInfoList) {
-    for (const info of domElementInfoList) {
-        const element = info.element.deref();
-        if (element == null) {
-            continue;
-        }
-        const elementId = element.detachedElementId;
-        if (elementId == null) {
-            continue;
-        }
-        if (__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_blockedElementIds, "f").has(elementId)) {
-            continue;
-        }
-        if (__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").has(elementId)) {
-            continue;
-        }
-        if (element == null) {
-            continue;
-        }
-        if (element.isConnected) {
-            continue;
-        }
-        const zIndex = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_getZIndex).call(this, info);
-        const visualizerElementRef = (0, overlay_rectangle_1.createOverlayRectangle)(elementId, info, __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_visualizationOverlayDiv, "f"), (selectedId) => {
-            __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f").selectedElementId = selectedId;
-            __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_updateVisualizerData).call(this);
-            if (selectedId == null) {
-                return;
-            }
-            __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_traverseUpOutlineElements).call(this, selectedId, element => {
-                var _a;
-                (_a = element === null || element === void 0 ? void 0 : element.__selected) === null || _a === void 0 ? void 0 : _a.call(element);
-            });
-        }, (unselectedId) => {
-            if (__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f").selectedElementId === unselectedId) {
-                __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f").selectedElementId = null;
-                __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_updateVisualizerData).call(this);
-            }
-            if (unselectedId == null) {
-                return;
-            }
-            __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_traverseUpOutlineElements).call(this, unselectedId, element => {
-                var _a;
-                (_a = element === null || element === void 0 ? void 0 : element.__unselected) === null || _a === void 0 ? void 0 : _a.call(element);
-            });
-        }, (clickedId) => {
-            if (__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f").pinnedElementId === clickedId) {
-                __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f").setPinnedElementId(null);
-            }
-            else {
-                __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f").setPinnedElementId(clickedId);
-            }
-            __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_updateVisualizerData).call(this);
-        }, zIndex);
-        if (visualizerElementRef == null ||
-            visualizerElementRef.deref() == null) {
-            return null;
-        }
-        const visualizer = {
-            elementInfo: info,
-            visualizerElementRef,
-        };
-        __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").set(elementId, visualizer);
-    }
-}, _DOMElementVisualizerInteractive_updateVisualizerData = function _DOMElementVisualizerInteractive_updateVisualizerData() {
-    var _a, _b, _c;
-    const data = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f");
-    if (data.pinnedElementId != null) {
-        data.selectedElementId = data.pinnedElementId;
-    }
-    data.detachedDOMElementsCount = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").size;
-    data.totalDOMElementsCount = (0, utils_1.getDOMElementCount)();
-    const selectedElementInfo = (_b = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").get((_a = data.selectedElementId) !== null && _a !== void 0 ? _a : -1)) === null || _b === void 0 ? void 0 : _b.elementInfo;
-    data.selectedReactComponentStack =
-        (_c = selectedElementInfo === null || selectedElementInfo === void 0 ? void 0 : selectedElementInfo.componentStack) !== null && _c !== void 0 ? _c : [];
-    for (const cb of __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_updateDataCallbacks, "f")) {
-        cb(Object.assign({}, __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f")));
-    }
-};
-exports["default"] = DOMElementVisualizerInteractive;
+exports["default"] = ReactFiberAnalyzer;
 
 
 /***/ },
@@ -1138,43 +935,136 @@ class LeakedFiber {
 
 /***/ },
 
-/***/ 302
+/***/ 847
+(__unused_webpack_module, exports) {
+
+
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * @format
+ * @oncall memory_lab
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.isValidComponentName = isValidComponentName;
+const displayNameBlockList = new Set();
+function isValidComponentName(name) {
+    return name != null && !displayNameBlockList.has(name);
+}
+
+
+/***/ },
+
+/***/ 860
+(__unused_webpack_module, exports) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.BasicExtension = void 0;
+/**
+ * Base class for React Memory Scanner extensions.
+ * Extensions can hook into the scanning process before and after analysis.
+ */
+class BasicExtension {
+    constructor(scanner) {
+        this.scanner = scanner;
+    }
+    /**
+     * Hook that runs before the memory scan starts.
+     * Override this method to perform any setup or pre-scan operations.
+     */
+    beforeScan() {
+        // to be overridden
+    }
+    /**
+     * Hook that runs after the memory scan completes.
+     * Override this method to process or modify the analysis results.
+     * @param analysisResult - The results from the memory scan
+     */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    afterScan(_analysisResult) {
+        // to be overridden
+    }
+}
+exports.BasicExtension = BasicExtension;
+
+
+/***/ },
+
+/***/ 23
 (__unused_webpack_module, exports, __webpack_require__) {
 
 
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
+var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
+    if (kind === "m") throw new TypeError("Private method is not writable");
+    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
+    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
+    return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
+};
+var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (receiver, state, kind, f) {
+    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
+    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
+    return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
+};
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+var _DOMVisualizationExtension_domVirtualizer;
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.DOMVisualizationExtension = void 0;
+const dom_element_visualizer_1 = __importDefault(__webpack_require__(150));
+const dom_element_visualizer_interactive_1 = __importDefault(__webpack_require__(271));
+const basic_extension_1 = __webpack_require__(860);
+const USE_INTERACTIVE_VISUALIZER = true;
+class DOMVisualizationExtension extends basic_extension_1.BasicExtension {
+    constructor(scanner) {
+        super(scanner);
+        _DOMVisualizationExtension_domVirtualizer.set(this, void 0);
+        if (USE_INTERACTIVE_VISUALIZER) {
+            __classPrivateFieldSet(this, _DOMVisualizationExtension_domVirtualizer, new dom_element_visualizer_interactive_1.default(), "f");
+        }
+        else {
+            __classPrivateFieldSet(this, _DOMVisualizationExtension_domVirtualizer, new dom_element_visualizer_1.default(), "f");
+        }
     }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    afterScan(_analysisResult) {
+        var _a;
+        // const start = Date.now();
+        const scanner = this.scanner;
+        if (scanner.isDevMode()) {
+            const detachedDOMInfo = scanner.getDetachedDOMInfo();
+            (_a = __classPrivateFieldGet(this, _DOMVisualizationExtension_domVirtualizer, "f")) === null || _a === void 0 ? void 0 : _a.repaint(detachedDOMInfo);
+        }
+        // const end = Date.now();
+        // console.log(`repaint took ${end - start}ms`);
+    }
+    cleanup() {
+        // Clean up the visualizer to prevent memory leaks
+        if (__classPrivateFieldGet(this, _DOMVisualizationExtension_domVirtualizer, "f") &&
+            typeof __classPrivateFieldGet(this, _DOMVisualizationExtension_domVirtualizer, "f").cleanup === 'function') {
+            __classPrivateFieldGet(this, _DOMVisualizationExtension_domVirtualizer, "f").cleanup();
+        }
+        // Clear the reference
+        __classPrivateFieldSet(this, _DOMVisualizationExtension_domVirtualizer, null, "f");
+    }
+}
+exports.DOMVisualizationExtension = DOMVisualizationExtension;
+_DOMVisualizationExtension_domVirtualizer = new WeakMap();
+
+
+/***/ },
+
+/***/ 933
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
@@ -1185,95 +1075,455 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
  * @format
  * @oncall memory_lab
  */
-const utils = __importStar(__webpack_require__(476));
-const react_fiber_utils_1 = __webpack_require__(737);
-const valid_component_name_1 = __webpack_require__(847);
-class ReactFiberAnalyzer {
-    scan(elementWeakRefList, elementToComponentStack) {
-        var _a;
-        const visitedRootFibers = new Set();
-        const components = new Set();
-        const componentToFiberNodeCount = new Map();
-        const detachedComponentToFiberNodeCount = new Map();
-        const topDownVisited = new Set();
-        const analyzedFibers = new Set();
-        const fiberNodes = [];
-        let totalElements = 0;
-        let totalDetachedElements = 0;
-        function analyzeFiber(fiberNode) {
-            (0, react_fiber_utils_1.traverseFiber)(fiberNode, (fiberNode) => {
-                // skip if the fiber node has already been analyzed
-                if (analyzedFibers.has(fiberNode)) {
-                    return true;
+const react_memory_scan_1 = __importDefault(__webpack_require__(282));
+const dom_visualization_extension_1 = __webpack_require__(23);
+const utils_1 = __webpack_require__(476);
+if (!(0, utils_1.hasRunInSession)()) {
+    const memoryScan = new react_memory_scan_1.default({ isDevMode: true });
+    const domVisualizer = new dom_visualization_extension_1.DOMVisualizationExtension(memoryScan);
+    memoryScan.registerExtension(domVisualizer);
+    memoryScan.start();
+    (0, utils_1.setRunInSession)();
+}
+
+
+/***/ },
+
+/***/ 979
+(__unused_webpack_module, exports) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.IntersectionObserverManager = void 0;
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * @format
+ * @oncall memory_lab
+ */
+class IntersectionObserverManager {
+    constructor() {
+        this.observedElements = new Map();
+        this.observer = new IntersectionObserver(entries => {
+            entries.forEach((entry) => {
+                const element = entry.target;
+                const callback = this.observedElements.get(element);
+                if (callback) {
+                    callback(entry);
                 }
-                analyzedFibers.add(fiberNode);
-                // traverse the fiber tree up to find the component name
-                const displayName = (0, react_fiber_utils_1.getDisplayNameOfFiberNode)(fiberNode);
-                if (displayName != null && (0, valid_component_name_1.isValidComponentName)(displayName)) {
-                    components.add(displayName);
-                    utils.addCountbyKey(componentToFiberNodeCount, displayName, 1);
-                    return true;
-                }
-            }, true);
+            });
+        }, {
+            // Only trigger when element is completely out of viewport
+            threshold: 0,
+            // Add some margin to trigger before element is completely out of view
+            rootMargin: '50px',
+        });
+    }
+    static getInstance() {
+        if (!IntersectionObserverManager.instance) {
+            IntersectionObserverManager.instance = new IntersectionObserverManager();
         }
-        for (const weakRef of elementWeakRefList) {
-            const elem = weakRef.deref();
-            if (elem == null) {
-                continue;
-            }
-            // elements stats
-            ++totalElements;
-            // TODO: simplify this logic
-            if (!elem.isConnected) {
-                if (elementToComponentStack.has(elem)) {
-                    const componentStack = (_a = elementToComponentStack.get(elem)) !== null && _a !== void 0 ? _a : [];
-                    // set component name
-                    const component = componentStack[0];
-                    elem.__component_name = component;
-                    utils.addCountbyKey(detachedComponentToFiberNodeCount, component, 1);
-                }
-                ++totalDetachedElements;
-            }
-            // analyze fiber nodes
-            const fiberNode = (0, react_fiber_utils_1.getFiberNodeFromElement)(elem);
-            if (fiberNode == null) {
-                continue;
-            }
-            analyzeFiber(fiberNode);
-            // try to traverse each fiber node in the entire fiber tree
-            const rootFiber = (0, react_fiber_utils_1.getTopMostFiberWithChild)(fiberNode);
-            if (rootFiber == null) {
-                continue;
-            }
-            if (visitedRootFibers.has(rootFiber)) {
-                continue;
-            }
-            visitedRootFibers.add(rootFiber);
-            // start traversing fiber tree from the know root host
-            (0, react_fiber_utils_1.traverseFiber)(rootFiber, (node) => {
-                if (topDownVisited.has(node)) {
-                    return true;
-                }
-                topDownVisited.add(node);
-                fiberNodes.push(new WeakRef(node));
-                analyzeFiber(node);
-            }, false);
+        return IntersectionObserverManager.instance;
+    }
+    observe(elementRef, callback) {
+        const element = elementRef.deref();
+        if (element == null) {
+            return;
         }
-        topDownVisited.clear();
-        analyzedFibers.clear();
-        visitedRootFibers.clear();
-        return {
-            components,
-            componentToFiberNodeCount,
-            totalElements,
-            totalDetachedElements,
-            detachedComponentToFiberNodeCount,
-            fiberNodes,
-            leakedFibers: [],
-        };
+        this.observedElements.set(element, callback);
+        this.observer.observe(element);
+    }
+    unobserve(elementRef) {
+        const element = elementRef.deref();
+        if (element == null) {
+            return;
+        }
+        this.observedElements.delete(element);
+        this.observer.unobserve(element);
     }
 }
-exports["default"] = ReactFiberAnalyzer;
+exports.IntersectionObserverManager = IntersectionObserverManager;
+
+
+/***/ },
+
+/***/ 737
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.traverseFiber = exports.getTopMostFiberWithChild = exports.getTopMostHostFiber = exports.getNearestHostFiber = exports.isHostFiber = exports.MutationMask = exports.Visibility = exports.Snapshot = exports.Ref = exports.ContentReset = exports.ChildDeletion = exports.Cloned = exports.Update = exports.Hydrating = exports.DidCapture = exports.Placement = exports.PerformedWork = exports.DEPRECATED_ASYNC_MODE_SYMBOL_STRING = exports.CONCURRENT_MODE_SYMBOL_STRING = exports.CONCURRENT_MODE_NUMBER = exports.HostRoot = exports.OffscreenComponent = exports.LegacyHiddenComponent = exports.Fragment = exports.HostText = exports.DehydratedSuspenseComponent = exports.HostSingletonTag = exports.HostHoistableTag = exports.HostComponentTag = exports.SimpleMemoComponentTag = exports.MemoComponentTag = exports.ForwardRefTag = exports.OffscreenComponentTag = exports.SuspenseComponentTag = exports.ContextConsumerTag = exports.FunctionComponentTag = exports.ClassComponentTag = void 0;
+exports.getFiberNodeFromElement = getFiberNodeFromElement;
+exports.getReactComponentStack = getReactComponentStack;
+exports.getDisplayNameOfFiberNode = getDisplayNameOfFiberNode;
+exports.isFunctionalComponent = isFunctionalComponent;
+exports.extractReactComponentName = extractReactComponentName;
+const utils_1 = __webpack_require__(476);
+const valid_component_name_1 = __webpack_require__(847);
+exports.ClassComponentTag = 1;
+exports.FunctionComponentTag = 0;
+exports.ContextConsumerTag = 9;
+exports.SuspenseComponentTag = 13;
+exports.OffscreenComponentTag = 22;
+exports.ForwardRefTag = 11;
+exports.MemoComponentTag = 14;
+exports.SimpleMemoComponentTag = 15;
+exports.HostComponentTag = 5;
+exports.HostHoistableTag = 26;
+exports.HostSingletonTag = 27;
+exports.DehydratedSuspenseComponent = 18;
+exports.HostText = 6;
+exports.Fragment = 7;
+exports.LegacyHiddenComponent = 23;
+exports.OffscreenComponent = 22;
+exports.HostRoot = 3;
+exports.CONCURRENT_MODE_NUMBER = 0xeacf;
+exports.CONCURRENT_MODE_SYMBOL_STRING = 'Symbol(react.concurrent_mode)';
+exports.DEPRECATED_ASYNC_MODE_SYMBOL_STRING = 'Symbol(react.async_mode)';
+// https://github.com/facebook/react/blob/main/packages/react-reconciler/src/ReactFiberFlags.js
+exports.PerformedWork = 0b1;
+exports.Placement = 0b10;
+exports.DidCapture = 0b10000000;
+exports.Hydrating = 0b1000000000000;
+exports.Update = 0b100;
+exports.Cloned = 0b1000;
+exports.ChildDeletion = 0b10000;
+exports.ContentReset = 0b100000;
+exports.Ref = 0b1000000000;
+exports.Snapshot = 0b10000000000;
+exports.Visibility = 0b10000000000000;
+exports.MutationMask = exports.Placement |
+    exports.Update |
+    exports.ChildDeletion |
+    exports.ContentReset |
+    exports.Hydrating |
+    exports.Visibility |
+    exports.Snapshot;
+/**
+ * @see https://reactnative.dev/architecture/glossary#host-view-tree-and-host-view
+ */
+const isHostFiber = (fiber) => fiber.tag === exports.HostComponentTag ||
+    // @ts-expect-error: it exists
+    fiber.tag === exports.HostHoistableTag ||
+    // @ts-expect-error: it exists
+    fiber.tag === exports.HostSingletonTag ||
+    typeof fiber.type === 'string';
+exports.isHostFiber = isHostFiber;
+const getNearestHostFiber = (fiber) => {
+    let hostFiber = (0, exports.traverseFiber)(fiber, exports.isHostFiber);
+    if (!hostFiber) {
+        hostFiber = (0, exports.traverseFiber)(fiber, exports.isHostFiber, true);
+    }
+    return hostFiber;
+};
+exports.getNearestHostFiber = getNearestHostFiber;
+const getTopMostHostFiber = (fiber) => {
+    let topMostHostFiber = null;
+    function checkFiber(fiber) {
+        if ((0, exports.isHostFiber)(fiber)) {
+            topMostHostFiber = fiber;
+        }
+    }
+    (0, exports.traverseFiber)(fiber, checkFiber, true);
+    return topMostHostFiber;
+};
+exports.getTopMostHostFiber = getTopMostHostFiber;
+const getTopMostFiberWithChild = (fiber) => {
+    let topMostFiber = null;
+    function checkFiber(fiber) {
+        if (fiber.child != null) {
+            topMostFiber = fiber;
+        }
+    }
+    (0, exports.traverseFiber)(fiber, checkFiber, true);
+    return topMostFiber;
+};
+exports.getTopMostFiberWithChild = getTopMostFiberWithChild;
+const traverseFiber = (fiber, selector, ascending = false) => {
+    if (!fiber) {
+        return null;
+    }
+    if (selector(fiber) === true) {
+        return fiber;
+    }
+    let next = ascending ? fiber.return : fiber.child;
+    while (next) {
+        const match = (0, exports.traverseFiber)(next, selector, ascending);
+        if (match) {
+            return match;
+        }
+        next = ascending ? null : next.sibling;
+    }
+    return null;
+};
+exports.traverseFiber = traverseFiber;
+// React internal property keys
+const internalKeys = [
+    '__reactFiber$', // React 17+
+    '__reactInternalInstance$', // React 16
+    '_reactRootContainer', // React Root
+];
+const getOwnPropertyNames = Object.getOwnPropertyNames.bind(Object);
+function getFiberNodeFromElement(element) {
+    for (const prefix of internalKeys) {
+        // Use Object.keys only as fallback since it's slower
+        const key = getOwnPropertyNames(element).find(k => k.startsWith(prefix));
+        if (key) {
+            return element[key];
+        }
+    }
+    return null;
+}
+function getReactComponentStack(node) {
+    const stack = [];
+    const visited = new Set();
+    let fiber = node;
+    while (fiber) {
+        if (visited.has(fiber)) {
+            break;
+        }
+        visited.add(fiber);
+        const name = getDisplayNameOfFiberNode(fiber);
+        if (name) {
+            stack.push(name);
+        }
+        fiber = fiber.return;
+    }
+    return stack;
+}
+function getDisplayNameOfFiberNode(node) {
+    var _a, _b, _c, _d;
+    const elementType = (_a = node.type) !== null && _a !== void 0 ? _a : node.elementType;
+    // Try to get name from displayName or name properties
+    let displayName = (_b = elementType === null || elementType === void 0 ? void 0 : elementType.displayName) !== null && _b !== void 0 ? _b : elementType === null || elementType === void 0 ? void 0 : elementType.name;
+    // Handle class components and forwardRef
+    if (displayName == null) {
+        if (elementType === null || elementType === void 0 ? void 0 : elementType.render) {
+            // Class components
+            const render = elementType === null || elementType === void 0 ? void 0 : elementType.render;
+            displayName = (_c = render === null || render === void 0 ? void 0 : render.displayName) !== null && _c !== void 0 ? _c : render === null || render === void 0 ? void 0 : render.name;
+        }
+        else if (elementType === null || elementType === void 0 ? void 0 : elementType.type) {
+            // ForwardRef components
+            displayName = (_d = elementType.type.displayName) !== null && _d !== void 0 ? _d : elementType.type.name;
+        }
+    }
+    // Handle anonymous functions
+    if (!displayName && typeof elementType === 'function') {
+        displayName = elementType.name;
+    }
+    const ret = (0, utils_1.getMeaningfulName)(extractReactComponentName(displayName));
+    return (0, valid_component_name_1.isValidComponentName)(ret) ? ret : null;
+}
+function isFunctionalComponent(node) {
+    const elementType = node === null || node === void 0 ? void 0 : node.elementType;
+    return typeof elementType === 'function';
+}
+// dom-element [from component.react] --> component.react
+function extractReactComponentName(displayName) {
+    if (typeof displayName !== 'string') {
+        return null;
+    }
+    if (!displayName.includes('[') || !displayName.includes(']')) {
+        return displayName;
+    }
+    const startIndex = displayName.indexOf('[');
+    const endIndex = displayName.indexOf(']');
+    if (startIndex > endIndex) {
+        return displayName;
+    }
+    const name = displayName.substring(startIndex + 1, endIndex);
+    if (name.startsWith('from ')) {
+        return name.substring('from '.length);
+    }
+    return name;
+}
+
+
+/***/ },
+
+/***/ 476
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getDOMElements = getDOMElements;
+exports.getDOMElementCount = getDOMElementCount;
+exports.getMeaningfulName = getMeaningfulName;
+exports.isMinifiedName = isMinifiedName;
+exports.addCountbyKey = addCountbyKey;
+exports.updateWeakRefList = updateWeakRefList;
+exports.getBoundingClientRect = getBoundingClientRect;
+exports.consoleLog = consoleLog;
+exports.hasRunInSession = hasRunInSession;
+exports.setRunInSession = setRunInSession;
+const visual_utils_1 = __webpack_require__(498);
+function getDOMElements() {
+    const elements = Array.from(document.querySelectorAll('*'));
+    const ret = [];
+    for (const element of elements) {
+        if ((0, visual_utils_1.isVisualizerElement)(element)) {
+            continue;
+        }
+        ret.push(new WeakRef(element));
+    }
+    return ret;
+}
+function getDOMElementCount() {
+    const elements = Array.from(document.querySelectorAll('*'));
+    let ret = 0;
+    for (const element of elements) {
+        if ((0, visual_utils_1.isVisualizerElement)(element)) {
+            continue;
+        }
+        ++ret;
+    }
+    return ret;
+}
+function getMeaningfulName(name) {
+    if (name == null) {
+        return null;
+    }
+    const isMinified = isMinifiedName(name);
+    return isMinified ? null : name;
+}
+/**
+ * Determines if a given function or class name is minified.
+ *
+ * @param {string} name - The function or class name to check.
+ * @return {boolean} - Returns true if the name is likely minified, otherwise false.
+ */
+function isMinifiedName(name) {
+    if (name.length >= 5) {
+        return false;
+    }
+    // Minified names are often very short, e.g., "a", "b", "c"
+    if (name.length <= 3) {
+        return true;
+    }
+    // Names with non-alphanumeric characters (except $ and _) are unlikely to be minified
+    if (/[^a-zA-Z0-9$_]/.test(name)) {
+        return false;
+    }
+    // Minified names rarely have meaningful words (detect camelCase or PascalCase)
+    const hasMeaningfulPattern = /^[A-Z][a-z]+([A-Z][a-z]*)*$|^[a-z]+([A-Z][a-z]*)*$/.test(name);
+    return !hasMeaningfulPattern;
+}
+function addCountbyKey(map, key, count) {
+    var _a;
+    map.set(key, ((_a = map.get(key)) !== null && _a !== void 0 ? _a : 0) + count);
+}
+function updateWeakRefList(weakRefList, elementRefs) {
+    consolidateWeakRefList(weakRefList);
+    const set = getElementsSet(weakRefList);
+    for (const elementRef of elementRefs) {
+        const element = elementRef.deref();
+        if (element == null || set.has(element)) {
+            continue;
+        }
+        set.add(element);
+        weakRefList.push(new WeakRef(element));
+    }
+    return weakRefList;
+}
+function getElementsSet(weakRefList) {
+    const set = new Set();
+    for (const weakRef of weakRefList) {
+        set.add(weakRef.deref());
+    }
+    return set;
+}
+function consolidateWeakRefList(weakRefList) {
+    const alternative = [];
+    for (const weakRef of weakRefList) {
+        const element = weakRef.deref();
+        if (element == null) {
+            continue;
+        }
+        alternative.push(weakRef);
+    }
+    while (weakRefList.length > 0) {
+        weakRefList.pop();
+    }
+    for (const weakRef of alternative) {
+        weakRefList.push(weakRef);
+    }
+    return weakRefList;
+}
+function getBoundingClientRect(element) {
+    if (element == null) {
+        return null;
+    }
+    if (typeof element.getBoundingClientRect !== 'function') {
+        return null;
+    }
+    let rect = null;
+    try {
+        rect = element.getBoundingClientRect();
+    }
+    catch (_a) {
+        // do nothing
+    }
+    if (rect == null) {
+        return null;
+    }
+    const scrollTop = window.scrollY;
+    const scrollLeft = window.scrollX;
+    const ret = {};
+    ret.bottom = rect.bottom;
+    ret.height = rect.height;
+    ret.left = rect.left;
+    ret.right = rect.right;
+    ret.top = rect.top;
+    ret.width = rect.width;
+    ret.x = rect.x;
+    ret.y = rect.y;
+    ret.scrollLeft = scrollLeft;
+    ret.scrollTop = scrollTop;
+    return ret;
+}
+const _console = console;
+const _consoleLog = _console.log;
+function consoleLog(...args) {
+    _consoleLog.apply(_console, args);
+}
+const SESSION_STORAGE_KEY = 'memory_lens_session';
+function isSessionStorageAvailable() {
+    try {
+        const testKey = '__memory_lens_session_test__';
+        sessionStorage.setItem(testKey, '1');
+        sessionStorage.removeItem(testKey);
+        return true;
+    }
+    catch (_a) {
+        return false;
+    }
+}
+function hasRunInSession() {
+    if (!isSessionStorageAvailable()) {
+        return false;
+    }
+    try {
+        return sessionStorage.getItem(SESSION_STORAGE_KEY) === 'true';
+    }
+    catch (_a) {
+        return false;
+    }
+}
+function setRunInSession() {
+    if (!isSessionStorageAvailable()) {
+        return;
+    }
+    try {
+        sessionStorage.setItem(SESSION_STORAGE_KEY, 'true');
+    }
+    catch (_a) {
+        // do nothing
+    }
+}
 
 
 /***/ },
@@ -1556,6 +1806,74 @@ exports.WeakMapPlus = WeakMapPlus;
 
 /***/ },
 
+/***/ 904
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.createComponentStackPanel = createComponentStackPanel;
+const visual_utils_1 = __webpack_require__(498);
+function createComponentStackPanel(registerDataUpdateCallback) {
+    const panel = (0, visual_utils_1.createVisualizerElement)('div');
+    panel.style.width = '100%';
+    // Ensure max height is at most 80% of viewport height
+    panel.style.maxHeight = '80vh';
+    panel.style.background = 'rgba(0, 0, 0, 0.5)';
+    panel.style.borderTop = '1px solid rgba(255, 255, 255, 0.1)';
+    panel.style.display = 'none';
+    panel.style.flexDirection = 'column';
+    panel.style.padding = '8px';
+    panel.style.boxSizing = 'border-box';
+    panel.style.borderRadius = '8px';
+    panel.style.overflowY = 'scroll';
+    panel.style.overflowX = 'hidden';
+    panel.style.textShadow = 'none';
+    panel.style.font = '9px Inter, system-ui, -apple-system, sans-serif';
+    panel.style.color = 'white';
+    panel.id = 'memory-visualization-component-stack-panel';
+    let pinned = false;
+    panel.addEventListener('mouseenter', () => {
+        pinned = true;
+    });
+    panel.addEventListener('mouseleave', () => {
+        pinned = false;
+    });
+    // Register data update callback to update component stack panel
+    registerDataUpdateCallback((0, visual_utils_1.debounce)((data) => {
+        var _a;
+        if (pinned) {
+            return;
+        }
+        panel.innerHTML = '';
+        if (data.selectedElementId == null ||
+            !((_a = data.selectedReactComponentStack) === null || _a === void 0 ? void 0 : _a.length)) {
+            panel.style.display = 'none';
+            return;
+        }
+        panel.style.display = 'flex';
+        const title = (0, visual_utils_1.createVisualizerElement)('div');
+        title.textContent = 'Component Stack:';
+        title.style.fontWeight = 'bold';
+        title.style.marginBottom = '8px';
+        panel.appendChild(title);
+        let actualComponentStackLength = 0;
+        data.selectedReactComponentStack.forEach((component) => {
+            const componentDiv = (0, visual_utils_1.createVisualizerElement)('div');
+            componentDiv.style.marginBottom = '4px';
+            componentDiv.textContent = component;
+            panel.appendChild(componentDiv);
+            ++actualComponentStackLength;
+        });
+        if (actualComponentStackLength === 0) {
+            title.remove();
+        }
+    }, 1));
+    return panel;
+}
+
+
+/***/ },
+
 /***/ 341
 (__unused_webpack_module, exports, __webpack_require__) {
 
@@ -1626,322 +1944,6 @@ function supportDragging(controlWidget) {
         isDragging = false;
         controlWidget.style.cursor = 'default';
     });
-}
-
-
-/***/ },
-
-/***/ 346
-(__unused_webpack_module, exports) {
-
-
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- *
- * @format
- * @oncall memory_lab
- */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.config = exports.featureFlags = exports.performanceConfig = void 0;
-// Performance Configuration
-exports.performanceConfig = {
-    scanIntervalMs: 1000,
-    maxComponentStackDepth: 100,
-    memoryMeasurementIntervalMs: 5000,
-};
-// Feature Flags
-exports.featureFlags = {
-    enableMutationObserver: true,
-    enableMemoryTracking: true,
-    enableComponentStack: true,
-    enableConsoleLogs: window === null || window === void 0 ? void 0 : window.TEST_MEMORY_SCAN,
-};
-// overall Config
-exports.config = {
-    performance: exports.performanceConfig,
-    features: exports.featureFlags,
-};
-
-
-/***/ },
-
-/***/ 368
-(__unused_webpack_module, exports, __webpack_require__) {
-
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.createOverlayDiv = createOverlayDiv;
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- *
- * @format
- * @oncall memory_lab
- */
-const visual_utils_1 = __webpack_require__(498);
-function createOverlayDiv() {
-    const overlayDiv = (0, visual_utils_1.createVisualizerElement)('div');
-    overlayDiv.style.position = 'absolute';
-    overlayDiv.style.top = '0px';
-    overlayDiv.style.left = '0px';
-    overlayDiv.id = 'memory-visualization-overlay';
-    return overlayDiv;
-}
-
-
-/***/ },
-
-/***/ 476
-(__unused_webpack_module, exports, __webpack_require__) {
-
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getDOMElements = getDOMElements;
-exports.getDOMElementCount = getDOMElementCount;
-exports.getMeaningfulName = getMeaningfulName;
-exports.isMinifiedName = isMinifiedName;
-exports.addCountbyKey = addCountbyKey;
-exports.updateWeakRefList = updateWeakRefList;
-exports.getBoundingClientRect = getBoundingClientRect;
-exports.consoleLog = consoleLog;
-exports.hasRunInSession = hasRunInSession;
-exports.setRunInSession = setRunInSession;
-const visual_utils_1 = __webpack_require__(498);
-function getDOMElements() {
-    const elements = Array.from(document.querySelectorAll('*'));
-    const ret = [];
-    for (const element of elements) {
-        if ((0, visual_utils_1.isVisualizerElement)(element)) {
-            continue;
-        }
-        ret.push(new WeakRef(element));
-    }
-    return ret;
-}
-function getDOMElementCount() {
-    const elements = Array.from(document.querySelectorAll('*'));
-    let ret = 0;
-    for (const element of elements) {
-        if ((0, visual_utils_1.isVisualizerElement)(element)) {
-            continue;
-        }
-        ++ret;
-    }
-    return ret;
-}
-function getMeaningfulName(name) {
-    if (name == null) {
-        return null;
-    }
-    const isMinified = isMinifiedName(name);
-    return isMinified ? null : name;
-}
-/**
- * Determines if a given function or class name is minified.
- *
- * @param {string} name - The function or class name to check.
- * @return {boolean} - Returns true if the name is likely minified, otherwise false.
- */
-function isMinifiedName(name) {
-    if (name.length >= 5) {
-        return false;
-    }
-    // Minified names are often very short, e.g., "a", "b", "c"
-    if (name.length <= 3) {
-        return true;
-    }
-    // Names with non-alphanumeric characters (except $ and _) are unlikely to be minified
-    if (/[^a-zA-Z0-9$_]/.test(name)) {
-        return false;
-    }
-    // Minified names rarely have meaningful words (detect camelCase or PascalCase)
-    const hasMeaningfulPattern = /^[A-Z][a-z]+([A-Z][a-z]*)*$|^[a-z]+([A-Z][a-z]*)*$/.test(name);
-    return !hasMeaningfulPattern;
-}
-function addCountbyKey(map, key, count) {
-    var _a;
-    map.set(key, ((_a = map.get(key)) !== null && _a !== void 0 ? _a : 0) + count);
-}
-function updateWeakRefList(weakRefList, elementRefs) {
-    consolidateWeakRefList(weakRefList);
-    const set = getElementsSet(weakRefList);
-    for (const elementRef of elementRefs) {
-        const element = elementRef.deref();
-        if (element == null || set.has(element)) {
-            continue;
-        }
-        set.add(element);
-        weakRefList.push(new WeakRef(element));
-    }
-    return weakRefList;
-}
-function getElementsSet(weakRefList) {
-    const set = new Set();
-    for (const weakRef of weakRefList) {
-        set.add(weakRef.deref());
-    }
-    return set;
-}
-function consolidateWeakRefList(weakRefList) {
-    const alternative = [];
-    for (const weakRef of weakRefList) {
-        const element = weakRef.deref();
-        if (element == null) {
-            continue;
-        }
-        alternative.push(weakRef);
-    }
-    while (weakRefList.length > 0) {
-        weakRefList.pop();
-    }
-    for (const weakRef of alternative) {
-        weakRefList.push(weakRef);
-    }
-    return weakRefList;
-}
-function getBoundingClientRect(element) {
-    if (element == null) {
-        return null;
-    }
-    if (typeof element.getBoundingClientRect !== 'function') {
-        return null;
-    }
-    let rect = null;
-    try {
-        rect = element.getBoundingClientRect();
-    }
-    catch (_a) {
-        // do nothing
-    }
-    if (rect == null) {
-        return null;
-    }
-    const scrollTop = window.scrollY;
-    const scrollLeft = window.scrollX;
-    const ret = {};
-    ret.bottom = rect.bottom;
-    ret.height = rect.height;
-    ret.left = rect.left;
-    ret.right = rect.right;
-    ret.top = rect.top;
-    ret.width = rect.width;
-    ret.x = rect.x;
-    ret.y = rect.y;
-    ret.scrollLeft = scrollLeft;
-    ret.scrollTop = scrollTop;
-    return ret;
-}
-const _console = console;
-const _consoleLog = _console.log;
-function consoleLog(...args) {
-    _consoleLog.apply(_console, args);
-}
-const SESSION_STORAGE_KEY = 'memory_lens_session';
-function isSessionStorageAvailable() {
-    try {
-        const testKey = '__memory_lens_session_test__';
-        sessionStorage.setItem(testKey, '1');
-        sessionStorage.removeItem(testKey);
-        return true;
-    }
-    catch (_a) {
-        return false;
-    }
-}
-function hasRunInSession() {
-    if (!isSessionStorageAvailable()) {
-        return false;
-    }
-    try {
-        return sessionStorage.getItem(SESSION_STORAGE_KEY) === 'true';
-    }
-    catch (_a) {
-        return false;
-    }
-}
-function setRunInSession() {
-    if (!isSessionStorageAvailable()) {
-        return;
-    }
-    try {
-        sessionStorage.setItem(SESSION_STORAGE_KEY, 'true');
-    }
-    catch (_a) {
-        // do nothing
-    }
-}
-
-
-/***/ },
-
-/***/ 498
-(__unused_webpack_module, exports) {
-
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.isVisualizerElement = isVisualizerElement;
-exports.createVisualizerElement = createVisualizerElement;
-exports.tryToAttachOverlay = tryToAttachOverlay;
-exports.addTrackedListener = addTrackedListener;
-exports.removeAllListeners = removeAllListeners;
-exports.debounce = debounce;
-const VISUALIZER_DATA_ATTR = 'data-visualizer';
-function setVisualizerElement(element) {
-    element.setAttribute(VISUALIZER_DATA_ATTR, 'true');
-    element.setAttribute('data-visualcompletion', 'ignore');
-}
-function isVisualizerElement(element) {
-    return element.getAttribute(VISUALIZER_DATA_ATTR) === 'true';
-}
-function createVisualizerElement(tag) {
-    const element = document.createElement(tag);
-    setVisualizerElement(element);
-    return element;
-}
-function tryToAttachOverlay(overlayDiv) {
-    if (document.body) {
-        document.body.appendChild(overlayDiv);
-    }
-}
-const listenerMap = new WeakMap();
-function addTrackedListener(elRef, type, cb, options) {
-    var _a;
-    const el = elRef.deref();
-    if (!el)
-        return;
-    el.addEventListener(type, cb, options);
-    if (!listenerMap.has(el)) {
-        listenerMap.set(el, []);
-    }
-    (_a = listenerMap.get(el)) === null || _a === void 0 ? void 0 : _a.push({ type, cb, options });
-}
-function removeAllListeners(elRef) {
-    const el = elRef.deref();
-    if (!el)
-        return;
-    const listeners = listenerMap.get(el);
-    if (!listeners)
-        return;
-    for (const { type, cb, options } of listeners) {
-        el.removeEventListener(type, cb, options);
-    }
-    listenerMap.delete(el);
-}
-function debounce(callback, delay) {
-    let timer = null;
-    return (...args) => {
-        if (timer) {
-            clearTimeout(timer);
-        }
-        timer = setTimeout(() => {
-            callback(...args);
-        }, delay);
-    };
 }
 
 
@@ -2081,201 +2083,6 @@ function styleOnInteraction(divRef, state) {
 
 /***/ },
 
-/***/ 737
-(__unused_webpack_module, exports, __webpack_require__) {
-
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.traverseFiber = exports.getTopMostFiberWithChild = exports.getTopMostHostFiber = exports.getNearestHostFiber = exports.isHostFiber = exports.MutationMask = exports.Visibility = exports.Snapshot = exports.Ref = exports.ContentReset = exports.ChildDeletion = exports.Cloned = exports.Update = exports.Hydrating = exports.DidCapture = exports.Placement = exports.PerformedWork = exports.DEPRECATED_ASYNC_MODE_SYMBOL_STRING = exports.CONCURRENT_MODE_SYMBOL_STRING = exports.CONCURRENT_MODE_NUMBER = exports.HostRoot = exports.OffscreenComponent = exports.LegacyHiddenComponent = exports.Fragment = exports.HostText = exports.DehydratedSuspenseComponent = exports.HostSingletonTag = exports.HostHoistableTag = exports.HostComponentTag = exports.SimpleMemoComponentTag = exports.MemoComponentTag = exports.ForwardRefTag = exports.OffscreenComponentTag = exports.SuspenseComponentTag = exports.ContextConsumerTag = exports.FunctionComponentTag = exports.ClassComponentTag = void 0;
-exports.getFiberNodeFromElement = getFiberNodeFromElement;
-exports.getReactComponentStack = getReactComponentStack;
-exports.getDisplayNameOfFiberNode = getDisplayNameOfFiberNode;
-exports.isFunctionalComponent = isFunctionalComponent;
-exports.extractReactComponentName = extractReactComponentName;
-const utils_1 = __webpack_require__(476);
-const valid_component_name_1 = __webpack_require__(847);
-exports.ClassComponentTag = 1;
-exports.FunctionComponentTag = 0;
-exports.ContextConsumerTag = 9;
-exports.SuspenseComponentTag = 13;
-exports.OffscreenComponentTag = 22;
-exports.ForwardRefTag = 11;
-exports.MemoComponentTag = 14;
-exports.SimpleMemoComponentTag = 15;
-exports.HostComponentTag = 5;
-exports.HostHoistableTag = 26;
-exports.HostSingletonTag = 27;
-exports.DehydratedSuspenseComponent = 18;
-exports.HostText = 6;
-exports.Fragment = 7;
-exports.LegacyHiddenComponent = 23;
-exports.OffscreenComponent = 22;
-exports.HostRoot = 3;
-exports.CONCURRENT_MODE_NUMBER = 0xeacf;
-exports.CONCURRENT_MODE_SYMBOL_STRING = 'Symbol(react.concurrent_mode)';
-exports.DEPRECATED_ASYNC_MODE_SYMBOL_STRING = 'Symbol(react.async_mode)';
-// https://github.com/facebook/react/blob/main/packages/react-reconciler/src/ReactFiberFlags.js
-exports.PerformedWork = 0b1;
-exports.Placement = 0b10;
-exports.DidCapture = 0b10000000;
-exports.Hydrating = 0b1000000000000;
-exports.Update = 0b100;
-exports.Cloned = 0b1000;
-exports.ChildDeletion = 0b10000;
-exports.ContentReset = 0b100000;
-exports.Ref = 0b1000000000;
-exports.Snapshot = 0b10000000000;
-exports.Visibility = 0b10000000000000;
-exports.MutationMask = exports.Placement |
-    exports.Update |
-    exports.ChildDeletion |
-    exports.ContentReset |
-    exports.Hydrating |
-    exports.Visibility |
-    exports.Snapshot;
-/**
- * @see https://reactnative.dev/architecture/glossary#host-view-tree-and-host-view
- */
-const isHostFiber = (fiber) => fiber.tag === exports.HostComponentTag ||
-    // @ts-expect-error: it exists
-    fiber.tag === exports.HostHoistableTag ||
-    // @ts-expect-error: it exists
-    fiber.tag === exports.HostSingletonTag ||
-    typeof fiber.type === 'string';
-exports.isHostFiber = isHostFiber;
-const getNearestHostFiber = (fiber) => {
-    let hostFiber = (0, exports.traverseFiber)(fiber, exports.isHostFiber);
-    if (!hostFiber) {
-        hostFiber = (0, exports.traverseFiber)(fiber, exports.isHostFiber, true);
-    }
-    return hostFiber;
-};
-exports.getNearestHostFiber = getNearestHostFiber;
-const getTopMostHostFiber = (fiber) => {
-    let topMostHostFiber = null;
-    function checkFiber(fiber) {
-        if ((0, exports.isHostFiber)(fiber)) {
-            topMostHostFiber = fiber;
-        }
-    }
-    (0, exports.traverseFiber)(fiber, checkFiber, true);
-    return topMostHostFiber;
-};
-exports.getTopMostHostFiber = getTopMostHostFiber;
-const getTopMostFiberWithChild = (fiber) => {
-    let topMostFiber = null;
-    function checkFiber(fiber) {
-        if (fiber.child != null) {
-            topMostFiber = fiber;
-        }
-    }
-    (0, exports.traverseFiber)(fiber, checkFiber, true);
-    return topMostFiber;
-};
-exports.getTopMostFiberWithChild = getTopMostFiberWithChild;
-const traverseFiber = (fiber, selector, ascending = false) => {
-    if (!fiber) {
-        return null;
-    }
-    if (selector(fiber) === true) {
-        return fiber;
-    }
-    let next = ascending ? fiber.return : fiber.child;
-    while (next) {
-        const match = (0, exports.traverseFiber)(next, selector, ascending);
-        if (match) {
-            return match;
-        }
-        next = ascending ? null : next.sibling;
-    }
-    return null;
-};
-exports.traverseFiber = traverseFiber;
-// React internal property keys
-const internalKeys = [
-    '__reactFiber$', // React 17+
-    '__reactInternalInstance$', // React 16
-    '_reactRootContainer', // React Root
-];
-const getOwnPropertyNames = Object.getOwnPropertyNames.bind(Object);
-function getFiberNodeFromElement(element) {
-    for (const prefix of internalKeys) {
-        // Use Object.keys only as fallback since it's slower
-        const key = getOwnPropertyNames(element).find(k => k.startsWith(prefix));
-        if (key) {
-            return element[key];
-        }
-    }
-    return null;
-}
-function getReactComponentStack(node) {
-    const stack = [];
-    const visited = new Set();
-    let fiber = node;
-    while (fiber) {
-        if (visited.has(fiber)) {
-            break;
-        }
-        visited.add(fiber);
-        const name = getDisplayNameOfFiberNode(fiber);
-        if (name) {
-            stack.push(name);
-        }
-        fiber = fiber.return;
-    }
-    return stack;
-}
-function getDisplayNameOfFiberNode(node) {
-    var _a, _b, _c, _d;
-    const elementType = (_a = node.type) !== null && _a !== void 0 ? _a : node.elementType;
-    // Try to get name from displayName or name properties
-    let displayName = (_b = elementType === null || elementType === void 0 ? void 0 : elementType.displayName) !== null && _b !== void 0 ? _b : elementType === null || elementType === void 0 ? void 0 : elementType.name;
-    // Handle class components and forwardRef
-    if (displayName == null) {
-        if (elementType === null || elementType === void 0 ? void 0 : elementType.render) {
-            // Class components
-            const render = elementType === null || elementType === void 0 ? void 0 : elementType.render;
-            displayName = (_c = render === null || render === void 0 ? void 0 : render.displayName) !== null && _c !== void 0 ? _c : render === null || render === void 0 ? void 0 : render.name;
-        }
-        else if (elementType === null || elementType === void 0 ? void 0 : elementType.type) {
-            // ForwardRef components
-            displayName = (_d = elementType.type.displayName) !== null && _d !== void 0 ? _d : elementType.type.name;
-        }
-    }
-    // Handle anonymous functions
-    if (!displayName && typeof elementType === 'function') {
-        displayName = elementType.name;
-    }
-    const ret = (0, utils_1.getMeaningfulName)(extractReactComponentName(displayName));
-    return (0, valid_component_name_1.isValidComponentName)(ret) ? ret : null;
-}
-function isFunctionalComponent(node) {
-    const elementType = node === null || node === void 0 ? void 0 : node.elementType;
-    return typeof elementType === 'function';
-}
-// dom-element [from component.react] --> component.react
-function extractReactComponentName(displayName) {
-    if (typeof displayName !== 'string') {
-        return null;
-    }
-    if (!displayName.includes('[') || !displayName.includes(']')) {
-        return displayName;
-    }
-    const startIndex = displayName.indexOf('[');
-    const endIndex = displayName.indexOf(']');
-    if (startIndex > endIndex) {
-        return displayName;
-    }
-    const name = displayName.substring(startIndex + 1, endIndex);
-    if (name.startsWith('from ')) {
-        return name.substring('from '.length);
-    }
-    return name;
-}
-
-
-/***/ },
-
 /***/ 775
 (__unused_webpack_module, exports, __webpack_require__) {
 
@@ -2314,164 +2121,6 @@ function createStatusText(registerDataUpdateCallback) {
                 `Heap: ${formatBytes(usedHeap)} / ${formatBytes(totalHeap)}`;
     });
     return statusWidget;
-}
-
-
-/***/ },
-
-/***/ 847
-(__unused_webpack_module, exports) {
-
-
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- *
- * @format
- * @oncall memory_lab
- */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.isValidComponentName = isValidComponentName;
-const displayNameBlockList = new Set();
-function isValidComponentName(name) {
-    return name != null && !displayNameBlockList.has(name);
-}
-
-
-/***/ },
-
-/***/ 860
-(__unused_webpack_module, exports) {
-
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.BasicExtension = void 0;
-/**
- * Base class for React Memory Scanner extensions.
- * Extensions can hook into the scanning process before and after analysis.
- */
-class BasicExtension {
-    constructor(scanner) {
-        this.scanner = scanner;
-    }
-    /**
-     * Hook that runs before the memory scan starts.
-     * Override this method to perform any setup or pre-scan operations.
-     */
-    beforeScan() {
-        // to be overridden
-    }
-    /**
-     * Hook that runs after the memory scan completes.
-     * Override this method to process or modify the analysis results.
-     * @param analysisResult - The results from the memory scan
-     */
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    afterScan(_analysisResult) {
-        // to be overridden
-    }
-}
-exports.BasicExtension = BasicExtension;
-
-
-/***/ },
-
-/***/ 904
-(__unused_webpack_module, exports, __webpack_require__) {
-
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.createComponentStackPanel = createComponentStackPanel;
-const visual_utils_1 = __webpack_require__(498);
-function createComponentStackPanel(registerDataUpdateCallback) {
-    const panel = (0, visual_utils_1.createVisualizerElement)('div');
-    panel.style.width = '100%';
-    // Ensure max height is at most 80% of viewport height
-    panel.style.maxHeight = '80vh';
-    panel.style.background = 'rgba(0, 0, 0, 0.5)';
-    panel.style.borderTop = '1px solid rgba(255, 255, 255, 0.1)';
-    panel.style.display = 'none';
-    panel.style.flexDirection = 'column';
-    panel.style.padding = '8px';
-    panel.style.boxSizing = 'border-box';
-    panel.style.borderRadius = '8px';
-    panel.style.overflowY = 'scroll';
-    panel.style.overflowX = 'hidden';
-    panel.style.textShadow = 'none';
-    panel.style.font = '9px Inter, system-ui, -apple-system, sans-serif';
-    panel.style.color = 'white';
-    panel.id = 'memory-visualization-component-stack-panel';
-    let pinned = false;
-    panel.addEventListener('mouseenter', () => {
-        pinned = true;
-    });
-    panel.addEventListener('mouseleave', () => {
-        pinned = false;
-    });
-    // Register data update callback to update component stack panel
-    registerDataUpdateCallback((0, visual_utils_1.debounce)((data) => {
-        var _a;
-        if (pinned) {
-            return;
-        }
-        panel.innerHTML = '';
-        if (data.selectedElementId == null ||
-            !((_a = data.selectedReactComponentStack) === null || _a === void 0 ? void 0 : _a.length)) {
-            panel.style.display = 'none';
-            return;
-        }
-        panel.style.display = 'flex';
-        const title = (0, visual_utils_1.createVisualizerElement)('div');
-        title.textContent = 'Component Stack:';
-        title.style.fontWeight = 'bold';
-        title.style.marginBottom = '8px';
-        panel.appendChild(title);
-        let actualComponentStackLength = 0;
-        data.selectedReactComponentStack.forEach((component) => {
-            const componentDiv = (0, visual_utils_1.createVisualizerElement)('div');
-            componentDiv.style.marginBottom = '4px';
-            componentDiv.textContent = component;
-            panel.appendChild(componentDiv);
-            ++actualComponentStackLength;
-        });
-        if (actualComponentStackLength === 0) {
-            title.remove();
-        }
-    }, 1));
-    return panel;
-}
-
-
-/***/ },
-
-/***/ 933
-(__unused_webpack_module, exports, __webpack_require__) {
-
-
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- *
- * @format
- * @oncall memory_lab
- */
-const react_memory_scan_1 = __importDefault(__webpack_require__(282));
-const dom_visualization_extension_1 = __webpack_require__(23);
-const utils_1 = __webpack_require__(476);
-if (!(0, utils_1.hasRunInSession)()) {
-    const memoryScan = new react_memory_scan_1.default({ isDevMode: true });
-    const domVisualizer = new dom_visualization_extension_1.DOMVisualizationExtension(memoryScan);
-    memoryScan.registerExtension(domVisualizer);
-    memoryScan.start();
-    (0, utils_1.setRunInSession)();
 }
 
 
@@ -2537,7 +2186,35 @@ function createToggleButton(overlayDiv, hideAllRef) {
 
 /***/ },
 
-/***/ 953
+/***/ 368
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.createOverlayDiv = createOverlayDiv;
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * @format
+ * @oncall memory_lab
+ */
+const visual_utils_1 = __webpack_require__(498);
+function createOverlayDiv() {
+    const overlayDiv = (0, visual_utils_1.createVisualizerElement)('div');
+    overlayDiv.style.position = 'absolute';
+    overlayDiv.style.top = '0px';
+    overlayDiv.style.left = '0px';
+    overlayDiv.id = 'memory-visualization-overlay';
+    return overlayDiv;
+}
+
+
+/***/ },
+
+/***/ 271
 (__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -2552,183 +2229,506 @@ var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (
     if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
     return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
 };
-var _EventListenerTracker_instances, _EventListenerTracker_listenerMap, _EventListenerTracker_detachedListeners, _EventListenerTracker_originalAddEventListener, _EventListenerTracker_originalRemoveEventListener, _EventListenerTracker_patchEventListeners, _EventListenerTracker_unpatchEventListeners;
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+var _DOMElementVisualizerInteractive_instances, _DOMElementVisualizerInteractive_elementIdToRectangle, _DOMElementVisualizerInteractive_visualizationOverlayDiv, _DOMElementVisualizerInteractive_controlWidget, _DOMElementVisualizerInteractive_blockedElementIds, _DOMElementVisualizerInteractive_currentVisualData, _DOMElementVisualizerInteractive_hideAllRef, _DOMElementVisualizerInteractive_updateDataCallbacks, _DOMElementVisualizerInteractive_listenToKeyboardEvent, _DOMElementVisualizerInteractive_initVisualizerData, _DOMElementVisualizerInteractive_getOutlineElementByElementId, _DOMElementVisualizerInteractive_getElementIdSet, _DOMElementVisualizerInteractive_getComponentStackForElement, _DOMElementVisualizerInteractive_traverseUpOutlineElements, _DOMElementVisualizerInteractive_removeVisualizerElement, _DOMElementVisualizerInteractive_cleanup, _DOMElementVisualizerInteractive_getZIndex, _DOMElementVisualizerInteractive_paint, _DOMElementVisualizerInteractive_updateVisualizerData;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.EventListenerTracker = void 0;
-const react_fiber_utils_1 = __webpack_require__(737);
-const weak_ref_utils_1 = __webpack_require__(313);
-class EventListenerTracker {
+const dom_element_visualizer_1 = __importDefault(__webpack_require__(150));
+const visual_overlay_1 = __webpack_require__(368);
+const control_widget_1 = __webpack_require__(341);
+const overlay_rectangle_1 = __webpack_require__(701);
+const utils_1 = __webpack_require__(476);
+const visual_utils_1 = __webpack_require__(498);
+class DOMElementVisualizerInteractive extends dom_element_visualizer_1.default {
     constructor() {
-        _EventListenerTracker_instances.add(this);
-        _EventListenerTracker_listenerMap.set(this, void 0);
-        _EventListenerTracker_detachedListeners.set(this, void 0);
-        _EventListenerTracker_originalAddEventListener.set(this, void 0);
-        _EventListenerTracker_originalRemoveEventListener.set(this, void 0);
-        __classPrivateFieldSet(this, _EventListenerTracker_listenerMap, new weak_ref_utils_1.WeakMapPlus({ fallback: 'noop', cleanupMs: 100 }), "f");
-        __classPrivateFieldSet(this, _EventListenerTracker_detachedListeners, new Map(), "f");
-        __classPrivateFieldSet(this, _EventListenerTracker_originalAddEventListener, EventTarget.prototype.addEventListener, "f");
-        __classPrivateFieldSet(this, _EventListenerTracker_originalRemoveEventListener, EventTarget.prototype.removeEventListener, "f");
-        __classPrivateFieldGet(this, _EventListenerTracker_instances, "m", _EventListenerTracker_patchEventListeners).call(this);
+        super();
+        _DOMElementVisualizerInteractive_instances.add(this);
+        _DOMElementVisualizerInteractive_elementIdToRectangle.set(this, void 0);
+        _DOMElementVisualizerInteractive_visualizationOverlayDiv.set(this, void 0);
+        _DOMElementVisualizerInteractive_controlWidget.set(this, void 0);
+        _DOMElementVisualizerInteractive_blockedElementIds.set(this, void 0);
+        _DOMElementVisualizerInteractive_currentVisualData.set(this, void 0);
+        _DOMElementVisualizerInteractive_hideAllRef.set(this, void 0);
+        _DOMElementVisualizerInteractive_updateDataCallbacks.set(this, []);
+        __classPrivateFieldSet(this, _DOMElementVisualizerInteractive_hideAllRef, { value: false }, "f");
+        __classPrivateFieldSet(this, _DOMElementVisualizerInteractive_visualizationOverlayDiv, (0, visual_overlay_1.createOverlayDiv)(), "f");
+        (0, visual_utils_1.tryToAttachOverlay)(__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_visualizationOverlayDiv, "f"));
+        __classPrivateFieldSet(this, _DOMElementVisualizerInteractive_controlWidget, (0, control_widget_1.createControlWidget)(__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_visualizationOverlayDiv, "f"), __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_hideAllRef, "f"), cb => {
+            __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_updateDataCallbacks, "f").push(cb);
+        }), "f");
+        (0, visual_utils_1.tryToAttachOverlay)(__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_controlWidget, "f"));
+        __classPrivateFieldSet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, new Map(), "f");
+        __classPrivateFieldSet(this, _DOMElementVisualizerInteractive_currentVisualData, __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_initVisualizerData).call(this), "f");
+        __classPrivateFieldSet(this, _DOMElementVisualizerInteractive_blockedElementIds, new Set(), "f");
+        __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_listenToKeyboardEvent).call(this);
     }
-    static getInstance() {
-        if (!EventListenerTracker.instance) {
-            EventListenerTracker.instance = new EventListenerTracker();
+    repaint(domElementInfoList) {
+        // this.#controlWidget.remove();
+        __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_visualizationOverlayDiv, "f").remove();
+        __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_cleanup).call(this, domElementInfoList);
+        __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_paint).call(this, domElementInfoList);
+        __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_updateVisualizerData).call(this);
+        (0, visual_utils_1.tryToAttachOverlay)(__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_visualizationOverlayDiv, "f"));
+        // tryToAttachOverlay(this.#controlWidget);
+    }
+    cleanup() {
+        // Clean up the visualization overlay
+        if (__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_visualizationOverlayDiv, "f")) {
+            __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_visualizationOverlayDiv, "f").remove();
         }
-        return EventListenerTracker.instance;
-    }
-    addListener(el, type, cb, options) {
-        el.addEventListener(type, cb, options);
-    }
-    removeListener(el, type, cb, options) {
-        el.removeEventListener(type, cb, options);
-    }
-    scan(getComponentName) {
-        const detachedListeners = new Map();
-        for (const [el, listeners] of __classPrivateFieldGet(this, _EventListenerTracker_listenerMap, "f").entries()) {
-            if (el instanceof Element && !el.isConnected) {
-                for (const listener of listeners) {
-                    // Skip if the callback has been garbage collected
-                    if (!listener.cb.deref())
-                        continue;
-                    const componentName = getComponentName(new WeakRef(el));
-                    if (!detachedListeners.has(componentName)) {
-                        detachedListeners.set(componentName, []);
-                    }
-                    const groups = detachedListeners.get(componentName);
-                    let group = groups === null || groups === void 0 ? void 0 : groups.find(g => g.type === listener.type);
-                    if (!group) {
-                        group = {
-                            type: listener.type,
-                            count: 0,
-                            entries: [],
-                        };
-                        groups === null || groups === void 0 ? void 0 : groups.push(group);
-                    }
-                    group.count++;
-                    group.entries.push(new WeakRef(listener));
-                }
-            }
+        // Clean up the control widget
+        if (__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_controlWidget, "f")) {
+            __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_controlWidget, "f").remove();
         }
-        __classPrivateFieldSet(this, _EventListenerTracker_detachedListeners, detachedListeners, "f");
-        return detachedListeners;
-    }
-    getDetachedListeners() {
-        return __classPrivateFieldGet(this, _EventListenerTracker_detachedListeners, "f");
-    }
-    destroy() {
-        __classPrivateFieldGet(this, _EventListenerTracker_instances, "m", _EventListenerTracker_unpatchEventListeners).call(this);
-        __classPrivateFieldGet(this, _EventListenerTracker_listenerMap, "f").destroy();
-        __classPrivateFieldGet(this, _EventListenerTracker_detachedListeners, "f").clear();
-        EventListenerTracker.instance = null;
+        // Clear all element references
+        __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").clear();
+        __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_blockedElementIds, "f").clear();
+        __classPrivateFieldSet(this, _DOMElementVisualizerInteractive_updateDataCallbacks, [], "f");
+        // Call parent cleanup
+        super.cleanup();
     }
 }
-exports.EventListenerTracker = EventListenerTracker;
-_EventListenerTracker_listenerMap = new WeakMap(), _EventListenerTracker_detachedListeners = new WeakMap(), _EventListenerTracker_originalAddEventListener = new WeakMap(), _EventListenerTracker_originalRemoveEventListener = new WeakMap(), _EventListenerTracker_instances = new WeakSet(), _EventListenerTracker_patchEventListeners = function _EventListenerTracker_patchEventListeners() {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const self = this;
-    EventTarget.prototype.addEventListener = function (type, listener, options) {
-        var _a;
-        __classPrivateFieldGet(self, _EventListenerTracker_originalAddEventListener, "f").call(this, type, listener, options);
-        if (this instanceof Element) {
-            const fiber = (0, react_fiber_utils_1.getFiberNodeFromElement)(this);
-            const entry = {
-                type,
-                cb: new WeakRef(listener),
-                options,
-                fiber: fiber ? new WeakRef(fiber) : undefined,
-            };
-            const listeners = (_a = __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").get(this)) !== null && _a !== void 0 ? _a : [];
-            listeners.push(entry);
-            __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").set(this, listeners);
-        }
-    };
-    EventTarget.prototype.removeEventListener = function (type, listener, options) {
-        __classPrivateFieldGet(self, _EventListenerTracker_originalRemoveEventListener, "f").call(this, type, listener, options);
-        if (this instanceof Element) {
-            const listeners = __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").get(this);
-            if (listeners) {
-                const index = listeners.findIndex(entry => entry.type === type &&
-                    entry.cb.deref() === listener &&
-                    entry.options === options);
-                if (index !== -1) {
-                    listeners.splice(index, 1);
-                }
-                if (listeners.length === 0) {
-                    __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").delete(this);
-                }
-                else {
-                    __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").set(this, listeners);
-                }
+_DOMElementVisualizerInteractive_elementIdToRectangle = new WeakMap(), _DOMElementVisualizerInteractive_visualizationOverlayDiv = new WeakMap(), _DOMElementVisualizerInteractive_controlWidget = new WeakMap(), _DOMElementVisualizerInteractive_blockedElementIds = new WeakMap(), _DOMElementVisualizerInteractive_currentVisualData = new WeakMap(), _DOMElementVisualizerInteractive_hideAllRef = new WeakMap(), _DOMElementVisualizerInteractive_updateDataCallbacks = new WeakMap(), _DOMElementVisualizerInteractive_instances = new WeakSet(), _DOMElementVisualizerInteractive_listenToKeyboardEvent = function _DOMElementVisualizerInteractive_listenToKeyboardEvent() {
+    document.addEventListener('keydown', event => {
+        if (event.key === 'd' || event.key === 'D') {
+            if (__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f").selectedElementId != null) {
+                __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_blockedElementIds, "f").add(__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f").selectedElementId);
             }
         }
+    });
+}, _DOMElementVisualizerInteractive_initVisualizerData = function _DOMElementVisualizerInteractive_initVisualizerData() {
+    const data = {
+        detachedDOMElementsCount: 0,
+        totalDOMElementsCount: (0, utils_1.getDOMElementCount)(),
+        selectedElementId: null,
+        selectedReactComponentStack: [],
+        pinnedElementId: null,
+        setPinnedElementId: (pinnedElementId) => {
+            var _a, _b;
+            if (data.pinnedElementId == pinnedElementId) {
+                return;
+            }
+            // unpin the original pinned element
+            const oldPin = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_getOutlineElementByElementId).call(this, data.pinnedElementId);
+            (_a = oldPin === null || oldPin === void 0 ? void 0 : oldPin.__unpinned) === null || _a === void 0 ? void 0 : _a.call(oldPin);
+            // pin the newly pinned element
+            const newPin = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_getOutlineElementByElementId).call(this, pinnedElementId);
+            (_b = newPin === null || newPin === void 0 ? void 0 : newPin.__pinned) === null || _b === void 0 ? void 0 : _b.call(newPin);
+            data.pinnedElementId = pinnedElementId;
+        },
     };
-}, _EventListenerTracker_unpatchEventListeners = function _EventListenerTracker_unpatchEventListeners() {
-    EventTarget.prototype.addEventListener = __classPrivateFieldGet(this, _EventListenerTracker_originalAddEventListener, "f");
-    EventTarget.prototype.removeEventListener =
-        __classPrivateFieldGet(this, _EventListenerTracker_originalRemoveEventListener, "f");
+    return data;
+}, _DOMElementVisualizerInteractive_getOutlineElementByElementId = function _DOMElementVisualizerInteractive_getOutlineElementByElementId(elementId) {
+    if (elementId == null) {
+        return null;
+    }
+    const info = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").get(elementId);
+    if (info == null) {
+        return null;
+    }
+    return info.visualizerElementRef.deref();
+}, _DOMElementVisualizerInteractive_getElementIdSet = function _DOMElementVisualizerInteractive_getElementIdSet(domElementInfoList) {
+    const elementIdSet = new Set();
+    for (const info of domElementInfoList) {
+        const element = info.element.deref();
+        if (element == null) {
+            continue;
+        }
+        const elementId = element.detachedElementId;
+        if (elementId == null) {
+            continue;
+        }
+        elementIdSet.add(elementId);
+    }
+    return elementIdSet;
+}, _DOMElementVisualizerInteractive_getComponentStackForElement = function _DOMElementVisualizerInteractive_getComponentStackForElement(elementId) {
+    const ret = [];
+    if (elementId == null) {
+        return ret;
+    }
+    const visualizer = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").get(elementId);
+    if (visualizer == null) {
+        return ret;
+    }
+    const element = visualizer.elementInfo.element.deref();
+    if (element == null) {
+        return ret;
+    }
+    // traverse parent elements
+    let currentElement = element;
+    while (currentElement) {
+        if (currentElement.isConnected) {
+            break;
+        }
+        const elementId = currentElement.detachedElementId;
+        const info = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").get(elementId);
+        if (info == null) {
+            break;
+        }
+        ret.push(info);
+        currentElement = currentElement.parentElement;
+    }
+    return ret;
+}, _DOMElementVisualizerInteractive_traverseUpOutlineElements = function _DOMElementVisualizerInteractive_traverseUpOutlineElements(elementId, callback) {
+    const visualizer = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").get(elementId);
+    if (visualizer == null) {
+        return;
+    }
+    const visitedElementIds = new Set();
+    let currentElement = visualizer.elementInfo.element.deref();
+    while (currentElement) {
+        if (currentElement.isConnected) {
+            break;
+        }
+        const elementIdStr = currentElement.detachedElementId;
+        const elementId = parseInt(elementIdStr, 10);
+        if (visitedElementIds.has(elementId)) {
+            break;
+        }
+        visitedElementIds.add(elementId);
+        const visualizerInfo = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").get(elementId);
+        if (visualizerInfo == null) {
+            break;
+        }
+        const visualizerElement = visualizerInfo.visualizerElementRef.deref();
+        if (visualizerElement == null) {
+            break;
+        }
+        callback(visualizerElement);
+        currentElement = currentElement.parentElement;
+    }
+}, _DOMElementVisualizerInteractive_removeVisualizerElement = function _DOMElementVisualizerInteractive_removeVisualizerElement(elementId) {
+    var _a;
+    const visualizer = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").get(elementId);
+    __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").delete(elementId);
+    if (visualizer == null) {
+        return;
+    }
+    const visualizerElement = visualizer.visualizerElementRef.deref();
+    if (visualizerElement == null) {
+        return;
+    }
+    // invoke the overlay specific code to clean
+    (_a = visualizerElement === null || visualizerElement === void 0 ? void 0 : visualizerElement.__cleanup) === null || _a === void 0 ? void 0 : _a.call(visualizerElement);
+    visualizerElement.remove();
+}, _DOMElementVisualizerInteractive_cleanup = function _DOMElementVisualizerInteractive_cleanup(domElementInfoList) {
+    // first pass remove all those painted visualizer for elements
+    // that either 1) is GCed or 2) is connected to the DOM tree
+    for (const [elementId, elementVistualizer,] of __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").entries()) {
+        if (elementId == null) {
+            continue;
+        }
+        const element = elementVistualizer.elementInfo.element.deref();
+        if (element == null) {
+            __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_removeVisualizerElement).call(this, elementId);
+        }
+    }
+    // second pass remove all those outlines that won't be painted later
+    const willPaintElementIdSet = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_getElementIdSet).call(this, domElementInfoList);
+    for (const [elementId] of __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").entries()) {
+        if (elementId == null) {
+            continue;
+        }
+        if (willPaintElementIdSet.has(elementId) &&
+            !__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_blockedElementIds, "f").has(elementId)) {
+            continue;
+        }
+        __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_removeVisualizerElement).call(this, elementId);
+    }
+}, _DOMElementVisualizerInteractive_getZIndex = function _DOMElementVisualizerInteractive_getZIndex(info) {
+    var _a;
+    const zIndexBase = 9999;
+    const element = info.element.deref();
+    if (element == null) {
+        return 0;
+    }
+    const elementId = element.detachedElementId;
+    if (elementId == null) {
+        return 0;
+    }
+    const rectangle = (_a = info.boundingRect) !== null && _a !== void 0 ? _a : { width: 50, height: 50 };
+    let ret = zIndexBase;
+    // element with a higher element id (created later) has a higher z-index
+    ret += parseInt(elementId, 10);
+    // element with bigger area will have a lower z-index
+    ret += Math.floor(10000000 / (rectangle.width * rectangle.height));
+    return ret;
+}, _DOMElementVisualizerInteractive_paint = function _DOMElementVisualizerInteractive_paint(domElementInfoList) {
+    for (const info of domElementInfoList) {
+        const element = info.element.deref();
+        if (element == null) {
+            continue;
+        }
+        const elementId = element.detachedElementId;
+        if (elementId == null) {
+            continue;
+        }
+        if (__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_blockedElementIds, "f").has(elementId)) {
+            continue;
+        }
+        if (__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").has(elementId)) {
+            continue;
+        }
+        if (element == null) {
+            continue;
+        }
+        if (element.isConnected) {
+            continue;
+        }
+        const zIndex = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_getZIndex).call(this, info);
+        const visualizerElementRef = (0, overlay_rectangle_1.createOverlayRectangle)(elementId, info, __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_visualizationOverlayDiv, "f"), (selectedId) => {
+            __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f").selectedElementId = selectedId;
+            __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_updateVisualizerData).call(this);
+            if (selectedId == null) {
+                return;
+            }
+            __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_traverseUpOutlineElements).call(this, selectedId, element => {
+                var _a;
+                (_a = element === null || element === void 0 ? void 0 : element.__selected) === null || _a === void 0 ? void 0 : _a.call(element);
+            });
+        }, (unselectedId) => {
+            if (__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f").selectedElementId === unselectedId) {
+                __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f").selectedElementId = null;
+                __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_updateVisualizerData).call(this);
+            }
+            if (unselectedId == null) {
+                return;
+            }
+            __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_traverseUpOutlineElements).call(this, unselectedId, element => {
+                var _a;
+                (_a = element === null || element === void 0 ? void 0 : element.__unselected) === null || _a === void 0 ? void 0 : _a.call(element);
+            });
+        }, (clickedId) => {
+            if (__classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f").pinnedElementId === clickedId) {
+                __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f").setPinnedElementId(null);
+            }
+            else {
+                __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f").setPinnedElementId(clickedId);
+            }
+            __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_instances, "m", _DOMElementVisualizerInteractive_updateVisualizerData).call(this);
+        }, zIndex);
+        if (visualizerElementRef == null ||
+            visualizerElementRef.deref() == null) {
+            return null;
+        }
+        const visualizer = {
+            elementInfo: info,
+            visualizerElementRef,
+        };
+        __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").set(elementId, visualizer);
+    }
+}, _DOMElementVisualizerInteractive_updateVisualizerData = function _DOMElementVisualizerInteractive_updateVisualizerData() {
+    var _a, _b, _c;
+    const data = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f");
+    if (data.pinnedElementId != null) {
+        data.selectedElementId = data.pinnedElementId;
+    }
+    data.detachedDOMElementsCount = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").size;
+    data.totalDOMElementsCount = (0, utils_1.getDOMElementCount)();
+    const selectedElementInfo = (_b = __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_elementIdToRectangle, "f").get((_a = data.selectedElementId) !== null && _a !== void 0 ? _a : -1)) === null || _b === void 0 ? void 0 : _b.elementInfo;
+    data.selectedReactComponentStack =
+        (_c = selectedElementInfo === null || selectedElementInfo === void 0 ? void 0 : selectedElementInfo.componentStack) !== null && _c !== void 0 ? _c : [];
+    for (const cb of __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_updateDataCallbacks, "f")) {
+        cb(Object.assign({}, __classPrivateFieldGet(this, _DOMElementVisualizerInteractive_currentVisualData, "f")));
+    }
 };
-EventListenerTracker.instance = null;
+exports["default"] = DOMElementVisualizerInteractive;
 
 
 /***/ },
 
-/***/ 979
+/***/ 150
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
+    if (kind === "m") throw new TypeError("Private method is not writable");
+    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
+    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
+    return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
+};
+var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (receiver, state, kind, f) {
+    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
+    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
+    return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
+};
+var _DOMElementVisualizer_instances, _DOMElementVisualizer_canvas, _DOMElementVisualizer_paint, _DOMElementVisualizer_cleanupExistingCanvas, _DOMElementVisualizer_tryToAttachCanvas, _DOMElementVisualizer_createAndAppendCanvas, _DOMElementVisualizer_paintKey, _DOMElementVisualizer_paintRectangles, _DOMElementVisualizer_cleanup;
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+const visual_utils_1 = __webpack_require__(498);
+class DOMElementVisualizer {
+    constructor() {
+        _DOMElementVisualizer_instances.add(this);
+        _DOMElementVisualizer_canvas.set(this, void 0);
+        __classPrivateFieldSet(this, _DOMElementVisualizer_canvas, null, "f");
+    }
+    cleanup() {
+        __classPrivateFieldGet(this, _DOMElementVisualizer_instances, "m", _DOMElementVisualizer_cleanup).call(this);
+    }
+    repaint(domElementInfoList) {
+        __classPrivateFieldGet(this, _DOMElementVisualizer_instances, "m", _DOMElementVisualizer_cleanup).call(this);
+        __classPrivateFieldGet(this, _DOMElementVisualizer_instances, "m", _DOMElementVisualizer_paint).call(this, domElementInfoList);
+    }
+}
+_DOMElementVisualizer_canvas = new WeakMap(), _DOMElementVisualizer_instances = new WeakSet(), _DOMElementVisualizer_paint = function _DOMElementVisualizer_paint(domElementInfoList) {
+    if (!__classPrivateFieldGet(this, _DOMElementVisualizer_canvas, "f")) {
+        const canvas = __classPrivateFieldGet(this, _DOMElementVisualizer_instances, "m", _DOMElementVisualizer_createAndAppendCanvas).call(this);
+        __classPrivateFieldSet(this, _DOMElementVisualizer_canvas, canvas, "f");
+    }
+    __classPrivateFieldGet(this, _DOMElementVisualizer_instances, "m", _DOMElementVisualizer_paintRectangles).call(this, domElementInfoList);
+}, _DOMElementVisualizer_cleanupExistingCanvas = function _DOMElementVisualizer_cleanupExistingCanvas() {
+    // Clean up any existing canvas
+    if (__classPrivateFieldGet(this, _DOMElementVisualizer_canvas, "f")) {
+        const ctx = __classPrivateFieldGet(this, _DOMElementVisualizer_canvas, "f").getContext('2d');
+        ctx === null || ctx === void 0 ? void 0 : ctx.clearRect(0, 0, __classPrivateFieldGet(this, _DOMElementVisualizer_canvas, "f").width, __classPrivateFieldGet(this, _DOMElementVisualizer_canvas, "f").height);
+        __classPrivateFieldGet(this, _DOMElementVisualizer_canvas, "f").remove();
+        __classPrivateFieldSet(this, _DOMElementVisualizer_canvas, null, "f");
+    }
+}, _DOMElementVisualizer_tryToAttachCanvas = function _DOMElementVisualizer_tryToAttachCanvas(canvas) {
+    if (document.body) {
+        document.body.appendChild(canvas);
+    }
+}, _DOMElementVisualizer_createAndAppendCanvas = function _DOMElementVisualizer_createAndAppendCanvas() {
+    // Create and insert the canvas element
+    const canvas = (0, visual_utils_1.createVisualizerElement)('canvas');
+    canvas.id = 'overlayCanvas';
+    __classPrivateFieldGet(this, _DOMElementVisualizer_instances, "m", _DOMElementVisualizer_tryToAttachCanvas).call(this, canvas);
+    // Style the canvas to cover the entire page
+    canvas.style.position = 'absolute';
+    canvas.style.top = '0';
+    canvas.style.left = '0';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.pointerEvents = 'none';
+    canvas.style.zIndex = '99999';
+    // Set canvas dimensions to match the window dimensions
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    return canvas;
+}, _DOMElementVisualizer_paintKey = function _DOMElementVisualizer_paintKey(info) {
+    const { boundingRect } = info;
+    return JSON.stringify({ boundingRect });
+}, _DOMElementVisualizer_paintRectangles = function _DOMElementVisualizer_paintRectangles(domElementInfoList) {
+    const canvas = __classPrivateFieldGet(this, _DOMElementVisualizer_canvas, "f");
+    if (!canvas) {
+        return;
+    }
+    // Get the 2D drawing context
+    const ctx = canvas.getContext('2d');
+    if (ctx == null) {
+        return;
+    }
+    // Set rectangle styles
+    ctx.strokeStyle = 'rgba(75, 192, 192, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.fillStyle = 'rgba(75, 192, 192, 0.05)';
+    ctx.font = '11px Inter, system-ui, -apple-system, sans-serif';
+    const paintedInfo = new Set();
+    // Draw the rectangles
+    domElementInfoList.forEach((info) => {
+        var _a;
+        const rect = info.boundingRect;
+        if (rect == null) {
+            return;
+        }
+        const key = __classPrivateFieldGet(this, _DOMElementVisualizer_instances, "m", _DOMElementVisualizer_paintKey).call(this, info);
+        if (paintedInfo.has(key)) {
+            return;
+        }
+        paintedInfo.add(key);
+        ctx.fillRect(rect.left, rect.top, rect.width, rect.height);
+        ctx.strokeRect(rect.left, rect.top, rect.width, rect.height);
+        const component = (_a = info.componentStack) === null || _a === void 0 ? void 0 : _a[0];
+        if (component) {
+            // attach detached element id key so that it is easy to search in heap snapshot
+            const element = info.element.deref();
+            const elementId = element === null || element === void 0 ? void 0 : element.detachedElementId;
+            const elementIdText = elementId ? ` (${elementId})` : '';
+            const text = `${component}${elementIdText}`;
+            ctx.fillStyle = 'rgba(74, 131, 224, 1)';
+            ctx.fillText(text, rect.left + 5, rect.top + 15); // Draw the name
+            ctx.fillStyle = 'rgba(75, 192, 192, 0.05)';
+        }
+    });
+}, _DOMElementVisualizer_cleanup = function _DOMElementVisualizer_cleanup() {
+    var _a;
+    const canvas = __classPrivateFieldGet(this, _DOMElementVisualizer_canvas, "f");
+    if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx === null || ctx === void 0 ? void 0 : ctx.clearRect(0, 0, canvas.width, canvas.height);
+        (_a = canvas.parentNode) === null || _a === void 0 ? void 0 : _a.removeChild(canvas);
+    }
+    __classPrivateFieldSet(this, _DOMElementVisualizer_canvas, null, "f");
+};
+exports["default"] = DOMElementVisualizer;
+
+
+/***/ },
+
+/***/ 498
 (__unused_webpack_module, exports) {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.IntersectionObserverManager = void 0;
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- *
- * @format
- * @oncall memory_lab
- */
-class IntersectionObserverManager {
-    constructor() {
-        this.observedElements = new Map();
-        this.observer = new IntersectionObserver(entries => {
-            entries.forEach((entry) => {
-                const element = entry.target;
-                const callback = this.observedElements.get(element);
-                if (callback) {
-                    callback(entry);
-                }
-            });
-        }, {
-            // Only trigger when element is completely out of viewport
-            threshold: 0,
-            // Add some margin to trigger before element is completely out of view
-            rootMargin: '50px',
-        });
-    }
-    static getInstance() {
-        if (!IntersectionObserverManager.instance) {
-            IntersectionObserverManager.instance = new IntersectionObserverManager();
-        }
-        return IntersectionObserverManager.instance;
-    }
-    observe(elementRef, callback) {
-        const element = elementRef.deref();
-        if (element == null) {
-            return;
-        }
-        this.observedElements.set(element, callback);
-        this.observer.observe(element);
-    }
-    unobserve(elementRef) {
-        const element = elementRef.deref();
-        if (element == null) {
-            return;
-        }
-        this.observedElements.delete(element);
-        this.observer.unobserve(element);
+exports.isVisualizerElement = isVisualizerElement;
+exports.createVisualizerElement = createVisualizerElement;
+exports.tryToAttachOverlay = tryToAttachOverlay;
+exports.addTrackedListener = addTrackedListener;
+exports.removeAllListeners = removeAllListeners;
+exports.debounce = debounce;
+const VISUALIZER_DATA_ATTR = 'data-visualizer';
+function setVisualizerElement(element) {
+    element.setAttribute(VISUALIZER_DATA_ATTR, 'true');
+    element.setAttribute('data-visualcompletion', 'ignore');
+}
+function isVisualizerElement(element) {
+    return element.getAttribute(VISUALIZER_DATA_ATTR) === 'true';
+}
+function createVisualizerElement(tag) {
+    const element = document.createElement(tag);
+    setVisualizerElement(element);
+    return element;
+}
+function tryToAttachOverlay(overlayDiv) {
+    if (document.body) {
+        document.body.appendChild(overlayDiv);
     }
 }
-exports.IntersectionObserverManager = IntersectionObserverManager;
+const listenerMap = new WeakMap();
+function addTrackedListener(elRef, type, cb, options) {
+    var _a;
+    const el = elRef.deref();
+    if (!el)
+        return;
+    el.addEventListener(type, cb, options);
+    if (!listenerMap.has(el)) {
+        listenerMap.set(el, []);
+    }
+    (_a = listenerMap.get(el)) === null || _a === void 0 ? void 0 : _a.push({ type, cb, options });
+}
+function removeAllListeners(elRef) {
+    const el = elRef.deref();
+    if (!el)
+        return;
+    const listeners = listenerMap.get(el);
+    if (!listeners)
+        return;
+    for (const { type, cb, options } of listeners) {
+        el.removeEventListener(type, cb, options);
+    }
+    listenerMap.delete(el);
+}
+function debounce(callback, delay) {
+    let timer = null;
+    return (...args) => {
+        if (timer) {
+            clearTimeout(timer);
+        }
+        timer = setTimeout(() => {
+            callback(...args);
+        }, delay);
+    };
+}
 
 
 /***/ }

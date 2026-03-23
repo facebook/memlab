@@ -24,7 +24,7 @@ Defined in: heap-analysis/src/plugins/GlobalVariableAnalysis/GlobalVariableAnaly
 
 ### analyzeSnapshotFromFile()
 
-> **analyzeSnapshotFromFile**(`file`, `options`): `Promise`\<[`AnalyzeSnapshotResult`](../type-aliases/AnalyzeSnapshotResult.md)\>
+> **analyzeSnapshotFromFile**(`file`, `options?`): `Promise`\<[`AnalyzeSnapshotResult`](../type-aliases/AnalyzeSnapshotResult.md)\>
 
 Defined in: heap-analysis/src/BaseAnalysis.ts:95
 
@@ -38,7 +38,7 @@ Run heap analysis for a single heap snapshot file
 
 the absolute path of a `.heapsnapshot` file.
 
-##### options
+##### options?
 
 [`RunHeapAnalysisOptions`](../type-aliases/RunHeapAnalysisOptions.md) = `{}`
 

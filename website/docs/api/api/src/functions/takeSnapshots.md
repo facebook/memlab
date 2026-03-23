@@ -1,6 +1,6 @@
 # Function: takeSnapshots()
 
-> **takeSnapshots**(`options`): `Promise`\<[`BrowserInteractionResultReader`](../classes/BrowserInteractionResultReader.md)\>
+> **takeSnapshots**(`options?`): `Promise`\<[`BrowserInteractionResultReader`](../classes/BrowserInteractionResultReader.md)\>
 
 Defined in: api/src/API.ts:221
 
@@ -9,7 +9,7 @@ This is equivalent to running `memlab snapshot` in CLI.
 
 ## Parameters
 
-### options
+### options?
 
 [`RunOptions`](../type-aliases/RunOptions.md) = `{}`
 

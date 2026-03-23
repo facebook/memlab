@@ -1,4 +1,4 @@
-# Variable: takeNodeFullHeap()
+# Variable: takeNodeFullHeap
 
 > **takeNodeFullHeap**: () => `Promise`\<`IHeapSnapshot`\>
 

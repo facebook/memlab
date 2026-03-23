@@ -63,7 +63,7 @@ export default {beforeLeakFilter, leakFilter};
 
 ### beforeLeakFilter?
 
-> `optional` **beforeLeakFilter**: [`InitLeakFilterCallback`](../type-aliases/InitLeakFilterCallback.md)
+> `optional` **beforeLeakFilter?**: [`InitLeakFilterCallback`](../type-aliases/InitLeakFilterCallback.md)
 
 Defined in: core/src/lib/Types.ts:428
 
@@ -97,7 +97,7 @@ module.exports = {
 
 ### leakFilter?
 
-> `optional` **leakFilter**: [`LeakFilterCallback`](../type-aliases/LeakFilterCallback.md)
+> `optional` **leakFilter?**: [`LeakFilterCallback`](../type-aliases/LeakFilterCallback.md)
 
 Defined in: core/src/lib/Types.ts:480
 
@@ -155,7 +155,7 @@ memlab run --scenario <SCENARIO FILE> --leak-filter <PATH TO leak-filter.js>
 
 ### retainerReferenceFilter?
 
-> `optional` **retainerReferenceFilter**: [`ReferenceFilterCallback`](../type-aliases/ReferenceFilterCallback.md)
+> `optional` **retainerReferenceFilter?**: [`ReferenceFilterCallback`](../type-aliases/ReferenceFilterCallback.md)
 
 Defined in: core/src/lib/Types.ts:543
 

@@ -1,4 +1,4 @@
-# Variable: loadHeapSnapshot()
+# Variable: loadHeapSnapshot
 
 > **loadHeapSnapshot**: (`options`) => `Promise`\<`IHeapSnapshot`\>
 

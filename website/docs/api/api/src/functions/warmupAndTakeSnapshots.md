@@ -1,6 +1,6 @@
 # Function: warmupAndTakeSnapshots()
 
-> **warmupAndTakeSnapshots**(`options`): `Promise`\<[`BrowserInteractionResultReader`](../classes/BrowserInteractionResultReader.md)\>
+> **warmupAndTakeSnapshots**(`options?`): `Promise`\<[`BrowserInteractionResultReader`](../classes/BrowserInteractionResultReader.md)\>
 
 Defined in: api/src/API.ts:151
 
@@ -10,7 +10,7 @@ This is also equivalent to warm up and call [takeSnapshots](takeSnapshots.md).
 
 ## Parameters
 
-### options
+### options?
 
 [`RunOptions`](../type-aliases/RunOptions.md) = `{}`
 

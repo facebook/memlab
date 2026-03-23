@@ -41,7 +41,7 @@ const {run} = require('@memlab/api');
 
 ### action?
 
-> `optional` **action**: [`InteractionsCallback`](../type-aliases/InteractionsCallback.md)
+> `optional` **action?**: [`InteractionsCallback`](../type-aliases/InteractionsCallback.md)
 
 Defined in: core/src/lib/Types.ts:843
 
@@ -96,7 +96,7 @@ module.exports = scenario;
 
 ### back?
 
-> `optional` **back**: [`InteractionsCallback`](../type-aliases/InteractionsCallback.md)
+> `optional` **back?**: [`InteractionsCallback`](../type-aliases/InteractionsCallback.md)
 
 Defined in: core/src/lib/Types.ts:869
 
@@ -128,7 +128,7 @@ memlab needs to undo/revert the `action` callback.
 
 ### beforeInitialPageLoad?
 
-> `optional` **beforeInitialPageLoad**: [`InteractionsCallback`](../type-aliases/InteractionsCallback.md)
+> `optional` **beforeInitialPageLoad?**: [`InteractionsCallback`](../type-aliases/InteractionsCallback.md)
 
 Defined in: core/src/lib/Types.ts:745
 
@@ -164,7 +164,7 @@ module.exports = scenario;
 
 ### beforeLeakFilter?
 
-> `optional` **beforeLeakFilter**: [`InitLeakFilterCallback`](../type-aliases/InitLeakFilterCallback.md)
+> `optional` **beforeLeakFilter?**: [`InitLeakFilterCallback`](../type-aliases/InitLeakFilterCallback.md)
 
 Defined in: core/src/lib/Types.ts:955
 
@@ -196,9 +196,9 @@ module.exports = {
 
 ***
 
-### cookies()?
+### cookies?
 
-> `optional` **cookies**: () => [`Cookies`](../type-aliases/Cookies.md)
+> `optional` **cookies?**: () => [`Cookies`](../type-aliases/Cookies.md)
 
 Defined in: core/src/lib/Types.ts:715
 
@@ -238,7 +238,7 @@ module.exports = scenario;
 
 ### isPageLoaded?
 
-> `optional` **isPageLoaded**: [`CheckPageLoadCallback`](../type-aliases/CheckPageLoadCallback.md)
+> `optional` **isPageLoaded?**: [`CheckPageLoadCallback`](../type-aliases/CheckPageLoadCallback.md)
 
 Defined in: core/src/lib/Types.ts:927
 
@@ -283,7 +283,7 @@ module.exports = {
 
 ### leakFilter?
 
-> `optional` **leakFilter**: [`LeakFilterCallback`](../type-aliases/LeakFilterCallback.md)
+> `optional` **leakFilter?**: [`LeakFilterCallback`](../type-aliases/LeakFilterCallback.md)
 
 Defined in: core/src/lib/Types.ts:1000
 
@@ -332,9 +332,9 @@ module.exports = {
 
 ***
 
-### repeat()?
+### repeat?
 
-> `optional` **repeat**: () => `number`
+> `optional` **repeat?**: () => `number`
 
 Defined in: core/src/lib/Types.ts:888
 
@@ -363,7 +363,7 @@ module.exports = {
 
 ### retainerReferenceFilter?
 
-> `optional` **retainerReferenceFilter**: [`ReferenceFilterCallback`](../type-aliases/ReferenceFilterCallback.md)
+> `optional` **retainerReferenceFilter?**: [`ReferenceFilterCallback`](../type-aliases/ReferenceFilterCallback.md)
 
 Defined in: core/src/lib/Types.ts:1046
 
@@ -415,7 +415,7 @@ module.exports = {
 
 ### setup?
 
-> `optional` **setup**: [`InteractionsCallback`](../type-aliases/InteractionsCallback.md)
+> `optional` **setup?**: [`InteractionsCallback`](../type-aliases/InteractionsCallback.md)
 
 Defined in: core/src/lib/Types.ts:794
 
@@ -450,7 +450,7 @@ module.exports = scenario;
 
 ***
 
-### url()
+### url
 
 > **url**: () => `string`
 

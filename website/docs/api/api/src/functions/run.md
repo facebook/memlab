@@ -1,6 +1,6 @@
 # Function: run()
 
-> **run**(`options`): `Promise`\<[`RunResult`](../type-aliases/RunResult.md)\>
+> **run**(`options?`): `Promise`\<[`RunResult`](../type-aliases/RunResult.md)\>
 
 Defined in: api/src/API.ts:188
 
@@ -11,7 +11,7 @@ and [findLeaks](findLeaks.md).
 
 ## Parameters
 
-### options
+### options?
 
 [`RunOptions`](../type-aliases/RunOptions.md) = `{}`
 

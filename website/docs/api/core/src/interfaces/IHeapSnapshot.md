@@ -317,10 +317,10 @@ a specified property name.
 
 ##### nameOrIndex
 
+`string` \| `number`
+
 The property name (string) or element index (number)
 on the object instance
-
-`string` | `number`
 
 #### Returns
 

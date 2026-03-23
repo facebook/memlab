@@ -1,4 +1,4 @@
-# Variable: getSnapshotDirForAnalysis()
+# Variable: getSnapshotDirForAnalysis
 
 > **getSnapshotDirForAnalysis**: (`options`) => `Nullable`\<`string`\>
 

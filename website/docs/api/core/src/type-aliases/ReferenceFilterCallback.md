@@ -1,4 +1,4 @@
-# Type Alias: ReferenceFilterCallback()
+# Type Alias: ReferenceFilterCallback
 
 > **ReferenceFilterCallback** = (`edge`, `snapshot`, `isReferenceUsedByDefault`) => `boolean`
 

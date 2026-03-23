@@ -1,6 +1,6 @@
 # Function: findLeaks()
 
-> **findLeaks**(`runResult`, `options`): `Promise`\<`ISerializedInfo`[]\>
+> **findLeaks**(`runResult`, `options?`): `Promise`\<`ISerializedInfo`[]\>
 
 Defined in: api/src/API.ts:256
 
@@ -15,7 +15,7 @@ This is equivalent to `memlab find-leaks` in CLI.
 
 return value of a browser interaction run
 
-### options
+### options?
 
 configure memory leak detection run
 

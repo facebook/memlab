@@ -1,4 +1,4 @@
-# Type Alias: InitLeakFilterCallback()
+# Type Alias: InitLeakFilterCallback
 
 > **InitLeakFilterCallback** = (`snapshot`, `leakedNodeIds`) => `void`
 

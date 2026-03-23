@@ -1,4 +1,4 @@
-# Variable: getDominatorNodes()
+# Variable: getDominatorNodes
 
 > **getDominatorNodes**: (`ids`, `snapshot`) => `Set`\<`number`\>
 

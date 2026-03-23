@@ -1,4 +1,4 @@
-# Type Alias: EdgeIterationCallback()
+# Type Alias: EdgeIterationCallback
 
 > **EdgeIterationCallback** = (`edge`) => [`Optional`](Optional.md)\<\{ `stop`: `boolean`; \}\> \| `void`
 

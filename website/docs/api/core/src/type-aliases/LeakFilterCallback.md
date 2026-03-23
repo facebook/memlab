@@ -1,4 +1,4 @@
-# Type Alias: LeakFilterCallback()
+# Type Alias: LeakFilterCallback
 
 > **LeakFilterCallback** = (`node`, `snapshot`, `leakedNodeIds`) => `boolean`
 

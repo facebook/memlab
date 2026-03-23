@@ -15,7 +15,7 @@ For concrete use case, please check out cookies.
 
 ### domain?
 
-> `optional` **domain**: `string`
+> `optional` **domain?**: `string`
 
 Defined in: core/src/lib/Types.ts:242
 
@@ -25,7 +25,7 @@ Optional: Defines the domain associated with the cookie
 
 ### expires?
 
-> `optional` **expires**: [`Undefinable`](Undefinable.md)\<`number`\>
+> `optional` **expires?**: [`Undefinable`](Undefinable.md)\<`number`\>
 
 Defined in: core/src/lib/Types.ts:251
 
@@ -35,7 +35,7 @@ Optional: Indicates when the cookie will expire, in Unix time (seconds)
 
 ### httpOnly?
 
-> `optional` **httpOnly**: [`Undefinable`](Undefinable.md)\<`boolean`\>
+> `optional` **httpOnly?**: [`Undefinable`](Undefinable.md)\<`boolean`\>
 
 Defined in: core/src/lib/Types.ts:253
 
@@ -55,7 +55,7 @@ Mandatory: Represents the name of the cookie
 
 ### path?
 
-> `optional` **path**: [`Undefinable`](Undefinable.md)\<`string`\>
+> `optional` **path?**: [`Undefinable`](Undefinable.md)\<`string`\>
 
 Defined in: core/src/lib/Types.ts:249
 
@@ -65,7 +65,7 @@ Optional: Defines the path associated with the cookie
 
 ### sameSite?
 
-> `optional` **sameSite**: [`Undefinable`](Undefinable.md)\<`"Strict"` \| `"Lax"`\>
+> `optional` **sameSite?**: [`Undefinable`](Undefinable.md)\<`"Strict"` \| `"Lax"`\>
 
 Defined in: core/src/lib/Types.ts:265
 
@@ -76,7 +76,7 @@ offering a degree of defense against cross-site request forgery attacks.
 
 ### secure?
 
-> `optional` **secure**: [`Undefinable`](Undefinable.md)\<`boolean`\>
+> `optional` **secure?**: [`Undefinable`](Undefinable.md)\<`boolean`\>
 
 Defined in: core/src/lib/Types.ts:260
 
@@ -87,7 +87,7 @@ requires a secure protocol (e.g., HTTPS).
 
 ### session?
 
-> `optional` **session**: [`Undefinable`](Undefinable.md)\<`boolean`\>
+> `optional` **session?**: [`Undefinable`](Undefinable.md)\<`boolean`\>
 
 Defined in: core/src/lib/Types.ts:255
 
@@ -97,7 +97,7 @@ Optional: Flag to check if the cookie is a session cookie
 
 ### url?
 
-> `optional` **url**: [`Undefinable`](Undefinable.md)\<`string`\>
+> `optional` **url?**: [`Undefinable`](Undefinable.md)\<`string`\>
 
 Defined in: core/src/lib/Types.ts:247
 

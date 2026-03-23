@@ -10,7 +10,7 @@ Options for configuring browser interaction run, all fields are optional
 
 ### chromiumBinary?
 
-> `optional` **chromiumBinary**: `string`
+> `optional` **chromiumBinary?**: `string`
 
 Defined in: api/src/API.ts:102
 
@@ -24,7 +24,7 @@ Chromium binary.
 
 ### consoleMode?
 
-> `optional` **consoleMode**: [`ConsoleMode`](../enumerations/ConsoleMode.md)
+> `optional` **consoleMode?**: [`ConsoleMode`](../enumerations/ConsoleMode.md)
 
 Defined in: api/src/API.ts:94
 
@@ -35,7 +35,7 @@ For more details. please check out [ConsoleMode](../enumerations/ConsoleMode.md)
 
 ### cookiesFile?
 
-> `optional` **cookiesFile**: `string`
+> `optional` **cookiesFile?**: `string`
 
 Defined in: api/src/API.ts:54
 
@@ -45,7 +45,7 @@ the absolute path of cookies file
 
 ### evalInBrowserAfterInitLoad?
 
-> `optional` **evalInBrowserAfterInitLoad**: `AnyFunction`
+> `optional` **evalInBrowserAfterInitLoad?**: `AnyFunction`
 
 Defined in: api/src/API.ts:62
 
@@ -59,7 +59,7 @@ variables outside of the browser context.
 
 ### scenario?
 
-> `optional` **scenario**: `IScenario`
+> `optional` **scenario?**: `IScenario`
 
 Defined in: api/src/API.ts:52
 
@@ -70,7 +70,7 @@ test scenario specifying how to interact with browser
 
 ### skipWarmup?
 
-> `optional` **skipWarmup**: `boolean`
+> `optional` **skipWarmup?**: `boolean`
 
 Defined in: api/src/API.ts:89
 
@@ -80,7 +80,7 @@ skip the initial page loading warmup for the web application being tested
 
 ### snapshotForEachStep?
 
-> `optional` **snapshotForEachStep**: `boolean`
+> `optional` **snapshotForEachStep?**: `boolean`
 
 Defined in: api/src/API.ts:68
 
@@ -92,7 +92,7 @@ which steps it will take heap snapshots
 
 ### webWorker?
 
-> `optional` **webWorker**: `Optional`\<`string`\>
+> `optional` **webWorker?**: `Optional`\<`string`\>
 
 Defined in: api/src/API.ts:85
 
@@ -105,7 +105,7 @@ means analyzing the heap of the web worker with name: `'workerTitle'`.
 
 ### workDir?
 
-> `optional` **workDir**: `string`
+> `optional` **workDir?**: `string`
 
 Defined in: api/src/API.ts:78
 

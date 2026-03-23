@@ -735,7 +735,7 @@ export class MemLabConfig {
   }
 
   get browser(): string {
-    return this._browser || 'google-chrome';
+    return this._browser || 'chrome';
   }
 
   set isHeadfulBrowser(isHeadful: boolean) {

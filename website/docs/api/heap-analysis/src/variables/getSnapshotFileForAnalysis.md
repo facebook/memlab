@@ -1,4 +1,4 @@
-# Variable: getSnapshotFileForAnalysis()
+# Variable: getSnapshotFileForAnalysis
 
 > **getSnapshotFileForAnalysis**: (`options`) => `string`
 

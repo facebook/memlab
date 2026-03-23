@@ -1,4 +1,4 @@
-# ~~Variable: getHeapFromFile()~~
+# ~~Variable: getHeapFromFile~~
 
 > **getHeapFromFile**: (`file`) => `Promise`\<`IHeapSnapshot`\>
 

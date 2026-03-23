@@ -39,6 +39,43 @@ return /******/ (() => { // webpackBootstrap
 /******/ 	"use strict";
 /******/ 	var __webpack_modules__ = ({
 
+/***/ 346
+(__unused_webpack_module, exports) {
+
+
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * @format
+ * @oncall memory_lab
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.config = exports.featureFlags = exports.performanceConfig = void 0;
+// Performance Configuration
+exports.performanceConfig = {
+    scanIntervalMs: 1000,
+    maxComponentStackDepth: 100,
+    memoryMeasurementIntervalMs: 5000,
+};
+// Feature Flags
+exports.featureFlags = {
+    enableMutationObserver: true,
+    enableMemoryTracking: true,
+    enableComponentStack: true,
+    enableConsoleLogs: window === null || window === void 0 ? void 0 : window.TEST_MEMORY_SCAN,
+};
+// overall Config
+exports.config = {
+    performance: exports.performanceConfig,
+    features: exports.featureFlags,
+};
+
+
+/***/ },
+
 /***/ 54
 (__unused_webpack_module, exports, __webpack_require__) {
 
@@ -234,15 +271,179 @@ _DOMObserver_elementCount = new WeakMap(), _DOMObserver_detachedElementCount = n
 
 /***/ },
 
-/***/ 235
+/***/ 953
 (__unused_webpack_module, exports, __webpack_require__) {
 
 
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
+var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
+    if (kind === "m") throw new TypeError("Private method is not writable");
+    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
+    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
+    return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
 };
+var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (receiver, state, kind, f) {
+    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
+    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
+    return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
+};
+var _EventListenerTracker_instances, _EventListenerTracker_listenerMap, _EventListenerTracker_detachedListeners, _EventListenerTracker_originalAddEventListener, _EventListenerTracker_originalRemoveEventListener, _EventListenerTracker_patchEventListeners, _EventListenerTracker_unpatchEventListeners;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.createReactMemoryScan = createReactMemoryScan;
+exports.EventListenerTracker = void 0;
+const react_fiber_utils_1 = __webpack_require__(737);
+const weak_ref_utils_1 = __webpack_require__(313);
+class EventListenerTracker {
+    constructor() {
+        _EventListenerTracker_instances.add(this);
+        _EventListenerTracker_listenerMap.set(this, void 0);
+        _EventListenerTracker_detachedListeners.set(this, void 0);
+        _EventListenerTracker_originalAddEventListener.set(this, void 0);
+        _EventListenerTracker_originalRemoveEventListener.set(this, void 0);
+        __classPrivateFieldSet(this, _EventListenerTracker_listenerMap, new weak_ref_utils_1.WeakMapPlus({ fallback: 'noop', cleanupMs: 100 }), "f");
+        __classPrivateFieldSet(this, _EventListenerTracker_detachedListeners, new Map(), "f");
+        __classPrivateFieldSet(this, _EventListenerTracker_originalAddEventListener, EventTarget.prototype.addEventListener, "f");
+        __classPrivateFieldSet(this, _EventListenerTracker_originalRemoveEventListener, EventTarget.prototype.removeEventListener, "f");
+        __classPrivateFieldGet(this, _EventListenerTracker_instances, "m", _EventListenerTracker_patchEventListeners).call(this);
+    }
+    static getInstance() {
+        if (!EventListenerTracker.instance) {
+            EventListenerTracker.instance = new EventListenerTracker();
+        }
+        return EventListenerTracker.instance;
+    }
+    addListener(el, type, cb, options) {
+        el.addEventListener(type, cb, options);
+    }
+    removeListener(el, type, cb, options) {
+        el.removeEventListener(type, cb, options);
+    }
+    scan(getComponentName) {
+        const detachedListeners = new Map();
+        for (const [el, listeners] of __classPrivateFieldGet(this, _EventListenerTracker_listenerMap, "f").entries()) {
+            if (el instanceof Element && !el.isConnected) {
+                for (const listener of listeners) {
+                    // Skip if the callback has been garbage collected
+                    if (!listener.cb.deref())
+                        continue;
+                    const componentName = getComponentName(new WeakRef(el));
+                    if (!detachedListeners.has(componentName)) {
+                        detachedListeners.set(componentName, []);
+                    }
+                    const groups = detachedListeners.get(componentName);
+                    let group = groups === null || groups === void 0 ? void 0 : groups.find(g => g.type === listener.type);
+                    if (!group) {
+                        group = {
+                            type: listener.type,
+                            count: 0,
+                            entries: [],
+                        };
+                        groups === null || groups === void 0 ? void 0 : groups.push(group);
+                    }
+                    group.count++;
+                    group.entries.push(new WeakRef(listener));
+                }
+            }
+        }
+        __classPrivateFieldSet(this, _EventListenerTracker_detachedListeners, detachedListeners, "f");
+        return detachedListeners;
+    }
+    getDetachedListeners() {
+        return __classPrivateFieldGet(this, _EventListenerTracker_detachedListeners, "f");
+    }
+    destroy() {
+        __classPrivateFieldGet(this, _EventListenerTracker_instances, "m", _EventListenerTracker_unpatchEventListeners).call(this);
+        __classPrivateFieldGet(this, _EventListenerTracker_listenerMap, "f").destroy();
+        __classPrivateFieldGet(this, _EventListenerTracker_detachedListeners, "f").clear();
+        EventListenerTracker.instance = null;
+    }
+}
+exports.EventListenerTracker = EventListenerTracker;
+_EventListenerTracker_listenerMap = new WeakMap(), _EventListenerTracker_detachedListeners = new WeakMap(), _EventListenerTracker_originalAddEventListener = new WeakMap(), _EventListenerTracker_originalRemoveEventListener = new WeakMap(), _EventListenerTracker_instances = new WeakSet(), _EventListenerTracker_patchEventListeners = function _EventListenerTracker_patchEventListeners() {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
+    EventTarget.prototype.addEventListener = function (type, listener, options) {
+        var _a;
+        __classPrivateFieldGet(self, _EventListenerTracker_originalAddEventListener, "f").call(this, type, listener, options);
+        if (this instanceof Element) {
+            const fiber = (0, react_fiber_utils_1.getFiberNodeFromElement)(this);
+            const entry = {
+                type,
+                cb: new WeakRef(listener),
+                options,
+                fiber: fiber ? new WeakRef(fiber) : undefined,
+            };
+            const listeners = (_a = __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").get(this)) !== null && _a !== void 0 ? _a : [];
+            listeners.push(entry);
+            __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").set(this, listeners);
+        }
+    };
+    EventTarget.prototype.removeEventListener = function (type, listener, options) {
+        __classPrivateFieldGet(self, _EventListenerTracker_originalRemoveEventListener, "f").call(this, type, listener, options);
+        if (this instanceof Element) {
+            const listeners = __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").get(this);
+            if (listeners) {
+                const index = listeners.findIndex(entry => entry.type === type &&
+                    entry.cb.deref() === listener &&
+                    entry.options === options);
+                if (index !== -1) {
+                    listeners.splice(index, 1);
+                }
+                if (listeners.length === 0) {
+                    __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").delete(this);
+                }
+                else {
+                    __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").set(this, listeners);
+                }
+            }
+        }
+    };
+}, _EventListenerTracker_unpatchEventListeners = function _EventListenerTracker_unpatchEventListeners() {
+    EventTarget.prototype.addEventListener = __classPrivateFieldGet(this, _EventListenerTracker_originalAddEventListener, "f");
+    EventTarget.prototype.removeEventListener =
+        __classPrivateFieldGet(this, _EventListenerTracker_originalRemoveEventListener, "f");
+};
+EventListenerTracker.instance = null;
+
+
+/***/ },
+
+/***/ 302
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -252,15 +453,95 @@ exports.createReactMemoryScan = createReactMemoryScan;
  * @format
  * @oncall memory_lab
  */
-const react_memory_scan_1 = __importDefault(__webpack_require__(282));
-// import { DOMVisualizationExtension } from './extensions/dom-visualization-extension';
-function createReactMemoryScan(options = {}) {
-    return new react_memory_scan_1.default(options);
-    // const memoryScan = new ReactMemoryScan(options);
-    // const domVisualizer = new DOMVisualizationExtension(memoryScan);
-    // memoryScan.registerExtension(domVisualizer);
-    // return memoryScan;
+const utils = __importStar(__webpack_require__(476));
+const react_fiber_utils_1 = __webpack_require__(737);
+const valid_component_name_1 = __webpack_require__(847);
+class ReactFiberAnalyzer {
+    scan(elementWeakRefList, elementToComponentStack) {
+        var _a;
+        const visitedRootFibers = new Set();
+        const components = new Set();
+        const componentToFiberNodeCount = new Map();
+        const detachedComponentToFiberNodeCount = new Map();
+        const topDownVisited = new Set();
+        const analyzedFibers = new Set();
+        const fiberNodes = [];
+        let totalElements = 0;
+        let totalDetachedElements = 0;
+        function analyzeFiber(fiberNode) {
+            (0, react_fiber_utils_1.traverseFiber)(fiberNode, (fiberNode) => {
+                // skip if the fiber node has already been analyzed
+                if (analyzedFibers.has(fiberNode)) {
+                    return true;
+                }
+                analyzedFibers.add(fiberNode);
+                // traverse the fiber tree up to find the component name
+                const displayName = (0, react_fiber_utils_1.getDisplayNameOfFiberNode)(fiberNode);
+                if (displayName != null && (0, valid_component_name_1.isValidComponentName)(displayName)) {
+                    components.add(displayName);
+                    utils.addCountbyKey(componentToFiberNodeCount, displayName, 1);
+                    return true;
+                }
+            }, true);
+        }
+        for (const weakRef of elementWeakRefList) {
+            const elem = weakRef.deref();
+            if (elem == null) {
+                continue;
+            }
+            // elements stats
+            ++totalElements;
+            // TODO: simplify this logic
+            if (!elem.isConnected) {
+                if (elementToComponentStack.has(elem)) {
+                    const componentStack = (_a = elementToComponentStack.get(elem)) !== null && _a !== void 0 ? _a : [];
+                    // set component name
+                    const component = componentStack[0];
+                    elem.__component_name = component;
+                    utils.addCountbyKey(detachedComponentToFiberNodeCount, component, 1);
+                }
+                ++totalDetachedElements;
+            }
+            // analyze fiber nodes
+            const fiberNode = (0, react_fiber_utils_1.getFiberNodeFromElement)(elem);
+            if (fiberNode == null) {
+                continue;
+            }
+            analyzeFiber(fiberNode);
+            // try to traverse each fiber node in the entire fiber tree
+            const rootFiber = (0, react_fiber_utils_1.getTopMostFiberWithChild)(fiberNode);
+            if (rootFiber == null) {
+                continue;
+            }
+            if (visitedRootFibers.has(rootFiber)) {
+                continue;
+            }
+            visitedRootFibers.add(rootFiber);
+            // start traversing fiber tree from the know root host
+            (0, react_fiber_utils_1.traverseFiber)(rootFiber, (node) => {
+                if (topDownVisited.has(node)) {
+                    return true;
+                }
+                topDownVisited.add(node);
+                fiberNodes.push(new WeakRef(node));
+                analyzeFiber(node);
+            }, false);
+        }
+        topDownVisited.clear();
+        analyzedFibers.clear();
+        visitedRootFibers.clear();
+        return {
+            components,
+            componentToFiberNodeCount,
+            totalElements,
+            totalDetachedElements,
+            detachedComponentToFiberNodeCount,
+            fiberNodes,
+            leakedFibers: [],
+        };
+    }
 }
+exports["default"] = ReactFiberAnalyzer;
 
 
 /***/ },
@@ -664,44 +945,10 @@ class LeakedFiber {
 
 /***/ },
 
-/***/ 302
-(__unused_webpack_module, exports, __webpack_require__) {
+/***/ 847
+(__unused_webpack_module, exports) {
 
 
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", ({ value: true }));
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -711,95 +958,421 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
  * @format
  * @oncall memory_lab
  */
-const utils = __importStar(__webpack_require__(476));
-const react_fiber_utils_1 = __webpack_require__(737);
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.isValidComponentName = isValidComponentName;
+const displayNameBlockList = new Set();
+function isValidComponentName(name) {
+    return name != null && !displayNameBlockList.has(name);
+}
+
+
+/***/ },
+
+/***/ 235
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.createReactMemoryScan = createReactMemoryScan;
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * @format
+ * @oncall memory_lab
+ */
+const react_memory_scan_1 = __importDefault(__webpack_require__(282));
+// import { DOMVisualizationExtension } from './extensions/dom-visualization-extension';
+function createReactMemoryScan(options = {}) {
+    return new react_memory_scan_1.default(options);
+    // const memoryScan = new ReactMemoryScan(options);
+    // const domVisualizer = new DOMVisualizationExtension(memoryScan);
+    // memoryScan.registerExtension(domVisualizer);
+    // return memoryScan;
+}
+
+
+/***/ },
+
+/***/ 737
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.traverseFiber = exports.getTopMostFiberWithChild = exports.getTopMostHostFiber = exports.getNearestHostFiber = exports.isHostFiber = exports.MutationMask = exports.Visibility = exports.Snapshot = exports.Ref = exports.ContentReset = exports.ChildDeletion = exports.Cloned = exports.Update = exports.Hydrating = exports.DidCapture = exports.Placement = exports.PerformedWork = exports.DEPRECATED_ASYNC_MODE_SYMBOL_STRING = exports.CONCURRENT_MODE_SYMBOL_STRING = exports.CONCURRENT_MODE_NUMBER = exports.HostRoot = exports.OffscreenComponent = exports.LegacyHiddenComponent = exports.Fragment = exports.HostText = exports.DehydratedSuspenseComponent = exports.HostSingletonTag = exports.HostHoistableTag = exports.HostComponentTag = exports.SimpleMemoComponentTag = exports.MemoComponentTag = exports.ForwardRefTag = exports.OffscreenComponentTag = exports.SuspenseComponentTag = exports.ContextConsumerTag = exports.FunctionComponentTag = exports.ClassComponentTag = void 0;
+exports.getFiberNodeFromElement = getFiberNodeFromElement;
+exports.getReactComponentStack = getReactComponentStack;
+exports.getDisplayNameOfFiberNode = getDisplayNameOfFiberNode;
+exports.isFunctionalComponent = isFunctionalComponent;
+exports.extractReactComponentName = extractReactComponentName;
+const utils_1 = __webpack_require__(476);
 const valid_component_name_1 = __webpack_require__(847);
-class ReactFiberAnalyzer {
-    scan(elementWeakRefList, elementToComponentStack) {
-        var _a;
-        const visitedRootFibers = new Set();
-        const components = new Set();
-        const componentToFiberNodeCount = new Map();
-        const detachedComponentToFiberNodeCount = new Map();
-        const topDownVisited = new Set();
-        const analyzedFibers = new Set();
-        const fiberNodes = [];
-        let totalElements = 0;
-        let totalDetachedElements = 0;
-        function analyzeFiber(fiberNode) {
-            (0, react_fiber_utils_1.traverseFiber)(fiberNode, (fiberNode) => {
-                // skip if the fiber node has already been analyzed
-                if (analyzedFibers.has(fiberNode)) {
-                    return true;
-                }
-                analyzedFibers.add(fiberNode);
-                // traverse the fiber tree up to find the component name
-                const displayName = (0, react_fiber_utils_1.getDisplayNameOfFiberNode)(fiberNode);
-                if (displayName != null && (0, valid_component_name_1.isValidComponentName)(displayName)) {
-                    components.add(displayName);
-                    utils.addCountbyKey(componentToFiberNodeCount, displayName, 1);
-                    return true;
-                }
-            }, true);
+exports.ClassComponentTag = 1;
+exports.FunctionComponentTag = 0;
+exports.ContextConsumerTag = 9;
+exports.SuspenseComponentTag = 13;
+exports.OffscreenComponentTag = 22;
+exports.ForwardRefTag = 11;
+exports.MemoComponentTag = 14;
+exports.SimpleMemoComponentTag = 15;
+exports.HostComponentTag = 5;
+exports.HostHoistableTag = 26;
+exports.HostSingletonTag = 27;
+exports.DehydratedSuspenseComponent = 18;
+exports.HostText = 6;
+exports.Fragment = 7;
+exports.LegacyHiddenComponent = 23;
+exports.OffscreenComponent = 22;
+exports.HostRoot = 3;
+exports.CONCURRENT_MODE_NUMBER = 0xeacf;
+exports.CONCURRENT_MODE_SYMBOL_STRING = 'Symbol(react.concurrent_mode)';
+exports.DEPRECATED_ASYNC_MODE_SYMBOL_STRING = 'Symbol(react.async_mode)';
+// https://github.com/facebook/react/blob/main/packages/react-reconciler/src/ReactFiberFlags.js
+exports.PerformedWork = 0b1;
+exports.Placement = 0b10;
+exports.DidCapture = 0b10000000;
+exports.Hydrating = 0b1000000000000;
+exports.Update = 0b100;
+exports.Cloned = 0b1000;
+exports.ChildDeletion = 0b10000;
+exports.ContentReset = 0b100000;
+exports.Ref = 0b1000000000;
+exports.Snapshot = 0b10000000000;
+exports.Visibility = 0b10000000000000;
+exports.MutationMask = exports.Placement |
+    exports.Update |
+    exports.ChildDeletion |
+    exports.ContentReset |
+    exports.Hydrating |
+    exports.Visibility |
+    exports.Snapshot;
+/**
+ * @see https://reactnative.dev/architecture/glossary#host-view-tree-and-host-view
+ */
+const isHostFiber = (fiber) => fiber.tag === exports.HostComponentTag ||
+    // @ts-expect-error: it exists
+    fiber.tag === exports.HostHoistableTag ||
+    // @ts-expect-error: it exists
+    fiber.tag === exports.HostSingletonTag ||
+    typeof fiber.type === 'string';
+exports.isHostFiber = isHostFiber;
+const getNearestHostFiber = (fiber) => {
+    let hostFiber = (0, exports.traverseFiber)(fiber, exports.isHostFiber);
+    if (!hostFiber) {
+        hostFiber = (0, exports.traverseFiber)(fiber, exports.isHostFiber, true);
+    }
+    return hostFiber;
+};
+exports.getNearestHostFiber = getNearestHostFiber;
+const getTopMostHostFiber = (fiber) => {
+    let topMostHostFiber = null;
+    function checkFiber(fiber) {
+        if ((0, exports.isHostFiber)(fiber)) {
+            topMostHostFiber = fiber;
         }
-        for (const weakRef of elementWeakRefList) {
-            const elem = weakRef.deref();
-            if (elem == null) {
-                continue;
-            }
-            // elements stats
-            ++totalElements;
-            // TODO: simplify this logic
-            if (!elem.isConnected) {
-                if (elementToComponentStack.has(elem)) {
-                    const componentStack = (_a = elementToComponentStack.get(elem)) !== null && _a !== void 0 ? _a : [];
-                    // set component name
-                    const component = componentStack[0];
-                    elem.__component_name = component;
-                    utils.addCountbyKey(detachedComponentToFiberNodeCount, component, 1);
-                }
-                ++totalDetachedElements;
-            }
-            // analyze fiber nodes
-            const fiberNode = (0, react_fiber_utils_1.getFiberNodeFromElement)(elem);
-            if (fiberNode == null) {
-                continue;
-            }
-            analyzeFiber(fiberNode);
-            // try to traverse each fiber node in the entire fiber tree
-            const rootFiber = (0, react_fiber_utils_1.getTopMostFiberWithChild)(fiberNode);
-            if (rootFiber == null) {
-                continue;
-            }
-            if (visitedRootFibers.has(rootFiber)) {
-                continue;
-            }
-            visitedRootFibers.add(rootFiber);
-            // start traversing fiber tree from the know root host
-            (0, react_fiber_utils_1.traverseFiber)(rootFiber, (node) => {
-                if (topDownVisited.has(node)) {
-                    return true;
-                }
-                topDownVisited.add(node);
-                fiberNodes.push(new WeakRef(node));
-                analyzeFiber(node);
-            }, false);
+    }
+    (0, exports.traverseFiber)(fiber, checkFiber, true);
+    return topMostHostFiber;
+};
+exports.getTopMostHostFiber = getTopMostHostFiber;
+const getTopMostFiberWithChild = (fiber) => {
+    let topMostFiber = null;
+    function checkFiber(fiber) {
+        if (fiber.child != null) {
+            topMostFiber = fiber;
         }
-        topDownVisited.clear();
-        analyzedFibers.clear();
-        visitedRootFibers.clear();
-        return {
-            components,
-            componentToFiberNodeCount,
-            totalElements,
-            totalDetachedElements,
-            detachedComponentToFiberNodeCount,
-            fiberNodes,
-            leakedFibers: [],
-        };
+    }
+    (0, exports.traverseFiber)(fiber, checkFiber, true);
+    return topMostFiber;
+};
+exports.getTopMostFiberWithChild = getTopMostFiberWithChild;
+const traverseFiber = (fiber, selector, ascending = false) => {
+    if (!fiber) {
+        return null;
+    }
+    if (selector(fiber) === true) {
+        return fiber;
+    }
+    let next = ascending ? fiber.return : fiber.child;
+    while (next) {
+        const match = (0, exports.traverseFiber)(next, selector, ascending);
+        if (match) {
+            return match;
+        }
+        next = ascending ? null : next.sibling;
+    }
+    return null;
+};
+exports.traverseFiber = traverseFiber;
+// React internal property keys
+const internalKeys = [
+    '__reactFiber$', // React 17+
+    '__reactInternalInstance$', // React 16
+    '_reactRootContainer', // React Root
+];
+const getOwnPropertyNames = Object.getOwnPropertyNames.bind(Object);
+function getFiberNodeFromElement(element) {
+    for (const prefix of internalKeys) {
+        // Use Object.keys only as fallback since it's slower
+        const key = getOwnPropertyNames(element).find(k => k.startsWith(prefix));
+        if (key) {
+            return element[key];
+        }
+    }
+    return null;
+}
+function getReactComponentStack(node) {
+    const stack = [];
+    const visited = new Set();
+    let fiber = node;
+    while (fiber) {
+        if (visited.has(fiber)) {
+            break;
+        }
+        visited.add(fiber);
+        const name = getDisplayNameOfFiberNode(fiber);
+        if (name) {
+            stack.push(name);
+        }
+        fiber = fiber.return;
+    }
+    return stack;
+}
+function getDisplayNameOfFiberNode(node) {
+    var _a, _b, _c, _d;
+    const elementType = (_a = node.type) !== null && _a !== void 0 ? _a : node.elementType;
+    // Try to get name from displayName or name properties
+    let displayName = (_b = elementType === null || elementType === void 0 ? void 0 : elementType.displayName) !== null && _b !== void 0 ? _b : elementType === null || elementType === void 0 ? void 0 : elementType.name;
+    // Handle class components and forwardRef
+    if (displayName == null) {
+        if (elementType === null || elementType === void 0 ? void 0 : elementType.render) {
+            // Class components
+            const render = elementType === null || elementType === void 0 ? void 0 : elementType.render;
+            displayName = (_c = render === null || render === void 0 ? void 0 : render.displayName) !== null && _c !== void 0 ? _c : render === null || render === void 0 ? void 0 : render.name;
+        }
+        else if (elementType === null || elementType === void 0 ? void 0 : elementType.type) {
+            // ForwardRef components
+            displayName = (_d = elementType.type.displayName) !== null && _d !== void 0 ? _d : elementType.type.name;
+        }
+    }
+    // Handle anonymous functions
+    if (!displayName && typeof elementType === 'function') {
+        displayName = elementType.name;
+    }
+    const ret = (0, utils_1.getMeaningfulName)(extractReactComponentName(displayName));
+    return (0, valid_component_name_1.isValidComponentName)(ret) ? ret : null;
+}
+function isFunctionalComponent(node) {
+    const elementType = node === null || node === void 0 ? void 0 : node.elementType;
+    return typeof elementType === 'function';
+}
+// dom-element [from component.react] --> component.react
+function extractReactComponentName(displayName) {
+    if (typeof displayName !== 'string') {
+        return null;
+    }
+    if (!displayName.includes('[') || !displayName.includes(']')) {
+        return displayName;
+    }
+    const startIndex = displayName.indexOf('[');
+    const endIndex = displayName.indexOf(']');
+    if (startIndex > endIndex) {
+        return displayName;
+    }
+    const name = displayName.substring(startIndex + 1, endIndex);
+    if (name.startsWith('from ')) {
+        return name.substring('from '.length);
+    }
+    return name;
+}
+
+
+/***/ },
+
+/***/ 476
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getDOMElements = getDOMElements;
+exports.getDOMElementCount = getDOMElementCount;
+exports.getMeaningfulName = getMeaningfulName;
+exports.isMinifiedName = isMinifiedName;
+exports.addCountbyKey = addCountbyKey;
+exports.updateWeakRefList = updateWeakRefList;
+exports.getBoundingClientRect = getBoundingClientRect;
+exports.consoleLog = consoleLog;
+exports.hasRunInSession = hasRunInSession;
+exports.setRunInSession = setRunInSession;
+const visual_utils_1 = __webpack_require__(498);
+function getDOMElements() {
+    const elements = Array.from(document.querySelectorAll('*'));
+    const ret = [];
+    for (const element of elements) {
+        if ((0, visual_utils_1.isVisualizerElement)(element)) {
+            continue;
+        }
+        ret.push(new WeakRef(element));
+    }
+    return ret;
+}
+function getDOMElementCount() {
+    const elements = Array.from(document.querySelectorAll('*'));
+    let ret = 0;
+    for (const element of elements) {
+        if ((0, visual_utils_1.isVisualizerElement)(element)) {
+            continue;
+        }
+        ++ret;
+    }
+    return ret;
+}
+function getMeaningfulName(name) {
+    if (name == null) {
+        return null;
+    }
+    const isMinified = isMinifiedName(name);
+    return isMinified ? null : name;
+}
+/**
+ * Determines if a given function or class name is minified.
+ *
+ * @param {string} name - The function or class name to check.
+ * @return {boolean} - Returns true if the name is likely minified, otherwise false.
+ */
+function isMinifiedName(name) {
+    if (name.length >= 5) {
+        return false;
+    }
+    // Minified names are often very short, e.g., "a", "b", "c"
+    if (name.length <= 3) {
+        return true;
+    }
+    // Names with non-alphanumeric characters (except $ and _) are unlikely to be minified
+    if (/[^a-zA-Z0-9$_]/.test(name)) {
+        return false;
+    }
+    // Minified names rarely have meaningful words (detect camelCase or PascalCase)
+    const hasMeaningfulPattern = /^[A-Z][a-z]+([A-Z][a-z]*)*$|^[a-z]+([A-Z][a-z]*)*$/.test(name);
+    return !hasMeaningfulPattern;
+}
+function addCountbyKey(map, key, count) {
+    var _a;
+    map.set(key, ((_a = map.get(key)) !== null && _a !== void 0 ? _a : 0) + count);
+}
+function updateWeakRefList(weakRefList, elementRefs) {
+    consolidateWeakRefList(weakRefList);
+    const set = getElementsSet(weakRefList);
+    for (const elementRef of elementRefs) {
+        const element = elementRef.deref();
+        if (element == null || set.has(element)) {
+            continue;
+        }
+        set.add(element);
+        weakRefList.push(new WeakRef(element));
+    }
+    return weakRefList;
+}
+function getElementsSet(weakRefList) {
+    const set = new Set();
+    for (const weakRef of weakRefList) {
+        set.add(weakRef.deref());
+    }
+    return set;
+}
+function consolidateWeakRefList(weakRefList) {
+    const alternative = [];
+    for (const weakRef of weakRefList) {
+        const element = weakRef.deref();
+        if (element == null) {
+            continue;
+        }
+        alternative.push(weakRef);
+    }
+    while (weakRefList.length > 0) {
+        weakRefList.pop();
+    }
+    for (const weakRef of alternative) {
+        weakRefList.push(weakRef);
+    }
+    return weakRefList;
+}
+function getBoundingClientRect(element) {
+    if (element == null) {
+        return null;
+    }
+    if (typeof element.getBoundingClientRect !== 'function') {
+        return null;
+    }
+    let rect = null;
+    try {
+        rect = element.getBoundingClientRect();
+    }
+    catch (_a) {
+        // do nothing
+    }
+    if (rect == null) {
+        return null;
+    }
+    const scrollTop = window.scrollY;
+    const scrollLeft = window.scrollX;
+    const ret = {};
+    ret.bottom = rect.bottom;
+    ret.height = rect.height;
+    ret.left = rect.left;
+    ret.right = rect.right;
+    ret.top = rect.top;
+    ret.width = rect.width;
+    ret.x = rect.x;
+    ret.y = rect.y;
+    ret.scrollLeft = scrollLeft;
+    ret.scrollTop = scrollTop;
+    return ret;
+}
+const _console = console;
+const _consoleLog = _console.log;
+function consoleLog(...args) {
+    _consoleLog.apply(_console, args);
+}
+const SESSION_STORAGE_KEY = 'memory_lens_session';
+function isSessionStorageAvailable() {
+    try {
+        const testKey = '__memory_lens_session_test__';
+        sessionStorage.setItem(testKey, '1');
+        sessionStorage.removeItem(testKey);
+        return true;
+    }
+    catch (_a) {
+        return false;
     }
 }
-exports["default"] = ReactFiberAnalyzer;
+function hasRunInSession() {
+    if (!isSessionStorageAvailable()) {
+        return false;
+    }
+    try {
+        return sessionStorage.getItem(SESSION_STORAGE_KEY) === 'true';
+    }
+    catch (_a) {
+        return false;
+    }
+}
+function setRunInSession() {
+    if (!isSessionStorageAvailable()) {
+        return;
+    }
+    try {
+        sessionStorage.setItem(SESSION_STORAGE_KEY, 'true');
+    }
+    catch (_a) {
+        // do nothing
+    }
+}
 
 
 /***/ },
@@ -1082,226 +1655,6 @@ exports.WeakMapPlus = WeakMapPlus;
 
 /***/ },
 
-/***/ 346
-(__unused_webpack_module, exports) {
-
-
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- *
- * @format
- * @oncall memory_lab
- */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.config = exports.featureFlags = exports.performanceConfig = void 0;
-// Performance Configuration
-exports.performanceConfig = {
-    scanIntervalMs: 1000,
-    maxComponentStackDepth: 100,
-    memoryMeasurementIntervalMs: 5000,
-};
-// Feature Flags
-exports.featureFlags = {
-    enableMutationObserver: true,
-    enableMemoryTracking: true,
-    enableComponentStack: true,
-    enableConsoleLogs: window === null || window === void 0 ? void 0 : window.TEST_MEMORY_SCAN,
-};
-// overall Config
-exports.config = {
-    performance: exports.performanceConfig,
-    features: exports.featureFlags,
-};
-
-
-/***/ },
-
-/***/ 476
-(__unused_webpack_module, exports, __webpack_require__) {
-
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getDOMElements = getDOMElements;
-exports.getDOMElementCount = getDOMElementCount;
-exports.getMeaningfulName = getMeaningfulName;
-exports.isMinifiedName = isMinifiedName;
-exports.addCountbyKey = addCountbyKey;
-exports.updateWeakRefList = updateWeakRefList;
-exports.getBoundingClientRect = getBoundingClientRect;
-exports.consoleLog = consoleLog;
-exports.hasRunInSession = hasRunInSession;
-exports.setRunInSession = setRunInSession;
-const visual_utils_1 = __webpack_require__(498);
-function getDOMElements() {
-    const elements = Array.from(document.querySelectorAll('*'));
-    const ret = [];
-    for (const element of elements) {
-        if ((0, visual_utils_1.isVisualizerElement)(element)) {
-            continue;
-        }
-        ret.push(new WeakRef(element));
-    }
-    return ret;
-}
-function getDOMElementCount() {
-    const elements = Array.from(document.querySelectorAll('*'));
-    let ret = 0;
-    for (const element of elements) {
-        if ((0, visual_utils_1.isVisualizerElement)(element)) {
-            continue;
-        }
-        ++ret;
-    }
-    return ret;
-}
-function getMeaningfulName(name) {
-    if (name == null) {
-        return null;
-    }
-    const isMinified = isMinifiedName(name);
-    return isMinified ? null : name;
-}
-/**
- * Determines if a given function or class name is minified.
- *
- * @param {string} name - The function or class name to check.
- * @return {boolean} - Returns true if the name is likely minified, otherwise false.
- */
-function isMinifiedName(name) {
-    if (name.length >= 5) {
-        return false;
-    }
-    // Minified names are often very short, e.g., "a", "b", "c"
-    if (name.length <= 3) {
-        return true;
-    }
-    // Names with non-alphanumeric characters (except $ and _) are unlikely to be minified
-    if (/[^a-zA-Z0-9$_]/.test(name)) {
-        return false;
-    }
-    // Minified names rarely have meaningful words (detect camelCase or PascalCase)
-    const hasMeaningfulPattern = /^[A-Z][a-z]+([A-Z][a-z]*)*$|^[a-z]+([A-Z][a-z]*)*$/.test(name);
-    return !hasMeaningfulPattern;
-}
-function addCountbyKey(map, key, count) {
-    var _a;
-    map.set(key, ((_a = map.get(key)) !== null && _a !== void 0 ? _a : 0) + count);
-}
-function updateWeakRefList(weakRefList, elementRefs) {
-    consolidateWeakRefList(weakRefList);
-    const set = getElementsSet(weakRefList);
-    for (const elementRef of elementRefs) {
-        const element = elementRef.deref();
-        if (element == null || set.has(element)) {
-            continue;
-        }
-        set.add(element);
-        weakRefList.push(new WeakRef(element));
-    }
-    return weakRefList;
-}
-function getElementsSet(weakRefList) {
-    const set = new Set();
-    for (const weakRef of weakRefList) {
-        set.add(weakRef.deref());
-    }
-    return set;
-}
-function consolidateWeakRefList(weakRefList) {
-    const alternative = [];
-    for (const weakRef of weakRefList) {
-        const element = weakRef.deref();
-        if (element == null) {
-            continue;
-        }
-        alternative.push(weakRef);
-    }
-    while (weakRefList.length > 0) {
-        weakRefList.pop();
-    }
-    for (const weakRef of alternative) {
-        weakRefList.push(weakRef);
-    }
-    return weakRefList;
-}
-function getBoundingClientRect(element) {
-    if (element == null) {
-        return null;
-    }
-    if (typeof element.getBoundingClientRect !== 'function') {
-        return null;
-    }
-    let rect = null;
-    try {
-        rect = element.getBoundingClientRect();
-    }
-    catch (_a) {
-        // do nothing
-    }
-    if (rect == null) {
-        return null;
-    }
-    const scrollTop = window.scrollY;
-    const scrollLeft = window.scrollX;
-    const ret = {};
-    ret.bottom = rect.bottom;
-    ret.height = rect.height;
-    ret.left = rect.left;
-    ret.right = rect.right;
-    ret.top = rect.top;
-    ret.width = rect.width;
-    ret.x = rect.x;
-    ret.y = rect.y;
-    ret.scrollLeft = scrollLeft;
-    ret.scrollTop = scrollTop;
-    return ret;
-}
-const _console = console;
-const _consoleLog = _console.log;
-function consoleLog(...args) {
-    _consoleLog.apply(_console, args);
-}
-const SESSION_STORAGE_KEY = 'memory_lens_session';
-function isSessionStorageAvailable() {
-    try {
-        const testKey = '__memory_lens_session_test__';
-        sessionStorage.setItem(testKey, '1');
-        sessionStorage.removeItem(testKey);
-        return true;
-    }
-    catch (_a) {
-        return false;
-    }
-}
-function hasRunInSession() {
-    if (!isSessionStorageAvailable()) {
-        return false;
-    }
-    try {
-        return sessionStorage.getItem(SESSION_STORAGE_KEY) === 'true';
-    }
-    catch (_a) {
-        return false;
-    }
-}
-function setRunInSession() {
-    if (!isSessionStorageAvailable()) {
-        return;
-    }
-    try {
-        sessionStorage.setItem(SESSION_STORAGE_KEY, 'true');
-    }
-    catch (_a) {
-        // do nothing
-    }
-}
-
-
-/***/ },
-
 /***/ 498
 (__unused_webpack_module, exports) {
 
@@ -1366,359 +1719,6 @@ function debounce(callback, delay) {
         }, delay);
     };
 }
-
-
-/***/ },
-
-/***/ 737
-(__unused_webpack_module, exports, __webpack_require__) {
-
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.traverseFiber = exports.getTopMostFiberWithChild = exports.getTopMostHostFiber = exports.getNearestHostFiber = exports.isHostFiber = exports.MutationMask = exports.Visibility = exports.Snapshot = exports.Ref = exports.ContentReset = exports.ChildDeletion = exports.Cloned = exports.Update = exports.Hydrating = exports.DidCapture = exports.Placement = exports.PerformedWork = exports.DEPRECATED_ASYNC_MODE_SYMBOL_STRING = exports.CONCURRENT_MODE_SYMBOL_STRING = exports.CONCURRENT_MODE_NUMBER = exports.HostRoot = exports.OffscreenComponent = exports.LegacyHiddenComponent = exports.Fragment = exports.HostText = exports.DehydratedSuspenseComponent = exports.HostSingletonTag = exports.HostHoistableTag = exports.HostComponentTag = exports.SimpleMemoComponentTag = exports.MemoComponentTag = exports.ForwardRefTag = exports.OffscreenComponentTag = exports.SuspenseComponentTag = exports.ContextConsumerTag = exports.FunctionComponentTag = exports.ClassComponentTag = void 0;
-exports.getFiberNodeFromElement = getFiberNodeFromElement;
-exports.getReactComponentStack = getReactComponentStack;
-exports.getDisplayNameOfFiberNode = getDisplayNameOfFiberNode;
-exports.isFunctionalComponent = isFunctionalComponent;
-exports.extractReactComponentName = extractReactComponentName;
-const utils_1 = __webpack_require__(476);
-const valid_component_name_1 = __webpack_require__(847);
-exports.ClassComponentTag = 1;
-exports.FunctionComponentTag = 0;
-exports.ContextConsumerTag = 9;
-exports.SuspenseComponentTag = 13;
-exports.OffscreenComponentTag = 22;
-exports.ForwardRefTag = 11;
-exports.MemoComponentTag = 14;
-exports.SimpleMemoComponentTag = 15;
-exports.HostComponentTag = 5;
-exports.HostHoistableTag = 26;
-exports.HostSingletonTag = 27;
-exports.DehydratedSuspenseComponent = 18;
-exports.HostText = 6;
-exports.Fragment = 7;
-exports.LegacyHiddenComponent = 23;
-exports.OffscreenComponent = 22;
-exports.HostRoot = 3;
-exports.CONCURRENT_MODE_NUMBER = 0xeacf;
-exports.CONCURRENT_MODE_SYMBOL_STRING = 'Symbol(react.concurrent_mode)';
-exports.DEPRECATED_ASYNC_MODE_SYMBOL_STRING = 'Symbol(react.async_mode)';
-// https://github.com/facebook/react/blob/main/packages/react-reconciler/src/ReactFiberFlags.js
-exports.PerformedWork = 0b1;
-exports.Placement = 0b10;
-exports.DidCapture = 0b10000000;
-exports.Hydrating = 0b1000000000000;
-exports.Update = 0b100;
-exports.Cloned = 0b1000;
-exports.ChildDeletion = 0b10000;
-exports.ContentReset = 0b100000;
-exports.Ref = 0b1000000000;
-exports.Snapshot = 0b10000000000;
-exports.Visibility = 0b10000000000000;
-exports.MutationMask = exports.Placement |
-    exports.Update |
-    exports.ChildDeletion |
-    exports.ContentReset |
-    exports.Hydrating |
-    exports.Visibility |
-    exports.Snapshot;
-/**
- * @see https://reactnative.dev/architecture/glossary#host-view-tree-and-host-view
- */
-const isHostFiber = (fiber) => fiber.tag === exports.HostComponentTag ||
-    // @ts-expect-error: it exists
-    fiber.tag === exports.HostHoistableTag ||
-    // @ts-expect-error: it exists
-    fiber.tag === exports.HostSingletonTag ||
-    typeof fiber.type === 'string';
-exports.isHostFiber = isHostFiber;
-const getNearestHostFiber = (fiber) => {
-    let hostFiber = (0, exports.traverseFiber)(fiber, exports.isHostFiber);
-    if (!hostFiber) {
-        hostFiber = (0, exports.traverseFiber)(fiber, exports.isHostFiber, true);
-    }
-    return hostFiber;
-};
-exports.getNearestHostFiber = getNearestHostFiber;
-const getTopMostHostFiber = (fiber) => {
-    let topMostHostFiber = null;
-    function checkFiber(fiber) {
-        if ((0, exports.isHostFiber)(fiber)) {
-            topMostHostFiber = fiber;
-        }
-    }
-    (0, exports.traverseFiber)(fiber, checkFiber, true);
-    return topMostHostFiber;
-};
-exports.getTopMostHostFiber = getTopMostHostFiber;
-const getTopMostFiberWithChild = (fiber) => {
-    let topMostFiber = null;
-    function checkFiber(fiber) {
-        if (fiber.child != null) {
-            topMostFiber = fiber;
-        }
-    }
-    (0, exports.traverseFiber)(fiber, checkFiber, true);
-    return topMostFiber;
-};
-exports.getTopMostFiberWithChild = getTopMostFiberWithChild;
-const traverseFiber = (fiber, selector, ascending = false) => {
-    if (!fiber) {
-        return null;
-    }
-    if (selector(fiber) === true) {
-        return fiber;
-    }
-    let next = ascending ? fiber.return : fiber.child;
-    while (next) {
-        const match = (0, exports.traverseFiber)(next, selector, ascending);
-        if (match) {
-            return match;
-        }
-        next = ascending ? null : next.sibling;
-    }
-    return null;
-};
-exports.traverseFiber = traverseFiber;
-// React internal property keys
-const internalKeys = [
-    '__reactFiber$', // React 17+
-    '__reactInternalInstance$', // React 16
-    '_reactRootContainer', // React Root
-];
-const getOwnPropertyNames = Object.getOwnPropertyNames.bind(Object);
-function getFiberNodeFromElement(element) {
-    for (const prefix of internalKeys) {
-        // Use Object.keys only as fallback since it's slower
-        const key = getOwnPropertyNames(element).find(k => k.startsWith(prefix));
-        if (key) {
-            return element[key];
-        }
-    }
-    return null;
-}
-function getReactComponentStack(node) {
-    const stack = [];
-    const visited = new Set();
-    let fiber = node;
-    while (fiber) {
-        if (visited.has(fiber)) {
-            break;
-        }
-        visited.add(fiber);
-        const name = getDisplayNameOfFiberNode(fiber);
-        if (name) {
-            stack.push(name);
-        }
-        fiber = fiber.return;
-    }
-    return stack;
-}
-function getDisplayNameOfFiberNode(node) {
-    var _a, _b, _c, _d;
-    const elementType = (_a = node.type) !== null && _a !== void 0 ? _a : node.elementType;
-    // Try to get name from displayName or name properties
-    let displayName = (_b = elementType === null || elementType === void 0 ? void 0 : elementType.displayName) !== null && _b !== void 0 ? _b : elementType === null || elementType === void 0 ? void 0 : elementType.name;
-    // Handle class components and forwardRef
-    if (displayName == null) {
-        if (elementType === null || elementType === void 0 ? void 0 : elementType.render) {
-            // Class components
-            const render = elementType === null || elementType === void 0 ? void 0 : elementType.render;
-            displayName = (_c = render === null || render === void 0 ? void 0 : render.displayName) !== null && _c !== void 0 ? _c : render === null || render === void 0 ? void 0 : render.name;
-        }
-        else if (elementType === null || elementType === void 0 ? void 0 : elementType.type) {
-            // ForwardRef components
-            displayName = (_d = elementType.type.displayName) !== null && _d !== void 0 ? _d : elementType.type.name;
-        }
-    }
-    // Handle anonymous functions
-    if (!displayName && typeof elementType === 'function') {
-        displayName = elementType.name;
-    }
-    const ret = (0, utils_1.getMeaningfulName)(extractReactComponentName(displayName));
-    return (0, valid_component_name_1.isValidComponentName)(ret) ? ret : null;
-}
-function isFunctionalComponent(node) {
-    const elementType = node === null || node === void 0 ? void 0 : node.elementType;
-    return typeof elementType === 'function';
-}
-// dom-element [from component.react] --> component.react
-function extractReactComponentName(displayName) {
-    if (typeof displayName !== 'string') {
-        return null;
-    }
-    if (!displayName.includes('[') || !displayName.includes(']')) {
-        return displayName;
-    }
-    const startIndex = displayName.indexOf('[');
-    const endIndex = displayName.indexOf(']');
-    if (startIndex > endIndex) {
-        return displayName;
-    }
-    const name = displayName.substring(startIndex + 1, endIndex);
-    if (name.startsWith('from ')) {
-        return name.substring('from '.length);
-    }
-    return name;
-}
-
-
-/***/ },
-
-/***/ 847
-(__unused_webpack_module, exports) {
-
-
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- *
- * @format
- * @oncall memory_lab
- */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.isValidComponentName = isValidComponentName;
-const displayNameBlockList = new Set();
-function isValidComponentName(name) {
-    return name != null && !displayNameBlockList.has(name);
-}
-
-
-/***/ },
-
-/***/ 953
-(__unused_webpack_module, exports, __webpack_require__) {
-
-
-var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
-    if (kind === "m") throw new TypeError("Private method is not writable");
-    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
-    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
-    return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
-};
-var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (receiver, state, kind, f) {
-    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
-    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
-    return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
-};
-var _EventListenerTracker_instances, _EventListenerTracker_listenerMap, _EventListenerTracker_detachedListeners, _EventListenerTracker_originalAddEventListener, _EventListenerTracker_originalRemoveEventListener, _EventListenerTracker_patchEventListeners, _EventListenerTracker_unpatchEventListeners;
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.EventListenerTracker = void 0;
-const react_fiber_utils_1 = __webpack_require__(737);
-const weak_ref_utils_1 = __webpack_require__(313);
-class EventListenerTracker {
-    constructor() {
-        _EventListenerTracker_instances.add(this);
-        _EventListenerTracker_listenerMap.set(this, void 0);
-        _EventListenerTracker_detachedListeners.set(this, void 0);
-        _EventListenerTracker_originalAddEventListener.set(this, void 0);
-        _EventListenerTracker_originalRemoveEventListener.set(this, void 0);
-        __classPrivateFieldSet(this, _EventListenerTracker_listenerMap, new weak_ref_utils_1.WeakMapPlus({ fallback: 'noop', cleanupMs: 100 }), "f");
-        __classPrivateFieldSet(this, _EventListenerTracker_detachedListeners, new Map(), "f");
-        __classPrivateFieldSet(this, _EventListenerTracker_originalAddEventListener, EventTarget.prototype.addEventListener, "f");
-        __classPrivateFieldSet(this, _EventListenerTracker_originalRemoveEventListener, EventTarget.prototype.removeEventListener, "f");
-        __classPrivateFieldGet(this, _EventListenerTracker_instances, "m", _EventListenerTracker_patchEventListeners).call(this);
-    }
-    static getInstance() {
-        if (!EventListenerTracker.instance) {
-            EventListenerTracker.instance = new EventListenerTracker();
-        }
-        return EventListenerTracker.instance;
-    }
-    addListener(el, type, cb, options) {
-        el.addEventListener(type, cb, options);
-    }
-    removeListener(el, type, cb, options) {
-        el.removeEventListener(type, cb, options);
-    }
-    scan(getComponentName) {
-        const detachedListeners = new Map();
-        for (const [el, listeners] of __classPrivateFieldGet(this, _EventListenerTracker_listenerMap, "f").entries()) {
-            if (el instanceof Element && !el.isConnected) {
-                for (const listener of listeners) {
-                    // Skip if the callback has been garbage collected
-                    if (!listener.cb.deref())
-                        continue;
-                    const componentName = getComponentName(new WeakRef(el));
-                    if (!detachedListeners.has(componentName)) {
-                        detachedListeners.set(componentName, []);
-                    }
-                    const groups = detachedListeners.get(componentName);
-                    let group = groups === null || groups === void 0 ? void 0 : groups.find(g => g.type === listener.type);
-                    if (!group) {
-                        group = {
-                            type: listener.type,
-                            count: 0,
-                            entries: [],
-                        };
-                        groups === null || groups === void 0 ? void 0 : groups.push(group);
-                    }
-                    group.count++;
-                    group.entries.push(new WeakRef(listener));
-                }
-            }
-        }
-        __classPrivateFieldSet(this, _EventListenerTracker_detachedListeners, detachedListeners, "f");
-        return detachedListeners;
-    }
-    getDetachedListeners() {
-        return __classPrivateFieldGet(this, _EventListenerTracker_detachedListeners, "f");
-    }
-    destroy() {
-        __classPrivateFieldGet(this, _EventListenerTracker_instances, "m", _EventListenerTracker_unpatchEventListeners).call(this);
-        __classPrivateFieldGet(this, _EventListenerTracker_listenerMap, "f").destroy();
-        __classPrivateFieldGet(this, _EventListenerTracker_detachedListeners, "f").clear();
-        EventListenerTracker.instance = null;
-    }
-}
-exports.EventListenerTracker = EventListenerTracker;
-_EventListenerTracker_listenerMap = new WeakMap(), _EventListenerTracker_detachedListeners = new WeakMap(), _EventListenerTracker_originalAddEventListener = new WeakMap(), _EventListenerTracker_originalRemoveEventListener = new WeakMap(), _EventListenerTracker_instances = new WeakSet(), _EventListenerTracker_patchEventListeners = function _EventListenerTracker_patchEventListeners() {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const self = this;
-    EventTarget.prototype.addEventListener = function (type, listener, options) {
-        var _a;
-        __classPrivateFieldGet(self, _EventListenerTracker_originalAddEventListener, "f").call(this, type, listener, options);
-        if (this instanceof Element) {
-            const fiber = (0, react_fiber_utils_1.getFiberNodeFromElement)(this);
-            const entry = {
-                type,
-                cb: new WeakRef(listener),
-                options,
-                fiber: fiber ? new WeakRef(fiber) : undefined,
-            };
-            const listeners = (_a = __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").get(this)) !== null && _a !== void 0 ? _a : [];
-            listeners.push(entry);
-            __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").set(this, listeners);
-        }
-    };
-    EventTarget.prototype.removeEventListener = function (type, listener, options) {
-        __classPrivateFieldGet(self, _EventListenerTracker_originalRemoveEventListener, "f").call(this, type, listener, options);
-        if (this instanceof Element) {
-            const listeners = __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").get(this);
-            if (listeners) {
-                const index = listeners.findIndex(entry => entry.type === type &&
-                    entry.cb.deref() === listener &&
-                    entry.options === options);
-                if (index !== -1) {
-                    listeners.splice(index, 1);
-                }
-                if (listeners.length === 0) {
-                    __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").delete(this);
-                }
-                else {
-                    __classPrivateFieldGet(self, _EventListenerTracker_listenerMap, "f").set(this, listeners);
-                }
-            }
-        }
-    };
-}, _EventListenerTracker_unpatchEventListeners = function _EventListenerTracker_unpatchEventListeners() {
-    EventTarget.prototype.addEventListener = __classPrivateFieldGet(this, _EventListenerTracker_originalAddEventListener, "f");
-    EventTarget.prototype.removeEventListener =
-        __classPrivateFieldGet(this, _EventListenerTracker_originalRemoveEventListener, "f");
-};
-EventListenerTracker.instance = null;
 
 
 /***/ }

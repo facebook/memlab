@@ -1,4 +1,4 @@
-# Type Alias: InteractionsCallback()
+# Type Alias: InteractionsCallback
 
 > **InteractionsCallback** = (`page`, `args?`) => `Promise`\<`void`\>
 

@@ -1,6 +1,6 @@
 # Function: findLeaksBySnapshotFilePaths()
 
-> **findLeaksBySnapshotFilePaths**(`baselineSnapshot`, `targetSnapshot`, `finalSnapshot`, `options`): `Promise`\<`ISerializedInfo`[]\>
+> **findLeaksBySnapshotFilePaths**(`baselineSnapshot`, `targetSnapshot`, `finalSnapshot`, `options?`): `Promise`\<`ISerializedInfo`[]\>
 
 Defined in: api/src/API.ts:284
 
@@ -28,7 +28,7 @@ the file path of the target heap snapshot
 
 the file path of the final heap snapshot
 
-### options
+### options?
 
 optionally, you can specify a mode for heap analysis
 

@@ -7,6 +7,7 @@
     { "path": "./packages/heap-analysis" },
     { "path": "./packages/api" },
     { "path": "./packages/cli" },
-    { "path": "./packages/memlab" }
+    { "path": "./packages/memlab" },
+    { "path": "./packages/mcp-server" }
   ]
 }
