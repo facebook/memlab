@@ -33,8 +33,8 @@
   "dependencies": {
     "@memlab/core": "^2.0.1",
     "@memlab/heap-analysis": "^2.0.1",
-    "@modelcontextprotocol/sdk": "~1.12.1",
-    "zod": "~3.23.8"
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
