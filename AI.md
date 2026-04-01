@@ -33,18 +33,21 @@ A scenario file is a JavaScript module that exports an object implementing the `
 ```javascript
 module.exports = {
   url: () => string,           // Required: initial page URL
-  action: async (page) => {},  // Required: interaction that may cause leaks
-  back: async (page) => {},    // Required: revert to baseline state
+  action: async (page) => {},  // Recommended: interaction that may cause leaks
+  back: async (page) => {},    // Recommended: revert to baseline state
   // Optional callbacks:
   cookies: () => Cookies[],    // Authentication cookies
-  setup: async (page) => {},  // Setup after initial page load
+  setup: async (page) => {},   // Setup after initial page load
   beforeInitialPageLoad: async (page) => {}, // Setup before page load
+  isPageLoaded: async (page) => boolean,     // Custom page-load check
   leakFilter: (node, snapshot, leakedNodeIds) => boolean, // Custom leak detection
+  beforeLeakFilter: (snapshot, leakedNodeIds) => {},      // One-time init before leakFilter
+  retainerReferenceFilter: (edge, snapshot, isReferenceUsedByDefault) => boolean, // Filter retainer trace edges
   repeat: () => number,       // Number of iterations (only for stress testing)
 };
 ```
 
-**Important**: For most scenarios, only `url()`, `action()`, and `back()` are needed. Only use optional callbacks (`setup`, `cookies`, `beforeInitialPageLoad`, `leakFilter`, `repeat`) when they are necessary for your specific use case. Keep scenarios simple and focused.
+**Important**: Only `url()` is strictly required. For most scenarios, `url()`, `action()`, and `back()` are all you need. Only use other optional callbacks (`setup`, `cookies`, `beforeInitialPageLoad`, `isPageLoaded`, `leakFilter`, `beforeLeakFilter`, `retainerReferenceFilter`, `repeat`) when they are necessary for your specific use case. Keep scenarios simple and focused.
 
 **Note on `repeat()`**: The `repeat()` callback should **only** be used when users explicitly want to stress test memory by repeating the action/back cycle multiple times. For normal memory leak detection, there is no need to define `repeat()` - MemLab will run the scenario once by default.
 
@@ -141,7 +144,7 @@ When in doubt, always check the [Puppeteer Page API documentation](https://pptr.
 
 ### ✅ DO: Correct Scenario Patterns
 
-**1. Always include all three required callbacks:**
+**1. Include the three core callbacks for most scenarios:**
 ```javascript
 module.exports = {
   url: () => 'https://example.com',
@@ -211,7 +214,7 @@ module.exports = {
   back: async (page) => { /* ... */ },
   leakFilter: (node, snapshot, leakedNodeIds) => {
     // Report objects larger than 1MB as leaks
-    return node.getRetainedSize() > 1024 * 1024;
+    return node.retainedSize > 1024 * 1024;
   },
 };
 ```
@@ -236,6 +239,61 @@ module.exports = {
 ```
 
 **Important**: There is **no need** to define the `repeat()` callback in a scenario unless the user explicitly wants to stress test memory by repeating the action/back cycle multiple times. For normal memory leak detection, MemLab will run the scenario once by default, and adding `repeat()` is unnecessary complexity.
+
+**7. Use `isPageLoaded` for custom page-load detection:**
+```javascript
+// ✅ GOOD: Wait for specific content before considering page loaded
+module.exports = {
+  url: () => 'https://example.com',
+  action: async (page) => { /* ... */ },
+  back: async (page) => { /* ... */ },
+  isPageLoaded: async (page) => {
+    await page.waitForNavigation({
+      waitUntil: 'networkidle2',
+      timeout: 5000,
+    });
+    return true;
+  },
+};
+```
+
+**8. Use `beforeLeakFilter` for one-time initialization before leak filtering:**
+```javascript
+// ✅ GOOD: Pre-compute data before filtering leaks
+let importantIds;
+module.exports = {
+  url: () => 'https://example.com',
+  action: async (page) => { /* ... */ },
+  back: async (page) => { /* ... */ },
+  beforeLeakFilter: (snapshot, leakedNodeIds) => {
+    // one-time setup before leakFilter is called for each node
+    importantIds = new Set([...leakedNodeIds].filter(id => {
+      const node = snapshot.getNodeById(id);
+      return node && node.retainedSize > 500000;
+    }));
+  },
+  leakFilter: (node, snapshot, leakedNodeIds) => {
+    return importantIds.has(node.id);
+  },
+};
+```
+
+**9. Use `retainerReferenceFilter` to customize retainer traces:**
+```javascript
+// ✅ GOOD: Exclude noisy references from retainer traces
+module.exports = {
+  url: () => 'https://example.com',
+  action: async (page) => { /* ... */ },
+  back: async (page) => { /* ... */ },
+  retainerReferenceFilter: (edge, snapshot, isReferenceUsedByDefault) => {
+    // exclude React Fiber internal references from retainer traces
+    if (edge.name_or_index.toString().startsWith('__reactFiber$')) {
+      return false;
+    }
+    return true;
+  },
+};
+```
 
 ### ❌ DON'T: Common Mistakes
 
@@ -351,8 +409,9 @@ action: async (page) => {
 
 ### Programmatic API
 
-When generating code that uses MemLab programmatically:
+When generating code that uses MemLab programmatically, the following functions are available from `@memlab/api`:
 
+**`run(options?)`** — Full end-to-end: takes snapshots and finds leaks:
 ```typescript
 import {run} from '@memlab/api';
 
@@ -366,8 +425,65 @@ const scenario = {
   },
 };
 
-const leaks = await run({scenario});
+const {leaks, runResult} = await run({scenario});
 console.log(`Found ${leaks.length} memory leaks`);
+```
+
+**`takeSnapshots(options?)`** — Take heap snapshots without leak detection:
+```typescript
+import {takeSnapshots} from '@memlab/api';
+
+const result = await takeSnapshots({scenario});
+// result is a BrowserInteractionResultReader
+const snapshotFiles = result.getSnapshotFiles();
+```
+
+**`warmupAndTakeSnapshots(options?)`** — Warm up the server, then take snapshots:
+```typescript
+import {warmupAndTakeSnapshots} from '@memlab/api';
+
+const result = await warmupAndTakeSnapshots({scenario});
+```
+
+**`findLeaks(runResult, options?)`** — Find leaks from a previous snapshot run:
+```typescript
+import {findLeaks, takeSnapshots} from '@memlab/api';
+
+const result = await takeSnapshots({scenario});
+const leaks = await findLeaks(result);
+```
+
+**`findLeaksBySnapshotFilePaths(baseline, target, final, options?)`** — Find leaks from three explicit snapshot files:
+```typescript
+import {findLeaksBySnapshotFilePaths} from '@memlab/api';
+
+const leaks = await findLeaksBySnapshotFilePaths(
+  '/path/to/baseline.heapsnapshot',
+  '/path/to/target.heapsnapshot',
+  '/path/to/final.heapsnapshot',
+);
+```
+
+**`analyze(runResult, heapAnalyzer, args?)`** — Run a heap analysis plugin:
+```typescript
+import {analyze, takeSnapshots, StringAnalysis} from '@memlab/api';
+
+const result = await takeSnapshots({scenario});
+await analyze(result, new StringAnalysis());
+```
+
+**Result Readers:**
+- `BrowserInteractionResultReader` — reads results from a `run()` or `takeSnapshots()` call
+- `SnapshotResultReader` — reads results from standalone snapshot files:
+```typescript
+import {SnapshotResultReader, findLeaks} from '@memlab/api';
+
+const reader = SnapshotResultReader.fromSnapshots(
+  '/path/to/baseline.heapsnapshot',
+  '/path/to/target.heapsnapshot',
+  '/path/to/final.heapsnapshot',
+);
+const leaks = await findLeaks(reader);
 ```
 
 ### CLI Usage
@@ -375,18 +491,70 @@ console.log(`Found ${leaks.length} memory leaks`);
 When suggesting CLI commands:
 
 ```bash
-# Basic usage (most common)
+# Full end-to-end leak detection (most common)
 memlab run --scenario path/to/scenario.js
 
-# With custom leak filter
-memlab find-leaks --scenario path/to/scenario.js --leak-filter path/to/filter.js
+# Take snapshots only (no leak detection)
+memlab snapshot --scenario path/to/scenario.js
 
-# Analyze heap snapshots
+# Warm up server and take snapshots
+memlab warmup-and-snapshot --scenario path/to/scenario.js
+
+# Find leaks from existing snapshots
+memlab find-leaks --snapshot-dir ./snapshots
+memlab find-leaks --baseline s1.heapsnapshot --target s2.heapsnapshot --final s3.heapsnapshot
+
+# Find leaks with custom leak filter file
+memlab find-leaks --leak-filter path/to/filter.js
+
+# Diff leaks between control and test snapshots
+memlab diff-leaks --control-snapshot ./control --treatment-snapshot ./treatment
+
+# Run heap analysis plugins
 memlab analyze unbound-object --snapshot-dir ./snapshots
+memlab analyze string --snapshot-dir ./snapshots
+memlab analyze detached-DOM --snapshot-dir ./snapshots
 
-# View heap snapshot
+# View/explore a heap snapshot interactively
 memlab view-heap --snapshot path/to/heap.heapsnapshot
+memlab heap --snapshot path/to/heap.heapsnapshot
+
+# Get retainer trace for a specific node
+memlab trace --node-id 12345
+
+# Print summary of last run
+memlab summary
+
+# Other utilities
+memlab version        # Show installed versions
+memlab list           # List all test scenarios
+memlab warmup         # Warm up the target app
+memlab measure        # Run scenario in measure mode
+memlab reset          # Reset and initialize directories
+memlab help           # List all commands
+memlab help <command> # Help for a specific command
 ```
+
+#### Available Heap Analysis Plugins
+
+The `memlab analyze` command supports these built-in analysis plugins:
+
+| Plugin Command | Description |
+|---|---|
+| `unbound-object` | Check for single objects with growing retained size |
+| `unbound-collection` | Check for collections (e.g., Map) with growing number of entries |
+| `unbound-shape` | Check for a class of objects with growing aggregated retained size |
+| `string` | Find duplicated string instances in heap |
+| `shape` | List the shapes that retained the most memory |
+| `object-size` | Get the largest objects in heap |
+| `object-fanout` | Get objects with the most outgoing references |
+| `object` | Get properties inside an object |
+| `object-shallow` | Get objects by key and value (non-recursive) |
+| `detached-DOM` | Get detached DOM elements |
+| `unmounted-fiber-node` | Get unmounted React Fiber nodes |
+| `react-hooks` | Memory breakdown of React components and their hooks |
+| `global-variable` | Get global variables in heap |
+| `collections-with-stale` | Find collections holding stale/detached objects |
 
 **Guideline**: Keep CLI commands simple by default. Only suggest `--debug` and `--headful` options when:
 - The user is explicitly debugging or troubleshooting
@@ -395,7 +563,7 @@ memlab view-heap --snapshot path/to/heap.heapsnapshot
 
 For most users, the basic `memlab run --scenario` command is sufficient.
 
-When CLI usage examples, always reference:
+When suggesting CLI usage examples, always reference:
  - [CLI Usage Documentation](https://facebook.github.io/memlab/docs/cli/CLI-commands)
 
 ## Debugging and Troubleshooting
@@ -490,15 +658,83 @@ When explaining MemLab to users:
 
 5. **Baseline Importance**: The baseline snapshot (SBP) is crucial - it filters out objects that existed before the action.
 
+## MCP Server for AI-Assisted Heap Analysis
+
+The `@memlab/mcp-server` package provides a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that enables AI assistants to interactively analyze heap snapshots. It exposes 23 tools for loading, querying, and analyzing heap snapshots.
+
+### Setup
+
+```json
+// Add to your MCP client configuration (e.g., Claude Desktop)
+{
+  "mcpServers": {
+    "memlab": {
+      "command": "npx",
+      "args": ["@memlab/mcp-server"]
+    }
+  }
+}
+```
+
+### Available MCP Tools
+
+**Snapshot Lifecycle:**
+- `memlab_load_snapshot` — Load and parse a `.heapsnapshot` file (must be called first)
+- `memlab_snapshot_summary` — Get overview stats: total nodes, edges, size, breakdown by type
+
+**Search & Discovery:**
+- `memlab_search_nodes` — General-purpose search with filters (name pattern, type, size, detachment)
+- `memlab_find_nodes_by_class` — Find objects by constructor/class name
+- `memlab_find_by_property` — Find objects that have a specific property name
+- `memlab_largest_objects` — Top N objects by retained size
+- `memlab_class_histogram` — Instance count and size per class name
+- `memlab_global_variables` — Non-built-in global variables on Window
+
+**Node Inspection:**
+- `memlab_get_node` — Full details for a single node by ID
+- `memlab_get_property` — Follow a named property edge to its target node
+- `memlab_object_shape` — All properties of a node at a glance
+- `memlab_closure_inspection` — Captured variables in a closure/function node
+
+**Graph Traversal:**
+- `memlab_get_references` — Outgoing edges (what this node points to)
+- `memlab_get_referrers` — Incoming edges (what points to this node)
+- `memlab_retainer_trace` — Shortest path from GC root to a node
+- `memlab_dominator_subtree` — Children in the dominator tree
+
+**Leak Detection:**
+- `memlab_detached_dom` — Find detached DOM elements still retained in memory
+- `memlab_duplicated_strings` — Find duplicated string instances
+- `memlab_stale_collections` — Find Map/Set/Array holding detached or stale objects
+
+**Aggregation & Reports:**
+- `memlab_aggregate` — Group nodes by type, name, or name prefix with statistics
+- `memlab_reports` — Run curated analysis reports (like Chrome DevTools Memory panel)
+
+**Programmable:**
+- `memlab_eval` — Execute arbitrary JS code against the loaded snapshot
+- `memlab_for_each` — Structured map/filter/reduce over all heap nodes
+
+### Typical MCP Workflow
+
+1. Load a snapshot: `memlab_load_snapshot` with the file path
+2. Get an overview: `memlab_snapshot_summary` or `memlab_reports` with `full_analysis`
+3. Investigate: Use search, inspection, and traversal tools to drill down
+4. Diagnose: Use `memlab_retainer_trace` to understand why objects are retained
+
 ## Documentation References
 
 When providing code examples, always reference:
 - [IScenario API](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IScenario)
 - [IHeapSnapshot API](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IHeapSnapshot)
+- [IHeapNode API](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IHeapNode)
+- [IHeapEdge API](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IHeapEdge)
 - [ILeakFilter API](https://facebook.github.io/memlab/docs/api/core/src/interfaces/ILeakFilter)
 - [Official Documentation](https://facebook.github.io/memlab/docs/intro)
+- [CLI Commands](https://facebook.github.io/memlab/docs/cli/CLI-commands)
 - [Puppeteer Page API](https://pptr.dev/api/puppeteer.page) - For all `page.*` method calls
 - [Puppeteer Locator API](https://pptr.dev/api/puppeteer.locator) - For using locators (Puppeteer v24+)
+- [MCP Server (npm)](https://www.npmjs.com/package/@memlab/mcp-server) - For AI-assisted heap analysis
 
 ## Testing Best Practices
 
@@ -533,7 +769,7 @@ module.exports = {
   url: () => 'https://example.com',
   action: async (page) => { /* ... */ },
   back: async (page) => { /* ... */ },
-  leakFilter: (node) => node.getRetainedSize() > 1024 * 1024, // > 1MB
+  leakFilter: (node) => node.retainedSize > 1024 * 1024, // > 1MB
 };
 ```
 
@@ -544,10 +780,12 @@ module.exports = {
   url: () => 'https://example.com',
   action: async (page) => { /* ... */ },
   back: async (page) => { /* ... */ },
-  leakFilter: (node, snapshot) => {
-    // Custom logic to detect event listener leaks
-    const retainers = snapshot.getRetainers(node);
-    return retainers.some(r => r.type === 'EventListener');
+  leakFilter: (node, snapshot, leakedNodeIds) => {
+    // Check if this leaked node is retained via an event listener reference
+    return node.referrers.some(
+      edge => edge.name_or_index === 'listener'
+        || edge.name_or_index === 'handleEvent',
+    );
   },
 };
 ```
@@ -557,16 +795,20 @@ module.exports = {
 When helping users with MemLab:
 - ⚠️ **TOP PRIORITY**: The `page` parameter is a Puppeteer Page object - **ONLY use valid Puppeteer APIs**. Always refer to [Puppeteer Page API documentation](https://pptr.dev/api/puppeteer.page). Never hallucinate or invent API methods.
 - 🚨 **HARD RULE**: Puppeteer Locators (`page.locator()`) **DO NOT have `count()` or `first()` methods**. Always verify available methods in the [Puppeteer Locator API documentation](https://pptr.dev/api/puppeteer.locator).
-- ✅ Always include `url()`, `action()`, and `back()` callbacks
-- ✅ **Keep scenarios simple**: For most cases, only `url()`, `action()`, and `back()` are needed. Only add optional callbacks (`setup`, `cookies`, `leakFilter`, etc.) when necessary.
+- ✅ Only `url()` is required. For most scenarios, include `url()`, `action()`, and `back()`.
+- ✅ **Keep scenarios simple**: Only add optional callbacks (`setup`, `cookies`, `isPageLoaded`, `leakFilter`, `beforeLeakFilter`, `retainerReferenceFilter`, etc.) when necessary.
 - ✅ **No need for `repeat()`**: Do not define the `repeat()` callback unless the user explicitly wants to stress test memory. MemLab runs scenarios once by default.
 - ✅ Ensure `back()` truly reverts the state created by `action()`
 - ✅ Use proper Puppeteer patterns (await, selectors, disposal)
 - ✅ Recommend unminified code for better debugging
 - ✅ Use `leakFilter` for custom leak detection beyond detached DOM/Fiber
+- ✅ Use `node.retainedSize` (property, not method) for size checks in `leakFilter`
+- ✅ Use `node.referrers` and `node.references` (arrays of `IHeapEdge`) to traverse the heap graph
 - ✅ **Keep CLI commands simple**: Use basic `memlab run --scenario` by default. Only suggest `--debug` and `--headful` when users are debugging, troubleshooting, or need visual/step-by-step execution.
+- ✅ **Use the MCP server** (`@memlab/mcp-server`) for AI-assisted heap snapshot analysis
 - ❌ Never use `page.goto()`, `page.reload()`, or any page refresh APIs in any callback (url, setup, action, back, etc.) - they create new JS runtimes and break heap snapshot comparison
 - ❌ Don't forget to await async Puppeteer operations
 - ❌ Don't pollute the baseline with setup code in `action()`
+- ❌ Don't use `node.getRetainedSize()` — use `node.retainedSize` (it's a property, not a method)
 
 MemLab is designed to make memory leak detection automatic and reliable. Follow these patterns to ensure accurate results.
