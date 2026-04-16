@@ -13,7 +13,8 @@
     "serve": "docusaurus serve",
     "write-translations": "docusaurus write-translations",
     "write-heading-ids": "docusaurus write-heading-ids",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "postinstall": "node -e \"const fs=require('fs');['index.cjs','index.mjs'].forEach(f=>{const p='node_modules/webpackbar/dist/'+f;try{fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace(/this\\.options/g,'this.barOptions'))}catch(e){}})\""
   },
   "dependencies": {
     "@docusaurus/core": "2.0.0-beta.21",

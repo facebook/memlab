@@ -25,5 +25,31 @@ export {
   getNodeInnocentHeap,
   takeNodeMinimalHeap,
 } from '@memlab/core';
+export type {
+  CheckPageLoadCallback,
+  Cookie,
+  Cookies,
+  EdgeIterationCallback,
+  IBrowserInfo,
+  IHeapEdge,
+  IHeapEdges,
+  IHeapLocation,
+  IHeapNode,
+  IHeapNodes,
+  IHeapSnapshot,
+  IHeapStringNode,
+  ILeakFilter,
+  InitLeakFilterCallback,
+  InteractionsCallback,
+  IScenario,
+  LeakFilterCallback,
+  Nullable,
+  Optional,
+  Page,
+  Predicator,
+  ReferenceFilterCallback,
+  RunMetaInfo,
+  Undefinable,
+} from '@memlab/core';
 /** @internal */
 export {config} from '@memlab/core';
