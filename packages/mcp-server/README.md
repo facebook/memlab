@@ -26,7 +26,7 @@ Add to your Claude Code MCP config (`~/.claude.json` or `.mcp.json`):
 npm install -g @memlab/mcp-server
 ```
 
-Then configure:
+Then configure (`~/.claude.json` or `.mcp.json`):
 
 ```json
 {
@@ -48,7 +48,7 @@ npm install
 npm run build
 ```
 
-Then configure:
+Then configure (`~/.claude.json` or `.mcp.json`):
 
 ```json
 {
@@ -58,6 +58,35 @@ Then configure:
       "command": "node",
       "args": ["/path/to/memlab/packages/mcp/dist/index.js"]
     }
+  }
+}
+```
+
+## Auto-Approving Tool Permissions
+
+By default, Claude Code prompts you to approve each MCP tool call. To auto-approve all MemLab tools, add this to your `~/.claude/settings.json` (user-level) or `.claude/settings.json` (project-level):
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "mcp__memlab__*"
+    ]
+  }
+}
+```
+
+The naming convention is `mcp__<server-name>__*` where `memlab` matches the key you used in your MCP server config. The `*` wildcard auto-approves all tools from that server.
+
+You can also allowlist individual tools for granular control, add this to your `~/.claude/settings.json` (user-level) or `.claude/settings.json` (project-level):
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "mcp__memlab__memlab_load_snapshot",
+      "mcp__memlab__memlab_snapshot_summary"
+    ]
   }
 }
 ```

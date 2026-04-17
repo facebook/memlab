@@ -1,6 +1,6 @@
 {
   "name": "@memlab/mcp-server",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "license": "MIT",
   "description": "MCP server for MemLab heap snapshot analysis — gives AI coding assistants tools to explore JavaScript heap snapshots, find memory leaks, and identify optimization opportunities",
   "author": "Liang Gong <lgong@meta.com>",

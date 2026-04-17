@@ -1,6 +1,6 @@
 {
   "name": "@memlab/lens",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "license": "MIT",
   "description": "MemLens is a tool for inspecting memory leaks in browser",
   "author": "Liang Gong <lgong@meta.com>",

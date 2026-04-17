@@ -11,6 +11,11 @@
 
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
+import {config, ErrorHandling} from '@memlab/core';
+
+// Ensure errors throw exceptions instead of calling process.exit(1),
+// so the MCP server can return proper error responses to the client.
+config.errorHandling = ErrorHandling.Throw;
 
 import {registerLoadSnapshot} from './tools/load-snapshot.js';
 import {registerSnapshotSummary} from './tools/snapshot-summary.js';

@@ -9,6 +9,8 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
+import fs from 'fs';
+import path from 'path';
 import {z} from 'zod';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
 const {getFullHeapFromFile} = memlabHeapAnalysis;
@@ -24,7 +26,11 @@ export function registerLoadSnapshot(server: McpServer): void {
     },
     async ({file_path}) => {
       try {
-        const snapshot = await getFullHeapFromFile(file_path);
+        const resolved = path.resolve(file_path);
+        if (!fs.existsSync(resolved)) {
+          return errorResult(new Error(`File not found: ${resolved}`));
+        }
+        const snapshot = await getFullHeapFromFile(resolved);
         setSnapshot(snapshot, file_path);
 
         let nodeCount = 0;
