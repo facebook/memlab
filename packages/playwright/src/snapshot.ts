@@ -90,7 +90,9 @@ export async function writeHeapSnapshot(
 
 /**
  * Force a series of full GCs so memlab's leak detection sees a clean final
- * snapshot. Mirrors the 6x cycle used in @memlab/e2e.
+ * snapshot. Mirrors the 6x cycle used in @memlab/e2e. Also discards the CDP
+ * console entries, since Chrome's DevTools console retains references to
+ * detached DOM nodes and would produce false-positive "leaks".
  */
 export async function forceFullGC(
   session: CDPLike,
@@ -99,6 +101,8 @@ export async function forceFullGC(
   const repeat = options.repeat ?? 6;
   const wait = options.waitBetweenMs ?? 200;
   const waitAfter = options.waitAfterMs ?? 500;
+  // Best-effort: some domains may not be enabled. Swallow errors.
+  await session.send('Runtime.discardConsoleEntries').catch(() => undefined);
   for (let i = 0; i < repeat; i++) {
     await session.send('HeapProfiler.collectGarbage');
     await new Promise(r => setTimeout(r, wait));

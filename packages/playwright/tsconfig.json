@@ -1,13 +1,27 @@
 {
-  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "./src",
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
     "outDir": "./dist",
-    "types": ["node"]
+    "rootDir": "./src",
+    "strict": true,
+    "strictPropertyInitialization": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true,
+    "incremental": true,
+    "noEmitOnError": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@memlab/core": ["../core/dist/index.d.ts"],
+      "@memlab/api": ["../api/dist/index.d.ts"]
+    }
   },
-  "include": ["src/**/*"],
-  "references": [
-    {"path": "../core"},
-    {"path": "../api"}
-  ]
+  "include": ["src/**/*"]
 }

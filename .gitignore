@@ -9,6 +9,7 @@
 /dist/
 /dist/packages
 /tmp
+packages/**/test-results/
 lerna-debug.log
 build.log
 node_modules

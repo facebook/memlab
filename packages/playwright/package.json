@@ -61,9 +61,10 @@
   },
   "scripts": {
     "build-pkg": "tsc",
-    "test-pkg": "echo 'no tests yet'",
+    "test-pkg": "echo 'run \"npm run test-e2e\" inside packages/playwright for the Playwright spec'",
+    "test-e2e": "playwright test --config=__tests__/playwright.config.ts --tsconfig=__tests__/tsconfig.json",
     "publish-patch": "npm publish",
-    "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
+    "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo && rm -rf ./test-results"
   },
   "bugs": {
     "url": "https://github.com/facebook/memlab/issues"

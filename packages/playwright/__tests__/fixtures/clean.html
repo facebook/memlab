@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>memlab playwright clean fixture</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script>
+      const h = React.createElement;
+
+      // Same shape as Leaky but with proper cleanup. Used as the negative
+      // control: memlab should NOT flag this.
+      function Clean() {
+        const [payload] = React.useState(() => {
+          const big = new Array(50000);
+          for (let i = 0; i < big.length; i++) {
+            big[i] = {tag: 'memlab-clean', i, nested: {alive: true}};
+          }
+          return big;
+        });
+
+        React.useEffect(() => {
+          const id = setInterval(() => {
+            if (payload.length < 0) console.log('unreachable');
+          }, 1000000);
+          return () => clearInterval(id);
+        }, []);
+
+        return h('div', {id: 'clean'}, `clean (${payload.length} items)`);
+      }
+
+      function App() {
+        const [visible, setVisible] = React.useState(false);
+        return h(
+          'div',
+          null,
+          h(
+            'button',
+            {id: 'open', onClick: () => setVisible(true)},
+            'open',
+          ),
+          h(
+            'button',
+            {id: 'close', onClick: () => setVisible(false)},
+            'close',
+          ),
+          visible ? h(Clean) : null,
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(h(App));
+    </script>
+  </body>
+</html>

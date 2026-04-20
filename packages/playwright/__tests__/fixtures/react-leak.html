@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>memlab playwright react fixture</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script>
+      const h = React.createElement;
+
+      // Intentional leak pattern: an interval whose callback closes over
+      // a large chunk of component state, with NO cleanup. When <Leaky />
+      // unmounts, React drops the fiber but the interval keeps the closure
+      // (and therefore the state array) alive forever.
+      function Leaky() {
+        const [payload] = React.useState(() => {
+          const big = new Array(50000);
+          for (let i = 0; i < big.length; i++) {
+            big[i] = {tag: 'memlab-leak', i, nested: {alive: true}};
+          }
+          return big;
+        });
+
+        React.useEffect(() => {
+          const id = setInterval(() => {
+            // closure holds `payload` — this is the leak
+            if (payload.length < 0) console.log('unreachable');
+          }, 1000000);
+          // NOTE: no return cleanup, intentionally
+        }, []);
+
+        return h('div', {id: 'leaky'}, `leaky (${payload.length} items)`);
+      }
+
+      function App() {
+        const [visible, setVisible] = React.useState(false);
+        return h(
+          'div',
+          null,
+          h(
+            'button',
+            {id: 'open', onClick: () => setVisible(true)},
+            'open',
+          ),
+          h(
+            'button',
+            {id: 'close', onClick: () => setVisible(false)},
+            'close',
+          ),
+          visible ? h(Leaky) : null,
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(h(App));
+    </script>
+  </body>
+</html>

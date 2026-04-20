@@ -112,7 +112,12 @@ export const test = baseTest.extend<{memlab: MemlabFixture}>({
         }
 
         if (capturer.hasAllSnapshots()) {
-          const leaks = await capturer.findLeaks();
+          const rawLeaks = await capturer.findLeaks();
+          // Filter out retainer paths owned by CDP's inspector state — those
+          // retain detached DOM nodes as an artifact of how Playwright drives
+          // the page (selector handles, console $0-$4), not because of real
+          // application leaks.
+          const leaks = rawLeaks.filter(l => !isInspectorArtifact(l));
           const reportPath = testInfo.outputPath('memlab-leaks.json');
           await fs.outputJson(reportPath, leaks, {spaces: 2});
           await testInfo.attach('memlab-leaks', {
@@ -148,6 +153,20 @@ export const test = baseTest.extend<{memlab: MemlabFixture}>({
     }
   },
 });
+
+const INSPECTOR_PATTERNS = [
+  /DevTools console/i,
+  /\(Inspector[^)]*\)/i,
+  /CommandLineAPI/i,
+];
+
+function isInspectorArtifact(leak: ISerializedInfo): boolean {
+  // ISerializedInfo is a key-value object where keys encode the retainer
+  // trace (e.g., "2:   --12 / DevTools console (internal)--->  [Detached …]").
+  // We scan the serialized trace for known CDP-inspector retainer labels.
+  const keys = Object.keys(leak as Record<string, unknown>);
+  return keys.some(k => INSPECTOR_PATTERNS.some(rx => rx.test(k)));
+}
 
 function leakSummary(leak: ISerializedInfo): string {
   const maybe = leak as unknown as {
