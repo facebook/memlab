@@ -1,26 +1,22 @@
-import path from 'path';
-import {pathToFileURL} from 'url';
 import {test, expect} from '@memlab/playwright/test';
 import {PlaywrightHeapCapturer} from '@memlab/playwright';
 
-const leakyUrl = pathToFileURL(
-  path.join(__dirname, 'fixtures', 'react-leak.html'),
-).href;
-const cleanUrl = pathToFileURL(
-  path.join(__dirname, 'fixtures', 'clean.html'),
-).href;
-
-async function openThenClose(page: import('@playwright/test').Page, detachSel: string) {
+async function openThenClose(
+  page: import('@playwright/test').Page,
+  detachSel: string,
+) {
   await page.click('#open');
   await page.waitForSelector(detachSel);
   await page.click('#close');
   await page.waitForSelector(detachSel, {state: 'detached'});
 }
 
-// Uses the low-level capturer so we can assert on the leak count directly
-// without the fixture's auto soft-fail behavior.
+// Low-level capturer path: directly assert on the number of leak traces
+// without going through the fixture's soft-fail behavior. This verifies
+// memlab actually detects the intentional leak in a production-shaped
+// React app served over HTTP by Vite.
 test('leaky React component is detected', async ({page}) => {
-  await page.goto(leakyUrl);
+  await page.goto('/?mode=leaky');
   await page.waitForSelector('#open');
 
   const capturer = await PlaywrightHeapCapturer.attach(page);
@@ -40,10 +36,10 @@ test('leaky React component is detected', async ({page}) => {
   }
 });
 
-// Uses the high-level fixture. Relies on the fixture's auto soft-fail being
+// High-level fixture path: relies on the fixture's auto soft-fail being
 // silent when no leak is found.
 test('clean React component passes the fixture', async ({page, memlab}) => {
-  await page.goto(cleanUrl);
+  await page.goto('/?mode=clean');
   await page.waitForSelector('#open');
 
   await memlab.baseline();
@@ -52,7 +48,7 @@ test('clean React component passes the fixture', async ({page, memlab}) => {
 });
 
 test('no-op when memlab is not destructured', async ({page}) => {
-  await page.goto(cleanUrl);
+  await page.goto('/?mode=clean');
   await page.waitForSelector('#open');
   await page.click('#open');
   expect(await page.textContent('#clean')).toContain('50000');
