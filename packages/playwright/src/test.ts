@@ -155,6 +155,8 @@ export const test = baseTest.extend<{memlab: MemlabFixture}>({
 });
 
 const INSPECTOR_PATTERNS = [
+  // Chrome DevTools / CDP inspector retention of DOM refs (Playwright uses
+  // this for selector queries, page.evaluate results, etc.)
   /DevTools console/i,
   /\(Inspector[^)]*\)/i,
   /CommandLineAPI/i,

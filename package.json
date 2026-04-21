@@ -54,7 +54,6 @@
     "./packages/cli",
     "./packages/memlab",
     "./packages/mcp-server",
-    "./packages/playwright",
-    "./packages/playwright/__tests__/fixtures/vite-react"
+    "./packages/playwright"
   ]
 }

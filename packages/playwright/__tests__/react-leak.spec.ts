@@ -1,55 +1,46 @@
 import {test, expect} from '@memlab/playwright/test';
 import {PlaywrightHeapCapturer} from '@memlab/playwright';
 
-async function openThenClose(
-  page: import('@playwright/test').Page,
-  detachSel: string,
-) {
+const BASE = 'http://127.0.0.1:5174';
+
+async function openThenClose(page: import('@playwright/test').Page) {
   await page.click('#open');
-  await page.waitForSelector(detachSel);
+  await page.waitForSelector('#slot');
   await page.click('#close');
-  await page.waitForSelector(detachSel, {state: 'detached'});
+  await page.waitForSelector('#slot', {state: 'detached'});
 }
 
-// Low-level capturer path: directly assert on the number of leak traces
-// without going through the fixture's soft-fail behavior. This verifies
-// memlab actually detects the intentional leak in a production-shaped
-// React app served over HTTP by Vite.
-test('leaky React component is detected', async ({page}) => {
-  await page.goto('/?mode=leaky');
+test('[react] leaky component is detected', async ({page}) => {
+  await page.goto(`${BASE}/?mode=interval-leaky`);
   await page.waitForSelector('#open');
 
   const capturer = await PlaywrightHeapCapturer.attach(page);
   try {
     await capturer.snapshot('baseline');
-    await openThenClose(page, '#leaky');
+    await openThenClose(page);
     await capturer.snapshot('target');
     await capturer.snapshot('final');
 
     const leaks = await capturer.findLeaks();
     expect(
       leaks.length,
-      `expected the leaky component to produce at least one leak trace, got ${leaks.length}`,
+      `expected leaky react component to produce at least one leak, got ${leaks.length}`,
     ).toBeGreaterThan(0);
   } finally {
     await capturer.dispose();
   }
 });
 
-// High-level fixture path: relies on the fixture's auto soft-fail being
-// silent when no leak is found.
-test('clean React component passes the fixture', async ({page, memlab}) => {
-  await page.goto('/?mode=clean');
+test('[react] clean component passes the fixture', async ({page, memlab}) => {
+  await page.goto(`${BASE}/?mode=interval-clean`);
   await page.waitForSelector('#open');
-
   await memlab.baseline();
-  await openThenClose(page, '#clean');
-  // target + final captured automatically at fixture teardown.
+  await openThenClose(page);
 });
 
-test('no-op when memlab is not destructured', async ({page}) => {
-  await page.goto('/?mode=clean');
+test('[react] no-op when memlab is not destructured', async ({page}) => {
+  await page.goto(`${BASE}/?mode=interval-clean`);
   await page.waitForSelector('#open');
   await page.click('#open');
-  expect(await page.textContent('#clean')).toContain('50000');
+  expect(await page.textContent('#slot')).toContain('interval-clean');
 });

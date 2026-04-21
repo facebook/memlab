@@ -10,6 +10,7 @@
 
 export {default as PlaywrightHeapCapturer} from './capturer';
 export type {
+  LeakFilterFn,
   PageLike,
   PhaseLabel,
   PlaywrightHeapCapturerOptions,

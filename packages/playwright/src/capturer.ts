@@ -12,7 +12,13 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs-extra';
 import {ConsoleMode, SnapshotResultReader, findLeaks} from '@memlab/api';
-import type {ISerializedInfo} from '@memlab/core';
+import {config as memlabConfig} from '@memlab/core';
+import type {
+  IHeapNode,
+  IHeapSnapshot,
+  ILeakFilter,
+  ISerializedInfo,
+} from '@memlab/core';
 
 import {CDPLike, forceFullGC, writeHeapSnapshot} from './snapshot';
 
@@ -27,6 +33,17 @@ export interface PageLike {
 
 export type PhaseLabel = 'baseline' | 'target' | 'final';
 
+/**
+ * Callback to decide whether an allocated-but-not-released heap node should
+ * be reported as a leak. Mirrors memlab's `ILeakFilter.leakFilter` signature
+ * so users can reuse the same shape.
+ */
+export type LeakFilterFn = (
+  node: IHeapNode,
+  snapshot: IHeapSnapshot,
+  leakedNodeIds: Set<number>,
+) => boolean;
+
 export type PlaywrightHeapCapturerOptions = {
   /**
    * Working directory for intermediate snapshot files. Defaults to a fresh
@@ -38,6 +55,18 @@ export type PlaywrightHeapCapturerOptions = {
   cleanupOnDispose?: boolean;
   /** Repeat count for forced GC cycles before the final snapshot. Default 6. */
   gcRepeat?: number;
+  /**
+   * Custom leak filter applied during `findLeaks`. Receives every heap
+   * object allocated between baseline/target that's still live at final,
+   * and returns `true` for objects to report as leaks.
+   *
+   * Without this, memlab's built-in filter only flags detached DOM / React
+   * Fiber nodes — so closure-retained JS state (event listeners, timers,
+   * external store subscriptions, module-scope arrays) is silently missed.
+   * A retained-size threshold is usually the simplest useful filter:
+   * `(node) => node.retainedSize > 100_000`.
+   */
+  leakFilter?: LeakFilterFn;
 };
 
 /**
@@ -61,6 +90,7 @@ export default class PlaywrightHeapCapturer {
   private readonly workDir: string;
   private readonly cleanupOnDispose: boolean;
   private readonly gcRepeat: number;
+  private readonly leakFilter: LeakFilterFn | undefined;
   private readonly snapshotPaths: Partial<Record<PhaseLabel, string>> = {};
   private disposed = false;
 
@@ -70,12 +100,14 @@ export default class PlaywrightHeapCapturer {
     workDir: string,
     cleanupOnDispose: boolean,
     gcRepeat: number,
+    leakFilter: LeakFilterFn | undefined,
   ) {
     this.page = page;
     this.session = session;
     this.workDir = workDir;
     this.cleanupOnDispose = cleanupOnDispose;
     this.gcRepeat = gcRepeat;
+    this.leakFilter = leakFilter;
   }
 
   static async attach(
@@ -97,6 +129,7 @@ export default class PlaywrightHeapCapturer {
       workDir,
       options.cleanupOnDispose ?? autoDir,
       options.gcRepeat ?? 6,
+      options.leakFilter,
     );
   }
 
@@ -129,9 +162,14 @@ export default class PlaywrightHeapCapturer {
 
   /**
    * Run memlab leak detection across the captured baseline/target/final
-   * snapshots. Throws if any of the three is missing.
+   * snapshots. Throws if any of the three is missing. If a `leakFilter`
+   * was passed to `attach()`, it is installed on memlab's global config for
+   * the duration of this call and restored afterwards (memlab does not
+   * accept a per-call filter through the `findLeaks` API).
    */
-  async findLeaks(): Promise<ISerializedInfo[]> {
+  async findLeaks(
+    overrides: {leakFilter?: LeakFilterFn} = {},
+  ): Promise<ISerializedInfo[]> {
     this.assertLive();
     const {baseline, target, final} = this.snapshotPaths;
     if (!baseline || !target || !final) {
@@ -140,7 +178,20 @@ export default class PlaywrightHeapCapturer {
       );
     }
     const reader = SnapshotResultReader.fromSnapshots(baseline, target, final);
-    return findLeaks(reader, {consoleMode: ConsoleMode.SILENT});
+    const filter = overrides.leakFilter ?? this.leakFilter;
+
+    if (!filter) {
+      return findLeaks(reader, {consoleMode: ConsoleMode.SILENT});
+    }
+
+    const externalFilter: ILeakFilter = {leakFilter: filter};
+    const prev = memlabConfig.externalLeakFilter;
+    memlabConfig.externalLeakFilter = externalFilter;
+    try {
+      return await findLeaks(reader, {consoleMode: ConsoleMode.SILENT});
+    } finally {
+      memlabConfig.externalLeakFilter = prev;
+    }
   }
 
   async dispose(): Promise<void> {

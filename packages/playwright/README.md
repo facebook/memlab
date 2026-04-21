@@ -85,6 +85,20 @@ await capturer.dispose();
 await browser.close();
 ```
 
+## Framework support
+
+Verified end-to-end against React 18 on a Vite dev server. Vue 3 and
+Svelte 4 were also exercised during development with the same leak pattern
+and worked once their respective dev-mode devtools hooks
+(`__VUE_DEVTOOLS_HOOK_REPLAY__` etc.) were filtered, but that filtering is
+not shipped by default — extend `INSPECTOR_PATTERNS` in `src/test.ts` or
+use the low-level capturer to apply your own.
+
+memlab's default detection is biased toward detached DOM / Fiber patterns.
+Pure-JS leaks with no DOM involvement (e.g., module-scope `Set` accumulating
+values) may be missed by the default filter and need a custom leak predicate
+(tracked separately).
+
 ## Caveats
 
 - **Chromium only.** Heap snapshots go over CDP, which Playwright exposes only

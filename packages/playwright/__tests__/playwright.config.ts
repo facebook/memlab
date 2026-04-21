@@ -10,7 +10,6 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     trace: 'off',
-    baseURL: 'http://127.0.0.1:5174',
   },
   webServer: {
     command: 'npm run dev',
