@@ -20,16 +20,15 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    },
-    "./test": {
-      "types": "./dist/test.d.ts",
-      "default": "./dist/test.js"
     }
   },
   "files": [
     "dist",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@memlab/api": "^2.0.2",
     "@memlab/core": "^2.0.2",
@@ -61,11 +60,11 @@
   },
   "scripts": {
     "build-pkg": "tsc",
-    "test-pkg": "echo 'run \"npm run test-e2e\" inside packages/playwright for the Playwright spec'",
+    "test-pkg": "npm run test-e2e",
     "test-e2e:install-fixtures": "cd __tests__/fixtures/vite-react && npm install --no-audit --no-fund",
     "test-e2e": "npm run test-e2e:install-fixtures && playwright test --config=__tests__/playwright.config.ts --tsconfig=__tests__/tsconfig.json",
     "publish-patch": "npm publish",
-    "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo && rm -rf ./test-results && rm -rf ./__tests__/fixtures/*/node_modules"
+    "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo && rm -rf ./test-results && rm -rf ./playwright-report && rm -rf ./__tests__/fixtures/*/node_modules"
   },
   "bugs": {
     "url": "https://github.com/facebook/memlab/issues"

@@ -7,7 +7,7 @@ export default defineConfig({
   testDir: __dirname,
   testMatch: /.*\.spec\.ts$/,
   fullyParallel: false,
-  reporter: [['list']],
+  reporter: [['list'], ['html', {open: 'never'}]],
   use: {
     trace: 'off',
   },

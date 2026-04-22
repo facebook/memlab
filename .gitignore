@@ -10,6 +10,7 @@
 /dist/packages
 /tmp
 packages/**/test-results/
+packages/**/playwright-report/
 lerna-debug.log
 build.log
 node_modules

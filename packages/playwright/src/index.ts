@@ -8,12 +8,13 @@
  * @oncall memory_lab
  */
 
-export {default as PlaywrightHeapCapturer} from './capturer';
+export {test, expect} from './fixture';
+export {PHASE_LABELS} from './types';
 export type {
   LeakFilterFn,
-  PageLike,
+  MemlabConfigInput,
+  MemlabFixture,
+  MemlabGCOptions,
+  Page,
   PhaseLabel,
-  PlaywrightHeapCapturerOptions,
-} from './capturer';
-export type {CDPLike} from './snapshot';
-export {writeHeapSnapshot, forceFullGC} from './snapshot';
+} from './types';

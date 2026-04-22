@@ -11,20 +11,32 @@
 import fs from 'fs';
 
 // Duck-typed CDP session. Playwright's CDPSession and Puppeteer's CDPSession
-// both implement this shape for the events we care about. Handlers use
-// `unknown` so the interface is structurally compatible with both vendors'
-// strongly-typed overloads.
-/* eslint-disable @typescript-eslint/no-explicit-any */
+// both implement this shape for the events we care about. `send` is typed
+// with `unknown` so callers must narrow the result explicitly. Event
+// handler params stay `any` because TypeScript's strict function types
+// would otherwise reject passing a narrower handler like
+// `(data: ChunkEvent) => void` to `(payload: unknown) => void`; both
+// vendors ship the same pragma on their own CDPSession overloads.
 export interface CDPLike {
-  send(method: string, params?: any): Promise<any>;
-  on(event: string, handler: (payload: any) => void): any;
-  off?(event: string, handler: (payload: any) => void): any;
-  removeListener?(event: string, handler: (payload: any) => void): any;
+  send(method: string, params?: Record<string, unknown>): Promise<unknown>;
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  on(event: string, handler: (payload: any) => void): unknown;
+  off?(event: string, handler: (payload: any) => void): unknown;
+  removeListener?(event: string, handler: (payload: any) => void): unknown;
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 type ChunkEvent = {chunk: string};
 type ProgressEvent = {done: number; total: number; finished?: boolean};
+
+export type GCOptions = {
+  /** Number of collectGarbage passes before the final snapshot. Default 6. */
+  repeat?: number;
+  /** Delay between passes, in milliseconds. Default 200. */
+  waitBetweenMs?: number;
+  /** Delay after the final pass, in milliseconds. Default 500. */
+  waitAfterMs?: number;
+};
 
 function detach(
   session: CDPLike,
@@ -96,7 +108,7 @@ export async function writeHeapSnapshot(
  */
 export async function forceFullGC(
   session: CDPLike,
-  options: {repeat?: number; waitBetweenMs?: number; waitAfterMs?: number} = {},
+  options: GCOptions = {},
 ): Promise<void> {
   const repeat = options.repeat ?? 6;
   const wait = options.waitBetweenMs ?? 200;
