@@ -9,8 +9,6 @@ async function openThenClose(page: import('@playwright/test').Page) {
   await page.waitForSelector('#slot', {state: 'detached'});
 }
 
-// Uses detached-dom-{leaky,clean} so the built-in rule chain (rule 7,
-// FilterDetachedDOMElement) catches the leak without a user leakFilter.
 test('[react] leaky component is detected', async ({page, memlab}) => {
   await page.goto(`${BASE}/?mode=detached-dom-leaky`);
   await page.waitForSelector('#open');

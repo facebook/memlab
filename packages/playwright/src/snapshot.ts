@@ -10,13 +10,7 @@
 
 import fs from 'fs';
 
-// Duck-typed CDP session. Playwright's CDPSession and Puppeteer's CDPSession
-// both implement this shape for the events we care about. `send` is typed
-// with `unknown` so callers must narrow the result explicitly. Event
-// handler params stay `any` because TypeScript's strict function types
-// would otherwise reject passing a narrower handler like
-// `(data: ChunkEvent) => void` to `(payload: unknown) => void`; both
-// vendors ship the same pragma on their own CDPSession overloads.
+/** Minimal CDP session shape shared by Playwright and Puppeteer. */
 export interface CDPLike {
   send(method: string, params?: Record<string, unknown>): Promise<unknown>;
   /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -52,10 +46,7 @@ function detach(
   }
 }
 
-/**
- * Drive HeapProfiler via a CDP session and stream the snapshot to disk.
- * Works with any CDPLike session (Playwright or Puppeteer).
- */
+/** Stream a V8 heap snapshot to disk via CDP. */
 export async function writeHeapSnapshot(
   session: CDPLike,
   filePath: string,
@@ -100,12 +91,7 @@ export async function writeHeapSnapshot(
   }
 }
 
-/**
- * Force a series of full GCs so memlab's leak detection sees a clean final
- * snapshot. Mirrors the 6x cycle used in @memlab/e2e. Also discards the CDP
- * console entries, since Chrome's DevTools console retains references to
- * detached DOM nodes and would produce false-positive "leaks".
- */
+/** Force a full GC cycle and clear the DevTools console retention. */
 export async function forceFullGC(
   session: CDPLike,
   options: GCOptions = {},
@@ -113,7 +99,6 @@ export async function forceFullGC(
   const repeat = options.repeat ?? 6;
   const wait = options.waitBetweenMs ?? 200;
   const waitAfter = options.waitAfterMs ?? 500;
-  // Best-effort: some domains may not be enabled. Swallow errors.
   await session.send('Runtime.discardConsoleEntries').catch(() => undefined);
   for (let i = 0; i < repeat; i++) {
     await session.send('HeapProfiler.collectGarbage');

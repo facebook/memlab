@@ -13,17 +13,20 @@ import {config as memlabConfig} from '@memlab/core';
 import type {ILeakFilter, ISerializedInfo} from '@memlab/core';
 import type {LeakFilterFn, PhaseLabel} from './types';
 
-// Inspector retention owned by CDP ($0-$4, selector handles). These
-// labels are chrome-devtools-internal, so application node names cannot
-// collide — safe to walk the full serialized trace.
+// CDP inspector-owned retainer labels ($0-$4, selector handles).
 const INSPECTOR_PATTERNS = [
   /DevTools console/i,
   /\(Inspector[^)]*\)/i,
   /CommandLineAPI/i,
 ];
 
+const INTERNAL_KEY_PREFIXES = ['$tabsOrder'];
+const LEAKED_KEY_MARKERS = ['$memLabTag:leaked', '$highlight'];
 const SUMMARY_MAX_LEN = 140;
 const SUMMARY_TOP_N = 5;
+
+const isInternalKey = (key: string): boolean =>
+  INTERNAL_KEY_PREFIXES.some(p => key.startsWith(p));
 
 /** @internal */
 export function isInspectorArtifact(leak: ISerializedInfo): boolean {
@@ -43,12 +46,22 @@ export function isInspectorArtifact(leak: ISerializedInfo): boolean {
 
 /** @internal */
 export function leakSummary(leak: ISerializedInfo): string {
-  const trace = Object.keys(leak).find(k => !k.startsWith('$tabsOrder'));
-  if (!trace) return 'leak';
-  const clean = trace.replace(/\s+/g, ' ').trim();
+  const keys = Object.keys(leak).filter(k => !isInternalKey(k));
+  const leaked = keys.find(k => LEAKED_KEY_MARKERS.some(m => k.includes(m)));
+  const chosen = leaked ?? keys[keys.length - 1];
+  if (!chosen) return 'leak';
+  const clean = chosen.replace(/\s+/g, ' ').trim();
   return clean.length > SUMMARY_MAX_LEN
     ? clean.slice(0, SUMMARY_MAX_LEN - 3) + '...'
     : clean;
+}
+
+/** @internal JSON.stringify replacer that drops memlab-internal keys. */
+export function stripInternalKeysReplacer(
+  key: string,
+  value: unknown,
+): unknown {
+  return isInternalKey(key) ? undefined : value;
 }
 
 /** @internal */
@@ -65,8 +78,7 @@ export function formatLeakMessage(leaks: ISerializedInfo[]): string {
 }
 
 /**
- * Run memlab's leak detector against the three snapshot files, installing
- * `leakFilter` on the global memlab config and restoring it afterwards.
+ * Run memlab leak detection on a baseline/target/final snapshot triple.
  * @internal
  */
 export async function runFindLeaks(

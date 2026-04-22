@@ -21,6 +21,7 @@ import {
   formatLeakMessage,
   isInspectorArtifact,
   runFindLeaks,
+  stripInternalKeysReplacer,
 } from './leak';
 import {PHASE_LABELS} from './types';
 import type {
@@ -30,8 +31,9 @@ import type {
 } from './types';
 
 /**
- * Drop-in replacement for `@playwright/test`'s `test`. Destructure
- * `memlab` in the test body to enable heap capture + leak analysis.
+ * Playwright `test` with a `memlab` fixture attached. Destructuring
+ * `memlab` captures heap snapshots around the test body and runs
+ * memlab's leak detector during teardown.
  *
  * @example
  * ```ts
@@ -78,6 +80,13 @@ export const test = baseTest.extend<{memlab: MemlabFixture}>({
       return raw.filter(l => !isInspectorArtifact(l));
     };
 
+    const captureAndDetect = async (): Promise<ISerializedInfo[]> => {
+      if (!snapshotPaths.target) await takeSnapshot('target');
+      if (!snapshotPaths.final) await takeSnapshot('final');
+      cachedLeaks = await detectLeaks();
+      return cachedLeaks;
+    };
+
     const fixture: MemlabFixture = {
       mark: takeSnapshot,
       baseline: () => takeSnapshot('baseline'),
@@ -93,10 +102,20 @@ export const test = baseTest.extend<{memlab: MemlabFixture}>({
       findLeaks: async () => {
         manualVerified = true;
         if (!snapshotPaths.baseline) return null;
-        if (!snapshotPaths.target) await takeSnapshot('target');
-        if (!snapshotPaths.final) await takeSnapshot('final');
-        cachedLeaks = await detectLeaks();
-        return cachedLeaks;
+        return captureAndDetect();
+      },
+      expectNoLeaks: async () => {
+        manualVerified = true;
+        if (!snapshotPaths.baseline) {
+          throw new Error(
+            'memlab.expectNoLeaks(): call memlab.baseline() before the ' +
+              'leak-inducing interaction.',
+          );
+        }
+        const leaks = await captureAndDetect();
+        if (leaks.length > 0) {
+          throw new Error(formatLeakMessage(leaks));
+        }
       },
     };
 
@@ -110,13 +129,17 @@ export const test = baseTest.extend<{memlab: MemlabFixture}>({
           }
           cachedLeaks = await detectLeaks();
         }
-        if (cachedLeaks != null && allPhasesCaptured(snapshotPaths)) {
+        if (
+          cachedLeaks != null &&
+          cachedLeaks.length > 0 &&
+          allPhasesCaptured(snapshotPaths)
+        ) {
           await attachArtifacts(testInfo, cachedLeaks, snapshotPaths);
         }
         if (!manualVerified && cachedLeaks != null && cachedLeaks.length > 0) {
           expect
-            .soft(cachedLeaks, formatLeakMessage(cachedLeaks))
-            .toHaveLength(0);
+            .soft(cachedLeaks.length, formatLeakMessage(cachedLeaks))
+            .toBe(0);
         }
       } finally {
         await closeSession(session);
@@ -169,7 +192,10 @@ async function attachArtifacts(
   paths: Record<PhaseLabel, string>,
 ): Promise<void> {
   const reportPath = testInfo.outputPath('memlab-leaks.json');
-  await fs.outputJson(reportPath, leaks, {spaces: 2});
+  await fs.outputJson(reportPath, leaks, {
+    spaces: 2,
+    replacer: stripInternalKeysReplacer,
+  });
   await Promise.all([
     testInfo.attach('memlab-leaks', {
       path: reportPath,
@@ -192,5 +218,6 @@ function noopFixture(): MemlabFixture {
     final: async () => undefined,
     configure: () => undefined,
     findLeaks: async () => null,
+    expectNoLeaks: async () => undefined,
   };
 }
