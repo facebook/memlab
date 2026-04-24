@@ -12,7 +12,7 @@ framework (such as
 MemLab uses [Puppeteer](https://github.com/puppeteer/puppeteer)
 to interact with web browser and collect
 JavaScript heap snapshots for memory leak detection. If your organization
-is already using other E2E teesting framework such as Playwright or Cypress,
+is already using other E2E testing framework such as Playwright or Cypress,
 you would want to reuse the existing framework for E2E testing and pipe the
 intermediate results to MemLab for memory leak detection.
 
