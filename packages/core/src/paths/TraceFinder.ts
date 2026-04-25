@@ -25,6 +25,7 @@ import type {
 import config from '../lib/Config';
 import info from '../lib/Console';
 import utils from '../lib/Utils';
+import NumericSet from '../lib/heap-data/utils/NumericSet';
 
 const ROOT_NODE_INDEX = 0;
 const PAGE_OBJECT_FLAG = 1;
@@ -70,8 +71,8 @@ class TraceFinder {
     edgeVisitor?: Optional<Predicator<IHeapEdge>>,
   ): void {
     const [queue] = this.getRootNodeList(snapshot);
-    const queuedIDs = new Set(queue.map(n => n.id));
-    const visitedIDs = new Set();
+    const queuedIDs = new NumericSet(queue.map(n => n.id));
+    const visitedIDs = new NumericSet();
     const traverseOption = {
       visited: visitedIDs,
       queued: queuedIDs,

@@ -1,6 +1,6 @@
 # Class: ObjectShapeAnalysis
 
-Defined in: heap-analysis/src/plugins/ObjectShapeAnalysis.ts:27
+Defined in: heap-analysis/src/plugins/ObjectShapeAnalysis.ts:34
 
 ## Extends
 
@@ -83,7 +83,7 @@ const result = await analysis.analyzeSnapshotFromFile(snapshotFile, {
 
 > **getCommandName**(): `string`
 
-Defined in: heap-analysis/src/plugins/ObjectShapeAnalysis.ts:28
+Defined in: heap-analysis/src/plugins/ObjectShapeAnalysis.ts:35
 
 Get the name of the heap analysis, which is also used to reference
 the analysis in memlab command-line tool.

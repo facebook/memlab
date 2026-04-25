@@ -29,7 +29,7 @@ import type {
 } from '@memlab/core';
 
 import chalk from 'chalk';
-import {analysis, utils, info} from '@memlab/core';
+import {analysis, NumericSet, utils, info} from '@memlab/core';
 import BaseAnalysis from '../BaseAnalysis';
 import pluginUtils from '../PluginUtils';
 import SnapshotFileOption from '../options/HeapAnalysisSnapshotFileOption';
@@ -325,21 +325,21 @@ class ReactComponentHookAnalysis extends BaseAnalysis {
     // aggregate and calculate the retained sizes
     for (const [, record] of componentMemMap) {
       record.totalRetainedSize = utils.aggregateDominatorMetrics(
-        new Set(record.fiberNodeIds),
+        new NumericSet(record.fiberNodeIds),
         snapshot,
         () => true,
         utils.getRetainedSize,
       );
 
       record.totalMemoizedStateRetainedSize = utils.aggregateDominatorMetrics(
-        new Set(record.memoizedStateIds),
+        new NumericSet(record.memoizedStateIds),
         snapshot,
         () => true,
         utils.getRetainedSize,
       );
 
       record.totalMemoizedPropsRetainedSize = utils.aggregateDominatorMetrics(
-        new Set(record.memoizedPropsIds),
+        new NumericSet(record.memoizedPropsIds),
         snapshot,
         () => true,
         utils.getRetainedSize,

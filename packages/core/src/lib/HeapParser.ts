@@ -14,6 +14,7 @@
 import type {
   IHeapNode,
   IHeapSnapshot,
+  HeapNodeIdSet,
   HeapSnapshotInfo,
   RawHeapSnapshot,
 } from './Types';
@@ -21,6 +22,7 @@ import type {
 import config from './Config';
 import info from './Console';
 import stringLoader from './StringLoader';
+import NumericSet from './heap-data/utils/NumericSet';
 import HeapSnapshot from './heap-data/HeapSnapshot';
 
 // ----------- utility and parsing functions -----------
@@ -61,10 +63,10 @@ async function getNodeIdsFromFile(
   file: string,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _options = {},
-): Promise<Set<number>> {
+): Promise<HeapNodeIdSet> {
   const snapshotInfo = await loadSnapshotMetaDataFromFile(file);
   const nodes = await stringLoader.readFileAndExtractTypedArray(file, 'nodes');
-  const ids: Set<number> = new Set();
+  const ids: HeapNodeIdSet = new NumericSet();
   const nodeFields = snapshotInfo.meta.node_fields;
   const nodeFieldCount = nodeFields.length;
   const idOffset = nodeFields.indexOf('id');

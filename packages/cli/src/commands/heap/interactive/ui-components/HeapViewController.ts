@@ -14,7 +14,7 @@ import type ListComponent from './ListComponent';
 import path from 'path';
 import chalk from 'chalk';
 import {Worker} from 'worker_threads';
-import {utils, analysis} from '@memlab/core';
+import {utils, analysis, NumericSet} from '@memlab/core';
 import {ScriptManager} from '@memlab/e2e';
 import {
   ComponentDataItem,
@@ -106,7 +106,7 @@ export default class HeapViewController {
     nodes: ComponentDataItem[],
   ): ComponentDataItem[] {
     const ret: ComponentDataItem[] = [];
-    const nodeIds = new Set<number>(
+    const nodeIds = new NumericSet(
       nodes
         .filter(node => node.heapObject)
         .map(node => node.heapObject?.id ?? -1),

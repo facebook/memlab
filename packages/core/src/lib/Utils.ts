@@ -47,6 +47,7 @@ import type {
   Optional,
 } from './Types';
 import fileManager from './FileManager';
+import NumericSet from './heap-data/utils/NumericSet';
 import {utils} from '..';
 import {isHeapStringType} from './heap-data/HeapNode';
 
@@ -473,8 +474,8 @@ function iterateDescendantFiberNodes(
   }
 }
 
-function getNodesIdSet(snapshot: IHeapSnapshot): Set<number> {
-  const set: Set<number> = new Set();
+function getNodesIdSet(snapshot: IHeapSnapshot): HeapNodeIdSet {
+  const set: HeapNodeIdSet = new NumericSet();
   snapshot.nodes.forEach(node => {
     set.add(node.id);
   });
@@ -484,12 +485,12 @@ function getNodesIdSet(snapshot: IHeapSnapshot): Set<number> {
 // given a set of nodes S, return a minimal subset S' where
 // no nodes are dominated by nodes in S
 function getConditionalDominatorIds(
-  ids: Set<number>,
+  ids: HeapNodeIdSet,
   snapshot: IHeapSnapshot,
   condCb: (node: IHeapNode) => boolean,
-): Set<number> {
-  const dominatorIds: Set<number> = new Set();
-  const fullDominatorIds: Set<number> = new Set();
+): HeapNodeIdSet {
+  const dominatorIds: HeapNodeIdSet = new NumericSet();
+  const fullDominatorIds: HeapNodeIdSet = new NumericSet();
   // set all node ids
   applyToNodes(ids, snapshot, node => {
     if (condCb(node)) {
@@ -620,7 +621,7 @@ type IterateNodeCallback = (
 ) => boolean;
 
 function filterNodesInPlace(
-  idSet: Set<number>,
+  idSet: HeapNodeIdSet,
   snapshot: IHeapSnapshot,
   cb: IterateNodeCallback,
 ): void {
@@ -634,7 +635,7 @@ function filterNodesInPlace(
 }
 
 function applyToNodes(
-  idSet: Set<number>,
+  idSet: HeapNodeIdSet,
   snapshot: IHeapSnapshot,
   cb: (node: IHeapNode, snapshot: IHeapSnapshot) => void,
   options: AnyOptions = {},
@@ -767,9 +768,9 @@ async function getSnapshotFromFile(
 async function getSnapshotNodeIdsFromFile(
   filename: string,
   options: AnyOptions,
-): Promise<Set<number>> {
+): Promise<HeapNodeIdSet> {
   info.overwrite('lightweight parsing ' + filename + ' ...');
-  let ret: Set<number> = new Set();
+  let ret: HeapNodeIdSet = new NumericSet();
   try {
     ret = await parser.getNodeIdsFromFile(filename, options);
   } catch (e) {

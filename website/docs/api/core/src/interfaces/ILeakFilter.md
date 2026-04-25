@@ -1,6 +1,6 @@
 # Interface: ILeakFilter
 
-Defined in: core/src/lib/Types.ts:400
+Defined in: core/src/lib/Types.ts:401
 
 The `ILeakFilter` interface allows you to define a leak detector and
 customize the leak filtering logic in memlab (instead of using the
@@ -65,7 +65,7 @@ export default {beforeLeakFilter, leakFilter};
 
 > `optional` **beforeLeakFilter?**: [`InitLeakFilterCallback`](../type-aliases/InitLeakFilterCallback.md)
 
-Defined in: core/src/lib/Types.ts:428
+Defined in: core/src/lib/Types.ts:429
 
 Lifecycle function callback that is invoked initially once before
 the subsequent `leakFilter` function calls. This callback could
@@ -99,7 +99,7 @@ module.exports = {
 
 > `optional` **leakFilter?**: [`LeakFilterCallback`](../type-aliases/LeakFilterCallback.md)
 
-Defined in: core/src/lib/Types.ts:480
+Defined in: core/src/lib/Types.ts:481
 
 This callback defines how you want to filter out the
 leaked objects. The callback is called for every node (JS heap
@@ -157,7 +157,7 @@ memlab run --scenario <SCENARIO FILE> --leak-filter <PATH TO leak-filter.js>
 
 > `optional` **retainerReferenceFilter?**: [`ReferenceFilterCallback`](../type-aliases/ReferenceFilterCallback.md)
 
-Defined in: core/src/lib/Types.ts:543
+Defined in: core/src/lib/Types.ts:544
 
 Callback that can be used to define a logic to decide whether
 a reference should be considered as part of the retainer trace.

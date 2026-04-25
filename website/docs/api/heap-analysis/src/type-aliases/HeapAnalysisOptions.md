@@ -2,7 +2,7 @@
 
 > **HeapAnalysisOptions** = `object`
 
-Defined in: heap-analysis/src/PluginUtils.ts:70
+Defined in: heap-analysis/src/PluginUtils.ts:71
 
 This is the auto-generated arguments passed to all the `process` method
 that your self-defined heap analysis should implement.

@@ -2,7 +2,7 @@
 
 > **CheckPageLoadCallback** = (`page`) => `Promise`\<`boolean`\>
 
-Defined in: core/src/lib/Types.ts:1168
+Defined in: core/src/lib/Types.ts:1169
 
 Callback function to provide if the page is loaded.
 For concrete example, check out isPageLoaded.

@@ -2,7 +2,7 @@
 
 > **Page** = `PuppeteerPage`
 
-Defined in: core/src/lib/Types.ts:207
+Defined in: core/src/lib/Types.ts:208
 
 This is the puppeteer [`Page`](https://pptr.dev/api/puppeteer.page)
 class used by MemLab. The puppeteer `Page` class instance provides

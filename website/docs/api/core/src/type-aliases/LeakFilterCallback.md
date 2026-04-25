@@ -2,7 +2,7 @@
 
 > **LeakFilterCallback** = (`node`, `snapshot`, `leakedNodeIds`) => `boolean`
 
-Defined in: core/src/lib/Types.ts:581
+Defined in: core/src/lib/Types.ts:582
 
 Callback that can be used to define a logic to filter the
 leaked objects. The callback is only called for every node

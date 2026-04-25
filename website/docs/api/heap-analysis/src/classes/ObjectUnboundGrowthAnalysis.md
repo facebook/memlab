@@ -1,6 +1,6 @@
 # Class: ObjectUnboundGrowthAnalysis
 
-Defined in: heap-analysis/src/plugins/ObjectUnboundGrowthAnalysis.ts:32
+Defined in: heap-analysis/src/plugins/ObjectUnboundGrowthAnalysis.ts:33
 
 ## Extends
 
@@ -85,7 +85,7 @@ const result = await analysis.analyzeSnapshotsInDirectory(snapshotDirectory, {
 
 > **getCommandName**(): `string`
 
-Defined in: heap-analysis/src/plugins/ObjectUnboundGrowthAnalysis.ts:33
+Defined in: heap-analysis/src/plugins/ObjectUnboundGrowthAnalysis.ts:34
 
 Get the name of the heap analysis, which is also used to reference
 the analysis in memlab command-line tool.

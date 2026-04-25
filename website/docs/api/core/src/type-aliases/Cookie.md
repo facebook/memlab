@@ -2,7 +2,7 @@
 
 > **Cookie** = `object`
 
-Defined in: core/src/lib/Types.ts:236
+Defined in: core/src/lib/Types.ts:237
 
 A single cookie entry in a Cookies list.
 The `name` and `value` field is mandatory.
@@ -17,7 +17,7 @@ For concrete use case, please check out cookies.
 
 > `optional` **domain?**: `string`
 
-Defined in: core/src/lib/Types.ts:242
+Defined in: core/src/lib/Types.ts:243
 
 Optional: Defines the domain associated with the cookie
 
@@ -27,7 +27,7 @@ Optional: Defines the domain associated with the cookie
 
 > `optional` **expires?**: [`Undefinable`](Undefinable.md)\<`number`\>
 
-Defined in: core/src/lib/Types.ts:251
+Defined in: core/src/lib/Types.ts:252
 
 Optional: Indicates when the cookie will expire, in Unix time (seconds)
 
@@ -37,7 +37,7 @@ Optional: Indicates when the cookie will expire, in Unix time (seconds)
 
 > `optional` **httpOnly?**: [`Undefinable`](Undefinable.md)\<`boolean`\>
 
-Defined in: core/src/lib/Types.ts:253
+Defined in: core/src/lib/Types.ts:254
 
 Optional: Flag to determine if the cookie is accessible only over HTTP
 
@@ -47,7 +47,7 @@ Optional: Flag to determine if the cookie is accessible only over HTTP
 
 > **name**: `string`
 
-Defined in: core/src/lib/Types.ts:238
+Defined in: core/src/lib/Types.ts:239
 
 Mandatory: Represents the name of the cookie
 
@@ -57,7 +57,7 @@ Mandatory: Represents the name of the cookie
 
 > `optional` **path?**: [`Undefinable`](Undefinable.md)\<`string`\>
 
-Defined in: core/src/lib/Types.ts:249
+Defined in: core/src/lib/Types.ts:250
 
 Optional: Defines the path associated with the cookie
 
@@ -67,7 +67,7 @@ Optional: Defines the path associated with the cookie
 
 > `optional` **sameSite?**: [`Undefinable`](Undefinable.md)\<`"Strict"` \| `"Lax"`\>
 
-Defined in: core/src/lib/Types.ts:265
+Defined in: core/src/lib/Types.ts:266
 
 Optional: Determines if a cookie is transmitted with cross-site requests,
 offering a degree of defense against cross-site request forgery attacks.
@@ -78,7 +78,7 @@ offering a degree of defense against cross-site request forgery attacks.
 
 > `optional` **secure?**: [`Undefinable`](Undefinable.md)\<`boolean`\>
 
-Defined in: core/src/lib/Types.ts:260
+Defined in: core/src/lib/Types.ts:261
 
 Optional: Flag to indicate if the cookie transmission
 requires a secure protocol (e.g., HTTPS).
@@ -89,7 +89,7 @@ requires a secure protocol (e.g., HTTPS).
 
 > `optional` **session?**: [`Undefinable`](Undefinable.md)\<`boolean`\>
 
-Defined in: core/src/lib/Types.ts:255
+Defined in: core/src/lib/Types.ts:256
 
 Optional: Flag to check if the cookie is a session cookie
 
@@ -99,7 +99,7 @@ Optional: Flag to check if the cookie is a session cookie
 
 > `optional` **url?**: [`Undefinable`](Undefinable.md)\<`string`\>
 
-Defined in: core/src/lib/Types.ts:247
+Defined in: core/src/lib/Types.ts:248
 
 Optional: Specifies the request-URI linked with the cookie setup.
 This can influence the cookie's default domain and path.
@@ -110,6 +110,6 @@ This can influence the cookie's default domain and path.
 
 > **value**: `string`
 
-Defined in: core/src/lib/Types.ts:240
+Defined in: core/src/lib/Types.ts:241
 
 Mandatory: Represents the value assigned to the cookie

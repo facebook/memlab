@@ -2,7 +2,7 @@
 
 > **InitLeakFilterCallback** = (`snapshot`, `leakedNodeIds`) => `void`
 
-Defined in: core/src/lib/Types.ts:554
+Defined in: core/src/lib/Types.ts:555
 
 Lifecycle function callback that is invoked initially once before calling any
 leak filter function.

@@ -17,7 +17,14 @@ import type {
 } from '@memlab/core';
 
 import fs from 'fs';
-import {config, info, memoryBarChart, serializer, utils} from '@memlab/core';
+import {
+  config,
+  info,
+  memoryBarChart,
+  NumericSet,
+  serializer,
+  utils,
+} from '@memlab/core';
 import BaseAnalysis from '../BaseAnalysis';
 import SnapshotDirectoryOption from '../options/HeapAnalysisSnapshotDirectoryOption';
 import pluginUtils from '../PluginUtils';
@@ -138,7 +145,7 @@ class CollectionUnboundGrowthAnalysis extends BaseAnalysis {
     }
 
     // post process and print the unbounded objects
-    const idsInLastSnapshot = new Set();
+    const idsInLastSnapshot = new NumericSet();
     snapshot?.nodes.forEach(node => {
       idsInLastSnapshot.add(node.id);
     });

@@ -2,7 +2,7 @@
 
 > **RunMetaInfo** = `object`
 
-Defined in: core/src/lib/Types.ts:1249
+Defined in: core/src/lib/Types.ts:1250
 
 This data structure holds the information about memlab run.
 You can retrieve the instance of this type through getRunMetaInfo.
@@ -13,7 +13,7 @@ You can retrieve the instance of this type through getRunMetaInfo.
 
 > **browserInfo**: [`IBrowserInfo`](../interfaces/IBrowserInfo.md)
 
-Defined in: core/src/lib/Types.ts:1262
+Defined in: core/src/lib/Types.ts:1263
 
 input configuration for the browser and
 output data from the browser
@@ -24,6 +24,6 @@ output data from the browser
 
 > **type**: `string`
 
-Defined in: core/src/lib/Types.ts:1257
+Defined in: core/src/lib/Types.ts:1258
 
 type of the memlab run

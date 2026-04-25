@@ -2,7 +2,7 @@
 
 > **AnalyzeSnapshotResult** = `object`
 
-Defined in: heap-analysis/src/PluginUtils.ts:93
+Defined in: heap-analysis/src/PluginUtils.ts:94
 
 This is the return type from calling analyzeSnapshotFromFile
 or analyzeSnapshotsInDirectory.
@@ -13,6 +13,6 @@ or analyzeSnapshotsInDirectory.
 
 > **analysisOutputFile**: `string`
 
-Defined in: heap-analysis/src/PluginUtils.ts:97
+Defined in: heap-analysis/src/PluginUtils.ts:98
 
 file path of the console output of the heap analysis call

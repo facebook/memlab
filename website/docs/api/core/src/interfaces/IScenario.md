@@ -1,6 +1,6 @@
 # Interface: IScenario
 
-Defined in: core/src/lib/Types.ts:681
+Defined in: core/src/lib/Types.ts:682
 
 Test scenario specifies how you want a E2E test to interact with a web browser.
 The test scenario can be saved as a `.js` file and passed to the `memlab
@@ -43,7 +43,7 @@ const {run} = require('@memlab/api');
 
 > `optional` **action?**: [`InteractionsCallback`](../type-aliases/InteractionsCallback.md)
 
-Defined in: core/src/lib/Types.ts:843
+Defined in: core/src/lib/Types.ts:844
 
 `action` is the callback function that defines the interaction
 where you want to trigger memory leaks after the initial page load.
@@ -98,7 +98,7 @@ module.exports = scenario;
 
 > `optional` **back?**: [`InteractionsCallback`](../type-aliases/InteractionsCallback.md)
 
-Defined in: core/src/lib/Types.ts:869
+Defined in: core/src/lib/Types.ts:870
 
 `back` is the callback function that specifies how memlab should
 back/revert the `action` callback. Think of it as an undo action.
@@ -130,7 +130,7 @@ memlab needs to undo/revert the `action` callback.
 
 > `optional` **beforeInitialPageLoad?**: [`InteractionsCallback`](../type-aliases/InteractionsCallback.md)
 
-Defined in: core/src/lib/Types.ts:745
+Defined in: core/src/lib/Types.ts:746
 
 `beforeInitialPageLoad` is the callback function that will be called only
 once before the initial page load. This callback can be used to set up
@@ -166,7 +166,7 @@ module.exports = scenario;
 
 > `optional` **beforeLeakFilter?**: [`InitLeakFilterCallback`](../type-aliases/InitLeakFilterCallback.md)
 
-Defined in: core/src/lib/Types.ts:955
+Defined in: core/src/lib/Types.ts:956
 
 Lifecycle function callback that is invoked initially once before
 the subsequent `leakFilter` function calls. This callback could
@@ -200,7 +200,7 @@ module.exports = {
 
 > `optional` **cookies?**: () => [`Cookies`](../type-aliases/Cookies.md)
 
-Defined in: core/src/lib/Types.ts:715
+Defined in: core/src/lib/Types.ts:716
 
 If the page you are running memlab against requires authentication or
 specific cookie(s) to be set, you can pass them as
@@ -240,7 +240,7 @@ module.exports = scenario;
 
 > `optional` **isPageLoaded?**: [`CheckPageLoadCallback`](../type-aliases/CheckPageLoadCallback.md)
 
-Defined in: core/src/lib/Types.ts:927
+Defined in: core/src/lib/Types.ts:928
 
 Optional callback function that checks if the web page is loaded
 for the initial page load and subsequent browser interactions.
@@ -285,7 +285,7 @@ module.exports = {
 
 > `optional` **leakFilter?**: [`LeakFilterCallback`](../type-aliases/LeakFilterCallback.md)
 
-Defined in: core/src/lib/Types.ts:1000
+Defined in: core/src/lib/Types.ts:1001
 
 This callback defines how you want to filter out the
 leaked objects. The callback is called for every node (JS heap
@@ -336,7 +336,7 @@ module.exports = {
 
 > `optional` **repeat?**: () => `number`
 
-Defined in: core/src/lib/Types.ts:888
+Defined in: core/src/lib/Types.ts:889
 
 Specifies how many **extra** `action` and `back` actions performed
 by memlab.
@@ -365,7 +365,7 @@ module.exports = {
 
 > `optional` **retainerReferenceFilter?**: [`ReferenceFilterCallback`](../type-aliases/ReferenceFilterCallback.md)
 
-Defined in: core/src/lib/Types.ts:1046
+Defined in: core/src/lib/Types.ts:1047
 
 Callback that can be used to define a logic to decide whether
 a reference should be considered as part of the retainer trace.
@@ -417,7 +417,7 @@ module.exports = {
 
 > `optional` **setup?**: [`InteractionsCallback`](../type-aliases/InteractionsCallback.md)
 
-Defined in: core/src/lib/Types.ts:794
+Defined in: core/src/lib/Types.ts:795
 
 `setup` is the callback function that will be called only once
 after the initial page load. This callback can be used to log in
@@ -454,7 +454,7 @@ module.exports = scenario;
 
 > **url**: () => `string`
 
-Defined in: core/src/lib/Types.ts:763
+Defined in: core/src/lib/Types.ts:764
 
 String value of the initial url of the page.
 

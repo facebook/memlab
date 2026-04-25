@@ -2,7 +2,7 @@
 
 > **Nullable**\<`T`\> = `T` \| `null`
 
-Defined in: core/src/lib/Types.ts:32
+Defined in: core/src/lib/Types.ts:33
 
 Given any type `T`, returns the union type `T` and `null`.
 

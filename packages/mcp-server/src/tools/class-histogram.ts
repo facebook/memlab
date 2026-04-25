@@ -11,8 +11,8 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import memlabCore from '@memlab/core';
-import type {IHeapNode} from '@memlab/core';
-const {utils} = memlabCore;
+import type {IHeapNode, HeapNodeIdSet} from '@memlab/core';
+const {utils, NumericSet} = memlabCore;
 import {getSnapshot} from '../heap-state.js';
 import {
   errorResult,
@@ -53,7 +53,7 @@ export function registerClassHistogram(server: McpServer): void {
           {
             count: number;
             total_self_size: number;
-            node_ids: Set<number>;
+            node_ids: HeapNodeIdSet;
             type: string;
           }
         >();
@@ -73,7 +73,7 @@ export function registerClassHistogram(server: McpServer): void {
             classMap.set(key, {
               count: 1,
               total_self_size: node.self_size,
-              node_ids: new Set([node.id]),
+              node_ids: new NumericSet([node.id]),
               type: node.type,
             });
           }

@@ -38,6 +38,7 @@ import traceDetailsLogger from '../logger/LeakTraceDetailsLogger';
 import TraceFinder from '../paths/TraceFinder';
 import NormalizedTrace from '../trace-cluster/TraceBucket';
 import {LeakObjectFilter} from './leak-filters/LeakObjectFilter';
+import NumericSet from './heap-data/utils/NumericSet';
 import MLTraceSimilarityStrategy from '../trace-cluster/strategies/MLTraceSimilarityStrategy';
 import {LeakTraceFilter} from './trace-filters/LeakTraceFilter';
 import TraceSampler from './TraceSampler';
@@ -192,7 +193,7 @@ class MemoryAnalyst {
 
   async focus(options: {file?: string} = {}) {
     info.overwrite(`Generating report for node @${config.focusFiberNodeId}`);
-    let snapshotLeakedHeapNodeIdSet: HeapNodeIdSet = new Set();
+    let snapshotLeakedHeapNodeIdSet: HeapNodeIdSet = new NumericSet();
     let nodeIdsInSnapshots: Array<HeapNodeIdSet> = [];
     let snapshot: IHeapSnapshot;
 
@@ -250,7 +251,7 @@ class MemoryAnalyst {
       fileManager.getSnapshotSequenceMetaFile(options),
     );
     // a set keeping track of node ids generated before the target snapshot
-    const baselineIds = new Set();
+    const baselineIds = new NumericSet();
     let collectBaselineIds = true;
 
     let targetAllocatedHeapNodeIdSet: Nullable<HeapNodeIdSet> = null;
@@ -270,7 +271,7 @@ class MemoryAnalyst {
         collectBaselineIds = false;
       }
 
-      let idsInSnapshot: HeapNodeIdSet = new Set();
+      let idsInSnapshot: HeapNodeIdSet = new NumericSet();
       nodeIdsInSnapshots.push(idsInSnapshot);
       if (!tab.snapshot) {
         continue;
@@ -310,7 +311,7 @@ class MemoryAnalyst {
       }
 
       if (tab.type === 'target') {
-        targetAllocatedHeapNodeIdSet = new Set();
+        targetAllocatedHeapNodeIdSet = new NumericSet();
         idsInSnapshot.forEach(id => {
           if (!baselineIds.has(id)) {
             targetAllocatedHeapNodeIdSet?.add(id);
@@ -326,7 +327,7 @@ class MemoryAnalyst {
         if (!targetAllocatedHeapNodeIdSet) {
           utils.haltOrThrow('no target snapshot before finals snapshot');
         }
-        leakedHeapNodeIdSet = new Set();
+        leakedHeapNodeIdSet = new NumericSet();
         snapshot?.nodes.forEach(node => {
           if (targetAllocatedHeapNodeIdSet?.has(node.id)) {
             leakedHeapNodeIdSet?.add(node.id);
@@ -577,7 +578,7 @@ class MemoryAnalyst {
     this.filterLeakedObjects(leakedNodeIds, snapshot);
 
     const leakTraceFilter = new LeakTraceFilter();
-    const nodeIdInPaths: HeapNodeIdSet = new Set();
+    const nodeIdInPaths: HeapNodeIdSet = new NumericSet();
     const samplePool: LeakTracePathItem[] = [];
 
     // analysis for each node
@@ -739,8 +740,8 @@ class MemoryAnalyst {
     info.overwrite('start analysis...');
     const finder = this.preparePathFinder(snapshot);
 
-    const nodeIdInPaths: HeapNodeIdSet = new Set();
-    const idSet = new Set([id]);
+    const nodeIdInPaths: HeapNodeIdSet = new NumericSet();
+    const idSet = new NumericSet([id]);
     traceDetailsLogger.setTraceFileEmpty(pathLoaderFile);
     fs.writeFileSync(summaryFile, 'no path found', {encoding: 'utf8'});
     utils.applyToNodes(idSet, snapshot, node => {

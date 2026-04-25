@@ -9,6 +9,7 @@
  */
 
 import type {
+  HeapNodeIdSet,
   IHeapSnapshot,
   ISerializedInfo,
   LeakTracePathItem,
@@ -34,9 +35,9 @@ class LeakTraceDetailsLogger {
   }
 
   logTrace(
-    leakedIdSet: Set<number>,
+    leakedIdSet: HeapNodeIdSet,
     snapshot: IHeapSnapshot,
-    nodeIdsInSnapshots: Array<Set<number>>,
+    nodeIdsInSnapshots: Array<HeapNodeIdSet>,
     trace: LeakTracePathItem,
     filepath: string,
   ): Nullable<ISerializedInfo> {
@@ -62,9 +63,9 @@ class LeakTraceDetailsLogger {
   }
 
   logTraces(
-    leakedIdSet: Set<number>,
+    leakedIdSet: HeapNodeIdSet,
     snapshot: IHeapSnapshot,
-    nodeIdsInSnapshots: Array<Set<number>>,
+    nodeIdsInSnapshots: Array<HeapNodeIdSet>,
     traces: LeakTracePathItem[],
     outDir: string,
   ): Array<ISerializedInfo> {

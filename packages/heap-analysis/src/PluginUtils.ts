@@ -12,6 +12,7 @@ import type {ParsedArgs} from 'minimist';
 import {
   IHeapSnapshot,
   IHeapNode,
+  HeapNodeIdSet,
   AnyOptions,
   IHeapEdge,
   Nullable,
@@ -699,7 +700,7 @@ async function snapshotMapReduce<T1, T2>(
  * @returns the aggregated metrics
  */
 function aggregateDominatorMetrics(
-  ids: Set<number>,
+  ids: HeapNodeIdSet,
   snapshot: IHeapSnapshot,
   checkNodeCb: (node: IHeapNode) => boolean,
   nodeMetricsCb: (node: IHeapNode) => number,
@@ -725,7 +726,7 @@ function aggregateDominatorMetrics(
  * @returns the set of dominator nodes/objects
  * * * **Examples**:
  * ```typescript
- * import {dumpNodeHeapSnapshot} from '@memlab/core';
+ * import {dumpNodeHeapSnapshot, NumericSet} from '@memlab/core';
  * import {getFullHeapFromFile, getDominatorNodes} from '@memlab/heap-analysis';
  *
  * class TestObject {}
@@ -748,16 +749,16 @@ function aggregateDominatorMetrics(
  *
  *   // get the dominator nodes
  *   const dominatorIds = getDominatorNodes(
- *     new Set(nodes.map(node => node.id)),
+ *     new NumericSet(nodes.map(node => node.id)),
  *     heap,
  *   );
  * })();
  * ```
  */
 function getDominatorNodes(
-  ids: Set<number>,
+  ids: HeapNodeIdSet,
   snapshot: IHeapSnapshot,
-): Set<number> {
+): HeapNodeIdSet {
   return utils.getConditionalDominatorIds(ids, snapshot, () => true);
 }
 

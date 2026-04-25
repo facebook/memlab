@@ -1,6 +1,6 @@
 # Interface: IHeapEdge
 
-Defined in: core/src/lib/Types.ts:1662
+Defined in: core/src/lib/Types.ts:1663
 
 An `IHeapEdge` instance represents a JS reference in a heap snapshot.
 A heap snapshot is generally a graph where graph nodes are JS heap objects
@@ -35,7 +35,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 > **edgeIndex**: `number`
 
-Defined in: core/src/lib/Types.ts:1670
+Defined in: core/src/lib/Types.ts:1671
 
 index of this JS reference inside the `edge.snapshot.edges` pseudo array
 
@@ -45,7 +45,7 @@ index of this JS reference inside the `edge.snapshot.edges` pseudo array
 
 > **fromNode**: [`IHeapNode`](IHeapNode.md)
 
-Defined in: core/src/lib/Types.ts:1691
+Defined in: core/src/lib/Types.ts:1692
 
 returns an [IHeapNode](IHeapNode.md) instance representing the hosting
 JS heap object where this reference starts
@@ -56,7 +56,7 @@ JS heap object where this reference starts
 
 > **is\_index**: `boolean`
 
-Defined in: core/src/lib/Types.ts:1677
+Defined in: core/src/lib/Types.ts:1678
 
 if `true`, means this is a reference to an array element
 or internal table element (`edge.name_or_index` will return a number),
@@ -69,7 +69,7 @@ will return a string)
 
 > **name\_or\_index**: `string` \| `number`
 
-Defined in: core/src/lib/Types.ts:1626
+Defined in: core/src/lib/Types.ts:1627
 
 name of the JS reference. If this is a reference to an array element
 or internal table element, it is an numeric index
@@ -84,7 +84,7 @@ or internal table element, it is an numeric index
 
 > **snapshot**: [`IHeapSnapshot`](IHeapSnapshot.md)
 
-Defined in: core/src/lib/Types.ts:1666
+Defined in: core/src/lib/Types.ts:1667
 
 get the [IHeapSnapshot](IHeapSnapshot.md) containing this JS reference
 
@@ -94,7 +94,7 @@ get the [IHeapSnapshot](IHeapSnapshot.md) containing this JS reference
 
 > **to\_node**: `number`
 
-Defined in: core/src/lib/Types.ts:1681
+Defined in: core/src/lib/Types.ts:1682
 
 the index of the JS heap object pointed to by this reference
 
@@ -104,7 +104,7 @@ the index of the JS heap object pointed to by this reference
 
 > **toNode**: [`IHeapNode`](IHeapNode.md)
 
-Defined in: core/src/lib/Types.ts:1686
+Defined in: core/src/lib/Types.ts:1687
 
 returns an [IHeapNode](IHeapNode.md) instance representing the JS heap object
 pointed to by this reference
@@ -115,7 +115,7 @@ pointed to by this reference
 
 > **type**: `string`
 
-Defined in: core/src/lib/Types.ts:1631
+Defined in: core/src/lib/Types.ts:1632
 
 type of the JS reference, all types:
 `context`, `element`, `property`, `internal`, `hidden`, `shortcut`, `weak`
@@ -130,7 +130,7 @@ type of the JS reference, all types:
 
 > **getJSONifyableObject**(): `AnyRecord`
 
-Defined in: core/src/lib/Types.ts:1699
+Defined in: core/src/lib/Types.ts:1700
 
 convert to a concise readable object that can be used for serialization
 (like calling `JSON.stringify(node, ...args)`).
@@ -148,7 +148,7 @@ captured by the hosting object.
 
 > **toJSONString**(...`args`): `string`
 
-Defined in: core/src/lib/Types.ts:1712
+Defined in: core/src/lib/Types.ts:1713
 
 convert to a concise readable string output
 (like calling `JSON.stringify(node, ...args)`).

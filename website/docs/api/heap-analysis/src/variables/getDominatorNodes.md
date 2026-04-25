@@ -1,6 +1,6 @@
 # Variable: getDominatorNodes
 
-> **getDominatorNodes**: (`ids`, `snapshot`) => `Set`\<`number`\>
+> **getDominatorNodes**: (`ids`, `snapshot`) => `NumericSet`
 
 Defined in: heap-analysis/src/index.ts:20
 
@@ -12,7 +12,7 @@ of the set of input heap objects.
 
 ### ids
 
-`Set`\<`number`\>
+`NumericSet`
 
 Set of ids of heap objects (or nodes)
 
@@ -24,12 +24,12 @@ heap loaded from a heap snapshot
 
 ## Returns
 
-`Set`\<`number`\>
+`NumericSet`
 
 the set of dominator nodes/objects
 * * **Examples**:
 ```typescript
-import {dumpNodeHeapSnapshot} from '@memlab/core';
+import {dumpNodeHeapSnapshot, NumericSet} from '@memlab/core';
 import {getFullHeapFromFile, getDominatorNodes} from '@memlab/heap-analysis';
 
 class TestObject {}
@@ -52,7 +52,7 @@ class TestObject {}
 
   // get the dominator nodes
   const dominatorIds = getDominatorNodes(
-    new Set(nodes.map(node => node.id)),
+    new NumericSet(nodes.map(node => node.id)),
     heap,
   );
 })();

@@ -2,7 +2,7 @@
 
 > **Optional**\<`T`\> = `T` \| `null` \| `undefined`
 
-Defined in: core/src/lib/Types.ts:38
+Defined in: core/src/lib/Types.ts:39
 
 Given any type `T`, returns the union type `T`, `null`, and `undefined`.
 

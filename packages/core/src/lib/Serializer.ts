@@ -29,6 +29,7 @@ import utils from './Utils';
 import info from './Console';
 import PathFinder from '../paths/TraceFinder';
 import {EdgeIterationCallback} from '..';
+import NumericSet from './heap-data/utils/NumericSet';
 import SerializationHelper from './SerializationHelper';
 
 const REGEXP_NAME_CLEANUP = /[[]\(\)]/g;
@@ -897,7 +898,7 @@ function summarizeEdge(
 
 function summarizePath(
   pathArg: LeakTracePathItem,
-  nodeIdInPaths: Set<number>,
+  nodeIdInPaths: HeapNodeIdSet,
   snapshot: IHeapSnapshot,
   options: SummarizeOptions = {},
 ): string {
@@ -905,7 +906,7 @@ function summarizePath(
   if (depth > 5) {
     return '...';
   }
-  const excludeKeySet = options.excludeKeySet || new Set();
+  const excludeKeySet = options.excludeKeySet || new NumericSet();
   let ret = '';
   let p: Optional<LeakTracePathItem> = pathArg;
   let hasWeakMapEdge = false;

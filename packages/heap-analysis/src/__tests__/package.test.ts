@@ -10,7 +10,7 @@
 import type {IHeapNode} from '@memlab/core';
 import type {HeapAnalysisOptions} from '../index';
 
-import {config, dumpNodeHeapSnapshot} from '@memlab/core';
+import {config, dumpNodeHeapSnapshot, NumericSet} from '@memlab/core';
 import {
   getSnapshotFileForAnalysis,
   loadHeapSnapshot,
@@ -113,7 +113,7 @@ test(
 
     // get the dominator nodes
     const dominatorIds = getDominatorNodes(
-      new Set(nodes.map(node => node.id)),
+      new NumericSet(nodes.map(node => node.id)),
       heap,
     );
     expect(dominatorIds.size).toBeGreaterThan(0);

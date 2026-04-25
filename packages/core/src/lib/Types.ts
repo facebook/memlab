@@ -12,6 +12,7 @@
 import {ParsedArgs} from 'minimist';
 import type {LaunchOptions, Page as PuppeteerPage} from 'puppeteer-core';
 import type {ErrorHandling, MemLabConfig} from './Config';
+import NumericSet from './heap-data/utils/NumericSet';
 
 /** @internal */
 export type AnyValue = any;
@@ -58,7 +59,7 @@ export type UnusedOptions = Record<string, never>;
 /** @internal */
 export type Command = [string, string[], AnyOptions];
 /** @internal */
-export type HeapNodeIdSet = Set<number>;
+export type HeapNodeIdSet = NumericSet;
 
 /** @internal */
 export type HaltOrThrowOptions = {
@@ -2433,8 +2434,8 @@ export type CommandOptionExample =
 
 /** @internal */
 export type JSONifyArgs = {
-  leakedIdSet?: Set<number>;
-  nodeIdsInSnapshots?: Array<Set<number>>;
+  leakedIdSet?: HeapNodeIdSet;
+  nodeIdsInSnapshots?: Array<HeapNodeIdSet>;
 };
 
 /** @internal */

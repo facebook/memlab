@@ -9,6 +9,7 @@
  */
 
 import type {
+  HeapNodeIdSet,
   IHeapNode,
   IHeapSnapshot,
   LeakTrace,
@@ -27,6 +28,7 @@ import config from '../lib/Config';
 import info from '../lib/Console';
 import serializer from '../lib/Serializer';
 import utils from '../lib/Utils';
+import NumericSet from '../lib/heap-data/utils/NumericSet';
 import {EdgeRecord, NodeRecord} from './TraceElement';
 import TraceSimilarityStrategy from './strategies/TraceSimilarityStrategy';
 import TraceAsClusterStrategy from './strategies/TraceAsClusterStrategy';
@@ -35,7 +37,7 @@ import {lastNodeFromTrace} from './ClusterUtils';
 import TraceSampler from '../lib/TraceSampler';
 
 type AggregateNodeCb = (
-  ids: Set<number>,
+  ids: HeapNodeIdSet,
   snapshot: IHeapSnapshot,
   checkCb: (node: IHeapNode) => boolean,
   calculateCb: (node: IHeapNode) => number,
@@ -58,7 +60,7 @@ export default class NormalizedTrace {
         untilFirstDetachedDOMElem: true,
       });
       this.traceSummary = snapshot
-        ? serializer.summarizePath(p, new Set(), snapshot)
+        ? serializer.summarizePath(p, new NumericSet(), snapshot)
         : '';
     }
   }
@@ -156,7 +158,7 @@ export default class NormalizedTrace {
   ): void {
     const leakedNode = utils.getLeakedNode(path);
     if (!cluster.leakedNodeIds) {
-      cluster.leakedNodeIds = new Set();
+      cluster.leakedNodeIds = new NumericSet();
     }
     if (leakedNode) {
       cluster.leakedNodeIds.add(leakedNode.id);
@@ -412,7 +414,7 @@ export default class NormalizedTrace {
       count: 0,
       snapshot,
       retainedSize: 0,
-      leakedNodeIds: new Set<number>(),
+      leakedNodeIds: new NumericSet(),
     };
   }
 

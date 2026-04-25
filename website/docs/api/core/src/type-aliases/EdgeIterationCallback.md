@@ -2,7 +2,7 @@
 
 > **EdgeIterationCallback** = (`edge`) => [`Optional`](Optional.md)\<\{ `stop`: `boolean`; \}\> \| `void`
 
-Defined in: core/src/lib/Types.ts:1797
+Defined in: core/src/lib/Types.ts:1798
 
 Executes a provided callback once for JavaScript references.
 For concrete examples, check out forEachReference

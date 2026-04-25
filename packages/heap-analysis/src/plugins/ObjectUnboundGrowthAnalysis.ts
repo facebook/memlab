@@ -21,6 +21,7 @@ import {
   config,
   info,
   memoryBarChart,
+  NumericSet,
   serializer,
   utils,
   TraceFinder,
@@ -169,7 +170,7 @@ class ObjectUnboundGrowthAnalysis extends BaseAnalysis {
     }
 
     // post process and print the unbounded objects
-    const idsInLastSnapshot = new Set();
+    const idsInLastSnapshot = new NumericSet();
     snapshot?.nodes.forEach(node => {
       idsInLastSnapshot.add(node.id);
     });

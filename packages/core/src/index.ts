@@ -67,4 +67,6 @@ export {default as MultiIterationSeqClustering} from './trace-cluster/MultiItera
 /** @internal */
 export {default as TraceFinder} from './paths/TraceFinder';
 /** @internal */
+export {default as NumericSet} from './lib/heap-data/utils/NumericSet';
+/** @internal */
 export * from './trace-cluster/ClusterUtils';

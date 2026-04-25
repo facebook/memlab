@@ -1,6 +1,6 @@
 # Interface: IHeapEdges
 
-Defined in: core/src/lib/Types.ts:1744
+Defined in: core/src/lib/Types.ts:1745
 
 A pseudo array containing all heap graph edges (references to heap objects
 in heap). A JS heap could contain millions of references, so memlab uses
@@ -36,7 +36,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 > **length**: `number`
 
-Defined in: core/src/lib/Types.ts:1749
+Defined in: core/src/lib/Types.ts:1750
 
 The total number of edges in heap graph (or JS references in heap
 snapshot).
@@ -47,7 +47,7 @@ snapshot).
 
 > **forEach**(`callback`): `void`
 
-Defined in: core/src/lib/Types.ts:1765
+Defined in: core/src/lib/Types.ts:1766
 
 Iterate over all array elements and apply the callback
 to each element in ascending order of element index.
@@ -72,7 +72,7 @@ then all elements after `i` won't be iterated.
 
 > **get**(`index`): [`Nullable`](../type-aliases/Nullable.md)\<[`IHeapEdge`](IHeapEdge.md)\>
 
-Defined in: core/src/lib/Types.ts:1757
+Defined in: core/src/lib/Types.ts:1758
 
 get an [IHeapEdge](IHeapEdge.md) element at the specified index
 

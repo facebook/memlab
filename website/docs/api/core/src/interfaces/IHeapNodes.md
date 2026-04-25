@@ -1,6 +1,6 @@
 # Interface: IHeapNodes
 
-Defined in: core/src/lib/Types.ts:2258
+Defined in: core/src/lib/Types.ts:2259
 
 A pseudo array containing all heap graph nodes (JS objects
 in heap). A JS heap could contain millions of objects, so memlab uses
@@ -36,7 +36,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 > **length**: `number`
 
-Defined in: core/src/lib/Types.ts:2263
+Defined in: core/src/lib/Types.ts:2264
 
 The total number of nodes in heap graph (or JS objects in heap
 snapshot).
@@ -47,7 +47,7 @@ snapshot).
 
 > **forEach**(`callback`): `void`
 
-Defined in: core/src/lib/Types.ts:2279
+Defined in: core/src/lib/Types.ts:2280
 
 Iterates over all array elements and applies the callback
 to each element in ascending order of element index.
@@ -72,7 +72,7 @@ then all elements after `i` won't be iterated.
 
 > **get**(`index`): [`Nullable`](../type-aliases/Nullable.md)\<[`IHeapNode`](IHeapNode.md)\>
 
-Defined in: core/src/lib/Types.ts:2271
+Defined in: core/src/lib/Types.ts:2272
 
 Gets an [IHeapNode](IHeapNode.md) element at the specified index.
 

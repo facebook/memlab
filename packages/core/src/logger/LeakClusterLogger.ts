@@ -13,6 +13,7 @@ import config from '../lib/Config';
 import info from '../lib/Console';
 import serializer from '../lib/Serializer';
 import utils from '../lib/Utils';
+import NumericSet from '../lib/heap-data/utils/NumericSet';
 import NormalizedTrace from '../trace-cluster/TraceBucket';
 import fs from 'fs';
 import path from 'path';
@@ -182,10 +183,15 @@ class LeakClusterLogger {
       const {path, snapshot} = cluster;
       if (snapshot) {
         // print trace in terminal
-        let trace = serializer.summarizePath(path, new Set(), snapshot, opt);
+        let trace = serializer.summarizePath(
+          path,
+          new NumericSet(),
+          snapshot,
+          opt,
+        );
         info.topLevel(stat + trace);
         // dump plain text train in files
-        trace = serializer.summarizePath(path, new Set(), snapshot);
+        trace = serializer.summarizePath(path, new NumericSet(), snapshot);
         fs.appendFileSync(config.exploreResultFile, stat + trace, {
           encoding: 'utf8',
         });

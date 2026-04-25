@@ -2,7 +2,7 @@
 
 > **Predicator**\<`T`\> = (`entity`) => `boolean`
 
-Defined in: core/src/lib/Types.ts:220
+Defined in: core/src/lib/Types.ts:221
 
 the predicate callback is used to decide if an
 entity of type `T` meets certain criteria.

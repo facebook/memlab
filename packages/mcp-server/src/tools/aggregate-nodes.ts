@@ -11,8 +11,8 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import memlabCore from '@memlab/core';
-import type {IHeapNode} from '@memlab/core';
-const {utils} = memlabCore;
+import type {IHeapNode, HeapNodeIdSet} from '@memlab/core';
+const {utils, NumericSet} = memlabCore;
 import {getSnapshot} from '../heap-state.js';
 import {
   errorResult,
@@ -25,7 +25,7 @@ import {
 interface GroupStats {
   count: number;
   sum_self_size: number;
-  node_ids: Set<number>;
+  node_ids: HeapNodeIdSet;
 }
 
 function getGroupKey(
@@ -113,7 +113,7 @@ export function registerAggregateNodes(server: McpServer): void {
           const key = getGroupKey(node, group_by);
           let stats = groups.get(key);
           if (!stats) {
-            stats = {count: 0, sum_self_size: 0, node_ids: new Set()};
+            stats = {count: 0, sum_self_size: 0, node_ids: new NumericSet()};
             groups.set(key, stats);
           }
           stats.count++;

@@ -19,7 +19,7 @@ import type {ComponentDataItem} from './ui-components/HeapViewUtils';
 import type {ObjectCategory} from './ui-components/HeapViewController';
 
 import fs from 'fs-extra';
-import {fileManager, utils, config} from '@memlab/core';
+import {fileManager, utils, config, NumericSet} from '@memlab/core';
 import {heapConfig, loadHeapSnapshot} from '@memlab/heap-analysis';
 import BaseCommand, {CommandCategory} from '../../../BaseCommand';
 import SnapshotFileOption from '../../../options/heap/SnapshotFileOption';
@@ -88,7 +88,7 @@ export default class InteractiveHeapViewCommand extends BaseCommand {
     heap: IHeapSnapshot,
   ): Promise<ComponentDataItem[]> {
     const ret: ComponentDataItem[] = [];
-    const idSet = new Set<number>();
+    const idSet = new NumericSet();
     heap.nodes.forEach(node => {
       if (utils.isDetachedDOMNode(node) || utils.isDetachedFiberNode(node)) {
         idSet.add(node.id);

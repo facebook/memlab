@@ -2,7 +2,7 @@
 
 > **InteractionsCallback** = (`page`, `args?`) => `Promise`\<`void`\>
 
-Defined in: core/src/lib/Types.ts:640
+Defined in: core/src/lib/Types.ts:641
 
 The callback defines browser interactions which are
 used by memlab to interact with the web app under test.

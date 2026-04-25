@@ -1,6 +1,6 @@
 # Class: ShapeUnboundGrowthAnalysis
 
-Defined in: heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:39
+Defined in: heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:46
 
 ## Extends
 
@@ -85,7 +85,7 @@ const result = await analysis.analyzeSnapshotsInDirectory(snapshotDirectory, {
 
 > **getCommandName**(): `string`
 
-Defined in: heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:43
+Defined in: heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:50
 
 Get the name of the heap analysis, which is also used to reference
 the analysis in memlab command-line tool.
@@ -114,7 +114,7 @@ const name = analysis.getCommandName();
 
 > **getShapesWithUnboundGrowth**(): `ShapeSummary`[]
 
-Defined in: heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:71
+Defined in: heap-analysis/src/plugins/ShapeUnboundGrowthAnalysis.ts:78
 
 #### Returns
 

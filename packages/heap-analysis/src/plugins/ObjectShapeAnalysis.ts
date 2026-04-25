@@ -19,7 +19,14 @@ import type {
 } from '@memlab/core';
 
 import chalk from 'chalk';
-import {analysis, config, utils, info, serializer} from '@memlab/core';
+import {
+  analysis,
+  config,
+  NumericSet,
+  utils,
+  info,
+  serializer,
+} from '@memlab/core';
 import BaseAnalysis from '../BaseAnalysis';
 import pluginUtils from '../PluginUtils';
 import SnapshotFileOption from '../options/HeapAnalysisSnapshotFileOption';
@@ -88,7 +95,7 @@ class ObjectShapeAnalysis extends BaseAnalysis {
         return;
       }
       const key = serializer.summarizeNodeShape(node);
-      breakdown[key] = breakdown[key] || new Set();
+      breakdown[key] = breakdown[key] || new NumericSet();
       breakdown[key].add(node.id);
       if (population[key] === void 0) {
         population[key] = {examples: [], n: 0};
@@ -143,7 +150,7 @@ class ObjectShapeAnalysis extends BaseAnalysis {
 
   /** @internal */
   private breakDownByReferrers(
-    ids: Set<IHeapNode['id']>,
+    ids: HeapNodeIdSet,
     snapshot: IHeapSnapshot,
   ): string {
     const edgeNames: Record<string, IMemoryAnalystHeapNodeReferrenceStat> =

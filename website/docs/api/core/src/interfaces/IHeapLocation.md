@@ -1,6 +1,6 @@
 # Interface: IHeapLocation
 
-Defined in: core/src/lib/Types.ts:1576
+Defined in: core/src/lib/Types.ts:1577
 
 An `IHeapLocation` instance contains a source location information
 associated with a JS heap object.
@@ -39,7 +39,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 > **column**: `number`
 
-Defined in: core/src/lib/Types.ts:1596
+Defined in: core/src/lib/Types.ts:1597
 
 get the column number
 
@@ -49,7 +49,7 @@ get the column number
 
 > **line**: `number`
 
-Defined in: core/src/lib/Types.ts:1592
+Defined in: core/src/lib/Types.ts:1593
 
 get the line number
 
@@ -59,7 +59,7 @@ get the line number
 
 > **node**: [`Nullable`](../type-aliases/Nullable.md)\<[`IHeapNode`](IHeapNode.md)\>
 
-Defined in: core/src/lib/Types.ts:1584
+Defined in: core/src/lib/Types.ts:1585
 
 get the heap object this location this location represents
 
@@ -69,7 +69,7 @@ get the heap object this location this location represents
 
 > **script\_id**: `number`
 
-Defined in: core/src/lib/Types.ts:1588
+Defined in: core/src/lib/Types.ts:1589
 
 get the script ID of the source file
 
@@ -79,7 +79,7 @@ get the script ID of the source file
 
 > **snapshot**: [`IHeapSnapshot`](IHeapSnapshot.md)
 
-Defined in: core/src/lib/Types.ts:1580
+Defined in: core/src/lib/Types.ts:1581
 
 get the [IHeapSnapshot](IHeapSnapshot.md) containing this location instance
 
@@ -89,7 +89,7 @@ get the [IHeapSnapshot](IHeapSnapshot.md) containing this location instance
 
 > **getJSONifyableObject**(): `AnyRecord`
 
-Defined in: core/src/lib/Types.ts:1604
+Defined in: core/src/lib/Types.ts:1605
 
 convert to a concise readable object that can be used for serialization
 (like calling `JSON.stringify(node, ...args)`).
@@ -107,7 +107,7 @@ captured by the hosting object.
 
 > **toJSONString**(...`args`): `string`
 
-Defined in: core/src/lib/Types.ts:1617
+Defined in: core/src/lib/Types.ts:1618
 
 convert to a concise readable string output
 (like calling `JSON.stringify(node, ...args)`).

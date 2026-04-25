@@ -2,7 +2,7 @@
 
 > **ReferenceFilterCallback** = (`edge`, `snapshot`, `isReferenceUsedByDefault`) => `boolean`
 
-Defined in: core/src/lib/Types.ts:624
+Defined in: core/src/lib/Types.ts:625
 
 Callback that can be used to define a logic to decide whether
 a reference should be filtered (included) for some

@@ -10,8 +10,8 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import memlabCore from '@memlab/core';
-import type {IHeapNode} from '@memlab/core';
-const {utils} = memlabCore;
+import type {IHeapNode, HeapNodeIdSet} from '@memlab/core';
+const {utils, NumericSet} = memlabCore;
 import {getSnapshot, getFilePath} from '../heap-state.js';
 import {
   formatBytes,
@@ -35,7 +35,7 @@ export function registerSnapshotSummary(server: McpServer): void {
         let totalSelfSize = 0;
         const typeStats = new Map<
           string,
-          {count: number; self_size: number; node_ids: Set<number>}
+          {count: number; self_size: number; node_ids: HeapNodeIdSet}
         >();
 
         snapshot.nodes.forEach(node => {
@@ -43,7 +43,7 @@ export function registerSnapshotSummary(server: McpServer): void {
           totalSelfSize += node.self_size;
           let stats = typeStats.get(node.type);
           if (!stats) {
-            stats = {count: 0, self_size: 0, node_ids: new Set()};
+            stats = {count: 0, self_size: 0, node_ids: new NumericSet()};
             typeStats.set(node.type, stats);
           }
           stats.count++;

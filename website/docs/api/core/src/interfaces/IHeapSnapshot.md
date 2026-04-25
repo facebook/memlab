@@ -1,6 +1,6 @@
 # Interface: IHeapSnapshot
 
-Defined in: core/src/lib/Types.ts:1273
+Defined in: core/src/lib/Types.ts:1274
 
 A heap snapshot is generally a graph where graph nodes are JS heap objects
 and graph edges are JS references among JS heap objects. For more details
@@ -13,7 +13,7 @@ on the structure of nodes and edges in the heap graph, check out
 
 > **edges**: [`IHeapEdges`](IHeapEdges.md)
 
-Defined in: core/src/lib/Types.ts:1334
+Defined in: core/src/lib/Types.ts:1335
 
 A pseudo array containing all heap graph edges (references to heap objects
 in heap). A JS heap could contain millions of references, so memlab uses
@@ -45,7 +45,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 > **nodes**: [`IHeapNodes`](IHeapNodes.md)
 
-Defined in: core/src/lib/Types.ts:1308
+Defined in: core/src/lib/Types.ts:1309
 
 A pseudo array containing all heap graph nodes (JS objects in heap).
 A JS heap could contain millions of heap objects, so memlab uses
@@ -77,7 +77,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 > **getAnyObjectWithClassName**(`className`): [`Nullable`](../type-aliases/Nullable.md)\<[`IHeapNode`](IHeapNode.md)\>
 
-Defined in: core/src/lib/Types.ts:1475
+Defined in: core/src/lib/Types.ts:1476
 
 Search for the heap and get one of the JS object instances with
 a specified constructor name (if there is any).
@@ -123,7 +123,7 @@ class TestObject {
 
 > **getNodeById**(`id`): [`Nullable`](../type-aliases/Nullable.md)\<[`IHeapNode`](IHeapNode.md)\>
 
-Defined in: core/src/lib/Types.ts:1356
+Defined in: core/src/lib/Types.ts:1357
 
 If you have the id of a heap node (JS object in heap), use this API
 to get an [IHeapNode](IHeapNode.md) associated with the id.
@@ -163,7 +163,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 > **getNodesByIds**(`ids`): [`Nullable`](../type-aliases/Nullable.md)\<[`IHeapNode`](IHeapNode.md)\>[]
 
-Defined in: core/src/lib/Types.ts:1382
+Defined in: core/src/lib/Types.ts:1383
 
 Given an array of ids of heap nodes (JS objects in heap), use this API
 to get an array of those heap nodes.
@@ -207,7 +207,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 > **getNodesByIdSet**(`ids`): `Set`\<[`IHeapNode`](IHeapNode.md)\>
 
-Defined in: core/src/lib/Types.ts:1408
+Defined in: core/src/lib/Types.ts:1409
 
 Given a set of ids of heap nodes (JS objects in heap), use this API
 to get a set of those heap nodes.
@@ -251,7 +251,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 > **hasObjectWithClassName**(`className`): `boolean`
 
-Defined in: core/src/lib/Types.ts:1447
+Defined in: core/src/lib/Types.ts:1448
 
 Search for the heap and check if there is any JS object instance with
 a specified constructor name.
@@ -308,7 +308,7 @@ test('memory test with heap assertion', async () => {
 
 > **hasObjectWithPropertyName**(`nameOrIndex`): `boolean`
 
-Defined in: core/src/lib/Types.ts:1501
+Defined in: core/src/lib/Types.ts:1502
 
 Search for the heap and check if there is any JS object instance with
 a specified property name.
@@ -352,7 +352,7 @@ import {getFullHeapFromFile} from '@memlab/heap-analysis';
 
 > **hasObjectWithTag**(`tag`): `boolean`
 
-Defined in: core/src/lib/Types.ts:1539
+Defined in: core/src/lib/Types.ts:1540
 
 Search for the heap and check if there is any JS object instance with
 a marker tagged by [tagObject](../functions/tagObject.md).
