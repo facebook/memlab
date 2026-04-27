@@ -21,7 +21,8 @@
       "@memlab/cli": ["./packages/cli/src/"],
       "@memlab/heap-analysis": ["./packages/heap-analysis/src/"],
       "@memlab/memlab": ["./packages/memlab/src/"],
-      "@memlab/mcp-server": ["./packages/mcp-server/src/"]
+      "@memlab/mcp-server": ["./packages/mcp-server/src/"],
+      "@memlab/playwright": ["./packages/playwright/src/"]
     }
   },
   "include": ["./src", "./packages/**/src", "./node_modules/@types/puppeteer/index.d.ts"],
