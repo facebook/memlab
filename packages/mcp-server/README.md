@@ -2,6 +2,10 @@
 
 An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that wraps [MemLab](https://facebook.github.io/memlab/)'s heap analysis APIs, giving AI coding assistants (Claude Code, Cursor, etc.) interactive tools to explore JavaScript heap snapshots, find memory leaks, and identify optimization opportunities.
 
+## Prerequisites
+
+The MCP server loads and analyzes large heap snapshots in memory, which can exceed Node.js's default heap limit. You need to configure `--max-old-space-size=8192` (or higher) to avoid out-of-memory crashes. The configuration examples below include this setting.
+
 ## Quick Start
 
 ### Option 1: npx (no install)
@@ -14,7 +18,10 @@ Add to your Claude Code MCP config (`~/.claude.json` or `.mcp.json`):
     "memlab": {
       "type": "stdio",
       "command": "npx",
-      "args": ["@memlab/mcp-server"]
+      "args": ["@memlab/mcp-server"],
+      "env": {
+        "NODE_OPTIONS": "--max-old-space-size=8192"
+      }
     }
   }
 }
@@ -33,7 +40,10 @@ Then configure (`~/.claude.json` or `.mcp.json`):
   "mcpServers": {
     "memlab": {
       "type": "stdio",
-      "command": "memlab-mcp"
+      "command": "memlab-mcp",
+      "env": {
+        "NODE_OPTIONS": "--max-old-space-size=8192"
+      }
     }
   }
 }
@@ -56,7 +66,7 @@ Then configure (`~/.claude.json` or `.mcp.json`):
     "memlab": {
       "type": "stdio",
       "command": "node",
-      "args": ["/path/to/memlab/packages/mcp/dist/index.js"]
+      "args": ["--max-old-space-size=8192", "/path/to/memlab/packages/mcp/dist/index.js"]
     }
   }
 }
