@@ -11,7 +11,8 @@
 
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
-import {config, ErrorHandling} from '@memlab/core';
+import memlabCore from '@memlab/core';
+const {config, ErrorHandling} = memlabCore;
 
 // Ensure errors throw exceptions instead of calling process.exit(1),
 // so the MCP server can return proper error responses to the client.
