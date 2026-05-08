@@ -8,17 +8,20 @@ The MCP server loads and analyzes large heap snapshots in memory, which can exce
 
 ## Quick Start
 
-### Option 1: npx (no install)
+### Option 1: Global install
 
-Add to your Claude Code MCP config (`~/.claude.json` or `.mcp.json`):
+```bash
+npm install -g @memlab/mcp-server
+```
+
+Then configure (`~/.claude.json` for Claude Code, or `.mcp.json` for Cursor/Windsurf):
 
 ```json
 {
   "mcpServers": {
     "memlab": {
       "type": "stdio",
-      "command": "npx",
-      "args": ["@memlab/mcp-server"],
+      "command": "memlab-mcp",
       "env": {
         "NODE_OPTIONS": "--max-old-space-size=8192"
       }
@@ -27,20 +30,17 @@ Add to your Claude Code MCP config (`~/.claude.json` or `.mcp.json`):
 }
 ```
 
-### Option 2: Global install
+### Option 2: npx (no install)
 
-```bash
-npm install -g @memlab/mcp-server
-```
-
-Then configure (`~/.claude.json` or `.mcp.json`):
+Add to your Claude Code MCP config (`~/.claude.json` for Claude Code, or `.mcp.json` for Cursor/Windsurf):
 
 ```json
 {
   "mcpServers": {
     "memlab": {
       "type": "stdio",
-      "command": "memlab-mcp",
+      "command": "npx",
+      "args": ["@memlab/mcp-server"],
       "env": {
         "NODE_OPTIONS": "--max-old-space-size=8192"
       }
@@ -58,7 +58,7 @@ npm install
 npm run build
 ```
 
-Then configure (`~/.claude.json` or `.mcp.json`):
+Then configure (`~/.claude.json` for Claude Code, or `.mcp.json` for Cursor/Windsurf):
 
 ```json
 {
@@ -66,7 +66,7 @@ Then configure (`~/.claude.json` or `.mcp.json`):
     "memlab": {
       "type": "stdio",
       "command": "node",
-      "args": ["--max-old-space-size=8192", "/path/to/memlab/packages/mcp/dist/index.js"]
+      "args": ["--max-old-space-size=8192", "/path/to/memlab/packages/mcp-server/dist/index.js"]
     }
   }
 }
