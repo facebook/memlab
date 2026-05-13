@@ -12,7 +12,12 @@ import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode, IHeapEdge} from '@memlab/core';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
-import {formatNodeInline, errorResult, textResult} from '../utils.js';
+import {
+  formatNodeInline,
+  formatBytes,
+  errorResult,
+  textResult,
+} from '../utils.js';
 
 export function registerRetainerTrace(server: McpServer): void {
   server.tool(
@@ -26,8 +31,15 @@ export function registerRetainerTrace(server: McpServer): void {
         .describe(
           'Maximum number of nodes in the trace. When set, shows only the first N nodes from the GC root. Useful for long traces where only the first few hops matter.',
         ),
+      show_sizes: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'Show retained size at each node in the trace (default true). Makes it easy to see where memory concentrates along the path.',
+        ),
     },
-    async ({node_id, max_depth}) => {
+    async ({node_id, max_depth, show_sizes}) => {
       try {
         const snapshot = getSnapshot();
         const node = snapshot.getNodeById(node_id);
@@ -75,39 +87,70 @@ export function registerRetainerTrace(server: McpServer): void {
           ? reverseItems.slice(0, max_depth)
           : reverseItems;
 
-        // Build visual chain
-        const parts: string[] = [];
-        for (let i = 0; i < items.length; i++) {
-          const item = items[i];
-          parts.push(
-            formatNodeInline(item.node.id, item.node.name, item.node.type),
-          );
-          if (item.edgeName != null && i < items.length - 1) {
-            parts.push(` --${item.edgeName}--> `);
-          }
-        }
-        if (truncated && max_depth != null) {
-          parts.push(
-            ` --...--> (${fullLength - max_depth} more nodes) --...--> `,
-          );
-          const target = reverseItems[reverseItems.length - 1];
-          parts.push(
-            formatNodeInline(
-              target.node.id,
-              target.node.name,
-              target.node.type,
-            ),
-          );
-        }
-
         const depthNote = truncated
           ? `, showing first ${max_depth} of ${fullLength}`
           : '';
         const lines = [
           `Retainer trace for @${node_id} (${fullLength} nodes${depthNote}):`,
           '',
-          parts.join(''),
         ];
+
+        if (show_sizes) {
+          // Vertical format with sizes for readability
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            const n = item.node;
+            const sizeStr = formatBytes(n.retainedSize);
+            const nodeStr = formatNodeInline(n.id, n.name, n.type, n.self_size);
+            if (i === 0) {
+              lines.push(`${nodeStr} [${sizeStr}]`);
+            } else {
+              const prevItem = items[i - 1];
+              const edgeLabel = prevItem.edgeName ?? '?';
+              lines.push(`  ← ${edgeLabel} ← ${nodeStr} [${sizeStr}]`);
+            }
+          }
+          if (truncated && max_depth != null) {
+            lines.push(`  ← ... (${fullLength - max_depth} more nodes) ...`);
+            const target = reverseItems[reverseItems.length - 1];
+            const tn = target.node;
+            lines.push(
+              `  ← ${formatNodeInline(tn.id, tn.name, tn.type, tn.self_size)} [${formatBytes(tn.retainedSize)}]`,
+            );
+          }
+        } else {
+          // Compact inline chain format
+          const parts: string[] = [];
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            parts.push(
+              formatNodeInline(
+                item.node.id,
+                item.node.name,
+                item.node.type,
+                item.node.self_size,
+              ),
+            );
+            if (item.edgeName != null && i < items.length - 1) {
+              parts.push(` --${item.edgeName}--> `);
+            }
+          }
+          if (truncated && max_depth != null) {
+            parts.push(
+              ` --...--> (${fullLength - max_depth} more nodes) --...--> `,
+            );
+            const target = reverseItems[reverseItems.length - 1];
+            parts.push(
+              formatNodeInline(
+                target.node.id,
+                target.node.name,
+                target.node.type,
+                target.node.self_size,
+              ),
+            );
+          }
+          lines.push(parts.join(''));
+        }
 
         return textResult(lines.join('\n'));
       } catch (err) {
