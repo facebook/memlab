@@ -18,6 +18,7 @@ import {
   markdownTable,
   errorResult,
   textResult,
+  toolResult,
 } from '../utils.js';
 
 export function registerObjectShape(server: McpServer): void {
@@ -96,7 +97,7 @@ export function registerObjectShape(server: McpServer): void {
         });
         lines.push(markdownTable(headers, rows, rightCols));
 
-        return textResult(lines.join('\n'));
+        return toolResult(lines.join('\n'));
       } catch (err) {
         return errorResult(err);
       }

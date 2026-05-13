@@ -17,6 +17,7 @@ import {
   formatNumber,
   errorResult,
   textResult,
+  toolResult,
 } from '../utils.js';
 import type {NodeDetail} from '../utils.js';
 
@@ -62,7 +63,7 @@ export function registerGetProperty(server: McpServer): void {
             )
             .slice(0, 20)
             .map(e => `${e.type}:${String(e.name_or_index)}`);
-          return textResult(
+          return toolResult(
             `Property "${property_name}" not found on @${node_id} ${node.name}${edge_type ? ` (type filter: ${edge_type})` : ''}\n\nAvailable properties: ${available.join(', ')}`,
           );
         }
@@ -103,7 +104,7 @@ export function registerGetProperty(server: McpServer): void {
         if (matching.length === 1) {
           const edge = matching[0];
           const detail = serializeNodeDetail(edge.toNode);
-          return textResult(
+          return toolResult(
             formatTarget(detail, String(edge.name_or_index), edge.type),
           );
         }
@@ -113,7 +114,7 @@ export function registerGetProperty(server: McpServer): void {
           const detail = serializeNodeDetail(edge.toNode);
           return `### Match ${i + 1}\n${formatTarget(detail, String(edge.name_or_index), edge.type)}`;
         });
-        return textResult(sections.join('\n\n'));
+        return toolResult(sections.join('\n\n'));
       } catch (err) {
         return errorResult(err);
       }

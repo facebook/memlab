@@ -18,6 +18,7 @@ import {
   formatNodeSummaryTable,
   errorResult,
   textResult,
+  toolResult,
 } from '../utils.js';
 
 export function registerFindByProperty(server: McpServer): void {
@@ -86,11 +87,11 @@ export function registerFindByProperty(server: McpServer): void {
 
         const summaries = results.map(serializeNodeSummary);
         if (summaries.length === 0) {
-          return textResult(
+          return toolResult(
             `No objects found with property "${property_name}"${edge_type ? ` (edge type: ${edge_type})` : ''}`,
           );
         }
-        return textResult(
+        return toolResult(
           `Found ${summaries.length} objects with property "${property_name}"${edge_type ? ` (edge type: ${edge_type})` : ''}\n\n${formatNodeSummaryTable(summaries)}`,
         );
       } catch (err) {

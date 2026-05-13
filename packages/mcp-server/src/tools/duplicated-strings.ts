@@ -11,7 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
-import {formatBytes, errorResult, textResult} from '../utils.js';
+import {formatBytes, errorResult, textResult, toolResult} from '../utils.js';
 
 export function registerDuplicatedStrings(server: McpServer): void {
   server.tool(
@@ -79,7 +79,7 @@ export function registerDuplicatedStrings(server: McpServer): void {
           }));
 
         if (duplicated.length === 0) {
-          return textResult('No duplicated strings found.');
+          return toolResult('No duplicated strings found.');
         }
         const lines = duplicated.map((d, i) => {
           const val =
@@ -87,8 +87,21 @@ export function registerDuplicatedStrings(server: McpServer): void {
           const nodeIds = d.example_node_ids.map(id => `@${id}`).join(', ');
           return `${i + 1}. "${val}" x ${d.count} copies, ${d.total_size_formatted} total (nodes: ${nodeIds})`;
         });
-        return textResult(
-          `Duplicated strings (${duplicated.length} entries):\n\n${lines.join('\n')}`,
+        const hasHeavyDups = duplicated.some(d => d.count >= 1000);
+        const suggestions: string[] = [];
+        if (hasHeavyDups) {
+          suggestions.push(
+            '**Suggested action:** Heavily duplicated strings often come from `JSON.parse()` or API responses. ' +
+              'Consider string interning with a `Map<string, string>` pool applied at ingestion time, ' +
+              'or deduplicating at the data source.',
+          );
+        }
+
+        const body = `Duplicated strings (${duplicated.length} entries):\n\n${lines.join('\n')}`;
+        return toolResult(
+          suggestions.length > 0
+            ? `${body}\n\n---\n\n${suggestions.join('\n')}`
+            : body,
         );
       } catch (err) {
         return errorResult(err);

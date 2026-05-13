@@ -17,6 +17,7 @@ import {
   markdownTable,
   errorResult,
   textResult,
+  toolResult,
 } from '../utils.js';
 
 function extractPrefix(value: string, prefixLen: number): string {
@@ -112,7 +113,7 @@ export function registerStringPatterns(server: McpServer): void {
           .slice(0, limit);
 
         if (sorted.length === 0) {
-          return textResult(
+          return toolResult(
             'No string groups found matching the criteria. Try lowering min_count or prefix_length.',
           );
         }
@@ -143,7 +144,7 @@ export function registerStringPatterns(server: McpServer): void {
           ];
         });
 
-        return textResult(
+        return toolResult(
           `String patterns (prefix_length=${prefix_length}, ${formatNumber(filtered.length)} groups matching filters, showing ${rows.length})\n\n${markdownTable(headers, rows, rightCols)}`,
         );
       } catch (err) {

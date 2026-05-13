@@ -17,6 +17,7 @@ import {
   markdownTable,
   errorResult,
   textResult,
+  toolResult,
 } from '../utils.js';
 
 export function registerGetReferences(server: McpServer): void {
@@ -68,7 +69,7 @@ export function registerGetReferences(server: McpServer): void {
         ]);
         lines.push(markdownTable(headers, rows, rightCols));
 
-        return textResult(lines.join('\n'));
+        return toolResult(lines.join('\n'));
       } catch (err) {
         return errorResult(err);
       }

@@ -17,6 +17,7 @@ import {
   formatNumber,
   errorResult,
   textResult,
+  toolResult,
 } from '../utils.js';
 
 export function registerGetNode(server: McpServer): void {
@@ -57,7 +58,7 @@ export function registerGetNode(server: McpServer): void {
               : d.string_value;
           lines.push(`**String Value:** "${val}"`);
         }
-        return textResult(lines.join('\n'));
+        return toolResult(lines.join('\n'));
       } catch (err) {
         return errorResult(err);
       }

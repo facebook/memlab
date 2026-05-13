@@ -24,6 +24,7 @@ import {
   formatQueryNodesResult,
   errorResult,
   textResult,
+  toolResult,
 } from '../utils.js';
 import type {OutputMode} from '../utils.js';
 
@@ -605,7 +606,7 @@ export function registerReports(server: McpServer): void {
     async ({report, limit}) => {
       try {
         if (report === 'list') {
-          return textResult(runList());
+          return toolResult(runList());
         }
 
         if (report === 'full_analysis') {
@@ -617,7 +618,7 @@ export function registerReports(server: McpServer): void {
               return `## ${r.name}\n\nError: ${msg}`;
             }
           });
-          return textResult(
+          return toolResult(
             `# Full Memory Analysis\n\n${sections.join('\n\n---\n\n')}`,
           );
         }
@@ -625,11 +626,11 @@ export function registerReports(server: McpServer): void {
         // Individual report
         const def = REPORTS.find(r => r.name === report);
         if (!def) {
-          return textResult(
+          return toolResult(
             `Unknown report "${report}". Use report: "list" to see available reports.`,
           );
         }
-        return textResult(def.run(limit));
+        return toolResult(def.run(limit));
       } catch (err) {
         return errorResult(err);
       }

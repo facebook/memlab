@@ -17,6 +17,7 @@ import {
   formatBytes,
   errorResult,
   textResult,
+  toolResult,
 } from '../utils.js';
 
 interface TraceStep {
@@ -74,15 +75,26 @@ function formatTraceChain(steps: TraceStep[]): string {
 export function registerRetainerSummary(server: McpServer): void {
   server.tool(
     'memlab_retainer_summary',
-    'Trace retainer paths for multiple instances of a class and group by common patterns. Instead of tracing one node at a time, this samples N instances and shows how many share each retainer path pattern. Essential for confirming whether leaked objects share a single root cause.',
+    'Trace retainer paths for multiple instances of a class (or a specific set of node IDs) and group by common patterns. Instead of tracing one node at a time, this samples N instances and shows how many share each retainer path pattern. Essential for confirming whether leaked objects share a single root cause. Use node_ids to cluster retainer patterns for specific nodes (e.g., example_node_ids from duplicated_strings).',
     {
-      class_name: z.string().describe('The constructor/class name to analyze'),
+      class_name: z
+        .string()
+        .optional()
+        .describe(
+          'The constructor/class name to analyze. Required if node_ids is not provided.',
+        ),
+      node_ids: z
+        .array(z.number())
+        .optional()
+        .describe(
+          'Specific node IDs to analyze instead of searching by class name. Use this with example_node_ids from duplicated_strings or other tools.',
+        ),
       sample: z
         .number()
         .optional()
         .default(10)
         .describe(
-          'Number of instances to sample, picked from the largest by retained size (default 10)',
+          'Number of instances to sample, picked from the largest by retained size (default 10). Only applies when using class_name.',
         ),
       max_depth: z
         .number()
@@ -91,18 +103,35 @@ export function registerRetainerSummary(server: McpServer): void {
           'Truncate each retainer trace to this many nodes from the GC root before grouping. Useful for grouping traces that diverge only in the last few hops.',
         ),
     },
-    async ({class_name, sample, max_depth}) => {
+    async ({class_name, node_ids, sample, max_depth}) => {
       try {
         const snapshot = getSnapshot();
 
-        const nodes = filterLargestObjects(
-          snapshot,
-          node => node.name === class_name,
-          sample,
-        );
+        let nodes: IHeapNode[];
+        let label: string;
+
+        if (node_ids && node_ids.length > 0) {
+          nodes = [];
+          for (const id of node_ids) {
+            const node = snapshot.getNodeById(id);
+            if (node) nodes.push(node);
+          }
+          label = `${nodes.length} specified node(s)`;
+        } else if (class_name) {
+          nodes = filterLargestObjects(
+            snapshot,
+            node => node.name === class_name,
+            sample,
+          );
+          label = `"${class_name}"`;
+        } else {
+          return errorResult(
+            new Error('Either class_name or node_ids must be provided.'),
+          );
+        }
 
         if (nodes.length === 0) {
-          return textResult(`No objects found with name "${class_name}"`);
+          return toolResult(`No objects found for ${label}`);
         }
 
         const patterns = new Map<
@@ -149,7 +178,7 @@ export function registerRetainerSummary(server: McpServer): void {
         const sorted = [...patterns.values()].sort((a, b) => b.count - a.count);
 
         const lines = [
-          `Retainer summary for "${class_name}" (${nodes.length} sampled${max_depth ? `, depth limited to ${max_depth}` : ''})`,
+          `Retainer summary for ${label} (${nodes.length} sampled${max_depth ? `, depth limited to ${max_depth}` : ''})`,
           '',
         ];
 
@@ -186,7 +215,7 @@ export function registerRetainerSummary(server: McpServer): void {
           );
         }
 
-        return textResult(lines.join('\n'));
+        return toolResult(lines.join('\n'));
       } catch (err) {
         return errorResult(err);
       }

@@ -22,6 +22,7 @@ import {
   markdownTable,
   errorResult,
   textResult,
+  toolResult,
 } from '../utils.js';
 
 interface ClassStats {
@@ -104,7 +105,35 @@ export function registerDiffSnapshots(server: McpServer): void {
         ]);
         const beforeHist = buildHistogram(beforeSnapshot);
         const afterHist = buildHistogram(afterSnapshot);
-        setSnapshot(afterSnapshot, after_path);
+
+        // Make "after" the active snapshot
+        let afterNodeCount = 0;
+        let afterEdgeCount = 0;
+        let afterTotalSize = 0;
+        afterSnapshot.nodes.forEach(node => {
+          afterNodeCount++;
+          afterTotalSize += node.self_size;
+        });
+        afterSnapshot.edges.forEach(() => {
+          afterEdgeCount++;
+        });
+        let hasWindow = false;
+        let hasModule = false;
+        afterSnapshot.nodes.forEach(node => {
+          if (hasWindow) return;
+          if (node.name.startsWith('Window ') && node.type === 'object')
+            hasWindow = true;
+          if (node.name === 'Module' && node.type === 'object' && !hasModule)
+            hasModule = true;
+        });
+        const afterEnv = hasWindow ? 'browser' : hasModule ? 'node' : 'unknown';
+        setSnapshot(afterSnapshot, after_path, {
+          fileName: path.basename(after_path),
+          nodeCount: afterNodeCount,
+          edgeCount: afterEdgeCount,
+          totalSize: afterTotalSize,
+          env: afterEnv as 'browser' | 'node' | 'unknown',
+        });
 
         // Compute deltas
         const allKeys = new Set([...beforeHist.keys(), ...afterHist.keys()]);
@@ -260,7 +289,7 @@ export function registerDiffSnapshots(server: McpServer): void {
           `\n*The "after" snapshot is now active for further analysis.*`,
         );
 
-        return textResult(lines.join('\n'));
+        return toolResult(lines.join('\n'));
       } catch (err) {
         return errorResult(err);
       }

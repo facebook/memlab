@@ -17,6 +17,7 @@ import {
   formatQueryNodesResult,
   errorResult,
   textResult,
+  toolResult,
 } from '../utils.js';
 import type {OutputMode} from '../utils.js';
 
@@ -104,7 +105,7 @@ export function registerSearchNodes(server: McpServer): void {
           outputMode: output_mode as OutputMode,
         });
 
-        return textResult(formatQueryNodesResult(result, offset));
+        return toolResult(formatQueryNodesResult(result, offset));
       } catch (err) {
         return errorResult(err);
       }

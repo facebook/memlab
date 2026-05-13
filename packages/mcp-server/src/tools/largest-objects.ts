@@ -20,6 +20,7 @@ import {
   markdownTable,
   errorResult,
   textResult,
+  toolResult,
 } from '../utils.js';
 
 function sanitizeForTable(s: string): string {
@@ -119,7 +120,7 @@ export function registerLargestObjects(server: McpServer): void {
         if (exclude_types) filterParts.push(`excluding ${exclude_types}`);
         const filterNote =
           filterParts.length > 0 ? ` (${filterParts.join(', ')})` : '';
-        return textResult(
+        return toolResult(
           `Top ${rows.length} objects by retained size${filterNote}\n\n${markdownTable(headers, rows, rightCols)}`,
         );
       } catch (err) {

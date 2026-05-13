@@ -17,6 +17,7 @@ import {getSnapshot} from '../heap-state.js';
 import {
   errorResult,
   textResult,
+  toolResult,
   serializeNodeSummary,
   serializeNodeDetail,
   formatBytes,
@@ -225,7 +226,7 @@ export function registerForEach(server: McpServer): void {
         }
 
         output = truncate(output, MAX_OUTPUT_SIZE);
-        return textResult(output);
+        return toolResult(output);
       } catch (err) {
         if (
           err instanceof Error &&

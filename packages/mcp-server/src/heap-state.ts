@@ -10,8 +10,19 @@
 
 import type {IHeapSnapshot} from '@memlab/core';
 
+export type SnapshotEnv = 'browser' | 'node' | 'unknown';
+
+export interface SnapshotMetadata {
+  filePath: string;
+  fileName: string;
+  nodeCount: number;
+  edgeCount: number;
+  totalSize: number;
+  env: SnapshotEnv;
+}
+
 let currentSnapshot: IHeapSnapshot | null = null;
-let currentFilePath: string | null = null;
+let currentMetadata: SnapshotMetadata | null = null;
 
 export function getSnapshot(): IHeapSnapshot {
   if (!currentSnapshot) {
@@ -21,10 +32,22 @@ export function getSnapshot(): IHeapSnapshot {
 }
 
 export function getFilePath(): string | null {
-  return currentFilePath;
+  return currentMetadata?.filePath ?? null;
 }
 
-export function setSnapshot(snapshot: IHeapSnapshot, filePath: string): void {
+export function getSnapshotEnv(): SnapshotEnv {
+  return currentMetadata?.env ?? 'unknown';
+}
+
+export function getSnapshotMetadata(): SnapshotMetadata | null {
+  return currentMetadata;
+}
+
+export function setSnapshot(
+  snapshot: IHeapSnapshot,
+  filePath: string,
+  metadata: Omit<SnapshotMetadata, 'filePath'>,
+): void {
   currentSnapshot = snapshot;
-  currentFilePath = filePath;
+  currentMetadata = {filePath, ...metadata};
 }

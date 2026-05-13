@@ -10,8 +10,14 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
-import {getSnapshot} from '../heap-state.js';
-import {formatBytes, markdownTable, errorResult, textResult} from '../utils.js';
+import {getSnapshot, getSnapshotEnv} from '../heap-state.js';
+import {
+  formatBytes,
+  markdownTable,
+  errorResult,
+  textResult,
+  toolResult,
+} from '../utils.js';
 
 // Common built-in Window properties that should be excluded.
 // This is a subset of the ~780 known browser globals from MemLab's BuiltInGlobalVariables.
@@ -267,7 +273,7 @@ const BUILTIN_GLOBALS = new Set([
 export function registerGlobalVariables(server: McpServer): void {
   server.tool(
     'memlab_global_variables',
-    'Find non-built-in global variables on the Window object, sorted by retained size. These are application-specific globals that may indicate memory issues.',
+    'Find non-built-in global variables on the Window object (browser) or global object (Node.js), sorted by retained size. These are application-specific globals that may indicate memory issues.',
     {
       limit: z
         .number()
@@ -287,8 +293,14 @@ export function registerGlobalVariables(server: McpServer): void {
           retained_size: number;
         }> = [];
 
+        const env = getSnapshotEnv();
+        const globalMatcher =
+          env === 'node'
+            ? (name: string) => name === 'global' || name === 'Global'
+            : (name: string) => name.startsWith('Window ');
+
         snapshot.nodes.forEach(node => {
-          if (!node.name.startsWith('Window ')) return;
+          if (!globalMatcher(node.name)) return;
 
           for (const edge of node.references) {
             const edgeName = String(edge.name_or_index);
@@ -322,7 +334,7 @@ export function registerGlobalVariables(server: McpServer): void {
         const topGlobals = globals.slice(0, limit);
 
         if (topGlobals.length === 0) {
-          return textResult('No non-built-in global variables found.');
+          return toolResult('No non-built-in global variables found.');
         }
         const headers = [
           'Variable',
@@ -339,7 +351,7 @@ export function registerGlobalVariables(server: McpServer): void {
           g.target_type,
           formatBytes(g.retained_size),
         ]);
-        return textResult(
+        return toolResult(
           `Global variables (${topGlobals.length} found)\n\n${markdownTable(headers, rows, rightCols)}`,
         );
       } catch (err) {

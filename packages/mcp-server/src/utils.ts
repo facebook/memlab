@@ -9,6 +9,7 @@
  */
 
 import type {IHeapNode, IHeapEdge, IHeapSnapshot} from '@memlab/core';
+import {getSnapshotMetadata} from './heap-state.js';
 
 export interface NodeSummary {
   id: number;
@@ -311,8 +312,26 @@ export function formatQueryNodesResult(
   return `Total matching nodes: ${formatNumber(result.total_count)}`;
 }
 
+export function snapshotHeader(): string {
+  const meta = getSnapshotMetadata();
+  if (!meta) return '';
+  const envLabel =
+    meta.env === 'browser'
+      ? 'Browser'
+      : meta.env === 'node'
+        ? 'Node.js'
+        : 'Unknown';
+  return `> Snapshot: ${meta.fileName} (${formatBytes(meta.totalSize)}, ${formatNumber(meta.nodeCount)} nodes, ${envLabel})`;
+}
+
 export function textResult(text: string) {
   return {content: [{type: 'text' as const, text}]};
+}
+
+export function toolResult(text: string) {
+  const header = snapshotHeader();
+  const body = header ? `${header}\n\n${text}` : text;
+  return {content: [{type: 'text' as const, text: body}]};
 }
 
 export function jsonResult(data: unknown) {

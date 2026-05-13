@@ -17,6 +17,7 @@ import {getSnapshot} from '../heap-state.js';
 import {
   errorResult,
   textResult,
+  toolResult,
   serializeNodeSummary,
   serializeNodeDetail,
   formatBytes,
@@ -140,7 +141,7 @@ export function registerEval(server: McpServer): void {
           output += '\n\n--- console output ---\n' + consolePart;
         }
 
-        return textResult(output);
+        return toolResult(output);
       } catch (err) {
         if (
           err instanceof Error &&

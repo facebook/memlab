@@ -19,6 +19,7 @@ import {
   formatNodeInline,
   errorResult,
   textResult,
+  toolResult,
   formatBytes,
   formatNumber,
 } from '../utils.js';
@@ -88,7 +89,7 @@ export function registerDominatorSubtree(server: McpServer): void {
         } else {
           lines.push('No dominated nodes found.');
         }
-        return textResult(lines.join('\n'));
+        return toolResult(lines.join('\n'));
       } catch (err) {
         return errorResult(err);
       }

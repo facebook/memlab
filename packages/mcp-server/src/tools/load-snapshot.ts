@@ -16,6 +16,7 @@ import {z} from 'zod';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
 const {getFullHeapFromFile} = memlabHeapAnalysis;
 import {setSnapshot} from '../heap-state.js';
+import type {SnapshotEnv} from '../heap-state.js';
 import {
   formatBytes,
   formatNumber,
@@ -51,6 +52,28 @@ function findLargestObject(snapshot: IHeapSnapshot): LargestObjInfo | null {
     }
   });
   return best;
+}
+
+function detectEnv(snapshot: IHeapSnapshot): SnapshotEnv {
+  let hasWindow = false;
+  let hasModule = false;
+  snapshot.nodes.forEach(node => {
+    if (hasWindow) return;
+    if (node.name.startsWith('Window ') && node.type === 'object') {
+      hasWindow = true;
+    }
+    if (
+      node.name === 'Module' &&
+      node.type === 'object' &&
+      !hasWindow &&
+      !hasModule
+    ) {
+      hasModule = true;
+    }
+  });
+  if (hasWindow) return 'browser';
+  if (hasModule) return 'node';
+  return 'unknown';
 }
 
 function quickDiagnosis(
@@ -131,7 +154,6 @@ export function registerLoadSnapshot(server: McpServer): void {
           return errorResult(new Error(`File not found: ${resolved}`));
         }
         const snapshot = await getFullHeapFromFile(resolved);
-        setSnapshot(snapshot, file_path);
 
         let nodeCount = 0;
         let edgeCount = 0;
@@ -144,8 +166,24 @@ export function registerLoadSnapshot(server: McpServer): void {
           edgeCount++;
         });
 
+        const env = detectEnv(snapshot);
+        const fileName = path.basename(file_path);
+        setSnapshot(snapshot, file_path, {
+          fileName,
+          nodeCount,
+          edgeCount,
+          totalSize,
+          env,
+        });
+
+        const envLabel =
+          env === 'browser'
+            ? 'Browser'
+            : env === 'node'
+              ? 'Node.js'
+              : 'Unknown';
         const lines = [
-          `Loaded ${file_path}: ${formatNumber(nodeCount)} nodes, ${formatNumber(edgeCount)} edges, ${formatBytes(totalSize)}`,
+          `Loaded ${file_path}: ${formatNumber(nodeCount)} nodes, ${formatNumber(edgeCount)} edges, ${formatBytes(totalSize)} (${envLabel} snapshot)`,
         ];
 
         const warnings = quickDiagnosis(snapshot, totalSize);

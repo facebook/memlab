@@ -11,13 +11,14 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode, IHeapEdge} from '@memlab/core';
 import {z} from 'zod';
-import {getSnapshot} from '../heap-state.js';
+import {getSnapshot, getSnapshotEnv} from '../heap-state.js';
 import {
   formatBytes,
   formatNumber,
   markdownTable,
   errorResult,
   textResult,
+  toolResult,
 } from '../utils.js';
 
 const COLLECTION_NAMES = new Set(['Map', 'Set', 'WeakMap', 'WeakSet', 'Array']);
@@ -100,24 +101,17 @@ export function registerStaleCollections(server: McpServer): void {
         const topResults = results.slice(0, limit);
 
         if (topResults.length === 0) {
-          // Check if this is a server-side (no DOM) snapshot
-          let hasDOM = false;
-          snapshot.nodes.forEach(node => {
-            if (hasDOM) return;
-            if (
-              node.name.startsWith('HTML') ||
-              node.name === 'Document' ||
-              node.name.startsWith('Detached ')
-            ) {
-              hasDOM = true;
-            }
-          });
-          if (!hasDOM) {
-            return textResult(
-              'No stale collections found. Note: this snapshot appears to be from a server-side (Node.js) environment with no DOM — detached DOM detection is not applicable here. Consider using memlab_largest_objects, memlab_class_histogram, or memlab_sliced_strings to investigate server-side memory issues.',
+          const env = getSnapshotEnv();
+          if (env === 'node') {
+            return toolResult(
+              'No stale collections found. This is a Node.js snapshot — detached DOM detection is not applicable.\n\n' +
+                'For Node.js memory investigation, try:\n' +
+                '- `memlab_largest_objects` — find objects consuming the most memory\n' +
+                '- `memlab_class_histogram` — per-class instance counts and sizes\n' +
+                '- `memlab_sliced_strings` — find sliced strings keeping large parents alive',
             );
           }
-          return textResult('No stale collections found.');
+          return toolResult('No stale collections found.');
         }
         const headers = [
           'Collection ID',
@@ -132,8 +126,13 @@ export function registerStaleCollections(server: McpServer): void {
           `${formatNumber(r.stale_item_count)} / ${formatNumber(r.total_children)}`,
           formatBytes(r.stale_retained_size),
         ]);
-        return textResult(
-          `Stale collections (${topResults.length} found)\n\n${markdownTable(headers, rows, rightCols)}`,
+        const output = `Stale collections (${topResults.length} found)\n\n${markdownTable(headers, rows, rightCols)}`;
+        return toolResult(
+          output +
+            '\n\n---\n\n' +
+            '**Suggested action:** Collections holding detached/stale references prevent garbage collection. ' +
+            'Consider using `WeakRef` or `WeakMap`/`WeakSet`, clearing entries on component unmount, ' +
+            'or adding bounds to collection size.',
         );
       } catch (err) {
         return errorResult(err);

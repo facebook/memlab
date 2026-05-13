@@ -15,8 +15,10 @@ import {getSnapshot} from '../heap-state.js';
 import {
   formatNodeInline,
   formatBytes,
+  isNodeWorthInspecting,
   errorResult,
   textResult,
+  toolResult,
 } from '../utils.js';
 
 export function registerRetainerTrace(server: McpServer): void {
@@ -48,7 +50,7 @@ export function registerRetainerTrace(server: McpServer): void {
         }
 
         if (!node.hasPathEdge) {
-          return textResult(
+          return toolResult(
             'No retainer path available for this node. It may be a root node or unreachable.',
           );
         }
@@ -80,12 +82,40 @@ export function registerRetainerTrace(server: McpServer): void {
         // Reverse to get root-first order
         reverseItems.reverse();
 
+        // Collapse consecutive internal/V8 nodes for readability
+        const collapsed: Array<{
+          node: IHeapNode;
+          edgeName?: string;
+          edgeType?: string;
+          collapsedCount?: number;
+        }> = [];
+        let internalRun = 0;
+        for (const item of reverseItems) {
+          if (!isNodeWorthInspecting(item.node) && collapsed.length > 0) {
+            internalRun++;
+          } else {
+            if (internalRun > 0) {
+              collapsed.push({
+                node: item.node,
+                edgeName: item.edgeName,
+                edgeType: item.edgeType,
+                collapsedCount: internalRun,
+              });
+              internalRun = 0;
+            } else {
+              collapsed.push(item);
+            }
+          }
+        }
+        if (internalRun > 0 && collapsed.length > 0) {
+          const last = collapsed[collapsed.length - 1];
+          last.collapsedCount = (last.collapsedCount ?? 0) + internalRun;
+        }
+
         const fullLength = reverseItems.length;
         const truncated =
           max_depth != null && max_depth > 0 && max_depth < fullLength;
-        const items = truncated
-          ? reverseItems.slice(0, max_depth)
-          : reverseItems;
+        const items = truncated ? collapsed.slice(0, max_depth) : collapsed;
 
         const depthNote = truncated
           ? `, showing first ${max_depth} of ${fullLength}`
@@ -102,6 +132,9 @@ export function registerRetainerTrace(server: McpServer): void {
             const n = item.node;
             const sizeStr = formatBytes(n.retainedSize);
             const nodeStr = formatNodeInline(n.id, n.name, n.type, n.self_size);
+            if (item.collapsedCount && item.collapsedCount > 0) {
+              lines.push(`  ← [${item.collapsedCount} internal node(s)] ←`);
+            }
             if (i === 0) {
               lines.push(`${nodeStr} [${sizeStr}]`);
             } else {
@@ -152,7 +185,7 @@ export function registerRetainerTrace(server: McpServer): void {
           lines.push(parts.join(''));
         }
 
-        return textResult(lines.join('\n'));
+        return toolResult(lines.join('\n'));
       } catch (err) {
         return errorResult(err);
       }

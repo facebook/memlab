@@ -17,6 +17,7 @@ import {
   formatNodeSummaryTable,
   errorResult,
   textResult,
+  toolResult,
 } from '../utils.js';
 
 export function registerFindNodesByClass(server: McpServer): void {
@@ -43,9 +44,9 @@ export function registerFindNodesByClass(server: McpServer): void {
         );
         const summaries = nodes.map(serializeNodeSummary);
         if (summaries.length === 0) {
-          return textResult(`No objects found with class "${class_name}"`);
+          return toolResult(`No objects found with class "${class_name}"`);
         }
-        return textResult(
+        return toolResult(
           `Found ${summaries.length} "${class_name}" objects\n\n${formatNodeSummaryTable(summaries)}`,
         );
       } catch (err) {

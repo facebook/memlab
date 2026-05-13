@@ -17,6 +17,7 @@ import {getSnapshot} from '../heap-state.js';
 import {
   errorResult,
   textResult,
+  toolResult,
   formatBytes,
   formatNumber,
   markdownTable,
@@ -169,7 +170,7 @@ export function registerAggregateNodes(server: McpServer): void {
           return row;
         });
 
-        return textResult(
+        return toolResult(
           `Aggregation by ${group_by} (${formatNumber(groups.size)} groups, showing ${rows.length})\n\n${markdownTable(headers, rows, rightCols)}`,
         );
       } catch (err) {

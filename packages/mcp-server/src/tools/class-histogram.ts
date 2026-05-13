@@ -17,6 +17,7 @@ import {getSnapshot} from '../heap-state.js';
 import {
   errorResult,
   textResult,
+  toolResult,
   formatBytes,
   formatNumber,
   markdownTable,
@@ -31,8 +32,8 @@ export function registerClassHistogram(server: McpServer): void {
       limit: z
         .number()
         .optional()
-        .default(50)
-        .describe('Maximum number of classes to return (default 50)'),
+        .default(20)
+        .describe('Maximum number of classes to return (default 20)'),
       min_count: z
         .number()
         .optional()
@@ -181,7 +182,7 @@ export function registerClassHistogram(server: McpServer): void {
           );
         }
 
-        return textResult(lines.join('\n'));
+        return toolResult(lines.join('\n'));
       } catch (err) {
         return errorResult(err);
       }

@@ -19,6 +19,7 @@ import {
   markdownTable,
   errorResult,
   textResult,
+  toolResult,
 } from '../utils.js';
 
 export function registerSnapshotSummary(server: McpServer): void {
@@ -146,7 +147,7 @@ export function registerSnapshotSummary(server: McpServer): void {
           );
         }
 
-        return textResult(lines.join('\n'));
+        return toolResult(lines.join('\n'));
       } catch (err) {
         return errorResult(err);
       }

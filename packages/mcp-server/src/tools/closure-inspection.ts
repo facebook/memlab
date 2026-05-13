@@ -15,6 +15,7 @@ import {
   serializeNodeSummary,
   errorResult,
   textResult,
+  toolResult,
   formatBytes,
   formatNumber,
   formatNodeInline,
@@ -39,7 +40,7 @@ export function registerClosureInspection(server: McpServer): void {
         }
 
         if (node.type !== 'closure') {
-          return textResult(
+          return toolResult(
             `Node @${node_id} is not a closure (type is "${node.type}"). This tool is designed for closure nodes.`,
           );
         }
@@ -138,7 +139,7 @@ export function registerClosureInspection(server: McpServer): void {
           lines.push(markdownTable(headers, rows, rightCols));
         }
 
-        return textResult(lines.join('\n'));
+        return toolResult(lines.join('\n'));
       } catch (err) {
         return errorResult(err);
       }

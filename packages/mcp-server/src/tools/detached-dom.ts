@@ -10,13 +10,14 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
-import {getSnapshot} from '../heap-state.js';
+import {getSnapshot, getSnapshotEnv} from '../heap-state.js';
 import type {IHeapNode} from '@memlab/core';
 import {
   queryNodes,
   formatQueryNodesResult,
   errorResult,
   textResult,
+  toolResult,
 } from '../utils.js';
 import type {OutputMode} from '../utils.js';
 
@@ -53,6 +54,17 @@ export function registerDetachedDom(server: McpServer): void {
     },
     async ({output_mode, offset, limit}) => {
       try {
+        const env = getSnapshotEnv();
+        if (env === 'node') {
+          return toolResult(
+            'This is a Node.js snapshot — DOM nodes do not exist in this environment.\n\n' +
+              'For Node.js memory investigation, try instead:\n' +
+              '- `memlab_duplicated_strings` — find duplicated string instances\n' +
+              '- `memlab_closure_inspection` — inspect closure captured variables\n' +
+              '- `memlab_largest_objects` — find objects consuming the most memory\n' +
+              '- `memlab_class_histogram` — per-class instance counts and sizes',
+          );
+        }
         const snapshot = getSnapshot();
         const effectiveLimit =
           output_mode === 'ids' ? Math.min(limit, 10000) : Math.min(limit, 500);
@@ -63,7 +75,17 @@ export function registerDetachedDom(server: McpServer): void {
           outputMode: output_mode as OutputMode,
         });
 
-        return textResult(formatQueryNodesResult(result, offset));
+        const output = formatQueryNodesResult(result, offset);
+        if (result.total_count > 0 && output_mode === 'full') {
+          return toolResult(
+            output +
+              '\n\n---\n\n' +
+              '**Suggested action:** Check for missing `removeEventListener` calls, ' +
+              'React component cleanup in `useEffect` return, or refs not cleared on unmount. ' +
+              'Use `memlab_retainer_trace` on top entries to find the retention path.',
+          );
+        }
+        return toolResult(output);
       } catch (err) {
         return errorResult(err);
       }

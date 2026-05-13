@@ -18,6 +18,7 @@ import {
   truncateNodeName,
   errorResult,
   textResult,
+  toolResult,
 } from '../utils.js';
 
 interface ParentStats {
@@ -106,7 +107,7 @@ export function registerSlicedStrings(server: McpServer): void {
         });
 
         if (slicedCount === 0 && concatCount === 0) {
-          return textResult(
+          return toolResult(
             'No sliced or concatenated strings found in the snapshot.',
           );
         }
@@ -164,7 +165,7 @@ export function registerSlicedStrings(server: McpServer): void {
           }
         }
 
-        return textResult(lines.join('\n'));
+        return toolResult(lines.join('\n'));
       } catch (err) {
         return errorResult(err);
       }
