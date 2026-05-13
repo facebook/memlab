@@ -44,6 +44,7 @@ import {registerReports} from './tools/reports.js';
 import {registerRetainerSummary} from './tools/retainer-summary.js';
 import {registerDiffSnapshots} from './tools/diff-snapshots.js';
 import {registerSlicedStrings} from './tools/sliced-strings.js';
+import {registerStringPatterns} from './tools/string-patterns.js';
 
 const server = new McpServer({
   name: 'memlab',
@@ -74,6 +75,7 @@ registerReports(server);
 registerRetainerSummary(server);
 registerDiffSnapshots(server);
 registerSlicedStrings(server);
+registerStringPatterns(server);
 registerEval(server);
 registerForEach(server);
 
