@@ -100,6 +100,23 @@ export function registerStaleCollections(server: McpServer): void {
         const topResults = results.slice(0, limit);
 
         if (topResults.length === 0) {
+          // Check if this is a server-side (no DOM) snapshot
+          let hasDOM = false;
+          snapshot.nodes.forEach(node => {
+            if (hasDOM) return;
+            if (
+              node.name.startsWith('HTML') ||
+              node.name === 'Document' ||
+              node.name.startsWith('Detached ')
+            ) {
+              hasDOM = true;
+            }
+          });
+          if (!hasDOM) {
+            return textResult(
+              'No stale collections found. Note: this snapshot appears to be from a server-side (Node.js) environment with no DOM — detached DOM detection is not applicable here. Consider using memlab_largest_objects, memlab_class_histogram, or memlab_sliced_strings to investigate server-side memory issues.',
+            );
+          }
           return textResult('No stale collections found.');
         }
         const headers = [

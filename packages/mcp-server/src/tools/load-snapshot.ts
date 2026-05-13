@@ -24,48 +24,24 @@ import {
   textResult,
 } from '../utils.js';
 
-function quickDiagnosis(
-  snapshot: IHeapSnapshot,
-  totalSelfSize: number,
-): string[] {
-  const warnings: string[] = [];
+interface LargestObjInfo {
+  id: number;
+  name: string;
+  size: number;
+  type: string;
+}
 
-  // Track large strings (> 1 MB)
-  const largeStrings: {id: number; name: string; size: number}[] = [];
-  // Track high-duplication strings
-  const stringCounts = new Map<string, number>();
-  // Track largest single objects
-  let largestObj: {
-    id: number;
-    name: string;
-    size: number;
-    type: string;
-  } | null = null;
-  // Track class counts for anomaly detection
-  const classCounts = new Map<string, number>();
-
+function findLargestObject(snapshot: IHeapSnapshot): LargestObjInfo | null {
+  let best: LargestObjInfo | null = null;
   snapshot.nodes.forEach(node => {
     if (node.id <= 3) return;
-
-    // Large strings
-    if (node.type === 'string' && node.self_size >= 1024 * 1024) {
-      largeStrings.push({id: node.id, name: node.name, size: node.self_size});
-    }
-
-    // String duplication (sample by name for speed)
-    if (node.type === 'string' && node.name !== 'system / SlicedString') {
-      const key = node.name.length > 100 ? node.name.slice(0, 100) : node.name;
-      stringCounts.set(key, (stringCounts.get(key) ?? 0) + 1);
-    }
-
-    // Largest retained object (skip internal types)
     if (
       node.type === 'object' ||
       node.type === 'closure' ||
       node.type === 'regexp'
     ) {
-      if (!largestObj || node.retainedSize > largestObj.size) {
-        largestObj = {
+      if (!best || node.retainedSize > best.size) {
+        best = {
           id: node.id,
           name: node.name,
           size: node.retainedSize,
@@ -73,14 +49,37 @@ function quickDiagnosis(
         };
       }
     }
+  });
+  return best;
+}
 
-    // Class counts (for anomaly detection)
+function quickDiagnosis(
+  snapshot: IHeapSnapshot,
+  totalSelfSize: number,
+): string[] {
+  const warnings: string[] = [];
+
+  const largeStrings: {id: number; name: string; size: number}[] = [];
+  const stringCounts = new Map<string, number>();
+  const classCounts = new Map<string, number>();
+
+  snapshot.nodes.forEach(node => {
+    if (node.id <= 3) return;
+
+    if (node.type === 'string' && node.self_size >= 1024 * 1024) {
+      largeStrings.push({id: node.id, name: node.name, size: node.self_size});
+    }
+
+    if (node.type === 'string' && node.name !== 'system / SlicedString') {
+      const key = node.name.length > 100 ? node.name.slice(0, 100) : node.name;
+      stringCounts.set(key, (stringCounts.get(key) ?? 0) + 1);
+    }
+
     if (node.type !== 'hidden' && node.type !== 'array') {
       classCounts.set(node.name, (classCounts.get(node.name) ?? 0) + 1);
     }
   });
 
-  // Report large strings
   if (largeStrings.length > 0) {
     const totalSize = largeStrings.reduce((s, n) => s + n.size, 0);
     warnings.push(
@@ -88,7 +87,6 @@ function quickDiagnosis(
     );
   }
 
-  // Report high duplication
   const highDups = [...stringCounts.entries()]
     .filter(([, count]) => count >= 1000)
     .sort((a, b) => b[1] - a[1])
@@ -98,17 +96,16 @@ function quickDiagnosis(
     warnings.push(`⚠ "${display}" duplicated ${formatNumber(count)} times`);
   }
 
-  // Report if single object dominates heap
-  if (largestObj) {
-    const pct = ((largestObj.size / totalSelfSize) * 100).toFixed(0);
-    if (largestObj.size >= totalSelfSize * 0.3) {
+  const largest = findLargestObject(snapshot);
+  if (largest && totalSelfSize > 0) {
+    const pct = ((largest.size / totalSelfSize) * 100).toFixed(0);
+    if (largest.size >= totalSelfSize * 0.3) {
       warnings.push(
-        `⚠ @${largestObj.id} ${truncateNodeName(largestObj.name, largestObj.type, largestObj.size, 40)} (${largestObj.type}) retains ${formatBytes(largestObj.size)} (${pct}% of heap)`,
+        `⚠ @${largest.id} ${truncateNodeName(largest.name, largest.type, largest.size, 40)} (${largest.type}) retains ${formatBytes(largest.size)} (${pct}% of heap)`,
       );
     }
   }
 
-  // Report anomalous class counts
   const anomalous = [...classCounts.entries()]
     .filter(([, count]) => count >= 10000)
     .sort((a, b) => b[1] - a[1])
