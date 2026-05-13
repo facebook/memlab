@@ -41,10 +41,12 @@ import {registerAggregateNodes} from './tools/aggregate-nodes.js';
 import {registerEval} from './tools/eval.js';
 import {registerForEach} from './tools/for-each.js';
 import {registerReports} from './tools/reports.js';
+import {registerRetainerSummary} from './tools/retainer-summary.js';
+import {registerDiffSnapshots} from './tools/diff-snapshots.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '1.1.0',
+  version: '1.2.0',
 });
 
 registerLoadSnapshot(server);
@@ -68,6 +70,8 @@ registerClosureInspection(server);
 registerFindByProperty(server);
 registerAggregateNodes(server);
 registerReports(server);
+registerRetainerSummary(server);
+registerDiffSnapshots(server);
 registerEval(server);
 registerForEach(server);
 

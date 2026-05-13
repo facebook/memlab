@@ -24,7 +24,7 @@ import {
 export function registerSnapshotSummary(server: McpServer): void {
   server.tool(
     'memlab_snapshot_summary',
-    'Get an overview of the loaded heap snapshot: total nodes, edges, size, and breakdown by node type with count, self size, and aggregate retained size (dominator-aware, no double-counting).',
+    'Get an overview of the loaded heap snapshot: total nodes, edges, size, and breakdown by node type with count, self size, and aggregate retained size (dominator-aware, no double-counting). Includes anomaly detection for high-count classes that may indicate leaks. Follow up with memlab_class_histogram for per-class breakdown, or memlab_duplicated_strings to find string duplication.',
     {},
     async () => {
       try {
@@ -97,6 +97,54 @@ export function registerSnapshotSummary(server: McpServer): void {
           formatBytes(b.retained_size),
         ]);
         lines.push(markdownTable(headers, rows, rightCols));
+
+        // Anomaly detection: find classes with unusually high instance counts
+        const classMap = new Map<string, {count: number; type: string}>();
+        snapshot.nodes.forEach(node => {
+          if (node.id <= 3) return;
+          if (node.type === 'hidden' || node.type === 'array') return;
+          const key = `${node.type}::${node.name}`;
+          const entry = classMap.get(key);
+          if (entry) {
+            entry.count++;
+          } else {
+            classMap.set(key, {count: 1, type: node.type});
+          }
+        });
+
+        const anomalies = [...classMap.entries()]
+          .filter(([, v]) => v.count >= 5000)
+          .sort((a, b) => b[1].count - a[1].count)
+          .slice(0, 5);
+
+        if (anomalies.length > 0) {
+          lines.push('');
+          lines.push(
+            '**Potential anomalies** (classes with ≥5,000 instances):',
+          );
+          for (const [key, v] of anomalies) {
+            const name = key.split('::').slice(1).join('::');
+            lines.push(`- ${formatNumber(v.count)}× \`${name}\` (${v.type})`);
+          }
+          // Check for correlated high-count groups
+          const highCountNames = anomalies.map(([key]) =>
+            key.split('::').slice(1).join('::'),
+          );
+          if (highCountNames.length >= 2) {
+            const counts = anomalies.map(([, v]) => v.count);
+            const maxCount = Math.max(...counts);
+            const minCount = Math.min(...counts);
+            if (minCount >= maxCount * 0.8) {
+              lines.push(
+                `- Similar counts suggest these may share a common root cause`,
+              );
+            }
+          }
+          lines.push(
+            '',
+            'Use `memlab_class_histogram` for the full breakdown, or `memlab_retainer_summary` on a class above to investigate retention patterns.',
+          );
+        }
 
         return textResult(lines.join('\n'));
       } catch (err) {

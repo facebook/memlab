@@ -22,7 +22,7 @@ import {
 export function registerGetReferrers(server: McpServer): void {
   server.tool(
     'memlab_get_referrers',
-    'Get incoming edges (referrers) to a heap node, sorted by source retained size. Shows what objects hold references to this node.',
+    'Get incoming edges (referrers) to a heap node, sorted by source retained size. Shows what objects hold references to this node. Complements memlab_get_references (outgoing edges). Use memlab_retainer_trace to see the full GC root path.',
     {
       node_id: z.number().describe('The numeric ID of the heap node'),
       limit: z

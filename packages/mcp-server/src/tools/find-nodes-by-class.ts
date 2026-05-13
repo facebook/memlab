@@ -22,7 +22,7 @@ import {
 export function registerFindNodesByClass(server: McpServer): void {
   server.tool(
     'memlab_find_nodes_by_class',
-    'Find heap objects by constructor/class name. Returns matching objects sorted by retained size.',
+    'Find heap objects by constructor/class name. Returns matching objects sorted by retained size. Follow up with memlab_retainer_trace on a result node to see why it is retained, memlab_get_references to inspect its properties, or memlab_retainer_summary to find common retainer patterns across all instances.',
     {
       class_name: z
         .string()

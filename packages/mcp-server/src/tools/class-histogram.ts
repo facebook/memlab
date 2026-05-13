@@ -25,18 +25,28 @@ import {
 export function registerClassHistogram(server: McpServer): void {
   server.tool(
     'memlab_class_histogram',
-    'Show instance count and total self size per constructor/class name, sorted by aggregate retained size (dominator-aware, no double-counting). Useful for identifying which types of objects dominate memory.',
+    'Show instance count and total self size per constructor/class name, sorted by aggregate retained size (dominator-aware, no double-counting). Useful for identifying which types of objects dominate memory. Use min_count or min_retained_size to filter large histograms. Follow up with memlab_find_nodes_by_class to inspect specific classes, or memlab_retainer_trace on a sample node to see why objects are retained.',
     {
       limit: z
         .number()
         .optional()
-        .default(30)
-        .describe('Maximum number of classes to return (default 30)'),
+        .default(50)
+        .describe('Maximum number of classes to return (default 50)'),
       min_count: z
         .number()
         .optional()
         .default(1)
         .describe('Minimum instance count to include (default 1)'),
+      min_retained_size: z
+        .number()
+        .optional()
+        .describe(
+          'Minimum aggregate retained size in bytes to include. Use to filter to classes consuming significant memory (e.g., 1048576 for 1 MB).',
+        ),
+      min_self_size: z
+        .number()
+        .optional()
+        .describe('Minimum total self size in bytes to include.'),
       node_type: z
         .string()
         .optional()
@@ -44,7 +54,7 @@ export function registerClassHistogram(server: McpServer): void {
           'Filter by node type (e.g., "object", "closure", "string"). If omitted, all types are included.',
         ),
     },
-    async ({limit, min_count, node_type}) => {
+    async ({limit, min_count, min_retained_size, min_self_size, node_type}) => {
       try {
         const snapshot = getSnapshot();
 
@@ -79,12 +89,17 @@ export function registerClassHistogram(server: McpServer): void {
           }
         });
 
-        // Filter by min_count first, then compute retained sizes only for
-        // classes that pass the filter to avoid expensive dominator walks
-        // on classes we'll discard anyway.
-        const filtered = [...classMap.entries()].filter(
+        // Filter by min_count and min_self_size first, then compute
+        // retained sizes only for classes that pass to avoid expensive
+        // dominator walks on classes we'll discard anyway.
+        let filtered = [...classMap.entries()].filter(
           ([, v]) => v.count >= min_count,
         );
+        if (min_self_size != null) {
+          filtered = filtered.filter(
+            ([, v]) => v.total_self_size >= min_self_size,
+          );
+        }
 
         // Compute dominator-aware aggregate retained size per class.
         const withRetained = filtered.map(([key, v]) => {
@@ -97,7 +112,15 @@ export function registerClassHistogram(server: McpServer): void {
           return {key, ...v, retained_size: retainedSize};
         });
 
-        const sorted = withRetained
+        // Apply min_retained_size filter after dominator walk
+        let afterRetainedFilter = withRetained;
+        if (min_retained_size != null) {
+          afterRetainedFilter = withRetained.filter(
+            v => v.retained_size >= min_retained_size,
+          );
+        }
+
+        const sorted = afterRetainedFilter
           .sort((a, b) => b.retained_size - a.retained_size)
           .slice(0, limit);
 
@@ -120,9 +143,38 @@ export function registerClassHistogram(server: McpServer): void {
           ];
         });
 
-        return textResult(
-          `Class histogram (${formatNumber(classMap.size)} total classes, showing ${rows.length})\n\n${markdownTable(headers, rows, rightCols)}`,
+        const lines = [
+          `Class histogram (${formatNumber(classMap.size)} total classes, showing ${rows.length})`,
+          '',
+          markdownTable(headers, rows, rightCols),
+        ];
+
+        // Auto-suggest next steps for high-count classes
+        const highCount = sorted.filter(v => v.count >= 1000);
+        if (highCount.length > 0) {
+          lines.push('', '**Suggested next steps:**');
+          for (const v of highCount.slice(0, 3)) {
+            const name = v.key.split('::').slice(1).join('::');
+            lines.push(
+              `- ${formatNumber(v.count)} \`${name}\` instances — use \`memlab_find_nodes_by_class("${name}")\` to inspect, \`memlab_retainer_summary("${name}")\` to find common retainer patterns, or \`memlab_retainer_trace\` on a sample node`,
+            );
+          }
+        }
+
+        // Suggest duplicated_strings if string counts are high
+        const highStrings = sorted.filter(
+          v => v.type === 'string' && v.count >= 100,
         );
+        if (highStrings.length > 0) {
+          if (highCount.length === 0) {
+            lines.push('', '**Suggested next steps:**');
+          }
+          lines.push(
+            `- High string duplication detected — use \`memlab_duplicated_strings\` to find the most-duplicated string values`,
+          );
+        }
+
+        return textResult(lines.join('\n'));
       } catch (err) {
         return errorResult(err);
       }

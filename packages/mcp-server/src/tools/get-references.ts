@@ -22,7 +22,7 @@ import {
 export function registerGetReferences(server: McpServer): void {
   server.tool(
     'memlab_get_references',
-    'Get outgoing edges (references) from a heap node, sorted by target retained size. Shows what objects this node points to.',
+    'Get outgoing edges (references) from a heap node, sorted by target retained size. Shows what objects this node points to — its properties, elements, and closure captures. Complements memlab_get_referrers (incoming edges). Use memlab_object_shape for a quick property overview, or memlab_closure_inspection for closure-specific analysis.',
     {
       node_id: z.number().describe('The numeric ID of the heap node'),
       limit: z

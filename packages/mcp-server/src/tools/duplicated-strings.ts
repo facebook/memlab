@@ -16,15 +16,22 @@ import {formatBytes, errorResult, textResult} from '../utils.js';
 export function registerDuplicatedStrings(server: McpServer): void {
   server.tool(
     'memlab_duplicated_strings',
-    'Find duplicated string instances in the heap. Shows strings that appear multiple times, ranked by total retained size — a common source of memory waste.',
+    'Find duplicated string instances in the heap. Shows strings that appear multiple times, ranked by total retained size — a common source of memory waste. Use after memlab_class_histogram shows high string counts.',
     {
       limit: z
         .number()
         .optional()
         .default(15)
         .describe('Maximum number of results (default 15)'),
+      min_count: z
+        .number()
+        .optional()
+        .default(2)
+        .describe(
+          'Minimum number of copies to include (default 2). Increase to focus on heavily duplicated strings (e.g., 100).',
+        ),
     },
-    async ({limit}) => {
+    async ({limit, min_count}) => {
       try {
         const snapshot = getSnapshot();
 
@@ -59,9 +66,8 @@ export function registerDuplicatedStrings(server: McpServer): void {
           }
         });
 
-        // Filter to only duplicated strings (count > 1) and rank by total size
         const duplicated = Array.from(stringMap.entries())
-          .filter(([, stats]) => stats.count > 1)
+          .filter(([, stats]) => stats.count >= min_count)
           .sort((a, b) => b[1].total_size - a[1].total_size)
           .slice(0, limit)
           .map(([value, stats]) => ({
