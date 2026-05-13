@@ -64,7 +64,7 @@ export function registerObjectShape(server: McpServer): void {
             node.references.filter(e => userEdgeTypes.has(e.type)).length;
 
         const lines = [
-          `**${formatNodeInline(node.id, node.name, node.type)}** — ${formatNumber(totalEdges)} edges total${hiddenCount > 0 ? `, ${formatNumber(hiddenCount)} internal hidden` : ''}`,
+          `**${formatNodeInline(node.id, node.name, node.type, node.self_size)}** — ${formatNumber(totalEdges)} edges total${hiddenCount > 0 ? `, ${formatNumber(hiddenCount)} internal hidden` : ''}`,
           '',
         ];
 

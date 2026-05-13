@@ -40,10 +40,21 @@ export interface IncomingEdge extends EdgeSummary {
   from_node: NodeSummary;
 }
 
+export function truncateNodeName(
+  name: string,
+  type: string,
+  selfSize: number,
+  maxLen = 150,
+): string {
+  if (type !== 'string' && type !== 'concatenated string') return name;
+  if (name.length <= maxLen) return name;
+  return `${name.slice(0, maxLen)}… (${formatBytes(selfSize)} total)`;
+}
+
 export function serializeNodeSummary(node: IHeapNode): NodeSummary {
   return {
     id: node.id,
-    name: node.name,
+    name: truncateNodeName(node.name, node.type, node.self_size),
     type: node.type,
     self_size: node.self_size,
     retained_size: node.retainedSize,
@@ -53,7 +64,7 @@ export function serializeNodeSummary(node: IHeapNode): NodeSummary {
 export function serializeNodeDetail(node: IHeapNode): NodeDetail {
   const detail: NodeDetail = {
     id: node.id,
-    name: node.name,
+    name: truncateNodeName(node.name, node.type, node.self_size),
     type: node.type,
     self_size: node.self_size,
     retained_size: node.retainedSize,
@@ -76,7 +87,8 @@ export function serializeNodeDetail(node: IHeapNode): NodeDetail {
   if (node.isString) {
     const strNode = node.toStringNode();
     if (strNode) {
-      detail.string_value = strNode.stringValue;
+      const val = strNode.stringValue;
+      detail.string_value = val.length > 200 ? val.slice(0, 200) + '...' : val;
     }
   }
 
@@ -257,8 +269,11 @@ export function formatNodeInline(
   id: number,
   name: string,
   type: string,
+  selfSize?: number,
 ): string {
-  return `@${id} ${name} (${type})`;
+  const displayName =
+    selfSize != null ? truncateNodeName(name, type, selfSize, 80) : name;
+  return `@${id} ${displayName} (${type})`;
 }
 
 export function formatNodeSummaryTable(nodes: NodeSummary[]): string {

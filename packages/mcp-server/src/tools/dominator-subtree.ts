@@ -80,7 +80,7 @@ export function registerDominatorSubtree(server: McpServer): void {
 
         const summaries = dominated.map(serializeNodeSummary);
         const lines = [
-          `**${formatNodeInline(targetNode.id, targetNode.name, targetNode.type)}** — retained ${formatBytes(targetNode.retainedSize)}, ${formatNumber(totalDominated)} dominated nodes (showing ${summaries.length})`,
+          `**${formatNodeInline(targetNode.id, targetNode.name, targetNode.type, targetNode.self_size)}** — retained ${formatBytes(targetNode.retainedSize)}, ${formatNumber(totalDominated)} dominated nodes (showing ${summaries.length})`,
           '',
         ];
         if (summaries.length > 0) {

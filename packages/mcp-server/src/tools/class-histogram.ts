@@ -20,6 +20,7 @@ import {
   formatBytes,
   formatNumber,
   markdownTable,
+  truncateNodeName,
 } from '../utils.js';
 
 export function registerClassHistogram(server: McpServer): void {
@@ -133,7 +134,13 @@ export function registerClassHistogram(server: McpServer): void {
         ];
         const rightCols = new Set([2, 3, 4]);
         const rows = sorted.map(v => {
-          const name = v.key.split('::').slice(1).join('::');
+          const rawName = v.key.split('::').slice(1).join('::');
+          const name = truncateNodeName(
+            rawName,
+            v.type,
+            Math.round(v.total_self_size / v.count),
+            120,
+          );
           return [
             name,
             v.type,

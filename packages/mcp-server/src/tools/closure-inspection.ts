@@ -95,7 +95,7 @@ export function registerClosureInspection(server: McpServer): void {
         );
 
         const lines = [
-          `**Closure:** ${formatNodeInline(node.id, node.name, node.type)}`,
+          `**Closure:** ${formatNodeInline(node.id, node.name, node.type, node.self_size)}`,
           `**Self Size:** ${formatBytes(node.self_size)} | **Retained Size:** ${formatBytes(node.retainedSize)}`,
         ];
         if (location) {
@@ -106,7 +106,7 @@ export function registerClosureInspection(server: McpServer): void {
         if (contextEdge) {
           const ctx = contextEdge.toNode;
           lines.push(
-            `**Scope Context:** ${formatNodeInline(ctx.id, ctx.name, ctx.type)}`,
+            `**Scope Context:** ${formatNodeInline(ctx.id, ctx.name, ctx.type, ctx.self_size)}`,
           );
         }
         if (sharedEdge) {
