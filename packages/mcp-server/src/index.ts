@@ -43,6 +43,7 @@ import {registerForEach} from './tools/for-each.js';
 import {registerReports} from './tools/reports.js';
 import {registerRetainerSummary} from './tools/retainer-summary.js';
 import {registerDiffSnapshots} from './tools/diff-snapshots.js';
+import {registerSlicedStrings} from './tools/sliced-strings.js';
 
 const server = new McpServer({
   name: 'memlab',
@@ -72,6 +73,7 @@ registerAggregateNodes(server);
 registerReports(server);
 registerRetainerSummary(server);
 registerDiffSnapshots(server);
+registerSlicedStrings(server);
 registerEval(server);
 registerForEach(server);
 
