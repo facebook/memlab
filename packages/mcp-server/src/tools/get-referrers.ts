@@ -15,8 +15,8 @@ import {
   formatBytes,
   formatNumber,
   markdownTable,
+  truncateNodeName,
   errorResult,
-  textResult,
   toolResult,
 } from '../utils.js';
 
@@ -31,8 +31,15 @@ export function registerGetReferrers(server: McpServer): void {
         .optional()
         .default(30)
         .describe('Maximum number of referrers to return (default 30)'),
+      compact: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'Truncate source names to 60 chars to save tokens (default true). Set to false to see full names.',
+        ),
     },
-    async ({node_id, limit}) => {
+    async ({node_id, limit, compact}) => {
       try {
         const snapshot = getSnapshot();
         const node = snapshot.getNodeById(node_id);
@@ -59,9 +66,15 @@ export function registerGetReferrers(server: McpServer): void {
           'Retained',
         ];
         const rightCols = new Set([5]);
+        const nameMaxLen = compact ? 60 : 300;
         const rows = edges.map(e => [
           `@${e.fromNode.id}`,
-          e.fromNode.name,
+          truncateNodeName(
+            e.fromNode.name,
+            e.fromNode.type,
+            e.fromNode.self_size,
+            nameMaxLen,
+          ),
           e.fromNode.type,
           String(e.name_or_index),
           e.type,

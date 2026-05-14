@@ -46,10 +46,13 @@ import {registerDiffSnapshots} from './tools/diff-snapshots.js';
 import {registerSlicedStrings} from './tools/sliced-strings.js';
 import {registerStringPatterns} from './tools/string-patterns.js';
 import {registerCheckHealth} from './tools/check-health.js';
+import {registerAutoInvestigate} from './tools/auto-investigate.js';
+import {registerPinchPoints} from './tools/pinch-points.js';
+import {registerCacheAnalysis} from './tools/cache-analysis.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.0.4',
+  version: '2.1.0',
 });
 
 registerLoadSnapshot(server);
@@ -78,6 +81,9 @@ registerDiffSnapshots(server);
 registerSlicedStrings(server);
 registerStringPatterns(server);
 registerCheckHealth(server);
+registerAutoInvestigate(server);
+registerPinchPoints(server);
+registerCacheAnalysis(server);
 registerEval(server);
 registerForEach(server);
 

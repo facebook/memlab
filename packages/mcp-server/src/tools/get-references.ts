@@ -15,8 +15,8 @@ import {
   formatBytes,
   formatNumber,
   markdownTable,
+  truncateNodeName,
   errorResult,
-  textResult,
   toolResult,
 } from '../utils.js';
 
@@ -31,8 +31,15 @@ export function registerGetReferences(server: McpServer): void {
         .optional()
         .default(30)
         .describe('Maximum number of references to return (default 30)'),
+      compact: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'Truncate target names to 60 chars to save tokens (default true). Set to false to see full names.',
+        ),
     },
-    async ({node_id, limit}) => {
+    async ({node_id, limit, compact}) => {
       try {
         const snapshot = getSnapshot();
         const node = snapshot.getNodeById(node_id);
@@ -59,11 +66,17 @@ export function registerGetReferences(server: McpServer): void {
           'Retained',
         ];
         const rightCols = new Set([5]);
+        const nameMaxLen = compact ? 60 : 300;
         const rows = edges.map(e => [
           String(e.name_or_index),
           e.type,
           `@${e.toNode.id}`,
-          e.toNode.name,
+          truncateNodeName(
+            e.toNode.name,
+            e.toNode.type,
+            e.toNode.self_size,
+            nameMaxLen,
+          ),
           e.toNode.type,
           formatBytes(e.toNode.retainedSize),
         ]);

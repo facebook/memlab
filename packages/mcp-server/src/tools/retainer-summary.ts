@@ -16,7 +16,6 @@ import {
   filterLargestObjects,
   formatBytes,
   errorResult,
-  textResult,
   toolResult,
 } from '../utils.js';
 
@@ -51,10 +50,15 @@ function getRetainerTrace(node: IHeapNode): TraceStep[] | null {
   return reverseSteps;
 }
 
+function normalizeEdgeName(name: string): string {
+  return /^\d+$/.test(name) ? '*' : name;
+}
+
 function traceToKey(steps: TraceStep[]): string {
   return steps
     .map(s => {
-      const edge = s.edgeName != null ? `--${s.edgeName}-->` : '';
+      const edge =
+        s.edgeName != null ? `--${normalizeEdgeName(s.edgeName)}-->` : '';
       return `${s.name}(${s.type})${edge}`;
     })
     .join(' ');

@@ -47,9 +47,11 @@ export function truncateNodeName(
   selfSize: number,
   maxLen = 150,
 ): string {
-  if (type !== 'string' && type !== 'concatenated string') return name;
   if (name.length <= maxLen) return name;
-  return `${name.slice(0, maxLen)}… (${formatBytes(selfSize)} total)`;
+  if (type === 'string' || type === 'concatenated string') {
+    return `${name.slice(0, maxLen)}… (${formatBytes(selfSize)} total)`;
+  }
+  return `${name.slice(0, maxLen)}…`;
 }
 
 export function serializeNodeSummary(node: IHeapNode): NodeSummary {
