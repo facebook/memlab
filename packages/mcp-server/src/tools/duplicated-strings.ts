@@ -76,16 +76,53 @@ export function registerDuplicatedStrings(server: McpServer): void {
             total_size: stats.total_size,
             total_size_formatted: formatBytes(stats.total_size),
             example_node_ids: stats.example_node_ids,
+            field_context: null as string | null,
           }));
 
         if (duplicated.length === 0) {
           return toolResult('No duplicated strings found.');
         }
+
+        // For top entries, sample referrer objects to show field context
+        for (const d of duplicated.slice(0, 10)) {
+          const propCounts = new Map<
+            string,
+            {count: number; ownerName: string}
+          >();
+          for (const nodeId of d.example_node_ids) {
+            const node = snapshot.getNodeById(nodeId);
+            if (!node) continue;
+            for (const ref of node.referrers) {
+              if (ref.type === 'property' || ref.type === 'context') {
+                const propName = String(ref.name_or_index);
+                const entry = propCounts.get(propName);
+                if (entry) {
+                  entry.count++;
+                } else {
+                  propCounts.set(propName, {
+                    count: 1,
+                    ownerName: ref.fromNode.name,
+                  });
+                }
+              }
+            }
+          }
+          if (propCounts.size > 0) {
+            const topProp = [...propCounts.entries()].sort(
+              (a, b) => b[1].count - a[1].count,
+            )[0];
+            d.field_context = `.${topProp[0]} on \`${topProp[1].ownerName}\` instances`;
+          }
+        }
+
         const lines = duplicated.map((d, i) => {
           const val =
             d.value.length > 80 ? d.value.slice(0, 80) + '...' : d.value;
           const nodeIds = d.example_node_ids.map(id => `@${id}`).join(', ');
-          return `${i + 1}. "${val}" x ${d.count} copies, ${d.total_size_formatted} total (nodes: ${nodeIds})`;
+          const context = d.field_context
+            ? `\n   commonly held as: ${d.field_context}`
+            : '';
+          return `${i + 1}. "${val}" x ${d.count} copies, ${d.total_size_formatted} total (nodes: ${nodeIds})${context}`;
         });
         const hasHeavyDups = duplicated.some(d => d.count >= 1000);
         const suggestions: string[] = [];

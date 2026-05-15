@@ -163,6 +163,113 @@ function findUnboundedCaches(snapshot: IHeapSnapshot, limit: number) {
   return caches;
 }
 
+interface PromiseSummary {
+  pendingCount: number;
+  pendingRetained: number;
+  resolvedCount: number;
+  topPending: Array<{nodeId: number; retainedSize: number}>;
+}
+
+function scanPromises(snapshot: IHeapSnapshot): PromiseSummary {
+  const summary: PromiseSummary = {
+    pendingCount: 0,
+    pendingRetained: 0,
+    resolvedCount: 0,
+    topPending: [],
+  };
+
+  snapshot.nodes.forEach(node => {
+    if (node.name !== 'Promise' || node.type !== 'object') return;
+    if (node.id <= 3) return;
+
+    let isPending = false;
+    for (const edge of node.references) {
+      if (
+        edge.type === 'internal' &&
+        String(edge.name_or_index) === 'reactions_or_result' &&
+        edge.toNode.name === 'PromiseReaction'
+      ) {
+        isPending = true;
+        break;
+      }
+    }
+
+    if (isPending) {
+      summary.pendingCount++;
+      summary.pendingRetained += node.retainedSize;
+      const size = node.retainedSize;
+      let inserted = false;
+      for (let i = 0; i < summary.topPending.length; i++) {
+        if (size > summary.topPending[i].retainedSize) {
+          summary.topPending.splice(i, 0, {
+            nodeId: node.id,
+            retainedSize: size,
+          });
+          inserted = true;
+          break;
+        }
+      }
+      if (!inserted)
+        summary.topPending.push({nodeId: node.id, retainedSize: size});
+      if (summary.topPending.length > 5) summary.topPending.length = 5;
+    } else {
+      summary.resolvedCount++;
+    }
+  });
+
+  return summary;
+}
+
+interface ShapeSummary {
+  properties: string[];
+  count: number;
+  totalSelfSize: number;
+  exampleNodeId: number;
+}
+
+function scanTopShapes(snapshot: IHeapSnapshot, limit: number): ShapeSummary[] {
+  const shapeMap = new Map<
+    string,
+    {
+      properties: string[];
+      count: number;
+      totalSelfSize: number;
+      exampleNodeId: number;
+    }
+  >();
+
+  snapshot.nodes.forEach(node => {
+    if (node.type !== 'object' || node.id <= 3) return;
+    if (node.name !== 'Object') return;
+    const names: string[] = [];
+    for (const edge of node.references) {
+      if (edge.type === 'property') {
+        names.push(String(edge.name_or_index));
+      }
+    }
+    if (names.length === 0) return;
+    names.sort();
+    const key = names.join(',');
+    const existing = shapeMap.get(key);
+    if (existing) {
+      existing.count++;
+      existing.totalSelfSize += node.self_size;
+    } else {
+      shapeMap.set(key, {
+        properties: names,
+        count: 1,
+        totalSelfSize: node.self_size,
+        exampleNodeId: node.id,
+      });
+    }
+  });
+
+  return [...shapeMap.values()]
+    .filter(s => s.count >= 100)
+    .sort((a, b) => b.totalSelfSize - a.totalSelfSize)
+    .slice(0, limit);
+}
+
 function formatTrace(trace: RetainerStep[], maxSteps: number): string {
   const collapsed: RetainerStep[] = [];
   for (const step of trace) {
@@ -233,6 +340,8 @@ export function registerAutoInvestigate(server: McpServer): void {
         }
 
         const caches = findUnboundedCaches(snapshot, 5);
+        const promises = scanPromises(snapshot);
+        const shapes = scanTopShapes(snapshot, 5);
 
         const lines: string[] = [`# Auto-Investigation Report`, ''];
 
@@ -273,6 +382,28 @@ export function registerAutoInvestigate(server: McpServer): void {
           lines.push('');
         }
 
+        if (promises.pendingCount > 0 && promises.pendingRetained > 100_000) {
+          lines.push(`## Pending Promises`);
+          lines.push('');
+          lines.push(
+            `${formatNumber(promises.pendingCount)} pending, ${formatNumber(promises.resolvedCount)} resolved. Pending promises retain **${formatBytes(promises.pendingRetained)}** total.`,
+          );
+          if (promises.topPending.length > 0) {
+            lines.push('');
+            lines.push('Top pending by retained size:');
+            for (const p of promises.topPending) {
+              lines.push(
+                `- @${p.nodeId} — ${formatBytes(p.retainedSize)} retained`,
+              );
+            }
+            lines.push(
+              '',
+              '_Pending promises retaining large subtrees are often stuck async operations (HTTP requests, DB queries). Use `memlab_trace_dominators` to trace from the top pending promise to the data it holds._',
+            );
+          }
+          lines.push('');
+        }
+
         if (caches.length > 0) {
           lines.push(`## Unbounded Caches Detected`);
           lines.push('');
@@ -284,23 +415,57 @@ export function registerAutoInvestigate(server: McpServer): void {
           lines.push('');
         }
 
+        if (shapes.length > 0) {
+          lines.push(`## Object Shape Summary`);
+          lines.push('');
+          lines.push(
+            'Top data record shapes (generic `Object` instances grouped by property structure):',
+          );
+          lines.push('');
+          for (const s of shapes) {
+            const propsDisplay =
+              s.properties.length <= 6
+                ? `{${s.properties.join(', ')}}`
+                : `{${s.properties.slice(0, 5).join(', ')}, … +${s.properties.length - 5}}`;
+            lines.push(
+              `- ${propsDisplay} — ${formatNumber(s.count)} instances, ${formatBytes(s.totalSelfSize)} self (example: @${s.exampleNodeId})`,
+            );
+          }
+          lines.push(
+            '',
+            '_Use `memlab_shape_histogram` for full shape analysis with retained sizes._',
+          );
+          lines.push('');
+        }
+
         lines.push('## Suggested Next Steps');
         lines.push('');
+        let stepNum = 1;
         if (findings[0]?.pinchPoint) {
           const pp = findings[0].pinchPoint;
           lines.push(
-            `1. Inspect pinch point: \`memlab_get_node(${pp.nodeId})\` then \`memlab_dominator_subtree(${pp.nodeId})\``,
+            `${stepNum++}. Inspect pinch point: \`memlab_get_node(${pp.nodeId})\` then \`memlab_dominator_subtree(${pp.nodeId})\``,
           );
         }
         lines.push(
-          `${findings[0]?.pinchPoint ? '2' : '1'}. Trace top retainer: \`memlab_retainer_trace(${findings[0].node.id})\``,
+          `${stepNum++}. Trace top retainer: \`memlab_trace_dominators(${findings[0].node.id})\` for full dominator chain in one call`,
         );
         lines.push(
-          `${findings[0]?.pinchPoint ? '3' : '2'}. Check for patterns: \`memlab_retainer_summary\` with class name of top objects`,
+          `${stepNum++}. Check for patterns: \`memlab_retainer_summary\` with class name of top objects`,
         );
+        if (promises.pendingCount > 0 && promises.topPending.length > 0) {
+          lines.push(
+            `${stepNum++}. Investigate pending promises: \`memlab_trace_dominators(${promises.topPending[0].nodeId})\``,
+          );
+        }
         if (caches.length > 0) {
           lines.push(
-            `${findings[0]?.pinchPoint ? '4' : '3'}. Analyze caches: \`memlab_cache_analysis\` for detailed cache inspection`,
+            `${stepNum++}. Analyze caches: \`memlab_cache_analysis\` for detailed cache inspection`,
+          );
+        }
+        if (shapes.length > 0) {
+          lines.push(
+            `${stepNum++}. Explore data shapes: \`memlab_shape_histogram\` for detailed shape clustering`,
           );
         }
 

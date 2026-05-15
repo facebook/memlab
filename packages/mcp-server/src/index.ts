@@ -49,10 +49,12 @@ import {registerCheckHealth} from './tools/check-health.js';
 import {registerAutoInvestigate} from './tools/auto-investigate.js';
 import {registerPinchPoints} from './tools/pinch-points.js';
 import {registerCacheAnalysis} from './tools/cache-analysis.js';
+import {registerTraceDominators} from './tools/trace-dominators.js';
+import {registerShapeHistogram} from './tools/shape-histogram.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.1.0',
+  version: '2.2.0',
 });
 
 registerLoadSnapshot(server);
@@ -84,6 +86,8 @@ registerCheckHealth(server);
 registerAutoInvestigate(server);
 registerPinchPoints(server);
 registerCacheAnalysis(server);
+registerTraceDominators(server);
+registerShapeHistogram(server);
 registerEval(server);
 registerForEach(server);
 
