@@ -11,7 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
-import {formatBytes, errorResult, textResult, toolResult} from '../utils.js';
+import {formatBytes, errorResult, toolResult} from '../utils.js';
 
 export function registerDuplicatedStrings(server: McpServer): void {
   server.tool(
@@ -30,8 +30,15 @@ export function registerDuplicatedStrings(server: McpServer): void {
         .describe(
           'Minimum number of copies to include (default 2). Increase to focus on heavily duplicated strings (e.g., 100).',
         ),
+      include_node_ids: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Include example node IDs in the output for follow-up with retainer_summary. Omitted by default to save ~20-30 tokens per entry.',
+        ),
     },
-    async ({limit, min_count}) => {
+    async ({limit, min_count, include_node_ids}) => {
       try {
         const snapshot = getSnapshot();
 
@@ -118,11 +125,13 @@ export function registerDuplicatedStrings(server: McpServer): void {
         const lines = duplicated.map((d, i) => {
           const val =
             d.value.length > 80 ? d.value.slice(0, 80) + '...' : d.value;
-          const nodeIds = d.example_node_ids.map(id => `@${id}`).join(', ');
+          const nodeIdsPart = include_node_ids
+            ? ` (nodes: ${d.example_node_ids.map(id => `@${id}`).join(', ')})`
+            : '';
           const context = d.field_context
             ? `\n   commonly held as: ${d.field_context}`
             : '';
-          return `${i + 1}. "${val}" x ${d.count} copies, ${d.total_size_formatted} total (nodes: ${nodeIds})${context}`;
+          return `${i + 1}. "${val}" x ${d.count} copies, ${d.total_size_formatted} total${nodeIdsPart}${context}`;
         });
         const hasHeavyDups = duplicated.some(d => d.count >= 1000);
         const suggestions: string[] = [];

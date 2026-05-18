@@ -16,7 +16,6 @@ const {utils, NumericSet} = memlabCore;
 import {getSnapshot} from '../heap-state.js';
 import {
   errorResult,
-  textResult,
   toolResult,
   formatBytes,
   formatNumber,
@@ -55,8 +54,22 @@ export function registerClassHistogram(server: McpServer): void {
         .describe(
           'Filter by node type (e.g., "object", "closure", "string"). If omitted, all types are included.',
         ),
+      suppress_suggestions: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Omit "Suggested next steps" boilerplate from the output to save tokens.',
+        ),
     },
-    async ({limit, min_count, min_retained_size, min_self_size, node_type}) => {
+    async ({
+      limit,
+      min_count,
+      min_retained_size,
+      min_self_size,
+      node_type,
+      suppress_suggestions,
+    }) => {
       try {
         const snapshot = getSnapshot();
 
@@ -126,14 +139,21 @@ export function registerClassHistogram(server: McpServer): void {
           .sort((a, b) => b.retained_size - a.retained_size)
           .slice(0, limit);
 
+        const totalRetainedAll = sorted.reduce(
+          (s, v) => s + v.retained_size,
+          0,
+        );
+
         const headers = [
           'Class',
           'Type',
           'Count',
           'Self Size',
           'Retained Size',
+          'Cum %',
         ];
-        const rightCols = new Set([2, 3, 4]);
+        const rightCols = new Set([2, 3, 4, 5]);
+        let cumRetained = 0;
         const rows = sorted.map(v => {
           const rawName = v.key.split('::').slice(1).join('::');
           const name = truncateNodeName(
@@ -142,12 +162,18 @@ export function registerClassHistogram(server: McpServer): void {
             Math.round(v.total_self_size / v.count),
             120,
           );
+          cumRetained += v.retained_size;
+          const cumPct =
+            totalRetainedAll > 0
+              ? ((cumRetained / totalRetainedAll) * 100).toFixed(1) + '%'
+              : '-';
           return [
             name,
             v.type,
             formatNumber(v.count),
             formatBytes(v.total_self_size),
             formatBytes(v.retained_size),
+            cumPct,
           ];
         });
 
@@ -157,29 +183,29 @@ export function registerClassHistogram(server: McpServer): void {
           markdownTable(headers, rows, rightCols),
         ];
 
-        // Auto-suggest next steps for high-count classes
-        const highCount = sorted.filter(v => v.count >= 1000);
-        if (highCount.length > 0) {
-          lines.push('', '**Suggested next steps:**');
-          for (const v of highCount.slice(0, 3)) {
-            const name = v.key.split('::').slice(1).join('::');
+        if (!suppress_suggestions) {
+          const highCount = sorted.filter(v => v.count >= 1000);
+          if (highCount.length > 0) {
+            lines.push('', '**Suggested next steps:**');
+            for (const v of highCount.slice(0, 3)) {
+              const name = v.key.split('::').slice(1).join('::');
+              lines.push(
+                `- ${formatNumber(v.count)} \`${name}\` instances — use \`memlab_find_nodes_by_class("${name}")\` to inspect, \`memlab_retainer_summary("${name}")\` to find common retainer patterns, or \`memlab_retainer_trace\` on a sample node`,
+              );
+            }
+          }
+
+          const highStrings = sorted.filter(
+            v => v.type === 'string' && v.count >= 100,
+          );
+          if (highStrings.length > 0) {
+            if (highCount.length === 0) {
+              lines.push('', '**Suggested next steps:**');
+            }
             lines.push(
-              `- ${formatNumber(v.count)} \`${name}\` instances — use \`memlab_find_nodes_by_class("${name}")\` to inspect, \`memlab_retainer_summary("${name}")\` to find common retainer patterns, or \`memlab_retainer_trace\` on a sample node`,
+              `- High string duplication detected — use \`memlab_duplicated_strings\` to find the most-duplicated string values`,
             );
           }
-        }
-
-        // Suggest duplicated_strings if string counts are high
-        const highStrings = sorted.filter(
-          v => v.type === 'string' && v.count >= 100,
-        );
-        if (highStrings.length > 0) {
-          if (highCount.length === 0) {
-            lines.push('', '**Suggested next steps:**');
-          }
-          lines.push(
-            `- High string duplication detected — use \`memlab_duplicated_strings\` to find the most-duplicated string values`,
-          );
         }
 
         return toolResult(lines.join('\n'));

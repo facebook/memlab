@@ -40,10 +40,53 @@ interface PinchPoint {
   ratio: number;
 }
 
+type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+
 interface Finding {
   node: IHeapNode;
   trace: RetainerStep[];
   pinchPoint: PinchPoint | null;
+  severity: Severity;
+}
+
+function classifySeverity(retainedSize: number, totalSize: number): Severity {
+  if (totalSize === 0) return 'LOW';
+  const pct = retainedSize / totalSize;
+  if (pct >= 0.1) return 'CRITICAL';
+  if (pct >= 0.05) return 'HIGH';
+  if (pct >= 0.01) return 'MEDIUM';
+  return 'LOW';
+}
+
+function extractSourceHints(traces: RetainerStep[][]): string[] {
+  const paths = new Set<string>();
+  const filePathRegex = /(?:\/[\w.-]+){2,}\.\w+/g;
+
+  for (const trace of traces) {
+    for (const step of trace) {
+      const matches = step.name.match(filePathRegex);
+      if (matches) {
+        for (const m of matches) {
+          if (
+            !m.includes('/node_modules/') ||
+            m.includes('/node_modules/@') ||
+            m.split('/node_modules/').length <= 2
+          ) {
+            paths.add(m);
+          }
+        }
+      }
+      if (step.edgeName) {
+        const edgeMatches = step.edgeName.match(filePathRegex);
+        if (edgeMatches) {
+          for (const m of edgeMatches) {
+            paths.add(m);
+          }
+        }
+      }
+    }
+  }
+  return [...paths];
 }
 
 function getRetainerPath(node: IHeapNode): RetainerStep[] {
@@ -336,7 +379,8 @@ export function registerAutoInvestigate(server: McpServer): void {
         for (const node of largest) {
           const trace = getRetainerPath(node);
           const pinch = findPinchPoint(trace);
-          findings.push({node, trace, pinchPoint: pinch});
+          const severity = classifySeverity(node.retainedSize, totalSize);
+          findings.push({node, trace, pinchPoint: pinch, severity});
         }
 
         const caches = findUnboundedCaches(snapshot, 5);
@@ -361,8 +405,16 @@ export function registerAutoInvestigate(server: McpServer): void {
             60,
           );
 
+          const sevIcon =
+            f.severity === 'CRITICAL'
+              ? '🔴'
+              : f.severity === 'HIGH'
+                ? '🟠'
+                : f.severity === 'MEDIUM'
+                  ? '🟡'
+                  : '🔵';
           lines.push(
-            `### ${i + 1}. @${f.node.id} \`${name}\` (${f.node.type}) — ${formatBytes(f.node.retainedSize)}${pct}`,
+            `### ${i + 1}. ${sevIcon} [${f.severity}] @${f.node.id} \`${name}\` (${f.node.type}) — ${formatBytes(f.node.retainedSize)}${pct}`,
           );
           lines.push('');
           lines.push(`**Retainer chain:** ${formatTrace(f.trace, 8)}`);
@@ -435,6 +487,22 @@ export function registerAutoInvestigate(server: McpServer): void {
             '',
             '_Use `memlab_shape_histogram` for full shape analysis with retained sizes._',
           );
+          lines.push('');
+        }
+
+        const sourceHints = extractSourceHints(findings.map(f => f.trace));
+        if (sourceHints.length > 0) {
+          lines.push('## Source Hints');
+          lines.push('');
+          lines.push(
+            'File paths extracted from retainer chains (use to locate relevant source code):',
+          );
+          for (const hint of sourceHints.slice(0, 10)) {
+            lines.push(`- \`${hint}\``);
+          }
+          if (sourceHints.length > 10) {
+            lines.push(`- … and ${sourceHints.length - 10} more`);
+          }
           lines.push('');
         }
 

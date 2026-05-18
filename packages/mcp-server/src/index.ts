@@ -51,10 +51,11 @@ import {registerPinchPoints} from './tools/pinch-points.js';
 import {registerCacheAnalysis} from './tools/cache-analysis.js';
 import {registerTraceDominators} from './tools/trace-dominators.js';
 import {registerShapeHistogram} from './tools/shape-histogram.js';
+import {registerQuickDiagnosis} from './tools/quick-diagnosis.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.2.0',
+  version: '2.3.0',
 });
 
 registerLoadSnapshot(server);
@@ -88,6 +89,7 @@ registerPinchPoints(server);
 registerCacheAnalysis(server);
 registerTraceDominators(server);
 registerShapeHistogram(server);
+registerQuickDiagnosis(server);
 registerEval(server);
 registerForEach(server);
 
