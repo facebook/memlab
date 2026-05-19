@@ -18,3 +18,7 @@ This GitHub repo hosts the code for the following npm packages:
    – API for continuous test integration
  * [@memlab/heap-analysis](https://www.npmjs.com/package/@memlab/heap-analysis?activeTab=readme)
    – Memory analysis and extension API
+ * [@memlab/lens](https://www.npmjs.com/package/@memlab/lens?activeTab=readme)
+   – Memory Lens - an in-browser UI debugging layer that visualizes leaked React components
+ * [@memlab/mcp-server](https://www.npmjs.com/package/@memlab/mcp-server?activeTab=readme)
+   – Use memlab as a mcp-server to allow AI tooling to analyze and debug heap snapshots

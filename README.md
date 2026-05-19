@@ -24,8 +24,8 @@ Features:
 - **Browser memory leak detection** - Write test scenarios with the Puppeteer
   API, and memlab will automatically compare JavaScript heap snapshots, filter
   out memory leaks, and aggregate the results
-- **Object-oriented heap traversing API** - Supports the creation of
-  self-defined memory leak detector, and enables programmatic analysis of JS heap
+- **Object-oriented heap traversal API** - Supports the creation of
+  custom memory leak detectors, and enables programmatic analysis of JS heap
   snapshots taken from Chromium-based browsers, Node.js, Electron.js, and Hermes
 - **Memory CLI toolbox** - Built-in toolbox and APIs for finding memory
   optimization opportunities (not necessarily just memory leaks)
@@ -34,6 +34,10 @@ Features:
 - **Memory assertions in Node.js** - Enables unit tests or running node.js
   programs to take a heap snapshot of their own state, perform self memory
   checking, or write advanced memory assertions
+- **MCP server for AI coding assistants** - Provides an MCP server that gives
+  AI coding assistants (Claude Code, Cursor, etc.) interactive tools to load
+  heap snapshots, find memory leaks, and investigate optimization opportunities
+  through natural language conversation
 
 ![](./website/static/img/heap-diff.gif)
 
@@ -49,7 +53,7 @@ npm install -g memlab
 
 To find memory leaks in Google Maps, you can create a
 [scenario file](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IScenario) defining how
-to interact with the Google Maps, let's name it `test-google-maps.js`:
+to interact with Google Maps. Let's call it `test-google-maps.js`:
 
 ```javascript
 // initial page load url: Google Maps
@@ -107,8 +111,8 @@ MemLab found 46 leak(s)
 ...
 ```
 
-To get readable trace, the web site under test needs to serve non-minified code (or at least minified code
-with readable variables, function name, and property names on objects).
+To get a readable trace, the website under test needs to serve non-minified code (or at least minified code
+with readable variable, function, and property names on objects).
 
 Alternatively, you can debug the leak by loading the heap snapshot taken by memlab (saved in `$(memlab get-default-work-dir)/data/cur`)
 in Chrome DevTool and search for the leaked object ID (`@182929`).
@@ -127,7 +131,7 @@ You can optionally specify a specific heap object with the object's id: `--node-
 
 ![heap-view](./website/static/img/heap-view.png)
 
-**Self-defined leak detector**: If you want to use a self-defined leak detector, add a `leakFilter` callback
+**Custom leak detector**: If you want to use a custom leak detector, add a `leakFilter` callback
 ([doc](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IScenario/#leakfilter))
 in the scenario file. `leakFilter` will be called for every unreleased heap
 object (`node`) allocated by the target interaction.
@@ -170,7 +174,7 @@ Use `memlab help` to view all CLI commands.
 
 ## APIs
 
-Use the `memlab` npm package to start a E2E run in browser and detect memory leaks.
+Use the `memlab` npm package to start an E2E run in the browser and detect memory leaks.
 
 ```javascript
 const memlab = require('memlab');
@@ -188,6 +192,65 @@ const scenario = {
 memlab.run({scenario});
 ```
 
+## MCP Server for AI Coding Assistants
+
+The [`@memlab/mcp-server`](./packages/mcp-server) package provides an
+[MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that
+wraps MemLab's heap analysis APIs, giving AI coding assistants (Claude Code,
+Cursor, Windsurf, etc.) interactive tools to explore JavaScript heap snapshots,
+find memory leaks, and identify optimization opportunities — all through
+natural language conversation.
+
+### Setup
+
+Install globally and add to your MCP config (`~/.claude.json` for Claude Code,
+or `.mcp.json` for Cursor/Windsurf):
+
+```bash
+npm install -g @memlab/mcp-server
+```
+
+```json
+{
+  "mcpServers": {
+    "memlab": {
+      "type": "stdio",
+      "command": "memlab-mcp",
+      "env": {
+        "NODE_OPTIONS": "--max-old-space-size=8192"
+      }
+    }
+  }
+}
+```
+
+Or use npx without installing:
+
+```json
+{
+  "mcpServers": {
+    "memlab": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["@memlab/mcp-server"],
+      "env": {
+        "NODE_OPTIONS": "--max-old-space-size=8192"
+      }
+    }
+  }
+}
+```
+
+### Available Tools
+
+Once connected, the MCP server exposes tools for heap snapshot analysis
+including: loading snapshots, viewing summaries, finding the largest objects
+by retained size, looking up retainer traces, detecting detached DOM nodes,
+inspecting closures, searching nodes by class/property/pattern, analyzing
+duplicated strings, and more. See the
+[`@memlab/mcp-server` README](./packages/mcp-server/README.md) for the full
+tool reference and example workflows.
+
 ## Visual Debugging for Memory Leaks in Browser
 
 Please check out this [tutorial page](https://facebook.github.io/memlab/docs/guides/visually-debug-memory-leaks-with-memlens)
@@ -198,8 +261,8 @@ visualize memory leaks in the browser for easier memory debugging.
 
 ## Memory Assertions
 
-memlab makes it possible to enable a unit test or running node.js program
-to take a heap snapshot of its own state, and write advanced memory assertions:
+memlab makes it possible for a unit test or running Node.js program
+to take a heap snapshot of its own state and write advanced memory assertions:
 
 ```typescript
 // save as example.test.ts
@@ -267,10 +330,10 @@ memlab is MIT licensed, as found in the [LICENSE](LICENSE) file.
 
 ## Contributing
 
-Check our [contributing guide](CONTRIBUTING.md) to learn about how to
+Check our [contributing guide](CONTRIBUTING.md) to learn how to
 contribute to the project.
 
 ## Code of Conduct
 
-Check our [Code Of Conduct](CODE_OF_CONDUCT.md) to learn more about our
+Check our [Code of Conduct](CODE_OF_CONDUCT.md) to learn more about our
 contributor standards and expectations.
