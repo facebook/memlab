@@ -141,7 +141,123 @@ export function registerCheckHealth(server: McpServer): void {
           });
         }
 
-        // Check 5: Classes with >10,000 instances
+        // Check 5: Subscription/listener accumulation
+        const listenerKeywords = new Set([
+          'callback',
+          'handler',
+          'listener',
+          'fn',
+        ]);
+        const contextKeywords = new Set([
+          'context',
+          'ctx',
+          'this',
+          'target',
+          'scope',
+        ]);
+        const shapeAccum = new Map<
+          string,
+          {count: number; totalSelfSize: number; exampleId: number}
+        >();
+
+        snapshot.nodes.forEach(node => {
+          if (node.type !== 'object' || node.id <= 3) return;
+          if (node.name !== 'Object') return;
+          const names: string[] = [];
+          for (const edge of node.references) {
+            if (edge.type === 'property') {
+              names.push(String(edge.name_or_index));
+            }
+          }
+          if (names.length === 0 || names.length > 10) return;
+          const hasListener = names.some(
+            n => listenerKeywords.has(n) || n.startsWith('on'),
+          );
+          const hasContext = names.some(n => contextKeywords.has(n));
+          if (!hasListener || !hasContext) return;
+          names.sort();
+          const key = names.join(',');
+          const existing = shapeAccum.get(key);
+          if (existing) {
+            existing.count++;
+            existing.totalSelfSize += node.self_size;
+          } else {
+            shapeAccum.set(key, {
+              count: 1,
+              totalSelfSize: node.self_size,
+              exampleId: node.id,
+            });
+          }
+        });
+
+        for (const [shape, stats] of shapeAccum) {
+          if (stats.count < 100000) continue;
+          const sev: Severity =
+            stats.totalSelfSize >= totalSize * 0.1
+              ? 'critical'
+              : stats.totalSelfSize >= totalSize * 0.05
+                ? 'warning'
+                : 'info';
+          findings.push({
+            severity: sev,
+            title: `${formatNumber(stats.count)} listener/subscription objects with shape {${shape}}`,
+            detail: `Total self size: ${formatBytes(stats.totalSelfSize)}. These objects have callback/handler + context properties, suggesting event listener or subscription registrations that are accumulating.`,
+            next_step: `memlab_retainer_summary with node_ids [${stats.exampleId}] to trace the retention pattern`,
+          });
+        }
+
+        // Check 6: Repeated Error accumulation
+        const errorNames = new Set([
+          'Error',
+          'SyntaxError',
+          'TypeError',
+          'ReferenceError',
+          'RangeError',
+        ]);
+        const errorMessages = new Map<
+          string,
+          {count: number; errorType: string; exampleId: number}
+        >();
+
+        snapshot.nodes.forEach(node => {
+          if (node.type !== 'object' || node.id <= 3) return;
+          if (!errorNames.has(node.name)) return;
+          for (const edge of node.references) {
+            if (
+              String(edge.name_or_index) === 'message' &&
+              edge.toNode.isString
+            ) {
+              const strNode = edge.toNode.toStringNode();
+              if (!strNode) break;
+              const msg = strNode.stringValue;
+              const key = `${node.name}::${msg}`;
+              const existing = errorMessages.get(key);
+              if (existing) {
+                existing.count++;
+              } else {
+                errorMessages.set(key, {
+                  count: 1,
+                  errorType: node.name,
+                  exampleId: node.id,
+                });
+              }
+              break;
+            }
+          }
+        });
+
+        for (const [, stats] of errorMessages) {
+          if (stats.count < 50) continue;
+          findings.push({
+            severity: stats.count >= 500 ? 'warning' : 'info',
+            title: `${formatNumber(stats.count)} identical \`${stats.errorType}\` instances`,
+            detail:
+              'Repeated identical error objects suggest a module failing to load or a retry loop',
+            next_step: `memlab_get_node with node_id ${stats.exampleId} to inspect the error, then memlab_retainer_trace to find where it's created`,
+          });
+        }
+
+        // Check 7: Classes with >10,000 instances
         const anomalousClasses = [...classCounts.entries()]
           .filter(([, count]) => count >= 10000)
           .sort((a, b) => b[1] - a[1])
@@ -153,6 +269,39 @@ export function registerCheckHealth(server: McpServer): void {
             detail:
               'Unusually high instance count may indicate accumulation or a leak',
             next_step: `memlab_retainer_summary with class_name "${name}"`,
+          });
+        }
+
+        // Check 8: Retained module source code
+        let moduleSourceSize = 0;
+        let moduleSourceCount = 0;
+
+        snapshot.nodes.forEach(node => {
+          if (node.id <= 3) return;
+          if (node.type !== 'string' && node.name !== 'system / ExternalString')
+            return;
+          if (node.self_size < 1024) return;
+          const strNode = node.toStringNode();
+          if (!strNode) return;
+          const val = strNode.stringValue;
+          if (
+            val.includes('__d(') ||
+            val.includes('define(') ||
+            (val.includes('function(') && val.includes('module'))
+          ) {
+            moduleSourceSize += node.self_size;
+            moduleSourceCount++;
+          }
+        });
+
+        if (totalSize > 0 && moduleSourceSize >= 10 * 1024 * 1024) {
+          const pct = ((moduleSourceSize / totalSize) * 100).toFixed(1);
+          findings.push({
+            severity: moduleSourceSize >= totalSize * 0.1 ? 'warning' : 'info',
+            title: `${formatBytes(moduleSourceSize)} of retained module source code (${pct}% of heap)`,
+            detail: `${formatNumber(moduleSourceCount)} string(s) containing JS module source (__d(), define(), function(module)). These are bundled source text retained after evaluation.`,
+            next_step:
+              'memlab_string_patterns to identify which modules are retained, then check if source can be released after evaluation',
           });
         }
 

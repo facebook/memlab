@@ -319,6 +319,157 @@ function scanTopShapes(snapshot: IHeapSnapshot, limit: number): ShapeSummary[] {
     .slice(0, limit);
 }
 
+const LISTENER_SHAPE_KEYWORDS = new Set([
+  'callback',
+  'handler',
+  'listener',
+  'onError',
+  'onSuccess',
+  'onChange',
+  'onUpdate',
+  'onLoad',
+  'onDone',
+  'fn',
+]);
+
+const LISTENER_CONTEXT_KEYWORDS = new Set([
+  'context',
+  'ctx',
+  'this',
+  'target',
+  'scope',
+  'self',
+]);
+
+interface SubscriptionAccumulation {
+  properties: string[];
+  count: number;
+  totalSelfSize: number;
+  exampleNodeId: number;
+}
+
+function scanSubscriptionAccumulation(
+  snapshot: IHeapSnapshot,
+  threshold: number,
+): SubscriptionAccumulation[] {
+  const shapeMap = new Map<
+    string,
+    {
+      properties: string[];
+      count: number;
+      totalSelfSize: number;
+      exampleNodeId: number;
+      hasListenerProp: boolean;
+      hasContextProp: boolean;
+    }
+  >();
+
+  snapshot.nodes.forEach(node => {
+    if (node.type !== 'object' || node.id <= 3) return;
+    if (node.name !== 'Object') return;
+    const names: string[] = [];
+    for (const edge of node.references) {
+      if (edge.type === 'property') {
+        names.push(String(edge.name_or_index));
+      }
+    }
+    if (names.length === 0 || names.length > 10) return;
+    names.sort();
+    const key = names.join(',');
+    const existing = shapeMap.get(key);
+    if (existing) {
+      existing.count++;
+      existing.totalSelfSize += node.self_size;
+    } else {
+      const hasListener = names.some(
+        n => LISTENER_SHAPE_KEYWORDS.has(n) || n.startsWith('on'),
+      );
+      const hasContext = names.some(n => LISTENER_CONTEXT_KEYWORDS.has(n));
+      shapeMap.set(key, {
+        properties: names,
+        count: 1,
+        totalSelfSize: node.self_size,
+        exampleNodeId: node.id,
+        hasListenerProp: hasListener,
+        hasContextProp: hasContext,
+      });
+    }
+  });
+
+  return [...shapeMap.values()]
+    .filter(s => s.count >= threshold && s.hasListenerProp && s.hasContextProp)
+    .sort((a, b) => b.totalSelfSize - a.totalSelfSize);
+}
+
+const ERROR_CLASS_NAMES = new Set([
+  'Error',
+  'SyntaxError',
+  'TypeError',
+  'ReferenceError',
+  'RangeError',
+  'URIError',
+  'EvalError',
+  'AggregateError',
+]);
+
+interface ErrorAccumulation {
+  errorType: string;
+  message: string;
+  count: number;
+  totalRetained: number;
+  exampleNodeId: number;
+}
+
+function scanErrorAccumulation(
+  snapshot: IHeapSnapshot,
+  minCount: number,
+): ErrorAccumulation[] {
+  const errorMap = new Map<
+    string,
+    {
+      errorType: string;
+      message: string;
+      count: number;
+      totalRetained: number;
+      exampleNodeId: number;
+    }
+  >();
+
+  snapshot.nodes.forEach(node => {
+    if (node.type !== 'object' || node.id <= 3) return;
+    if (!ERROR_CLASS_NAMES.has(node.name)) return;
+
+    let message = '';
+    for (const edge of node.references) {
+      if (String(edge.name_or_index) === 'message' && edge.toNode.isString) {
+        const strNode = edge.toNode.toStringNode();
+        if (strNode) message = strNode.stringValue;
+        break;
+      }
+    }
+    if (!message) return;
+
+    const key = `${node.name}::${message}`;
+    const existing = errorMap.get(key);
+    if (existing) {
+      existing.count++;
+      existing.totalRetained += node.retainedSize;
+    } else {
+      errorMap.set(key, {
+        errorType: node.name,
+        message,
+        count: 1,
+        totalRetained: node.retainedSize,
+        exampleNodeId: node.id,
+      });
+    }
+  });
+
+  return [...errorMap.values()]
+    .filter(e => e.count >= minCount)
+    .sort((a, b) => b.count - a.count);
+}
+
 function tracePrefix(trace: RetainerStep[]): string {
   return trace.map(s => `${s.name}(${s.type})`).join('->');
 }
@@ -482,6 +633,10 @@ export function registerAutoInvestigate(server: McpServer): void {
                 topPending: [],
               };
         const shapes = focus === 'all' ? scanTopShapes(snapshot, 5) : [];
+        const subscriptions =
+          focus === 'all' ? scanSubscriptionAccumulation(snapshot, 1000) : [];
+        const errorAccum =
+          focus === 'all' ? scanErrorAccumulation(snapshot, 10) : [];
 
         const lines: string[] = [`# Auto-Investigation Report`, ''];
 
@@ -601,13 +756,76 @@ export function registerAutoInvestigate(server: McpServer): void {
               s.properties.length <= 6
                 ? `{${s.properties.join(', ')}}`
                 : `{${s.properties.slice(0, 5).join(', ')}, … +${s.properties.length - 5}}`;
+            const shapeSev = classifySeverity(s.totalSelfSize, totalSize);
+            const shapeSevIcon =
+              shapeSev === 'CRITICAL'
+                ? '🔴'
+                : shapeSev === 'HIGH'
+                  ? '🟠'
+                  : shapeSev === 'MEDIUM'
+                    ? '🟡'
+                    : '';
+            const sevLabel =
+              shapeSev !== 'LOW' ? ` ${shapeSevIcon} [${shapeSev}]` : '';
             lines.push(
-              `- ${propsDisplay} — ${formatNumber(s.count)} instances, ${formatBytes(s.totalSelfSize)} self (example: @${s.exampleNodeId})`,
+              `- ${propsDisplay} — ${formatNumber(s.count)} instances, ${formatBytes(s.totalSelfSize)} self (example: @${s.exampleNodeId})${sevLabel}`,
             );
           }
           lines.push(
             '',
             '_Use `memlab_shape_histogram` for full shape analysis with retained sizes._',
+          );
+          lines.push('');
+        }
+
+        if (subscriptions.length > 0) {
+          lines.push(`## Subscription/Listener Accumulation`);
+          lines.push('');
+          lines.push(
+            'Object shapes matching listener/subscription patterns (properties containing callback/handler + context/target):',
+          );
+          lines.push('');
+          for (const s of subscriptions.slice(0, 5)) {
+            const propsDisplay = `{${s.properties.join(', ')}}`;
+            const subSev = classifySeverity(s.totalSelfSize, totalSize);
+            const subSevIcon =
+              subSev === 'CRITICAL'
+                ? '🔴'
+                : subSev === 'HIGH'
+                  ? '🟠'
+                  : subSev === 'MEDIUM'
+                    ? '🟡'
+                    : '🔵';
+            lines.push(
+              `- ${subSevIcon} [${subSev}] ${propsDisplay} — **${formatNumber(s.count)}** instances, ${formatBytes(s.totalSelfSize)} self (example: @${s.exampleNodeId})`,
+            );
+          }
+          lines.push(
+            '',
+            '_These may be event listeners, signal subscriptions, or observer registrations that are not being cleaned up. Use `memlab_retainer_summary` with node_ids from the examples to trace the retention pattern._',
+          );
+          lines.push('');
+        }
+
+        if (errorAccum.length > 0) {
+          lines.push(`## Repeated Error Accumulation`);
+          lines.push('');
+          lines.push(
+            'Identical Error instances appearing many times — often indicates a module being evaluated repeatedly and failing each time:',
+          );
+          lines.push('');
+          for (const e of errorAccum.slice(0, 5)) {
+            const msgDisplay =
+              e.message.length > 80
+                ? e.message.slice(0, 77) + '...'
+                : e.message;
+            lines.push(
+              `- **${formatNumber(e.count)}x** \`${e.errorType}\`: "${msgDisplay}" — ${formatBytes(e.totalRetained)} total retained (example: @${e.exampleNodeId})`,
+            );
+          }
+          lines.push(
+            '',
+            '_Repeated identical errors are almost always a bug — a module failing to load, a misconfigured import, or a retry loop that never succeeds._',
           );
           lines.push('');
         }

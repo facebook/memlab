@@ -30,6 +30,48 @@ interface CacheEntry {
   ownerName: string;
   ownerEdge: string;
   hasWeakRefs: boolean;
+  framework: string;
+}
+
+function identifyCacheFramework(node: IHeapNode, ownerEdge: string): string {
+  // Check owner edge name for framework-specific patterns
+  if (ownerEdge === '$$cache' || ownerEdge.includes('.$$cache')) {
+    return 'Memoization/Selector ($$cache)';
+  }
+  if (ownerEdge === '__relay_store' || ownerEdge === '_recordSource') {
+    return 'Relay Store';
+  }
+  if (ownerEdge === '_cache' || ownerEdge === '__cache') {
+    return 'Module-level cache';
+  }
+  if (
+    ownerEdge === 'atomValues' ||
+    ownerEdge === 'nodeToComponentSubscriptions'
+  ) {
+    return 'Recoil';
+  }
+  if (ownerEdge === 'storeState' || ownerEdge === 'currentReducer') {
+    return 'Redux';
+  }
+
+  // Check owner properties for framework hints
+  if (!node.hasPathEdge) return '';
+  const pathEdge = node.pathEdge;
+  if (!pathEdge) return '';
+  const owner = pathEdge.fromNode;
+
+  if (owner.type === 'closure') {
+    // Closures with $$cache are memoization/selector patterns
+    for (const edge of owner.references) {
+      const eName = String(edge.name_or_index);
+      if (eName === '$$cache') return 'Memoization/Selector ($$cache)';
+      if (eName === 'recoilValue') return 'Recoil selector';
+    }
+  }
+
+  if (node.name === 'WeakMap') return 'WeakMap cache (no eviction risk)';
+
+  return '';
 }
 
 function getOwnerInfo(node: IHeapNode): {name: string; edge: string} {
@@ -236,6 +278,7 @@ export function registerCacheAnalysis(server: McpServer): void {
           if (entryCount < min_entries) return;
 
           const owner = getOwnerInfo(node);
+          const framework = identifyCacheFramework(node, owner.edge);
           const entry: CacheEntry = {
             nodeId: node.id,
             collectionType: node.name,
@@ -245,6 +288,7 @@ export function registerCacheAnalysis(server: McpServer): void {
             ownerName: owner.name,
             ownerEdge: owner.edge,
             hasWeakRefs: hasWeakRefEntries(node),
+            framework,
           };
 
           let inserted = false;
@@ -265,6 +309,7 @@ export function registerCacheAnalysis(server: McpServer): void {
           );
         }
 
+        const hasAnyFramework = caches.some(c => c.framework !== '');
         const headers = [
           'ID',
           'Type',
@@ -274,6 +319,7 @@ export function registerCacheAnalysis(server: McpServer): void {
           'Owner',
           'Property',
           'Weak?',
+          ...(hasAnyFramework ? ['Framework'] : []),
         ];
         const rightCols = new Set([2, 3, 4]);
         const rows = caches.map(c => {
@@ -290,6 +336,7 @@ export function registerCacheAnalysis(server: McpServer): void {
             c.ownerName,
             c.ownerEdge,
             c.hasWeakRefs ? 'Yes' : 'No',
+            ...(hasAnyFramework ? [c.framework || '-'] : []),
           ];
         });
 

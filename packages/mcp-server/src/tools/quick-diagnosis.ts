@@ -206,10 +206,9 @@ export function registerQuickDiagnosis(server: McpServer): void {
           return {key, ...v, retained_size: retainedSize};
         });
 
-        const totalClassRetained = withRetained.reduce(
-          (s, v) => s + v.retained_size,
-          0,
-        );
+        // Use total heap size as denominator so cumulative % reflects each
+        // class's share of the entire heap, not just the displayed classes.
+        const totalClassRetained = meta?.totalSize ?? 0;
 
         const classSorted = withRetained
           .sort((a, b) => b.retained_size - a.retained_size)

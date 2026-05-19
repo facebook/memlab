@@ -149,7 +149,13 @@ export function registerRetainerSummary(server: McpServer): void {
         .string()
         .optional()
         .describe(
-          'The constructor/class name to analyze. Required if node_ids is not provided.',
+          'The constructor/class name to analyze. Supports exact match and substring match (e.g., "Detached <div>" will match V8\'s detached DOM naming). Required if node_ids and name_prefix are not provided.',
+        ),
+      name_prefix: z
+        .string()
+        .optional()
+        .describe(
+          'Match nodes whose name starts with this prefix (e.g., "Detached" matches all detached DOM nodes regardless of element type). Use instead of class_name when the exact name varies.',
         ),
       node_ids: z
         .array(z.number())
@@ -187,6 +193,7 @@ export function registerRetainerSummary(server: McpServer): void {
     },
     async ({
       class_name,
+      name_prefix,
       node_ids,
       sample,
       max_depth,
@@ -206,16 +213,35 @@ export function registerRetainerSummary(server: McpServer): void {
             if (node) nodes.push(node);
           }
           label = `${nodes.length} specified node(s)`;
+        } else if (name_prefix) {
+          nodes = filterLargestObjects(
+            snapshot,
+            node => node.name.startsWith(name_prefix),
+            sample,
+          );
+          label = `prefix "${name_prefix}"`;
         } else if (class_name) {
+          // Try exact match first
           nodes = filterLargestObjects(
             snapshot,
             node => node.name === class_name,
             sample,
           );
+          // Fall back to substring match (handles V8 detached DOM names
+          // like "Detached <div>" which contain angle brackets)
+          if (nodes.length === 0) {
+            nodes = filterLargestObjects(
+              snapshot,
+              node => node.name.includes(class_name),
+              sample,
+            );
+          }
           label = `"${class_name}"`;
         } else {
           return errorResult(
-            new Error('Either class_name or node_ids must be provided.'),
+            new Error(
+              'Either class_name, name_prefix, or node_ids must be provided.',
+            ),
           );
         }
 

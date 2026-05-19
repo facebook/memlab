@@ -31,6 +31,12 @@ export function registerFindByProperty(server: McpServer): void {
         .describe(
           'The property/edge name to search for (e.g., "__reactFiber$", "cache", "data")',
         ),
+      property_value: z
+        .string()
+        .optional()
+        .describe(
+          'Filter by the string value of the property target. Exact match by default; prefix with "/" for regex (e.g., "/^Left$/"). Only matches string-type target nodes.',
+        ),
       edge_type: z
         .string()
         .optional()
@@ -43,12 +49,28 @@ export function registerFindByProperty(server: McpServer): void {
         .default(20)
         .describe('Maximum number of results (default 20)'),
     },
-    async ({property_name, edge_type, limit}) => {
+    async ({property_name, property_value, edge_type, limit}) => {
       try {
         const snapshot = getSnapshot();
 
         // Use prefix matching for names ending with $ (React dynamic suffixes)
         const isPrefix = property_name.endsWith('$');
+
+        let valueRegex: RegExp | null = null;
+        let valueExact: string | null = null;
+        if (property_value) {
+          if (
+            property_value.startsWith('/') &&
+            property_value.lastIndexOf('/') > 0
+          ) {
+            const lastSlash = property_value.lastIndexOf('/');
+            const pattern = property_value.slice(1, lastSlash);
+            const flags = property_value.slice(lastSlash + 1);
+            valueRegex = new RegExp(pattern, flags);
+          } else {
+            valueExact = property_value;
+          }
+        }
 
         const results: IHeapNode[] = [];
 
@@ -62,6 +84,15 @@ export function registerFindByProperty(server: McpServer): void {
               : edgeName === property_name;
             if (!nameMatch) return false;
             if (edge_type && edge.type !== edge_type) return false;
+            if (valueExact != null || valueRegex != null) {
+              const target = edge.toNode;
+              if (!target.isString) return false;
+              const strNode = target.toStringNode();
+              if (!strNode) return false;
+              const strVal = strNode.stringValue;
+              if (valueExact != null && strVal !== valueExact) return false;
+              if (valueRegex != null && !valueRegex.test(strVal)) return false;
+            }
             return true;
           });
 
@@ -86,13 +117,15 @@ export function registerFindByProperty(server: McpServer): void {
         });
 
         const summaries = results.map(serializeNodeSummary);
+        const filterDesc =
+          `"${property_name}"` +
+          (property_value ? ` = "${property_value}"` : '') +
+          (edge_type ? ` (edge type: ${edge_type})` : '');
         if (summaries.length === 0) {
-          return toolResult(
-            `No objects found with property "${property_name}"${edge_type ? ` (edge type: ${edge_type})` : ''}`,
-          );
+          return toolResult(`No objects found with property ${filterDesc}`);
         }
         return toolResult(
-          `Found ${summaries.length} objects with property "${property_name}"${edge_type ? ` (edge type: ${edge_type})` : ''}\n\n${formatNodeSummaryTable(summaries)}`,
+          `Found ${summaries.length} objects with property ${filterDesc}\n\n${formatNodeSummaryTable(summaries)}`,
         );
       } catch (err) {
         return errorResult(err);

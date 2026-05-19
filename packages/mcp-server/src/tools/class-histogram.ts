@@ -13,7 +13,7 @@ import {z} from 'zod';
 import memlabCore from '@memlab/core';
 import type {IHeapNode, HeapNodeIdSet} from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
-import {getSnapshot} from '../heap-state.js';
+import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {
   errorResult,
   toolResult,
@@ -72,6 +72,7 @@ export function registerClassHistogram(server: McpServer): void {
     }) => {
       try {
         const snapshot = getSnapshot();
+        const meta = getSnapshotMetadata();
 
         const classMap = new Map<
           string,
@@ -135,10 +136,10 @@ export function registerClassHistogram(server: McpServer): void {
           );
         }
 
-        const totalRetainedAll = afterRetainedFilter.reduce(
-          (s, v) => s + v.retained_size,
-          0,
-        );
+        // Use total heap size as the denominator for cumulative % so it
+        // reflects each class's share of the entire heap, not just the
+        // filtered subset.
+        const totalRetainedAll = meta?.totalSize ?? 0;
 
         const sorted = afterRetainedFilter
           .sort((a, b) => b.retained_size - a.retained_size)

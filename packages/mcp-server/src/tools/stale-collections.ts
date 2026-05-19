@@ -64,8 +64,22 @@ export function registerStaleCollections(server: McpServer): void {
         .optional()
         .default(15)
         .describe('Maximum number of results (default 15)'),
+      min_stale_count: z
+        .number()
+        .optional()
+        .default(1)
+        .describe(
+          'Minimum number of stale entries to include a collection (default 1). Increase to filter out trivially small stale collections.',
+        ),
+      min_stale_retained_size: z
+        .number()
+        .optional()
+        .default(0)
+        .describe(
+          'Minimum total stale retained size in bytes to include (default 0). Use e.g., 10240 for 10 KB to filter noise.',
+        ),
     },
-    async ({limit}) => {
+    async ({limit, min_stale_count, min_stale_retained_size}) => {
       try {
         const snapshot = getSnapshot();
         const results: CollectionStat[] = [];
@@ -86,7 +100,10 @@ export function registerStaleCollections(server: McpServer): void {
             }
           }
 
-          if (staleCount > 0) {
+          if (
+            staleCount >= min_stale_count &&
+            staleRetainedSize >= min_stale_retained_size
+          ) {
             results.push({
               collection: node,
               stale_item_count: staleCount,
