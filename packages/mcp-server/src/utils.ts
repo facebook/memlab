@@ -53,7 +53,7 @@ function truncateDomClasses(name: string): string {
   return `${before}class="${kept} …(${classList.length - 3} more)"${after}`;
 }
 
-function preferUsefulAttributes(name: string): string {
+function preferUsefulAttributes(name: string, maxLen: number): string {
   const testId = name.match(/data-testid="([^"]*)"/);
   const ariaLabel = name.match(/aria-label="([^"]*)"/);
   const id = name.match(/ id="([^"]*)"/);
@@ -63,7 +63,7 @@ function preferUsefulAttributes(name: string): string {
   const tag = nameWithoutDetached.match(/^(\w+)/)?.[1] ?? '';
   const preferred = testId?.[0] ?? ariaLabel?.[0] ?? id?.[0] ?? null;
 
-  if (preferred && name.length > 80) {
+  if (preferred && name.length > maxLen) {
     return `${detached}<${tag} ${preferred}>`;
   }
   return name;
@@ -81,7 +81,7 @@ export function truncateNodeName(
   }
 
   if (name.includes('class="') && name.length > maxLen) {
-    let processed = preferUsefulAttributes(name);
+    let processed = preferUsefulAttributes(name, maxLen);
     processed = truncateDomClasses(processed);
     if (processed.length <= maxLen) return processed;
     return `${processed.slice(0, maxLen)}…`;
@@ -256,6 +256,7 @@ export function queryNodes(
 }
 
 export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return 'N/A';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024)

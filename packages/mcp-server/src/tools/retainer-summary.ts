@@ -345,6 +345,41 @@ export function registerRetainerSummary(server: McpServer): void {
               formatTraceChainCompact(steps, framework_filter)
           : (steps: TraceStep[]) => formatTraceChain(filterSteps(steps));
 
+        const getDisplaySteps = (p: {steps: TraceStep[]}) =>
+          compact ? filterSteps(p.steps) : p.steps;
+
+        let commonPrefixLen = 0;
+        if (sorted.length > 1) {
+          const allSteps = sorted.map(getDisplaySteps);
+          const minLen = Math.min(...allSteps.map(s => s.length));
+          for (let ci = 0; ci < minLen - 1; ci++) {
+            const ref = allSteps[0][ci];
+            const refKey = `${ref.name}(${ref.type})${ref.edgeName ?? ''}`;
+            if (
+              allSteps.every(s => {
+                const step = s[ci];
+                return (
+                  `${step.name}(${step.type})${step.edgeName ?? ''}` === refKey
+                );
+              })
+            ) {
+              commonPrefixLen = ci + 1;
+            } else {
+              break;
+            }
+          }
+        }
+
+        if (commonPrefixLen >= 2) {
+          const prefixSteps = getDisplaySteps(sorted[0]).slice(
+            0,
+            commonPrefixLen,
+          );
+          lines.push(`**Common prefix** (${commonPrefixLen} nodes):`);
+          lines.push(formatFn(prefixSteps));
+          lines.push('');
+        }
+
         for (let i = 0; i < sorted.length; i++) {
           const p = sorted[i];
           const pct = ((p.count / totalSampled) * 100).toFixed(0);
@@ -352,7 +387,15 @@ export function registerRetainerSummary(server: McpServer): void {
             `### Pattern ${i + 1}: ${p.count}/${totalSampled} instances (${pct}%), ${formatBytes(p.total_retained)} retained`,
           );
           lines.push('');
-          lines.push(formatFn(p.steps));
+          const displaySteps =
+            commonPrefixLen >= 2
+              ? getDisplaySteps(p).slice(commonPrefixLen)
+              : p.steps;
+          lines.push(
+            commonPrefixLen >= 2
+              ? `… → ${formatFn(displaySteps)}`
+              : formatFn(displaySteps),
+          );
           lines.push('');
           lines.push(
             `Example nodes: ${p.example_ids.map(id => `@${id}`).join(', ')}`,

@@ -501,7 +501,12 @@ function deduplicateFindings(findings: Finding[]): Finding[] {
 
     const existing = prefixMap.get(prefix);
     if (existing) {
-      existing.others.push(f);
+      if (f.node.retainedSize > existing.representative.node.retainedSize) {
+        existing.others.push(existing.representative);
+        existing.representative = f;
+      } else {
+        existing.others.push(f);
+      }
     } else {
       prefixMap.set(prefix, {representative: f, others: []});
     }
@@ -644,6 +649,25 @@ export function registerAutoInvestigate(server: McpServer): void {
         lines.push(`## Top ${findings.length} Retained Objects${focusLabel}`);
         lines.push('');
 
+        const pinchPointMap = new Map<
+          number,
+          {pp: PinchPoint; findingIndices: number[]}
+        >();
+        for (let i = 0; i < findings.length; i++) {
+          const f = findings[i];
+          if (f.pinchPoint) {
+            const existing = pinchPointMap.get(f.pinchPoint.nodeId);
+            if (existing) {
+              existing.findingIndices.push(i);
+            } else {
+              pinchPointMap.set(f.pinchPoint.nodeId, {
+                pp: f.pinchPoint,
+                findingIndices: [i],
+              });
+            }
+          }
+        }
+
         for (let i = 0; i < findings.length; i++) {
           const f = findings[i] as Finding & {
             collapsed_siblings?: Finding[];
@@ -699,13 +723,41 @@ export function registerAutoInvestigate(server: McpServer): void {
 
           if (f.pinchPoint) {
             const pp = f.pinchPoint;
-            const ppName = truncateNodeName(pp.name, pp.type, pp.selfSize, 50);
-            lines.push(
-              `**Pinch point:** @${pp.nodeId} \`${ppName}\` — self: ${formatBytes(pp.selfSize)}, retains: ${formatBytes(pp.retainedSize)} (${formatNumber(Math.round(pp.ratio))}:1 ratio). Freeing this single object would reclaim ${formatBytes(pp.retainedSize)}.`,
-            );
+            const ppEntry = pinchPointMap.get(pp.nodeId);
+            const sharedWith = ppEntry?.findingIndices.filter(j => j !== i);
+            if (sharedWith && sharedWith.length > 0) {
+              lines.push(
+                `**Pinch point:** @${pp.nodeId} (shared with findings ${sharedWith.map(j => `#${j + 1}`).join(', ')} — see below)`,
+              );
+            } else {
+              const ppName = truncateNodeName(
+                pp.name,
+                pp.type,
+                pp.selfSize,
+                50,
+              );
+              lines.push(
+                `**Pinch point:** @${pp.nodeId} \`${ppName}\` — self: ${formatBytes(pp.selfSize)}, retains: ${formatBytes(pp.retainedSize)} (${formatNumber(Math.round(pp.ratio))}:1 ratio). Freeing this single object would reclaim ${formatBytes(pp.retainedSize)}.`,
+              );
+            }
           } else {
             lines.push(
               '**Pinch point:** none found (retained size is distributed)',
+            );
+          }
+          lines.push('');
+        }
+
+        const sharedPinchPoints = [...pinchPointMap.values()].filter(
+          e => e.findingIndices.length > 1,
+        );
+        if (sharedPinchPoints.length > 0) {
+          lines.push('## Shared Pinch Points');
+          lines.push('');
+          for (const {pp, findingIndices} of sharedPinchPoints) {
+            const ppName = truncateNodeName(pp.name, pp.type, pp.selfSize, 50);
+            lines.push(
+              `- @${pp.nodeId} \`${ppName}\` — self: ${formatBytes(pp.selfSize)}, retains: ${formatBytes(pp.retainedSize)} (${formatNumber(Math.round(pp.ratio))}:1 ratio). Shared by findings ${findingIndices.map(j => `#${j + 1}`).join(', ')}. Freeing this single object would reclaim ${formatBytes(pp.retainedSize)}.`,
             );
           }
           lines.push('');

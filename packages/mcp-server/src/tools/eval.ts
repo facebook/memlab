@@ -34,6 +34,95 @@ function truncate(str: string, max: number): string {
   return str.slice(0, max) + '\n... [truncated, output exceeded 50KB]';
 }
 
+const NODE_PROPERTY_ALIASES: Record<string, string> = {
+  retained_size: 'retainedSize',
+  referrer_count: 'numOfReferrers',
+};
+
+function wrapNode(node: unknown): unknown {
+  if (node == null) return node;
+  return new Proxy(node as object, {
+    get(target, prop, receiver) {
+      if (typeof prop === 'string' && prop in NODE_PROPERTY_ALIASES) {
+        return (target as Record<string, unknown>)[NODE_PROPERTY_ALIASES[prop]];
+      }
+      const val = Reflect.get(target, prop, receiver);
+      if (prop === 'references' || prop === 'referrers') {
+        return wrapEdgeIterable(val);
+      }
+      if (prop === 'dominatorNode' || prop === 'pathEdge') {
+        if (val != null && typeof val === 'object' && 'fromNode' in val) {
+          return wrapEdge(val);
+        }
+        if (val != null && typeof val === 'object' && 'id' in val) {
+          return wrapNode(val);
+        }
+      }
+      return val;
+    },
+  });
+}
+
+function wrapEdge(edge: unknown): unknown {
+  if (edge == null) return edge;
+  return new Proxy(edge as object, {
+    get(target, prop, receiver) {
+      const val = Reflect.get(target, prop, receiver);
+      if (prop === 'toNode' || prop === 'fromNode') {
+        return wrapNode(val);
+      }
+      return val;
+    },
+  });
+}
+
+function wrapEdgeIterable(iterable: unknown): unknown {
+  if (iterable == null) return iterable;
+  const original = iterable as Iterable<unknown>;
+  return {
+    [Symbol.iterator]() {
+      const iter = original[Symbol.iterator]();
+      return {
+        next() {
+          const result = iter.next();
+          if (result.done) return result;
+          return {done: false, value: wrapEdge(result.value)};
+        },
+      };
+    },
+  };
+}
+
+function wrapSnapshot(snapshot: unknown): unknown {
+  return new Proxy(snapshot as object, {
+    get(target, prop, receiver) {
+      if (prop === 'getNodeById') {
+        const orig = (
+          target as Record<string, (...args: unknown[]) => unknown>
+        ).getNodeById.bind(target);
+        return (id: number) => wrapNode(orig(id));
+      }
+      if (prop === 'nodes') {
+        const nodes = Reflect.get(target, prop, receiver);
+        return new Proxy(nodes as object, {
+          get(nodesTarget, nodesProp, nodesReceiver) {
+            if (nodesProp === 'forEach') {
+              const origForEach = (
+                nodesTarget as Record<string, (...args: unknown[]) => unknown>
+              ).forEach.bind(nodesTarget);
+              return (cb: (node: unknown) => void) => {
+                origForEach((node: unknown) => cb(wrapNode(node)));
+              };
+            }
+            return Reflect.get(nodesTarget, nodesProp, nodesReceiver);
+          },
+        });
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+}
+
 export function registerEval(server: McpServer): void {
   server.tool(
     'memlab_eval',
@@ -42,9 +131,10 @@ export function registerEval(server: McpServer): void {
       '`utils` (@memlab/core utils), and `helpers` (plugin utility functions). ' +
       'Assign your result to the `result` variable. ' +
       'No require/process/fs/network access. Read-only heap analysis only.\n\n' +
-      '**IHeapNode API:** Each node has: `.id`, `.name`, `.type`, `.self_size`, `.retainedSize`, ' +
-      '`.edge_count`, `.is_detached`, `.isString`, `.hasPathEdge`, `.pathEdge`, `.dominatorNode`, ' +
-      '`.numOfReferrers`, `.location` (script_id/line/column).\n' +
+      '**IHeapNode API:** Each node has: `.id`, `.name`, `.type`, `.self_size`, ' +
+      '`.retained_size` (alias: `.retainedSize`), `.edge_count`, `.is_detached`, ' +
+      '`.referrer_count` (alias: `.numOfReferrers`), `.isString`, `.hasPathEdge`, ' +
+      '`.pathEdge`, `.dominatorNode`, `.location` (script_id/line/column).\n' +
       '**Traversal:** Use `node.references` (outgoing edges, iterable with for-of) and ' +
       '`node.referrers` (incoming edges, iterable with for-of). ' +
       'Each edge has: `.name_or_index`, `.type` (property/element/context/internal/hidden/shortcut), ' +
@@ -106,7 +196,7 @@ export function registerEval(server: McpServer): void {
         };
 
         const sandbox = {
-          snapshot,
+          snapshot: wrapSnapshot(snapshot),
           utils,
           helpers,
           console: capturedConsole,

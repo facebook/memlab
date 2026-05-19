@@ -52,10 +52,12 @@ import {registerCacheAnalysis} from './tools/cache-analysis.js';
 import {registerTraceDominators} from './tools/trace-dominators.js';
 import {registerShapeHistogram} from './tools/shape-histogram.js';
 import {registerQuickDiagnosis} from './tools/quick-diagnosis.js';
+import {registerReferrerSummary} from './tools/referrer-summary.js';
+import {registerEventListenerLeaks} from './tools/event-listener-leaks.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.3.0',
+  version: '2.4.0',
 });
 
 registerLoadSnapshot(server);
@@ -90,6 +92,8 @@ registerCacheAnalysis(server);
 registerTraceDominators(server);
 registerShapeHistogram(server);
 registerQuickDiagnosis(server);
+registerReferrerSummary(server);
+registerEventListenerLeaks(server);
 registerEval(server);
 registerForEach(server);
 

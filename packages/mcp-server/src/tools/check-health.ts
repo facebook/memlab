@@ -213,6 +213,9 @@ export function registerCheckHealth(server: McpServer): void {
           'TypeError',
           'ReferenceError',
           'RangeError',
+          'URIError',
+          'EvalError',
+          'AggregateError',
         ]);
         const errorMessages = new Map<
           string,

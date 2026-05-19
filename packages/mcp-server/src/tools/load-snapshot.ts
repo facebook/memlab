@@ -153,6 +153,13 @@ export function registerLoadSnapshot(server: McpServer): void {
         if (!fs.existsSync(resolved)) {
           return errorResult(new Error(`File not found: ${resolved}`));
         }
+        const fileStat = fs.statSync(resolved);
+        const fileSizeMB = fileStat.size / (1024 * 1024);
+        if (fileSizeMB > 200) {
+          process.stderr.write(
+            `Loading ${formatBytes(fileStat.size)} snapshot — this may take a while (parsing, computing dominators, building indexes)...\n`,
+          );
+        }
         const snapshot = await getFullHeapFromFile(resolved);
 
         let nodeCount = 0;
@@ -183,7 +190,7 @@ export function registerLoadSnapshot(server: McpServer): void {
               ? 'Node.js'
               : 'Unknown';
         const lines = [
-          `Loaded ${file_path}: ${formatNumber(nodeCount)} nodes, ${formatNumber(edgeCount)} edges, ${formatBytes(totalSize)} (${envLabel} snapshot)`,
+          `Loaded ${file_path} (${formatBytes(fileStat.size)} on disk): ${formatNumber(nodeCount)} nodes, ${formatNumber(edgeCount)} edges, ${formatBytes(totalSize)} heap size (${envLabel} snapshot)`,
         ];
 
         const warnings = quickDiagnosis(snapshot, totalSize);

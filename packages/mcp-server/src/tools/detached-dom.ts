@@ -81,6 +81,7 @@ interface GroupStats {
   count: number;
   totalRetained: number;
   exampleId: number;
+  maxRetainedSize: number;
 }
 
 export function registerDetachedDom(server: McpServer): void {
@@ -156,17 +157,16 @@ export function registerDetachedDom(server: McpServer): void {
             if (existing) {
               existing.count++;
               existing.totalRetained += node.retainedSize;
-              if (
-                node.retainedSize >
-                (snapshot.getNodeById(existing.exampleId)?.retainedSize ?? 0)
-              ) {
+              if (node.retainedSize > existing.maxRetainedSize) {
                 existing.exampleId = node.id;
+                existing.maxRetainedSize = node.retainedSize;
               }
             } else {
               groups.set(key, {
                 count: 1,
                 totalRetained: node.retainedSize,
                 exampleId: node.id,
+                maxRetainedSize: node.retainedSize,
               });
             }
           });

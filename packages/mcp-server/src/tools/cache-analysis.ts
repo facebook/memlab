@@ -25,6 +25,7 @@ interface CacheEntry {
   nodeId: number;
   collectionType: string;
   entryCount: number;
+  tableSlots: number;
   retainedSize: number;
   selfSize: number;
   ownerName: string;
@@ -105,7 +106,7 @@ function getOwnerInfo(node: IHeapNode): {name: string; edge: string} {
   return {name: from.name, edge: edgeName};
 }
 
-function countEntries(node: IHeapNode): number {
+function countEntries(node: IHeapNode): {entries: number; tableSlots: number} {
   if (node.name === 'Map' || node.name === 'Set') {
     for (const edge of node.references) {
       if (edge.name_or_index === 'table' && edge.toNode.type === 'array') {
@@ -115,17 +116,16 @@ function countEntries(node: IHeapNode): number {
             nonEmpty++;
           }
         }
-        return node.name === 'Map' ? Math.floor(nonEmpty / 2) : nonEmpty;
+        const entries =
+          node.name === 'Map' ? Math.floor(nonEmpty / 2) : nonEmpty;
+        return {entries, tableSlots: nonEmpty};
       }
     }
-    return 0;
+    return {entries: 0, tableSlots: 0};
   }
 
-  if (node.type === 'object' && node.name === 'Array') {
-    return node.edge_count;
-  }
-
-  return node.edge_count;
+  const count = node.edge_count;
+  return {entries: count, tableSlots: count};
 }
 
 function hasWeakRefEntries(node: IHeapNode): boolean {
@@ -274,7 +274,7 @@ export function registerCacheAnalysis(server: McpServer): void {
           if (node.type !== 'object') return;
           if (node.retainedSize < min_retained_size) return;
 
-          const entryCount = countEntries(node);
+          const {entries: entryCount, tableSlots} = countEntries(node);
           if (entryCount < min_entries) return;
 
           const owner = getOwnerInfo(node);
@@ -283,6 +283,7 @@ export function registerCacheAnalysis(server: McpServer): void {
             nodeId: node.id,
             collectionType: node.name,
             entryCount,
+            tableSlots,
             retainedSize: node.retainedSize,
             selfSize: node.self_size,
             ownerName: owner.name,
@@ -310,10 +311,14 @@ export function registerCacheAnalysis(server: McpServer): void {
         }
 
         const hasAnyFramework = caches.some(c => c.framework !== '');
+        const hasSlotDifference = caches.some(
+          c => c.tableSlots !== c.entryCount,
+        );
         const headers = [
           'ID',
           'Type',
           'Entries',
+          ...(hasSlotDifference ? ['Table Slots'] : []),
           'Retained',
           '% Heap',
           'Owner',
@@ -321,7 +326,9 @@ export function registerCacheAnalysis(server: McpServer): void {
           'Weak?',
           ...(hasAnyFramework ? ['Framework'] : []),
         ];
-        const rightCols = new Set([2, 3, 4]);
+        const rightCols = hasSlotDifference
+          ? new Set([2, 3, 4, 5])
+          : new Set([2, 3, 4]);
         const rows = caches.map(c => {
           const pct =
             totalSize > 0
@@ -331,6 +338,7 @@ export function registerCacheAnalysis(server: McpServer): void {
             `@${c.nodeId}`,
             c.collectionType,
             formatNumber(c.entryCount),
+            ...(hasSlotDifference ? [formatNumber(c.tableSlots)] : []),
             formatBytes(c.retainedSize),
             pct,
             c.ownerName,
