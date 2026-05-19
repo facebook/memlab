@@ -41,16 +41,53 @@ export interface IncomingEdge extends EdgeSummary {
   from_node: NodeSummary;
 }
 
+function truncateDomClasses(name: string): string {
+  const classMatch = name.match(/^(.*?\s)class="([^"]*)"(.*)$/);
+  if (!classMatch) return name;
+
+  const [, before, classes, after] = classMatch;
+  const classList = classes.split(/\s+/).filter(c => c.length > 0);
+  if (classList.length <= 3) return name;
+
+  const kept = classList.slice(0, 3).join(' ');
+  return `${before}class="${kept} …(${classList.length - 3} more)"${after}`;
+}
+
+function preferUsefulAttributes(name: string): string {
+  const testId = name.match(/data-testid="([^"]*)"/);
+  const ariaLabel = name.match(/aria-label="([^"]*)"/);
+  const id = name.match(/ id="([^"]*)"/);
+
+  const detached = name.startsWith('Detached ') ? 'Detached ' : '';
+  const nameWithoutDetached = detached ? name.slice(9) : name;
+  const tag = nameWithoutDetached.match(/^(\w+)/)?.[1] ?? '';
+  const preferred = testId?.[0] ?? ariaLabel?.[0] ?? id?.[0] ?? null;
+
+  if (preferred && name.length > 80) {
+    return `${detached}<${tag} ${preferred}>`;
+  }
+  return name;
+}
+
 export function truncateNodeName(
   name: string,
   type: string,
   selfSize: number,
   maxLen = 150,
 ): string {
-  if (name.length <= maxLen) return name;
   if (type === 'string' || type === 'concatenated string') {
+    if (name.length <= maxLen) return name;
     return `${name.slice(0, maxLen)}… (${formatBytes(selfSize)} total)`;
   }
+
+  if (name.includes('class="') && name.length > maxLen) {
+    let processed = preferUsefulAttributes(name);
+    processed = truncateDomClasses(processed);
+    if (processed.length <= maxLen) return processed;
+    return `${processed.slice(0, maxLen)}…`;
+  }
+
+  if (name.length <= maxLen) return name;
   return `${name.slice(0, maxLen)}…`;
 }
 

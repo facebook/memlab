@@ -18,7 +18,6 @@ import {
   formatNodeSummaryTable,
   formatNodeInline,
   errorResult,
-  textResult,
   toolResult,
   formatBytes,
   formatNumber,
@@ -79,11 +78,42 @@ export function registerDominatorSubtree(server: McpServer): void {
           }
         });
 
-        const summaries = dominated.map(serializeNodeSummary);
+        let summaries = dominated.map(serializeNodeSummary);
+
+        if (summaries.length === 0 && totalDominated > 0 && !include_internal) {
+          const internalChildren: IHeapNode[] = [];
+          snapshot.nodes.forEach(node => {
+            if (node.dominatorNode?.id === node_id && node.id !== node_id) {
+              const size = node.retainedSize;
+              let inserted = false;
+              for (let i = 0; i < internalChildren.length; i++) {
+                if (size > internalChildren[i].retainedSize) {
+                  internalChildren.splice(i, 0, node);
+                  inserted = true;
+                  break;
+                }
+              }
+              if (!inserted) internalChildren.push(node);
+              if (internalChildren.length > limit)
+                internalChildren.length = limit;
+            }
+          });
+          summaries = internalChildren.map(serializeNodeSummary);
+        }
+
+        const autoIncluded =
+          summaries.length > 0 && dominated.length === 0 && !include_internal;
+
         const lines = [
           `**${formatNodeInline(targetNode.id, targetNode.name, targetNode.type, targetNode.self_size)}** — retained ${formatBytes(targetNode.retainedSize)}, ${formatNumber(totalDominated)} dominated nodes (showing ${summaries.length})`,
           '',
         ];
+        if (autoIncluded) {
+          lines.push(
+            `_All ${formatNumber(totalDominated)} dominated children are internal/V8 nodes — showing them automatically (pass \`include_internal: true\` to always include)._`,
+            '',
+          );
+        }
         if (summaries.length > 0) {
           lines.push(formatNodeSummaryTable(summaries));
         } else {

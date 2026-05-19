@@ -80,7 +80,13 @@ function extractSourceHints(traces: RetainerStep[][]): string[] {
         const edgeMatches = step.edgeName.match(filePathRegex);
         if (edgeMatches) {
           for (const m of edgeMatches) {
-            paths.add(m);
+            if (
+              !m.includes('/node_modules/') ||
+              m.includes('/node_modules/@') ||
+              m.split('/node_modules/').length <= 2
+            ) {
+              paths.add(m);
+            }
           }
         }
       }
@@ -313,6 +319,53 @@ function scanTopShapes(snapshot: IHeapSnapshot, limit: number): ShapeSummary[] {
     .slice(0, limit);
 }
 
+function tracePrefix(trace: RetainerStep[]): string {
+  return trace.map(s => `${s.name}(${s.type})`).join('->');
+}
+
+function deduplicateFindings(findings: Finding[]): Finding[] {
+  if (findings.length <= 1) return findings;
+
+  const prefixMap = new Map<
+    string,
+    {representative: Finding; others: Finding[]}
+  >();
+
+  for (const f of findings) {
+    const collapsed = f.trace.filter(
+      s =>
+        s.type !== 'hidden' &&
+        s.type !== 'array' &&
+        s.type !== 'native' &&
+        s.type !== 'synthetic' &&
+        s.type !== 'code',
+    );
+    const prefix =
+      collapsed.length >= 3
+        ? collapsed
+            .slice(0, -1)
+            .map(s => `${s.name}(${s.type})`)
+            .join('->')
+        : tracePrefix(collapsed);
+
+    const existing = prefixMap.get(prefix);
+    if (existing) {
+      existing.others.push(f);
+    } else {
+      prefixMap.set(prefix, {representative: f, others: []});
+    }
+  }
+
+  const result: Finding[] = [];
+  for (const {representative, others} of prefixMap.values()) {
+    (
+      representative as Finding & {collapsed_siblings?: Finding[]}
+    ).collapsed_siblings = others;
+    result.push(representative);
+  }
+  return result;
+}
+
 function formatTrace(trace: RetainerStep[], maxSteps: number): string {
   const collapsed: RetainerStep[] = [];
   for (const step of trace) {
@@ -358,45 +411,95 @@ export function registerAutoInvestigate(server: McpServer): void {
         .optional()
         .default(5)
         .describe('Number of top retained objects to analyze (default 5)'),
+      focus: z
+        .enum(['all', 'caches', 'dom', 'strings', 'closures'])
+        .optional()
+        .default('all')
+        .describe(
+          'Focus the analysis on a specific category: "caches" (Maps/Sets), "dom" (detached DOM), "strings" (string waste), "closures" (closure leaks), or "all" (default).',
+        ),
     },
-    async ({top_n}) => {
+    async ({top_n, focus}) => {
       try {
         const snapshot = getSnapshot();
         const meta = getSnapshotMetadata();
         const totalSize = meta?.totalSize ?? 0;
 
-        const largest = filterLargestObjects(
-          snapshot,
-          node => isNodeWorthInspecting(node),
-          top_n,
-        );
+        const focusFilter = (node: IHeapNode): boolean => {
+          if (!isNodeWorthInspecting(node)) return false;
+          switch (focus) {
+            case 'caches':
+              return (
+                (node.name === 'Map' ||
+                  node.name === 'Set' ||
+                  node.name === 'Array') &&
+                node.type === 'object'
+              );
+            case 'dom':
+              return node.is_detached || node.name.startsWith('Detached ');
+            case 'strings':
+              return (
+                node.type === 'string' || node.type === 'concatenated string'
+              );
+            case 'closures':
+              return node.type === 'closure';
+            default:
+              return true;
+          }
+        };
+
+        const largest = filterLargestObjects(snapshot, focusFilter, top_n);
 
         if (largest.length === 0) {
-          return toolResult('No significant objects found in the snapshot.');
+          return toolResult(
+            focus === 'all'
+              ? 'No significant objects found in the snapshot.'
+              : `No significant ${focus} objects found. Try focus: "all" for a broader analysis.`,
+          );
         }
 
-        const findings: Finding[] = [];
+        const rawFindings: Finding[] = [];
         for (const node of largest) {
           const trace = getRetainerPath(node);
           const pinch = findPinchPoint(trace);
           const severity = classifySeverity(node.retainedSize, totalSize);
-          findings.push({node, trace, pinchPoint: pinch, severity});
+          rawFindings.push({node, trace, pinchPoint: pinch, severity});
         }
 
-        const caches = findUnboundedCaches(snapshot, 5);
-        const promises = scanPromises(snapshot);
-        const shapes = scanTopShapes(snapshot, 5);
+        const findings = deduplicateFindings(rawFindings);
+
+        const caches =
+          focus === 'all' || focus === 'caches'
+            ? findUnboundedCaches(snapshot, 5)
+            : [];
+        const promises =
+          focus === 'all'
+            ? scanPromises(snapshot)
+            : {
+                pendingCount: 0,
+                pendingRetained: 0,
+                resolvedCount: 0,
+                topPending: [],
+              };
+        const shapes = focus === 'all' ? scanTopShapes(snapshot, 5) : [];
 
         const lines: string[] = [`# Auto-Investigation Report`, ''];
 
-        lines.push(`## Top ${findings.length} Retained Objects`);
+        const focusLabel = focus === 'all' ? '' : ` (focus: ${focus})`;
+        lines.push(`## Top ${findings.length} Retained Objects${focusLabel}`);
         lines.push('');
 
         for (let i = 0; i < findings.length; i++) {
-          const f = findings[i];
+          const f = findings[i] as Finding & {
+            collapsed_siblings?: Finding[];
+          };
+          const siblings = f.collapsed_siblings ?? [];
+          const totalRetained =
+            f.node.retainedSize +
+            siblings.reduce((s, sib) => s + sib.node.retainedSize, 0);
           const pct =
             totalSize > 0
-              ? ` (${((f.node.retainedSize / totalSize) * 100).toFixed(1)}% of heap)`
+              ? ` (${((totalRetained / totalSize) * 100).toFixed(1)}% of heap)`
               : '';
           const name = truncateNodeName(
             f.node.name,
@@ -413,11 +516,30 @@ export function registerAutoInvestigate(server: McpServer): void {
                 : f.severity === 'MEDIUM'
                   ? '🟡'
                   : '🔵';
-          lines.push(
-            `### ${i + 1}. ${sevIcon} [${f.severity}] @${f.node.id} \`${name}\` (${f.node.type}) — ${formatBytes(f.node.retainedSize)}${pct}`,
-          );
-          lines.push('');
-          lines.push(`**Retainer chain:** ${formatTrace(f.trace, 8)}`);
+
+          if (siblings.length > 0) {
+            lines.push(
+              `### ${i + 1}. ${sevIcon} [${f.severity}] \`${name}\` chain — ${formatBytes(totalRetained)} total across ${1 + siblings.length} nodes${pct}`,
+            );
+            lines.push('');
+            lines.push(`**Retainer chain:** ${formatTrace(f.trace, 8)}`);
+            lines.push('');
+            lines.push(
+              `**Same chain contains:** @${f.node.id} (${formatBytes(f.node.retainedSize)})` +
+                siblings
+                  .map(
+                    sib =>
+                      `, @${sib.node.id} ${truncateNodeName(sib.node.name, sib.node.type, sib.node.self_size, 30)} (${formatBytes(sib.node.retainedSize)})`,
+                  )
+                  .join(''),
+            );
+          } else {
+            lines.push(
+              `### ${i + 1}. ${sevIcon} [${f.severity}] @${f.node.id} \`${name}\` (${f.node.type}) — ${formatBytes(f.node.retainedSize)}${pct}`,
+            );
+            lines.push('');
+            lines.push(`**Retainer chain:** ${formatTrace(f.trace, 8)}`);
+          }
           lines.push('');
 
           if (f.pinchPoint) {

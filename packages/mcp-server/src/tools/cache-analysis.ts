@@ -100,6 +100,82 @@ function hasWeakRefEntries(node: IHeapNode): boolean {
   return false;
 }
 
+function sampleCacheEntries(
+  node: IHeapNode,
+  count: number,
+): Array<{keyPreview: string; valuePreview: string}> {
+  const entries: Array<{keyPreview: string; valuePreview: string}> = [];
+
+  if (node.name === 'Map') {
+    for (const edge of node.references) {
+      if (edge.name_or_index === 'table' && edge.toNode.type === 'array') {
+        const allRefs: IHeapNode[] = [];
+        for (const te of edge.toNode.references) {
+          allRefs.push(te.toNode);
+        }
+        for (let i = 0; i < allRefs.length && entries.length < count; i += 2) {
+          const key = allRefs[i];
+          const val = i + 1 < allRefs.length ? allRefs[i + 1] : null;
+          if (key.type === 'hidden' || key.id <= 3) continue;
+          const keyStr = key.isString
+            ? `"${(key.toStringNode()?.stringValue ?? key.name).slice(0, 40)}"`
+            : `${key.name} (${key.type})`;
+          let valStr = '(missing)';
+          if (val) {
+            if (val.isString) {
+              valStr = `"${(val.toStringNode()?.stringValue ?? val.name).slice(0, 40)}"`;
+            } else {
+              const props: string[] = [];
+              for (const ve of val.references) {
+                if (ve.type === 'property') {
+                  props.push(String(ve.name_or_index));
+                  if (props.length >= 3) break;
+                }
+              }
+              valStr =
+                props.length > 0
+                  ? `${val.name} {${props.join(', ')}${val.edge_count > 3 ? ', …' : ''}}`
+                  : `${val.name} (${val.type}, ${formatBytes(val.retainedSize)})`;
+            }
+          }
+          entries.push({keyPreview: keyStr, valuePreview: valStr});
+        }
+        break;
+      }
+    }
+  } else if (node.name === 'Set') {
+    for (const edge of node.references) {
+      if (edge.name_or_index === 'table' && edge.toNode.type === 'array') {
+        for (const te of edge.toNode.references) {
+          if (entries.length >= count) break;
+          const entry = te.toNode;
+          if (entry.type === 'hidden' || entry.id <= 3) continue;
+          const preview = entry.isString
+            ? `"${(entry.toStringNode()?.stringValue ?? entry.name).slice(0, 40)}"`
+            : `${entry.name} (${entry.type}, ${formatBytes(entry.retainedSize)})`;
+          entries.push({keyPreview: preview, valuePreview: '(Set entry)'});
+        }
+        break;
+      }
+    }
+  } else if (node.name === 'Array') {
+    let idx = 0;
+    for (const edge of node.references) {
+      if (entries.length >= count) break;
+      if (edge.type !== 'element') continue;
+      const entry = edge.toNode;
+      if (entry.id <= 3) continue;
+      const preview = entry.isString
+        ? `"${(entry.toStringNode()?.stringValue ?? entry.name).slice(0, 40)}"`
+        : `${entry.name} (${entry.type}, ${formatBytes(entry.retainedSize)})`;
+      entries.push({keyPreview: `[${idx}]`, valuePreview: preview});
+      idx++;
+    }
+  }
+
+  return entries;
+}
+
 export function registerCacheAnalysis(server: McpServer): void {
   server.tool(
     'memlab_cache_analysis',
@@ -127,8 +203,21 @@ export function registerCacheAnalysis(server: McpServer): void {
         .optional()
         .default(['Map', 'Set', 'Array'])
         .describe('Collection types to scan (default: Map, Set, Array)'),
+      sample_entries: z
+        .number()
+        .optional()
+        .default(0)
+        .describe(
+          'Number of sample entries to show per cache (default 0). Inspects representative key-value pairs showing key type/preview and value shape. Saves 2-3 follow-up tool calls per cache.',
+        ),
     },
-    async ({limit, min_entries, min_retained_size, collection_types}) => {
+    async ({
+      limit,
+      min_entries,
+      min_retained_size,
+      collection_types,
+      sample_entries,
+    }) => {
       try {
         const snapshot = getSnapshot();
         const meta = getSnapshotMetadata();
@@ -229,6 +318,23 @@ export function registerCacheAnalysis(server: McpServer): void {
           `- Trace its retainer: \`memlab_retainer_trace(${top.nodeId})\``,
           `- Check for common patterns: \`memlab_retainer_summary\` with node_ids from the top caches`,
         );
+
+        if (sample_entries > 0) {
+          lines.push('', '---', '');
+          for (const c of caches.slice(0, 5)) {
+            const node = snapshot.getNodeById(c.nodeId);
+            if (!node) continue;
+            const samples = sampleCacheEntries(node, sample_entries);
+            if (samples.length === 0) continue;
+            lines.push(
+              `**@${c.nodeId} \`${c.collectionType}\` sample entries (${samples.length} of ${formatNumber(c.entryCount)}):**`,
+            );
+            for (const s of samples) {
+              lines.push(`  - ${s.keyPreview} → ${s.valuePreview}`);
+            }
+            lines.push('');
+          }
+        }
 
         return toolResult(lines.join('\n'));
       } catch (err) {

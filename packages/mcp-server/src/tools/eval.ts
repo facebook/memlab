@@ -16,7 +16,6 @@ const {utils} = memlabCore;
 import {getSnapshot} from '../heap-state.js';
 import {
   errorResult,
-  textResult,
   toolResult,
   serializeNodeSummary,
   serializeNodeDetail,
@@ -42,17 +41,36 @@ export function registerEval(server: McpServer): void {
       'The code runs in a sandboxed VM with access to `snapshot` (IHeapSnapshot), ' +
       '`utils` (@memlab/core utils), and `helpers` (plugin utility functions). ' +
       'Assign your result to the `result` variable. ' +
-      'No require/process/fs/network access. Read-only heap analysis only.',
+      'No require/process/fs/network access. Read-only heap analysis only.\n\n' +
+      '**IHeapNode API:** Each node has: `.id`, `.name`, `.type`, `.self_size`, `.retainedSize`, ' +
+      '`.edge_count`, `.is_detached`, `.isString`, `.hasPathEdge`, `.pathEdge`, `.dominatorNode`, ' +
+      '`.numOfReferrers`, `.location` (script_id/line/column).\n' +
+      '**Traversal:** Use `node.references` (outgoing edges, iterable with for-of) and ' +
+      '`node.referrers` (incoming edges, iterable with for-of). ' +
+      'Each edge has: `.name_or_index`, `.type` (property/element/context/internal/hidden/shortcut), ' +
+      '`.toNode`, `.fromNode`.\n' +
+      '**Iterating all nodes:** `snapshot.nodes.forEach(node => { ... })` — NOT for-of.\n' +
+      '**Get node by ID:** `snapshot.getNodeById(id)` returns IHeapNode or null.\n' +
+      '**String values:** `node.toStringNode()?.stringValue` for string nodes.\n\n' +
+      '**Example — inspect Map entries:**\n' +
+      '```\nconst map = snapshot.getNodeById(12345);\nconst entries = [];\n' +
+      'for (const edge of map.references) {\n' +
+      '  if (edge.name_or_index === "table") {\n' +
+      '    for (const te of edge.toNode.references) {\n' +
+      '      entries.push({name: te.toNode.name, type: te.toNode.type});\n' +
+      '    }\n  }\n}\nresult = entries.slice(0, 10);\n```',
     {
       code: z
         .string()
         .describe(
           'JavaScript code to execute. Must assign the output to a `result` variable. ' +
-            'Available globals: snapshot (IHeapSnapshot), utils (@memlab/core utils with ' +
-            'aggregateDominatorMetrics, isFiberNode, isDetachedDOMNode, etc.), ' +
+            'Available globals: snapshot (IHeapSnapshot — use .nodes.forEach(), .getNodeById(), .edges.forEach()), ' +
+            'utils (@memlab/core utils with aggregateDominatorMetrics, isFiberNode, isDetachedDOMNode), ' +
             'helpers ({ serializeNodeSummary, serializeNodeDetail, formatBytes, formatNumber, ' +
             'markdownTable, isNodeWorthInspecting, filterLargestObjects, queryNodes }), ' +
-            'and standard JS built-ins (Array, Object, Map, Set, JSON, Math, RegExp, console).',
+            'and standard JS built-ins. ' +
+            'Node traversal: use node.references (outgoing) and node.referrers (incoming) with for-of. ' +
+            'Edge properties: .name_or_index, .type, .toNode, .fromNode.',
         ),
       timeout_ms: z
         .number()

@@ -206,14 +206,14 @@ export function registerQuickDiagnosis(server: McpServer): void {
           return {key, ...v, retained_size: retainedSize};
         });
 
-        const classSorted = withRetained
-          .sort((a, b) => b.retained_size - a.retained_size)
-          .slice(0, top_classes);
-
-        const totalClassRetained = classSorted.reduce(
+        const totalClassRetained = withRetained.reduce(
           (s, v) => s + v.retained_size,
           0,
         );
+
+        const classSorted = withRetained
+          .sort((a, b) => b.retained_size - a.retained_size)
+          .slice(0, top_classes);
         let cumRetained = 0;
         const classHeaders = ['Class', 'Type', 'Count', 'Retained', 'Cum %'];
         const classRightCols = new Set([2, 3, 4]);

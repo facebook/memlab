@@ -307,10 +307,17 @@ export function registerRetainerSummary(server: McpServer): void {
           );
         }
 
+        const filterSteps = (steps: TraceStep[]): TraceStep[] =>
+          framework_filter
+            ? steps.filter(
+                (s, i) =>
+                  i === 0 || i === steps.length - 1 || !isFrameworkStep(s),
+              )
+            : steps;
         const formatFn = compact
           ? (steps: TraceStep[]) =>
               formatTraceChainCompact(steps, framework_filter)
-          : (steps: TraceStep[]) => formatTraceChain(steps);
+          : (steps: TraceStep[]) => formatTraceChain(filterSteps(steps));
 
         for (let i = 0; i < sorted.length; i++) {
           const p = sorted[i];

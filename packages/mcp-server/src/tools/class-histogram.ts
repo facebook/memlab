@@ -135,14 +135,14 @@ export function registerClassHistogram(server: McpServer): void {
           );
         }
 
-        const sorted = afterRetainedFilter
-          .sort((a, b) => b.retained_size - a.retained_size)
-          .slice(0, limit);
-
-        const totalRetainedAll = sorted.reduce(
+        const totalRetainedAll = afterRetainedFilter.reduce(
           (s, v) => s + v.retained_size,
           0,
         );
+
+        const sorted = afterRetainedFilter
+          .sort((a, b) => b.retained_size - a.retained_size)
+          .slice(0, limit);
 
         const headers = [
           'Class',
