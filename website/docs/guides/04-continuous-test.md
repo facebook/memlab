@@ -4,14 +4,14 @@ id: 'integration-and-file-structure'
 
 # Set up Continuous Test
 
-Setting up a continuous testing service that finds web memory leaks with memlab
-consists of a few parts:
+Setting up a continuous testing service to find memory leaks with memlab
+involves three steps:
  1. Prepare [test scenarios](../api/core/src/interfaces/IScenario) that
- cover key interactions of the web app under test.
- 2. Trigger test runs either through
-[memlab command line interface](../cli/CLI-commands.md#memlab-run) in bash or
-through [memlab API](../api/api/src/functions/run).
- 3. Collect memory leak results dumped in the disk.
+ cover the key interactions of the web app under test.
+ 2. Trigger test runs through the
+[memlab command line interface](../cli/CLI-commands.md#memlab-run) or
+through the [memlab API](../api/api/src/functions/run).
+ 3. Collect the memory leak results saved to disk.
 
 ## Write Test Scenarios
 
@@ -26,7 +26,7 @@ memlab run --scenario /path/to/test/scenario/file.js \
   --work-dir /path/to/save/memlab/run/results/
 ```
 Use the `--work-dir` option to specify a directory where you want
-memlab to dump browser interaction meta data (e.g., screenshots and heap
+memlab to save browser interaction metadata (e.g., screenshots and heap
 snapshots).
 
 **Run in Node.js**: Alternatively, if your test job is written in node.js,
@@ -46,9 +46,8 @@ const fs = require('fs-extra');
 
 ## Collect Results
 
-After the memlab run completes, all results and meta data will be saved in the
-specified working directory, which includes the following sub-directories
-and files:
+After the memlab run completes, all results and metadata are saved in the
+specified working directory, with the following directory structure:
 
 ```bash
 /path/to/save/memlab/run/results/
@@ -57,21 +56,21 @@ and files:
 │   │   ├── browser-info.txt    # browser web console output
 │   │   ├── console-log.txt     # memlab terminal logging
 │   │   ├── leaks.txt           # text summary of clustered memory leaks
-│   │   ├── run-meta.json       # meta data of memlab run and browser configuration
+│   │   ├── run-meta.json       # metadata for the memlab run and browser configuration
 │   │   ├── s1.heapsnapshot     # heap snapshot after the url callback (initial page load)
 │   │   ├── s2.heapsnapshot     # heap snapshot after the action callback (after target interaction)
 │   │   ├── s3.heapsnapshot     # heap snapshot after the back callback (after reverting target interaction)
 │   │   ├── screenshot-1.png    # web page screenshot after the url callback (initial page load)
 │   │   ├── screenshot-2.png    # web page screenshot after the action callback (after target interaction)
 │   │   ├── screenshot-3.png    # web page screenshot after the back callback (after reverting target interaction)
-│   │   └── snap-seq.json       # meta data about each browser interaction step
+│   │   └── snap-seq.json       # metadata about each browser interaction step
 │   ├── logger
 │   │   ├── trace-clusters
-│   │   │   ├── @1846905.json   # meta data for one of memory leak trace cluster
+│   │   │   ├── @1846905.json   # metadata for a memory leak trace cluster
 │   │   │   ...
 │   │   └── trace-jsons
-│   │       ├── @1846905.json   # detailed JSON trace of a representative memory leak trace
-│   │       ...                 # of a leak trace cluster, this can be used for trace visualization
+│   │       ├── @1846905.json   # detailed JSON trace of a representative leak in a cluster;
+│   │       ...                 # can be used for trace visualization
 ...
 ```
 

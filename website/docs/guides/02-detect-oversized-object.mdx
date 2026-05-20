@@ -28,7 +28,7 @@ Source file: [packages/e2e/static/example/pages/examples/oversized-object.jsx](.
 
 ### 1. Clone Repo
 
-To run the demo web app on you local machine, clone the
+To run the demo web app on your local machine, clone the
 [`memlab` github repo](https://github.com/facebook/memlab):
 ```bash
 git clone git@github.com:facebook/memlab.git
@@ -44,8 +44,9 @@ cd packages/e2e/static/example
 npm install && npm run dev
 ```
 
-This will spin up an example Nextjs app. Let's make sure it is
-running by visiting from your browser [http://localhost:3000](http://localhost:3000):
+This will start an example Next.js app. Verify that it is
+running by visiting [http://localhost:3000](http://localhost:3000)
+in your browser:
 
 :::note
 The port number `:3000` may be different in your case.
@@ -65,19 +66,19 @@ memlab run --scenario ~/memlab/scenarios/oversized-object.js
 ```
 This time memlab didn't find any memory leaks.
 
-The current built-in Leak detector only considers objects
-that meet all of the following criteria to be memory leaks:
- * The object is allocated by interaction triggered by the `action` callback.
- * The object is not released after the interaction triggered by the `back` callback.
+The built-in leak detector only considers objects
+that meet all of the following criteria as memory leaks:
+ * The object was allocated by the interaction triggered by the `action` callback.
+ * The object was not released after the interaction triggered by the `back` callback.
  * The object is a detached DOM element or an unmounted React Fiber node.
 
-The other objects allocated by the `action` callback could be caches retained
-by the web app on purpose, so by default memlab will not report them as leaks.
+Other objects allocated by the `action` callback may be caches that the
+web app retains intentionally, so by default memlab does not report them as leaks.
 
 ## Filter Out Large Objects
 
-One rule we often find useful is to check for unreleased objects with
-non-trivial sizes (for example 1MB).
+A useful rule of thumb is to check for unreleased objects above
+a certain size threshold (for example, 1MB).
 
 memlab provides an additional `leakFilter` callback to filter
 out leaked objects with self-defined rules.
@@ -93,11 +94,11 @@ memlab run --scenario ~/memlab/scenarios/oversized-object.js
 ![memlab run result](./oversized-object.png)
 
 By examining the leak trace, we can see that the `elements` in `bigArray` are
-being retained because `bigArray` is retained by the `eventHandler`
-closure which is in turn retained because it is still registered as the handler
-for an `EventListener`. If we add a cleanup function to our `useEffect`,
-as demonstrated below, and run the scenario again, we will see that there are
-no longer any leaks reported by memlab.
+being retained because `bigArray` is captured by the `eventHandler`
+closure, which in turn is retained because it is still registered as the handler
+for an `EventListener`. If you add a cleanup function to the `useEffect`
+as shown below and run the scenario again, memlab will no longer report
+any leaks.
 
 ```javascript
 useEffect(() => {
@@ -110,14 +111,14 @@ useEffect(() => {
 ```
 
 :::note
-An alternative is creating a `leak-filter.js` and passing it to `memlab find-leaks`
-if you have run `memlab run` already.
+Alternatively, if you have already run `memlab run`, you can create a
+`leak-filter.js` file and pass it to `memlab find-leaks`.
 :::
 
 <CodeBlock language="jsx" showLineNumbers>{OversizedFilter}</CodeBlock>
 
-Break out the `leakFilter` function and save it in a file,
-for example, `~/memlab/leak-filters/leak-filter-by-retained-size.js`
+Extract the `leakFilter` function into its own file,
+for example `~/memlab/leak-filters/leak-filter-by-retained-size.js`:
 
 ```bash
 memlab find-leaks --leak-filter ~/memlab/leak-filters/leak-filter-by-retained-size.js

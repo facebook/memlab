@@ -25,7 +25,7 @@ Source file: [`packages/e2e/static/example/pages/examples/detached-dom.jsx`](../
 
 ### 1. Clone Repo
 
-To run the demo web app on you local machine, clone the
+To run the demo web app on your local machine, clone the
 [`memlab` github repo](https://github.com/facebook/memlab):
 ```bash
 git clone git@github.com:facebook/memlab.git
@@ -41,9 +41,9 @@ cd packages/e2e/static/example
 npm install && npm run dev
 ```
 
-This will spin up an example Nextjs app. Let's make sure it is
-running by visiting from your browser
-[http://localhost:3000](http://localhost:3000):
+This will start an example Next.js app. Verify that it is
+running by visiting [http://localhost:3000](http://localhost:3000)
+in your browser:
 
 :::note
 The port number `:3000` may be different in your case.
@@ -59,7 +59,7 @@ Let's save this file at `~/memlab/scenarios/detached-dom.js`.
 
 ### 2. Run memlab
 
-This may take about a few minutes:
+This may take a few minutes:
 
 ```bash
 memlab run --scenario ~/memlab/scenarios/detached-dom.js
@@ -67,33 +67,33 @@ memlab run --scenario ~/memlab/scenarios/detached-dom.js
 
 ### 3. Debug Leak Trace
 
-For each leaked object group, memLab prints one representative leak trace.
+For each leaked object group, memlab prints one representative leak trace.
 
 ![memlab run result](./memlab-result-2.png)
 
-Let's break down the results from the top to bottom:
+Let's break down the results from top to bottom:
 
-**Part-1**: Browser interaction breadcrumb shows the browser
-interactions (navigations) `memlab` performed as specified in our scenario file.
+**Part 1**: The browser interaction breadcrumb shows the
+interactions (navigations) that `memlab` performed as specified in the scenario file.
 
-  * **`page-load[6.5MB](baseline)[s1]`** - the JavaScript heap size was
-    `6.5MB` on initial page load. The `baseline` heap snapshot will be saved as
+  * **`page-load[6.5MB](baseline)[s1]`** - The JavaScript heap size was
+    `6.5MB` on initial page load. The `baseline` heap snapshot is saved as
     `s1.heapsnapshot` on disk.
   * **`action-on-page[6.6MB](target)[s2]`** - After clicking the
     "Create detached DOMs" button, the heap size increased to `6.6MB`.
-  * **`revert[7MB](final)[s3]`** - The web page finally reached 7MB
+  * **`revert[7MB](final)[s3]`** - The heap reached `7MB`
     after navigating away from the page that triggered the memory leak.
 
-**Part-2**: Overall summary of the leak trace
+**Part 2**: Overall summary of the leak trace
 
   * **`1024 leaks`** - There were 1024 leaked objects.
     Line 12 of the [example app](#set-up-the-example-web-app-under-test)
     created **1024** detached DOM objects in the `for` loop.
-  * **`Retained size`** - the aggregated retained sizes of the leaked objects
+  * **`Retained size`** - The aggregated retained size of the leaked object
     cluster is `143.3KB` (memory leaks are grouped together based on the
-    similarity of retainer traces).
+    similarity of their retainer traces).
 
-**Part-3**: Detailed representative *leak trace* for each leak cluster
+**Part 3**: Detailed representative *leak trace* for each leak cluster
 
 :::note
 A *leak trace* is an object reference chain from the GC root (the entry objects in a heap graph from which garbage collectors traverse the heap) to a leaked object.
@@ -108,8 +108,8 @@ reference that should be set to `null` (but it wasn't due to a bug).
   * `prototype` - This is the instance of the `Window` class.
   * `leakedObjects` - This shows that `leakedObjects` was a property of the
     `Window` object with size `148.5KB` pointing to an `Array` object.
-  * `0` - This shows that a detached `HTMLDIVElement` (i.e. a DOM element that is not currently connected to the DOM tree) is stored as the first element of the `leakedObjects` array (Since it is overwhelming to show all 1024 leak traces,
-    Memlab only prints one representative leak trace. i.e. property 0 instead of properties 0->1023)
+  * `0` - This shows that a detached `HTMLDIVElement` (i.e., a DOM element that is no longer connected to the DOM tree) is stored as the first element of the `leakedObjects` array. (Since showing all 1024 leak traces would be overwhelming,
+    memlab prints only one representative trace — property 0 instead of properties 0 through 1023.)
 
     In short, the leak trace path from `window` object to leaked object is:
 ```

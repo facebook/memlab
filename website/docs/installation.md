@@ -4,7 +4,7 @@
 npm install -g memlab
 ```
 
-## Prequisites
+## Prerequisites
 
 - [Node.js](https://nodejs.org/) version 16 or above
 - [Npm](https://docs.npmjs.com/)
@@ -16,8 +16,8 @@ Windows, please use Git Bash.
 
 ## Commands
 
-To check if the installation completed, run `memlab help` in your console,
-you should see helper text as follows (view the documentation for each
+To verify that the installation succeeded, run `memlab help` in your terminal.
+You should see output like the following (view the documentation for each
 command [here](./cli/CLI-commands.md)):
 
 ```

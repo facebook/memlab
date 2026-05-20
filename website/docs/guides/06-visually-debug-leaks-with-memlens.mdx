@@ -56,18 +56,18 @@ it in the Memory panel. This will reveal the leaked component’s retained
 path in the JS heap, helping you understand why it remains in memory.
 
 
-**Note:** The target page should ideally be a React app serving minified
-JS code. When searching for the memory ID in Chrome DevTools, the detached
-DOM element’s retainer path will also appear minified.
+**Note:** If the target page is a React app serving minified
+JS code, the detached DOM element’s retainer path will also appear
+minified when you search for the memory ID in Chrome DevTools.
 
 ## Using MemLens with MemLab
 
-MemLens can also run during MemLab executions in headful mode to display
-leak outlines:
+MemLens can also run during MemLab's headful mode to display
+leak outlines while a test scenario executes:
 
 ```bash
 memlab run --scenario your_test_scenario_file_path.js --headful --display-leak-outlines
-````
+```
 
 * `--headful`: Runs the browser in visible mode so you can see the UI.
 * `--display-leak-outlines`: Enables MemLens to track and display outlines
