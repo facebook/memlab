@@ -249,7 +249,10 @@ by retained size, looking up retainer traces, detecting detached DOM nodes,
 inspecting closures, searching nodes by class/property/pattern, analyzing
 duplicated strings, and more. See the
 [`@memlab/mcp-server` README](./packages/mcp-server/README.md) for the full
-tool reference and example workflows.
+tool reference and example workflows, and the
+[MCP Investigation Skill](./packages/mcp-server/MCP_SKILL.md) for a structured
+methodology on how AI assistants can systematically investigate memory leaks
+using the MCP tools.
 
 ## Visual Debugging for Memory Leaks in Browser
 

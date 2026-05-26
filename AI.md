@@ -660,7 +660,11 @@ When explaining MemLab to users:
 
 ## MCP Server for AI-Assisted Heap Analysis
 
-The `@memlab/mcp-server` package provides a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that enables AI assistants to interactively analyze heap snapshots. It exposes 23 tools for loading, querying, and analyzing heap snapshots.
+The `@memlab/mcp-server` package provides a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that enables AI assistants to interactively analyze heap snapshots. It exposes 36 tools for loading, querying, and analyzing heap snapshots.
+
+For a structured investigation methodology covering how to systematically
+triage, investigate, and report memory issues using these MCP tools, see the
+[MCP Investigation Skill](./packages/mcp-server/MCP_SKILL.md).
 
 ### Setup
 

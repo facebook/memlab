@@ -305,6 +305,21 @@ Structured map/filter/reduce over all heap nodes with code predicates.
 Input:  { filter_code: "node.type === 'closure'", map_code?: "...", reduce_code?: "...", limit?: 100 }
 ```
 
+## Investigation Skill for AI Assistants
+
+The [MCP Investigation Skill](./MCP_SKILL.md) provides a structured
+methodology for AI coding assistants to systematically investigate memory
+issues using the MCP tools. It covers:
+
+- **Step-by-step triage** — load, diagnose, and prioritize findings
+- **Investigation paths** — guided workflows for string waste, DOM leaks,
+  object accumulation, closure leaks, global bloat, listener accumulation, and
+  repeated errors, each with triggers, tool sequences, and common fixes
+- **Tool selection reference** — a quick-reference table mapping investigation
+  goals to the right MCP tool
+- **Token efficiency tips** — how to minimize token usage with compact modes
+  and parallel tool calls
+
 ## Example Workflow
 
 A typical memory investigation:
