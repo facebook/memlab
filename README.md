@@ -17,7 +17,7 @@
 memlab is an end-to-end testing and analysis framework for identifying
 JavaScript memory leaks and optimization opportunities.
 
-**Online Resources:** [[Website and Demo](https://facebook.github.io/memlab)] | [[Documentation](https://facebook.github.io/memlab/docs/intro)] | [[Meta Engineering Blog Post](https://engineering.fb.com/2022/09/12/open-source/memlab/)]
+**Online Resources:** [[Website and Demo](https://facebook.github.io/memlab)] | [[Documentation](https://facebook.github.io/memlab/docs/intro)] | [[Meta Engineering Blog Post](https://engineering.fb.com/2022/09/12/open-source/memlab/)] | [[AI Assistant Guide](./AI.md)]
 
 Features:
 
@@ -296,6 +296,22 @@ test('memory test with heap assertion', async () => {
 
 For other APIs check out the
 [API documentation](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IHeapSnapshot#hasobjectwithclassname).
+
+## AI Assistant Guide
+
+The [`AI.md`](./AI.md) file provides structured guidance for AI coding
+assistants (Claude Code, Cursor, GitHub Copilot, ChatGPT, etc.) working with
+MemLab. It covers:
+
+- **Creating test scenarios** — how to write MemLab scenario files using the
+  `IScenario` interface, correct Puppeteer Page API usage, and common pitfalls
+  to avoid
+- **Interpreting retainer traces** — how to read the reference chain from GC
+  root to a leaked object and identify which reference to break
+- **Using heap analysis plugins** — the built-in analysis plugins available via
+  `memlab analyze` and how to use the programmatic API
+- **MCP server tools** — how AI assistants can use the `@memlab/mcp-server` to
+  interactively load, query, and analyze heap snapshots
 
 ## Development
 
