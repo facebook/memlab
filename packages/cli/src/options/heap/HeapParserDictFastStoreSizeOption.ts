@@ -20,7 +20,7 @@ export default class HeapParserDictFastStoreSizeOption extends BaseOption {
 
   getDescription(): string {
     return (
-      'the size threshold for swtiching from fast store to slower store in ' +
+      'the size threshold for switching from fast store to slower store in ' +
       'the heap snapshot parser. The default value is 5,000,000. If you get ' +
       'the `FATAL ERROR: invalid table size Allocation failed - JavaScript ' +
       'heap out of memory` error, try to decrease the threshold here'

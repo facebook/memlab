@@ -42,6 +42,7 @@ return /******/ (() => { // webpackBootstrap
 /***/ 346
 (__unused_webpack_module, exports) {
 
+var __webpack_unused_export__;
 
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
@@ -52,16 +53,16 @@ return /******/ (() => { // webpackBootstrap
  * @format
  * @oncall memory_lab
  */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.config = exports.featureFlags = exports.performanceConfig = void 0;
+__webpack_unused_export__ = ({ value: true });
+exports.config = exports.of = exports.lF = void 0;
 // Performance Configuration
-exports.performanceConfig = {
+exports.lF = {
     scanIntervalMs: 1000,
     maxComponentStackDepth: 100,
     memoryMeasurementIntervalMs: 5000,
 };
 // Feature Flags
-exports.featureFlags = {
+exports.of = {
     enableMutationObserver: true,
     enableMemoryTracking: true,
     enableComponentStack: true,
@@ -69,8 +70,8 @@ exports.featureFlags = {
 };
 // overall Config
 exports.config = {
-    performance: exports.performanceConfig,
-    features: exports.featureFlags,
+    performance: exports.lF,
+    features: exports.of,
 };
 
 
@@ -948,6 +949,7 @@ class LeakedFiber {
 /***/ 847
 (__unused_webpack_module, exports) {
 
+var __webpack_unused_export__;
 
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
@@ -958,7 +960,7 @@ class LeakedFiber {
  * @format
  * @oncall memory_lab
  */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
+__webpack_unused_export__ = ({ value: true });
 exports.isValidComponentName = isValidComponentName;
 const displayNameBlockList = new Set();
 function isValidComponentName(name) {
@@ -1002,84 +1004,85 @@ function createReactMemoryScan(options = {}) {
 /***/ 737
 (__unused_webpack_module, exports, __webpack_require__) {
 
+var __webpack_unused_export__;
 
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.traverseFiber = exports.getTopMostFiberWithChild = exports.getTopMostHostFiber = exports.getNearestHostFiber = exports.isHostFiber = exports.MutationMask = exports.Visibility = exports.Snapshot = exports.Ref = exports.ContentReset = exports.ChildDeletion = exports.Cloned = exports.Update = exports.Hydrating = exports.DidCapture = exports.Placement = exports.PerformedWork = exports.DEPRECATED_ASYNC_MODE_SYMBOL_STRING = exports.CONCURRENT_MODE_SYMBOL_STRING = exports.CONCURRENT_MODE_NUMBER = exports.HostRoot = exports.OffscreenComponent = exports.LegacyHiddenComponent = exports.Fragment = exports.HostText = exports.DehydratedSuspenseComponent = exports.HostSingletonTag = exports.HostHoistableTag = exports.HostComponentTag = exports.SimpleMemoComponentTag = exports.MemoComponentTag = exports.ForwardRefTag = exports.OffscreenComponentTag = exports.SuspenseComponentTag = exports.ContextConsumerTag = exports.FunctionComponentTag = exports.ClassComponentTag = void 0;
+__webpack_unused_export__ = ({ value: true });
+exports.traverseFiber = exports.getTopMostFiberWithChild = __webpack_unused_export__ = __webpack_unused_export__ = exports.dD = __webpack_unused_export__ = exports.bv = exports.Fm = __webpack_unused_export__ = exports.JA = exports.NT = __webpack_unused_export__ = exports.UT = exports.DQ = __webpack_unused_export__ = exports.W = __webpack_unused_export__ = __webpack_unused_export__ = __webpack_unused_export__ = __webpack_unused_export__ = __webpack_unused_export__ = __webpack_unused_export__ = __webpack_unused_export__ = __webpack_unused_export__ = __webpack_unused_export__ = __webpack_unused_export__ = exports.IZ = exports.i$ = exports.Wb = __webpack_unused_export__ = __webpack_unused_export__ = __webpack_unused_export__ = __webpack_unused_export__ = __webpack_unused_export__ = __webpack_unused_export__ = __webpack_unused_export__ = __webpack_unused_export__ = void 0;
 exports.getFiberNodeFromElement = getFiberNodeFromElement;
 exports.getReactComponentStack = getReactComponentStack;
 exports.getDisplayNameOfFiberNode = getDisplayNameOfFiberNode;
-exports.isFunctionalComponent = isFunctionalComponent;
-exports.extractReactComponentName = extractReactComponentName;
+__webpack_unused_export__ = isFunctionalComponent;
+__webpack_unused_export__ = extractReactComponentName;
 const utils_1 = __webpack_require__(476);
 const valid_component_name_1 = __webpack_require__(847);
-exports.ClassComponentTag = 1;
-exports.FunctionComponentTag = 0;
-exports.ContextConsumerTag = 9;
-exports.SuspenseComponentTag = 13;
-exports.OffscreenComponentTag = 22;
-exports.ForwardRefTag = 11;
-exports.MemoComponentTag = 14;
-exports.SimpleMemoComponentTag = 15;
-exports.HostComponentTag = 5;
-exports.HostHoistableTag = 26;
-exports.HostSingletonTag = 27;
-exports.DehydratedSuspenseComponent = 18;
-exports.HostText = 6;
-exports.Fragment = 7;
-exports.LegacyHiddenComponent = 23;
-exports.OffscreenComponent = 22;
-exports.HostRoot = 3;
-exports.CONCURRENT_MODE_NUMBER = 0xeacf;
-exports.CONCURRENT_MODE_SYMBOL_STRING = 'Symbol(react.concurrent_mode)';
-exports.DEPRECATED_ASYNC_MODE_SYMBOL_STRING = 'Symbol(react.async_mode)';
+__webpack_unused_export__ = 1;
+__webpack_unused_export__ = 0;
+__webpack_unused_export__ = 9;
+__webpack_unused_export__ = 13;
+__webpack_unused_export__ = 22;
+__webpack_unused_export__ = 11;
+__webpack_unused_export__ = 14;
+__webpack_unused_export__ = 15;
+exports.Wb = 5;
+exports.i$ = 26;
+exports.IZ = 27;
+__webpack_unused_export__ = 18;
+__webpack_unused_export__ = 6;
+__webpack_unused_export__ = 7;
+__webpack_unused_export__ = 23;
+__webpack_unused_export__ = 22;
+__webpack_unused_export__ = 3;
+__webpack_unused_export__ = 0xeacf;
+__webpack_unused_export__ = 'Symbol(react.concurrent_mode)';
+__webpack_unused_export__ = 'Symbol(react.async_mode)';
 // https://github.com/facebook/react/blob/main/packages/react-reconciler/src/ReactFiberFlags.js
-exports.PerformedWork = 0b1;
-exports.Placement = 0b10;
-exports.DidCapture = 0b10000000;
-exports.Hydrating = 0b1000000000000;
-exports.Update = 0b100;
-exports.Cloned = 0b1000;
-exports.ChildDeletion = 0b10000;
-exports.ContentReset = 0b100000;
-exports.Ref = 0b1000000000;
-exports.Snapshot = 0b10000000000;
-exports.Visibility = 0b10000000000000;
-exports.MutationMask = exports.Placement |
-    exports.Update |
-    exports.ChildDeletion |
-    exports.ContentReset |
-    exports.Hydrating |
-    exports.Visibility |
-    exports.Snapshot;
+__webpack_unused_export__ = 0b1;
+exports.W = 0b10;
+__webpack_unused_export__ = 0b10000000;
+exports.DQ = 0b1000000000000;
+exports.UT = 0b100;
+__webpack_unused_export__ = 0b1000;
+exports.NT = 0b10000;
+exports.JA = 0b100000;
+__webpack_unused_export__ = 0b1000000000;
+exports.Fm = 0b10000000000;
+exports.bv = 0b10000000000000;
+__webpack_unused_export__ = exports.W |
+    exports.UT |
+    exports.NT |
+    exports.JA |
+    exports.DQ |
+    exports.bv |
+    exports.Fm;
 /**
  * @see https://reactnative.dev/architecture/glossary#host-view-tree-and-host-view
  */
-const isHostFiber = (fiber) => fiber.tag === exports.HostComponentTag ||
+const isHostFiber = (fiber) => fiber.tag === exports.Wb ||
     // @ts-expect-error: it exists
-    fiber.tag === exports.HostHoistableTag ||
+    fiber.tag === exports.i$ ||
     // @ts-expect-error: it exists
-    fiber.tag === exports.HostSingletonTag ||
+    fiber.tag === exports.IZ ||
     typeof fiber.type === 'string';
-exports.isHostFiber = isHostFiber;
+exports.dD = isHostFiber;
 const getNearestHostFiber = (fiber) => {
-    let hostFiber = (0, exports.traverseFiber)(fiber, exports.isHostFiber);
+    let hostFiber = (0, exports.traverseFiber)(fiber, exports.dD);
     if (!hostFiber) {
-        hostFiber = (0, exports.traverseFiber)(fiber, exports.isHostFiber, true);
+        hostFiber = (0, exports.traverseFiber)(fiber, exports.dD, true);
     }
     return hostFiber;
 };
-exports.getNearestHostFiber = getNearestHostFiber;
+__webpack_unused_export__ = getNearestHostFiber;
 const getTopMostHostFiber = (fiber) => {
     let topMostHostFiber = null;
     function checkFiber(fiber) {
-        if ((0, exports.isHostFiber)(fiber)) {
+        if ((0, exports.dD)(fiber)) {
             topMostHostFiber = fiber;
         }
     }
     (0, exports.traverseFiber)(fiber, checkFiber, true);
     return topMostHostFiber;
 };
-exports.getTopMostHostFiber = getTopMostHostFiber;
+__webpack_unused_export__ = getTopMostHostFiber;
 const getTopMostFiberWithChild = (fiber) => {
     let topMostFiber = null;
     function checkFiber(fiber) {
@@ -1380,6 +1383,7 @@ function setRunInSession() {
 /***/ 313
 (__unused_webpack_module, exports) {
 
+var __webpack_unused_export__;
 
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
@@ -1391,17 +1395,17 @@ function setRunInSession() {
  * @oncall memory_lab
  */
 var _a, _b, _c;
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.WeakMapPlus = exports.WeakMapNoOp = exports.WeakSetNoOp = exports.WeakRefNoOp = void 0;
-exports.getNativeWeakMap = getNativeWeakMap;
-exports.getNativeWeakMapOrFallback = getNativeWeakMapOrFallback;
-exports.getNativeWeakSet = getNativeWeakSet;
-exports.getNativeWeakSetOrFallback = getNativeWeakSetOrFallback;
-exports.getNativeWeakRef = getNativeWeakRef;
-exports.getNativeWeakRefOrFallback = getNativeWeakRefOrFallback;
-exports.isWeakMapNative = isWeakMapNative;
-exports.isWeakSetNative = isWeakSetNative;
-exports.isWeakRefNative = isWeakRefNative;
+__webpack_unused_export__ = ({ value: true });
+exports.WeakMapPlus = __webpack_unused_export__ = __webpack_unused_export__ = __webpack_unused_export__ = void 0;
+__webpack_unused_export__ = getNativeWeakMap;
+__webpack_unused_export__ = getNativeWeakMapOrFallback;
+__webpack_unused_export__ = getNativeWeakSet;
+__webpack_unused_export__ = getNativeWeakSetOrFallback;
+__webpack_unused_export__ = getNativeWeakRef;
+__webpack_unused_export__ = getNativeWeakRefOrFallback;
+__webpack_unused_export__ = isWeakMapNative;
+__webpack_unused_export__ = isWeakSetNative;
+__webpack_unused_export__ = isWeakRefNative;
 exports.isWeakAPINative = isWeakAPINative;
 const globalScope = typeof window !== 'undefined' ? window : self;
 const _weakMap = (_a = globalScope.WeakMap) !== null && _a !== void 0 ? _a : null;
@@ -1420,7 +1424,7 @@ class WeakRefNoOp {
         return undefined;
     }
 }
-exports.WeakRefNoOp = WeakRefNoOp;
+__webpack_unused_export__ = WeakRefNoOp;
 class WeakSetNoOp {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     constructor(_iterable) {
@@ -1439,7 +1443,7 @@ class WeakSetNoOp {
         return false;
     }
 }
-exports.WeakSetNoOp = WeakSetNoOp;
+__webpack_unused_export__ = WeakSetNoOp;
 class WeakMapNoOp {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     constructor(_iterable) {
@@ -1462,7 +1466,7 @@ class WeakMapNoOp {
         return this;
     }
 }
-exports.WeakMapNoOp = WeakMapNoOp;
+__webpack_unused_export__ = WeakMapNoOp;
 function getNativeWeakMap() {
     return _weakMapIsNative ? _weakMap : null;
 }
@@ -1658,14 +1662,15 @@ exports.WeakMapPlus = WeakMapPlus;
 /***/ 498
 (__unused_webpack_module, exports) {
 
+var __webpack_unused_export__;
 
-Object.defineProperty(exports, "__esModule", ({ value: true }));
+__webpack_unused_export__ = ({ value: true });
 exports.isVisualizerElement = isVisualizerElement;
-exports.createVisualizerElement = createVisualizerElement;
-exports.tryToAttachOverlay = tryToAttachOverlay;
-exports.addTrackedListener = addTrackedListener;
-exports.removeAllListeners = removeAllListeners;
-exports.debounce = debounce;
+__webpack_unused_export__ = createVisualizerElement;
+__webpack_unused_export__ = tryToAttachOverlay;
+__webpack_unused_export__ = addTrackedListener;
+__webpack_unused_export__ = removeAllListeners;
+__webpack_unused_export__ = debounce;
 const VISUALIZER_DATA_ATTR = 'data-visualizer';
 function setVisualizerElement(element) {
     element.setAttribute(VISUALIZER_DATA_ATTR, 'true');

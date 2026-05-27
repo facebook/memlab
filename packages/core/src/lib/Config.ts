@@ -545,7 +545,7 @@ export class MemLabConfig {
     // object size below the threshold won't be reported
     this.unboundSizeThreshold = 10 * 1024;
 
-    // threshold for swtiching between fast store and slower store
+    // threshold for switching between fast store and slower store
     // of NumericDictionary used by heap snapshot parser
     this.heapParserDictFastStoreSize = 5_000_000;
     // if true reset the GK list in visit synthesizer

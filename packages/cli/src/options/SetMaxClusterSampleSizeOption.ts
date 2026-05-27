@@ -22,7 +22,7 @@ export default class SetMaxClusterSampleSizeOption extends BaseOption {
     return (
       'specify the max number of leak traces as input to leak trace ' +
       'clustering algorithm. Big sample size will preserve more complete ' +
-      'inforrmation, but may risk out-of-memory crash.'
+      'information, but may risk out-of-memory crash.'
     );
   }
 

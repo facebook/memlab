@@ -604,19 +604,27 @@ function getNodeValue(node: IHeapNode): string | number {
   }
 
   if (node.name === 'system / Oddball') {
-    let v = node.references[1].toNode.name;
-    if (v === 'hole') {
-      return 'undefined';
+    const oddballName = node.references[1].toNode.name;
+    const knownOddballs: Record<string, string> = {
+      hole: 'undefined',
+      undefined: 'undefined',
+      null: 'null',
+      true: 'true',
+      false: 'false',
+      uninitialized: 'undefined',
+      optimized_out: '<optimized out>',
+      arguments_marker: '<arguments marker>',
+      exception: '<exception>',
+      stale_register: '<stale>',
+      self_reference_marker: '<self reference marker>',
+    };
+    if (Object.prototype.hasOwnProperty.call(knownOddballs, oddballName)) {
+      return knownOddballs[oddballName];
     }
-    try {
-      v = eval(v);
-    } catch {
-      if (config.verbose) {
-        info.error(`unknown Oddball: ${v}`);
-      }
-      return '<unknown Oddball>';
+    if (config.verbose) {
+      info.error(`unknown Oddball: ${oddballName}`);
     }
-    return v + '';
+    return '<unknown Oddball>';
   }
 
   if (node.name === 'symbol') {
