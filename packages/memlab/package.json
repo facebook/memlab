@@ -38,8 +38,8 @@
     "chalk": "^4.0.0",
     "fs-extra": "^4.0.2",
     "minimist": "^1.2.8",
-    "puppeteer": "^24.2.0",
-    "puppeteer-core": "^24.2.0",
+    "puppeteer": "24.31.0",
+    "puppeteer-core": "24.31.0",
     "string-width": "^4.2.0",
     "util.promisify": "^1.1.1",
     "xvfb": "^0.4.0"

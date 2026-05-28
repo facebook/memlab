@@ -12,6 +12,7 @@ import type {IHeapSnapshot} from '@memlab/core';
 import type {Page} from 'puppeteer-core';
 
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import {config, info, utils} from '@memlab/core';
 const puppeteer = config.isFB
@@ -64,24 +65,34 @@ async function dumpHeap(
   leakInjector: () => void,
 ): Promise<void> {
   utils.tryToMutePuppeteerWarning();
-  const browser = await puppeteer.launch(config.puppeteerConfig);
-  const page = await browser.newPage();
-  // set page size
-  await page.setViewport({
-    width: 1680,
-    height: 1050,
-    deviceScaleFactor: 1,
-  });
+  const userDataDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'memlab-heap-test-'),
+  );
+  try {
+    const browser = await puppeteer.launch({
+      ...config.puppeteerConfig,
+      userDataDir,
+    });
+    const page = await browser.newPage();
+    // set page size
+    await page.setViewport({
+      width: 1680,
+      height: 1050,
+      deviceScaleFactor: 1,
+    });
 
-  // visit page
-  await page.goto(TEST_URL);
+    // visit page
+    await page.goto(TEST_URL);
 
-  // insert a memory leak object
-  await page.evaluate(leakInjector);
+    // insert a memory leak object
+    await page.evaluate(leakInjector);
 
-  // take a heap snapshot
-  await saveSnapshotToFile(page, snapshotFile);
-  await browser.close();
+    // take a heap snapshot
+    await saveSnapshotToFile(page, snapshotFile);
+    await browser.close();
+  } finally {
+    fs.rmSync(userDataDir, {recursive: true, force: true});
+  }
 }
 
 let fileId = 0;

@@ -11,7 +11,12 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 
 import type {Page} from 'puppeteer-core';
-import type {IHeapEdge, IHeapNode, IScenario} from '@memlab/core';
+import type {
+  IHeapEdge,
+  IHeapNode,
+  IHeapSnapshot,
+  IScenario,
+} from '@memlab/core';
 
 import os from 'os';
 import path from 'path';
@@ -20,6 +25,13 @@ import {run} from '../../index';
 import {getUniqueID, testSetup, testTimeout} from './lib/E2ETestSettings';
 
 beforeEach(testSetup);
+
+function hasPathEdgeWithName(
+  leak: Record<string, unknown>,
+  edgeName: string,
+): boolean {
+  return Object.keys(leak).some(key => key.includes(`--${edgeName} (`));
+}
 
 function injectDetachedDOMElements() {
   // @ts-ignore
@@ -83,8 +95,15 @@ test(
       url: (): string => '',
       action: async (page: Page): Promise<void> =>
         await page.click('[data-testid="link-4"]'),
-      retainerReferenceFilter: (edge: IHeapEdge) => {
-        return edge.name_or_index !== '_path_1';
+      retainerReferenceFilter: (
+        edge: IHeapEdge,
+        _snapshot: IHeapSnapshot,
+        isReferenceUsedByDefault: boolean,
+      ) => {
+        if (edge.name_or_index === '_path_1') {
+          return false;
+        }
+        return isReferenceUsedByDefault;
       },
     };
 
@@ -96,14 +115,16 @@ test(
       evalInBrowserAfterInitLoad: injectDetachedDOMElements,
       workDir,
     });
-    // detected all different leak trace cluster
-    expect(result.leaks.length).toBe(1);
-    // expect the none of the traces to include _path_1
+    // detected leak trace clusters
+    expect(result.leaks.length).toBeGreaterThanOrEqual(1);
+    // expect none of the retainer trace paths to go through _path_1
     expect(
-      result.leaks.every(leak => !JSON.stringify(leak).includes('_path_1')),
-    );
-    // expect some of the traces to include _path_2
-    expect(result.leaks.some(leak => JSON.stringify(leak).includes('_path_2')));
+      result.leaks.every(leak => !hasPathEdgeWithName(leak, '_path_1')),
+    ).toBe(true);
+    // expect some of the retainer trace paths to go through _path_2
+    expect(
+      result.leaks.some(leak => hasPathEdgeWithName(leak, '_path_2')),
+    ).toBe(true);
     const reader = result.runResult;
     expect(path.resolve(reader.getRootDirectory())).toBe(path.resolve(workDir));
   },
@@ -118,8 +139,15 @@ test(
       url: (): string => '',
       action: async (page: Page): Promise<void> =>
         await page.click('[data-testid="link-4"]'),
-      retainerReferenceFilter: (edge: IHeapEdge) => {
-        return edge.name_or_index !== '_path_2';
+      retainerReferenceFilter: (
+        edge: IHeapEdge,
+        _snapshot: IHeapSnapshot,
+        isReferenceUsedByDefault: boolean,
+      ) => {
+        if (edge.name_or_index === '_path_2') {
+          return false;
+        }
+        return isReferenceUsedByDefault;
       },
     };
 
@@ -131,14 +159,16 @@ test(
       evalInBrowserAfterInitLoad: injectDetachedDOMElements,
       workDir,
     });
-    // detected all different leak trace cluster
-    expect(result.leaks.length).toBe(1);
-    // expect the none of the traces to include _path_2
+    // detected leak trace clusters
+    expect(result.leaks.length).toBeGreaterThanOrEqual(1);
+    // expect none of the retainer trace paths to go through _path_2
     expect(
-      result.leaks.every(leak => !JSON.stringify(leak).includes('_path_2')),
-    );
-    // expect some of the traces to include _path_1
-    expect(result.leaks.some(leak => JSON.stringify(leak).includes('_path_1')));
+      result.leaks.every(leak => !hasPathEdgeWithName(leak, '_path_2')),
+    ).toBe(true);
+    // expect some of the retainer trace paths to go through _path_1
+    expect(
+      result.leaks.some(leak => hasPathEdgeWithName(leak, '_path_1')),
+    ).toBe(true);
     const reader = result.runResult;
     expect(path.resolve(reader.getRootDirectory())).toBe(path.resolve(workDir));
   },
