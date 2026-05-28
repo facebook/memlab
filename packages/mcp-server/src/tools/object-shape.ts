@@ -152,6 +152,10 @@ export function registerObjectShape(server: McpServer): void {
                 const val = strNode.stringValue;
                 targetLabel = `@${target.id} "${val.length > 60 ? val.slice(0, 60) + '...' : val}"`;
               }
+            } else if (target.name === 'smi number' && target.self_size === 0) {
+              targetLabel = `${target.id >> 1} (smi)`;
+            } else if (target.name === 'heap number') {
+              targetLabel = `@${target.id} (heap number)`;
             }
             return [
               String(edge.name_or_index),

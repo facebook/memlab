@@ -166,11 +166,13 @@ export function registerEventListenerLeaks(server: McpServer): void {
   server.tool(
     'memlab_event_listener_leaks',
     'Detect EventEmitter-style listener accumulation — the #1 cause of memory leaks in ' +
-      'Backbone/Node.js/EventEmitter-based apps. Scans for objects with _events/_listeners ' +
-      'properties and flags: arrays with >N entries (accumulation), entries where the ' +
-      'context/ctx object has no other referrers (zombie listeners from missed .off() calls), ' +
-      'and multiple entries with the same callback but different contexts (mount/unmount leaks). ' +
-      'Use after memlab_auto_investigate flags subscription accumulation.',
+      'event-driven apps. Scans for: (1) objects with _events/_listeners properties (Backbone/Node.js), ' +
+      'and (2) accumulations of {callback, context}-shaped objects (custom event systems like ' +
+      'WAWebEventEmitter, Signal, etc.). Detects arrays with >N entries (accumulation), entries ' +
+      'where the context/ctx object has no other referrers (zombie listeners), and multiple entries ' +
+      'with the same callback (mount/unmount leaks). ' +
+      'Use extra_event_properties to detect app-specific event container property names ' +
+      '(e.g., "#eventMap" for private class fields).',
     {
       min_listeners: z
         .number()
@@ -191,11 +193,39 @@ export function registerEventListenerLeaks(server: McpServer): void {
         .describe(
           'Check for zombie listeners whose context objects have no other referrers (default true). Can be slow on very large snapshots.',
         ),
+      extra_event_properties: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Additional property names to scan as event containers (e.g., ["#eventMap", "#listeningTo"] for private class fields). ' +
+            'These are checked in addition to the built-in patterns (_events, _listeners, eventMap, etc.).',
+        ),
+      detect_shapes: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'Also detect accumulations of {callback, context}-shaped objects regardless of parent property naming (default true). ' +
+            "Catches custom event systems that don't use standard _events/_listeners patterns.",
+        ),
     },
-    async ({min_listeners, limit, check_zombies}) => {
+    async ({
+      min_listeners,
+      limit,
+      check_zombies,
+      extra_event_properties,
+      detect_shapes,
+    }) => {
       try {
         const snapshot = getSnapshot();
         const accumulations: EventAccumulation[] = [];
+
+        const effectiveEventProps = new Set(EVENT_PROPERTY_NAMES);
+        if (extra_event_properties) {
+          for (const p of extra_event_properties) {
+            effectiveEventProps.add(p);
+          }
+        }
 
         snapshot.nodes.forEach(node => {
           if (node.id <= 3) return;
@@ -203,7 +233,7 @@ export function registerEventListenerLeaks(server: McpServer): void {
 
           for (const edge of node.references) {
             const eName = String(edge.name_or_index);
-            if (!EVENT_PROPERTY_NAMES.has(eName)) continue;
+            if (!effectiveEventProps.has(eName)) continue;
             if (edge.toNode.id <= 3) continue;
 
             const events = inspectEventContainer(edge.toNode);
@@ -254,10 +284,133 @@ export function registerEventListenerLeaks(server: McpServer): void {
           }
         });
 
+        // Shape-based detection: find accumulations of {callback, context}-shaped objects
+        if (detect_shapes) {
+          const CALLBACK_PROPS = new Set([
+            'callback',
+            'fn',
+            'handler',
+            'listener',
+          ]);
+          const CONTEXT_PROPS = new Set([
+            'context',
+            'ctx',
+            'this',
+            'target',
+            'scope',
+          ]);
+
+          const shapeMap = new Map<
+            string,
+            {
+              count: number;
+              totalRetained: number;
+              properties: string[];
+              exampleId: number;
+              sampleListeners: ListenerEntry[];
+            }
+          >();
+
+          snapshot.nodes.forEach(node => {
+            if (node.id <= 3) return;
+            if (node.type !== 'object' || node.name !== 'Object') return;
+
+            const propNames: string[] = [];
+            let hasCallback = false;
+            let hasContext = false;
+            let callbackId = 0;
+            let callbackName = '';
+            let contextId: number | null = null;
+            let contextName: string | null = null;
+
+            for (const edge of node.references) {
+              if (edge.type !== 'property') continue;
+              const pName = String(edge.name_or_index);
+              propNames.push(pName);
+              if (CALLBACK_PROPS.has(pName)) {
+                hasCallback = true;
+                callbackId = edge.toNode.id;
+                callbackName = edge.toNode.name;
+              }
+              if (CONTEXT_PROPS.has(pName)) {
+                hasContext = true;
+                contextId = edge.toNode.id;
+                contextName = edge.toNode.name;
+              }
+            }
+
+            if (!hasCallback || !hasContext) return;
+            if (propNames.length === 0 || propNames.length > 10) return;
+
+            propNames.sort();
+            const key = propNames.join(',');
+            const existing = shapeMap.get(key);
+            if (existing) {
+              existing.count++;
+              existing.totalRetained += node.retainedSize;
+              if (existing.sampleListeners.length < 3) {
+                existing.sampleListeners.push({
+                  callbackId,
+                  callbackName,
+                  contextId,
+                  contextName,
+                });
+              }
+            } else {
+              shapeMap.set(key, {
+                count: 1,
+                totalRetained: node.retainedSize,
+                properties: propNames,
+                exampleId: node.id,
+                sampleListeners: [
+                  {callbackId, callbackName, contextId, contextName},
+                ],
+              });
+            }
+          });
+
+          for (const [, shape] of shapeMap) {
+            if (shape.count < min_listeners) continue;
+
+            const entry: EventAccumulation = {
+              hostNodeId: shape.exampleId,
+              hostName: `{${shape.properties.join(', ')}}`,
+              hostType: 'shape',
+              eventPropertyName: `(${shape.properties.join(', ')})`,
+              eventContainerId: shape.exampleId,
+              totalListeners: shape.count,
+              eventBreakdown: [
+                {
+                  eventName: '(shape-based)',
+                  listenerCount: shape.count,
+                  sampleListeners: shape.sampleListeners,
+                },
+              ],
+              zombieCount: 0,
+              duplicateCallbackCount: countDuplicateCallbacks(
+                shape.sampleListeners,
+              ),
+              totalRetainedSize: shape.totalRetained,
+            };
+
+            let inserted = false;
+            for (let i = 0; i < accumulations.length; i++) {
+              if (entry.totalListeners > accumulations[i].totalListeners) {
+                accumulations.splice(i, 0, entry);
+                inserted = true;
+                break;
+              }
+            }
+            if (!inserted) accumulations.push(entry);
+            if (accumulations.length > limit) accumulations.length = limit;
+          }
+        }
+
         if (accumulations.length === 0) {
           return toolResult(
             `No event listener accumulation found with >= ${min_listeners} listeners. ` +
-              `Try lowering min_listeners or check \`memlab_find_by_property\` with property_name="_events".`,
+              `Try lowering min_listeners, or check \`memlab_find_by_property\` with property_name="callback", ` +
+              `or use \`memlab_shape_histogram\` with sort_by="count" to find high-count shapes.`,
           );
         }
 

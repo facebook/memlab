@@ -26,7 +26,11 @@ import {
 export function registerFindByProperty(server: McpServer): void {
   server.tool(
     'memlab_find_by_property',
-    'Find all objects that have a specific property name (outgoing edge). Useful for identifying objects with React internals (__reactFiber$, __reactProps$), custom data structures, or framework-specific markers. Results sorted by retained size.',
+    'Find all objects that have a specific property name (outgoing edge). Useful for identifying ' +
+      'objects with React internals (__reactFiber$, __reactProps$), custom data structures, or ' +
+      'framework-specific markers. Use property_value_node_id for reverse referrer lookup — ' +
+      'finding all objects whose named property points to a specific node (e.g., "which objects ' +
+      'have their callback property pointing to closure @700467?"). Results sorted by retained size.',
     {
       property_name: z
         .string()
@@ -38,6 +42,13 @@ export function registerFindByProperty(server: McpServer): void {
         .optional()
         .describe(
           'Filter by the string value of the property target. Exact match by default; prefix with "/" for regex (e.g., "/^Left$/"). Only matches string-type target nodes.',
+        ),
+      property_value_node_id: z
+        .number()
+        .optional()
+        .describe(
+          'Filter by the target node ID of the property. Finds all objects whose named property points to this specific node. ' +
+            'Essential for reverse referrer lookup — e.g., find all objects whose "callback" property points to closure @700467.',
         ),
       edge_type: z
         .string()
@@ -58,7 +69,14 @@ export function registerFindByProperty(server: McpServer): void {
         .default(20)
         .describe('Maximum number of results (default 20)'),
     },
-    async ({property_name, property_value, edge_type, output_mode, limit}) => {
+    async ({
+      property_name,
+      property_value,
+      property_value_node_id,
+      edge_type,
+      output_mode,
+      limit,
+    }) => {
       try {
         const snapshot = getSnapshot();
 
@@ -84,6 +102,9 @@ export function registerFindByProperty(server: McpServer): void {
         const filterDesc =
           `"${property_name}"` +
           (property_value ? ` = "${property_value}"` : '') +
+          (property_value_node_id != null
+            ? ` -> @${property_value_node_id}`
+            : '') +
           (edge_type ? ` (edge type: ${edge_type})` : '');
 
         const matchesProperty = (node: IHeapNode): boolean => {
@@ -94,6 +115,9 @@ export function registerFindByProperty(server: McpServer): void {
               : edgeName === property_name;
             if (!nameMatch) return false;
             if (edge_type && edge.type !== edge_type) return false;
+            if (property_value_node_id != null) {
+              if (edge.toNode.id !== property_value_node_id) return false;
+            }
             if (valueExact != null || valueRegex != null) {
               const target = edge.toNode;
               if (!target.isString) return false;

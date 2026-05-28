@@ -197,6 +197,15 @@ export function registerRetainerSummary(server: McpServer): void {
         .describe(
           'Exclude known V8/Node.js framework internals (system / Context, PromiseReaction, module cache patterns) from retainer paths. Helps surface application-level retention.',
         ),
+      include_properties: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'For each sampled node, also show its direct property edges (name -> target type/name). ' +
+            'Combines "where is it retained?" with "what does it contain?" in one call. ' +
+            'Saves a follow-up memlab_object_shape call per node.',
+        ),
     },
     async ({
       class_name,
@@ -206,6 +215,7 @@ export function registerRetainerSummary(server: McpServer): void {
       max_depth,
       compact,
       framework_filter,
+      include_properties,
     }) => {
       try {
         const snapshot = getSnapshot();
@@ -421,6 +431,38 @@ export function registerRetainerSummary(server: McpServer): void {
           lines.push(
             `Example nodes: ${p.example_ids.map(id => `@${id}`).join(', ')}`,
           );
+
+          if (include_properties) {
+            for (const exId of p.example_ids.slice(0, 2)) {
+              const exNode = snapshot.getNodeById(exId);
+              if (!exNode) continue;
+              const props: string[] = [];
+              for (const edge of exNode.references) {
+                if (
+                  edge.type === 'property' ||
+                  edge.type === 'element' ||
+                  edge.type === 'context'
+                ) {
+                  const target = edge.toNode;
+                  if (target.id <= 3) continue;
+                  let valPreview: string;
+                  if (target.isString) {
+                    const strNode = target.toStringNode();
+                    const sv = strNode?.stringValue ?? target.name;
+                    valPreview = `"${sv.length > 30 ? sv.slice(0, 27) + '...' : sv}"`;
+                  } else {
+                    valPreview = `${target.name} (${target.type})`;
+                  }
+                  props.push(`${String(edge.name_or_index)}: ${valPreview}`);
+                  if (props.length >= 8) break;
+                }
+              }
+              if (props.length > 0) {
+                lines.push(`  @${exId} properties: {${props.join(', ')}}`);
+              }
+            }
+          }
+
           lines.push('');
         }
 

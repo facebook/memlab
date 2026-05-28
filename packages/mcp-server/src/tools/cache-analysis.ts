@@ -197,12 +197,15 @@ function sampleCacheEntries(
               for (const ve of val.references) {
                 if (ve.type === 'property') {
                   props.push(String(ve.name_or_index));
-                  if (props.length >= 3) break;
+                  if (props.length >= 8) break;
                 }
               }
+              const totalProps = [...val.references].filter(
+                e => e.type === 'property',
+              ).length;
               valStr =
                 props.length > 0
-                  ? `${val.name} {${props.join(', ')}${val.edge_count > 3 ? ', …' : ''}}`
+                  ? `${val.name} {${props.join(', ')}${totalProps > props.length ? `, … +${totalProps - props.length} more` : ''}}`
                   : `${val.name} (${val.type}, ${formatBytes(val.retainedSize)})`;
             }
           }

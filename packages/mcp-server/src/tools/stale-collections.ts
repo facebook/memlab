@@ -17,7 +17,6 @@ import {
   formatNumber,
   markdownTable,
   errorResult,
-  textResult,
   toolResult,
 } from '../utils.js';
 
@@ -47,17 +46,63 @@ function getCollectionChildren(node: IHeapNode): IHeapEdge[] {
   return node.references;
 }
 
+function isOrphanedEntry(node: IHeapNode): boolean {
+  if (node.id <= 3) return false;
+  if (node.type !== 'object') return false;
+  return node.numOfReferrers <= 1;
+}
+
+function hasTerminalStatus(node: IHeapNode): boolean {
+  if (node.id <= 3) return false;
+  if (node.type !== 'object') return false;
+
+  const TERMINAL_VALUES = new Set([
+    'PENDING',
+    'UPLOAD_PENDING',
+    'UPLOADING',
+    'FAILED',
+    'ERROR',
+    'TIMED_OUT',
+    'CANCELLED',
+    'EXPIRED',
+    'ABORTED',
+  ]);
+
+  for (const edge of node.references) {
+    const eName = String(edge.name_or_index);
+    if (
+      eName === 'status' ||
+      eName === 'state' ||
+      eName === '_status' ||
+      eName === '_state'
+    ) {
+      const target = edge.toNode;
+      if (target.isString) {
+        const strNode = target.toStringNode();
+        if (strNode && TERMINAL_VALUES.has(strNode.stringValue)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 interface CollectionStat {
   collection: IHeapNode;
   stale_item_count: number;
   stale_retained_size: number;
   total_children: number;
+  stale_reason: string;
 }
 
 export function registerStaleCollections(server: McpServer): void {
   server.tool(
     'memlab_stale_collections',
-    'Find Map, Set, and Array collections holding references to detached DOM nodes or unmounted React Fiber nodes. These collections prevent garbage collection of stale objects.',
+    'Find Map, Set, and Array collections holding stale references. Detects: (1) detached DOM / ' +
+      'unmounted Fiber nodes, (2) entries with a status/state property stuck at terminal values ' +
+      '(PENDING, FAILED, TIMED_OUT, etc.), and (3) orphaned entries with no referrers outside ' +
+      'the collection. Use detect_modes to control which heuristics are applied.',
     {
       limit: z
         .number()
@@ -78,11 +123,24 @@ export function registerStaleCollections(server: McpServer): void {
         .describe(
           'Minimum total stale retained size in bytes to include (default 0). Use e.g., 10240 for 10 KB to filter noise.',
         ),
+      detect_modes: z
+        .array(z.enum(['detached', 'terminal_status', 'orphaned']))
+        .optional()
+        .default(['detached', 'terminal_status'])
+        .describe(
+          'Which stale detection heuristics to apply. "detached" = detached DOM / unmounted Fiber, ' +
+            '"terminal_status" = entries with status stuck at terminal values, ' +
+            '"orphaned" = entries with no referrers outside the collection (can be slow). Default: detached + terminal_status.',
+        ),
     },
-    async ({limit, min_stale_count, min_stale_retained_size}) => {
+    async ({limit, min_stale_count, min_stale_retained_size, detect_modes}) => {
       try {
         const snapshot = getSnapshot();
         const results: CollectionStat[] = [];
+
+        const detectDetached = detect_modes.includes('detached');
+        const detectTerminal = detect_modes.includes('terminal_status');
+        const detectOrphaned = detect_modes.includes('orphaned');
 
         snapshot.nodes.forEach(node => {
           if (!isCollectionNode(node)) return;
@@ -91,12 +149,29 @@ export function registerStaleCollections(server: McpServer): void {
           let staleCount = 0;
           let staleRetainedSize = 0;
           let totalChildren = 0;
+          let reason = '';
 
           for (const edge of children) {
             totalChildren++;
-            if (isStaleNode(edge.toNode)) {
+            const child = edge.toNode;
+            if (child.id <= 3) continue;
+
+            let isStale = false;
+            if (detectDetached && isStaleNode(child)) {
+              isStale = true;
+              if (!reason) reason = 'detached DOM/Fiber';
+            }
+            if (!isStale && detectTerminal && hasTerminalStatus(child)) {
+              isStale = true;
+              if (!reason) reason = 'terminal status';
+            }
+            if (!isStale && detectOrphaned && isOrphanedEntry(child)) {
+              isStale = true;
+              if (!reason) reason = 'orphaned entries';
+            }
+            if (isStale) {
               staleCount++;
-              staleRetainedSize += edge.toNode.retainedSize;
+              staleRetainedSize += child.retainedSize;
             }
           }
 
@@ -109,6 +184,7 @@ export function registerStaleCollections(server: McpServer): void {
               stale_item_count: staleCount,
               stale_retained_size: staleRetainedSize,
               total_children: totalChildren,
+              stale_reason: reason,
             });
           }
         });
@@ -130,11 +206,14 @@ export function registerStaleCollections(server: McpServer): void {
           }
           return toolResult('No stale collections found.');
         }
+        const hasMultipleReasons =
+          new Set(topResults.map(r => r.stale_reason)).size > 1;
         const headers = [
           'Collection ID',
           'Name',
           'Stale / Total',
           'Stale Retained',
+          ...(hasMultipleReasons ? ['Reason'] : []),
         ];
         const rightCols = new Set([2, 3]);
         const rows = topResults.map(r => [
@@ -142,6 +221,7 @@ export function registerStaleCollections(server: McpServer): void {
           r.collection.name,
           `${formatNumber(r.stale_item_count)} / ${formatNumber(r.total_children)}`,
           formatBytes(r.stale_retained_size),
+          ...(hasMultipleReasons ? [r.stale_reason] : []),
         ]);
         const output = `Stale collections (${topResults.length} found)\n\n${markdownTable(headers, rows, rightCols)}`;
         return toolResult(

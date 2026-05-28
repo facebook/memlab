@@ -165,8 +165,10 @@ export function registerEval(server: McpServer): void {
       timeout_ms: z
         .number()
         .optional()
-        .default(30000)
-        .describe('Execution timeout in milliseconds (default 30000)'),
+        .default(60000)
+        .describe(
+          'Execution timeout in milliseconds (default 60000). Full-snapshot scans on large heaps may need 120000+.',
+        ),
     },
     async ({code, timeout_ms}) => {
       try {

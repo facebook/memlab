@@ -58,6 +58,13 @@ export function registerGetNode(server: McpServer): void {
               : d.string_value;
           lines.push(`**String Value:** "${val}"`);
         }
+        if (node.name === 'smi number' && node.self_size === 0) {
+          lines.push(`**Decoded SMI Value:** ${node.id >> 1}`);
+        } else if (node.name === 'heap number') {
+          lines.push(
+            `**Type:** Heap Number (boxed double — value not stored in snapshot format)`,
+          );
+        }
         return toolResult(lines.join('\n'));
       } catch (err) {
         return errorResult(err);

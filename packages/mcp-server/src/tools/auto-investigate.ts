@@ -755,10 +755,24 @@ export function registerAutoInvestigate(server: McpServer): void {
           lines.push('## Shared Pinch Points');
           lines.push('');
           for (const {pp, findingIndices} of sharedPinchPoints) {
+            const ppNode = snapshot.getNodeById(pp.nodeId);
             const ppName = truncateNodeName(pp.name, pp.type, pp.selfSize, 50);
             lines.push(
               `- @${pp.nodeId} \`${ppName}\` — self: ${formatBytes(pp.selfSize)}, retains: ${formatBytes(pp.retainedSize)} (${formatNumber(Math.round(pp.ratio))}:1 ratio). Shared by findings ${findingIndices.map(j => `#${j + 1}`).join(', ')}. Freeing this single object would reclaim ${formatBytes(pp.retainedSize)}.`,
             );
+            if (ppNode) {
+              const topProps: string[] = [];
+              for (const edge of ppNode.references) {
+                if (edge.type === 'property' && topProps.length < 5) {
+                  topProps.push(String(edge.name_or_index));
+                }
+              }
+              if (topProps.length > 0) {
+                lines.push(
+                  `  Properties: {${topProps.join(', ')}${ppNode.edge_count > 5 ? ', …' : ''}}`,
+                );
+              }
+            }
           }
           lines.push('');
         }

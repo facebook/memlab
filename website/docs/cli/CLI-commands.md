@@ -106,7 +106,7 @@ memlab find-leaks --work-dir /memlab/working/dir/generated/by/memlab/
  * **`--ml-clustering-max-df`**: set percentage based max document frequency for limiting the terms that appear too often
  * **`--clean-up-snapshot`**: clean up heap snapshots after running
  * **`--work-dir`**: set the working directory of the current run
- * **`--heap-parser-dict-fast-store-size`**: the size threshold for swtiching from fast store to slower store in the heap snapshot parser. The default value is 5,000,000. If you get the `FATAL ERROR: invalid table size Allocation failed - JavaScript heap out of memory` error, try to decrease the threshold here
+ * **`--heap-parser-dict-fast-store-size`**: the size threshold for switching from fast store to slower store in the heap snapshot parser. The default value is 5,000,000. If you get the `FATAL ERROR: invalid table size Allocation failed - JavaScript heap out of memory` error, try to decrease the threshold here
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode
@@ -135,9 +135,9 @@ memlab diff-leaks
  * **`--ml-clustering`**: use machine learning algorithms for clustering leak traces (by default, traces are clustered by heuristics)
  * **`--ml-linkage-max-dist`**: set linkage max distance value for clustering. The value should be between [0, 1] inclusive.
  * **`--ml-clustering-max-df`**: set percentage based max document frequency for limiting the terms that appear too often
- * **`--max-cluster-sample-size`**: specify the max number of leak traces as input to leak trace clustering algorithm. Big sample size will preserve more complete inforrmation, but may risk out-of-memory crash.
+ * **`--max-cluster-sample-size`**: specify the max number of leak traces as input to leak trace clustering algorithm. Big sample size will preserve more complete information, but may risk out-of-memory crash.
  * **`--trace-contains`**: set the node name or edge name to filter leak traces that contain the name
- * **`--heap-parser-dict-fast-store-size`**: the size threshold for swtiching from fast store to slower store in the heap snapshot parser. The default value is 5,000,000. If you get the `FATAL ERROR: invalid table size Allocation failed - JavaScript heap out of memory` error, try to decrease the threshold here
+ * **`--heap-parser-dict-fast-store-size`**: the size threshold for switching from fast store to slower store in the heap snapshot parser. The default value is 5,000,000. If you get the `FATAL ERROR: invalid table size Allocation failed - JavaScript heap out of memory` error, try to decrease the threshold here
  * **`--work-dir`**: set the working directory of the current run
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
@@ -165,7 +165,7 @@ memlab trace --node-id=128127
  * **`--snapshot-dir`**: set directory path containing all heap snapshots under analysis
  * **`--engine`**: set the JavaScript engine (default to V8)
  * **`--node-id`**: set heap node ID
- * **`--heap-parser-dict-fast-store-size`**: the size threshold for swtiching from fast store to slower store in the heap snapshot parser. The default value is 5,000,000. If you get the `FATAL ERROR: invalid table size Allocation failed - JavaScript heap out of memory` error, try to decrease the threshold here
+ * **`--heap-parser-dict-fast-store-size`**: the size threshold for switching from fast store to slower store in the heap snapshot parser. The default value is 5,000,000. If you get the `FATAL ERROR: invalid table size Allocation failed - JavaScript heap out of memory` error, try to decrease the threshold here
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode
@@ -182,7 +182,7 @@ memlab analyze <PLUGIN_NAME> [PLUGIN_OPTIONS]
 
 **Options**:
  * **`--analysis-plugin`**: specify the external heap analysis plugin file (must be a vanilla JS file ended with `Analysis.js` suffix)
- * **`--heap-parser-dict-fast-store-size`**: the size threshold for swtiching from fast store to slower store in the heap snapshot parser. The default value is 5,000,000. If you get the `FATAL ERROR: invalid table size Allocation failed - JavaScript heap out of memory` error, try to decrease the threshold here
+ * **`--heap-parser-dict-fast-store-size`**: the size threshold for switching from fast store to slower store in the heap snapshot parser. The default value is 5,000,000. If you get the `FATAL ERROR: invalid table size Allocation failed - JavaScript heap out of memory` error, try to decrease the threshold here
  * **`--work-dir`**: set the working directory of the current run
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
@@ -433,7 +433,7 @@ memlab heap --snapshot <HEAP_SNAPSHOT_FILE>
 **Options**:
  * **`--snapshot`**: set file path of the heap snapshot under analysis
  * **`--engine`**: set the JavaScript engine (default to V8)
- * **`--heap-parser-dict-fast-store-size`**: the size threshold for swtiching from fast store to slower store in the heap snapshot parser. The default value is 5,000,000. If you get the `FATAL ERROR: invalid table size Allocation failed - JavaScript heap out of memory` error, try to decrease the threshold here
+ * **`--heap-parser-dict-fast-store-size`**: the size threshold for switching from fast store to slower store in the heap snapshot parser. The default value is 5,000,000. If you get the `FATAL ERROR: invalid table size Allocation failed - JavaScript heap out of memory` error, try to decrease the threshold here
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode
@@ -454,7 +454,7 @@ memlab view-heap --snapshot <HEAP_SNAPSHOT_FILE>
  * **`--node-id`**: set heap node ID
  * **`--ml-clustering`**: use machine learning algorithms for clustering leak traces (by default, traces are clustered by heuristics)
  * **`--work-dir`**: set the working directory of the current run
- * **`--heap-parser-dict-fast-store-size`**: the size threshold for swtiching from fast store to slower store in the heap snapshot parser. The default value is 5,000,000. If you get the `FATAL ERROR: invalid table size Allocation failed - JavaScript heap out of memory` error, try to decrease the threshold here
+ * **`--heap-parser-dict-fast-store-size`**: the size threshold for switching from fast store to slower store in the heap snapshot parser. The default value is 5,000,000. If you get the `FATAL ERROR: invalid table size Allocation failed - JavaScript heap out of memory` error, try to decrease the threshold here
  * **`--help`**, **`-h`**: print helper text
  * **`--verbose`**, **`-v`**: show more details
  * **`--sc`**: set to continuous test mode

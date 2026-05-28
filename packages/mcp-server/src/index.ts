@@ -56,10 +56,13 @@ import {registerReferrerSummary} from './tools/referrer-summary.js';
 import {registerEventListenerLeaks} from './tools/event-listener-leaks.js';
 import {registerFindByShape} from './tools/find-by-shape.js';
 import {registerWeakMapEntries} from './tools/weakmap-entries.js';
+import {registerGetValue} from './tools/get-value.js';
+import {registerGetString} from './tools/get-string.js';
+import {registerSearchStrings} from './tools/search-strings.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.5.0',
+  version: '2.6.0',
 });
 
 registerLoadSnapshot(server);
@@ -98,6 +101,9 @@ registerReferrerSummary(server);
 registerEventListenerLeaks(server);
 registerFindByShape(server);
 registerWeakMapEntries(server);
+registerGetValue(server);
+registerGetString(server);
+registerSearchStrings(server);
 registerEval(server);
 registerForEach(server);
 

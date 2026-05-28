@@ -63,8 +63,15 @@ export function registerShapeHistogram(server: McpServer): void {
         .describe(
           'Filter to objects with this constructor name (e.g., "Object"). If omitted, includes all object-type nodes.',
         ),
+      sort_by: z
+        .enum(['retained_size', 'count', 'self_size'])
+        .optional()
+        .default('retained_size')
+        .describe(
+          'Sort order: "retained_size" (default), "count" (instance count — find accumulation patterns), or "self_size".',
+        ),
     },
-    async ({limit, min_count, min_retained_size, class_name}) => {
+    async ({limit, min_count, min_retained_size, class_name, sort_by}) => {
       try {
         const snapshot = getSnapshot();
         const shapeMap = new Map<string, ShapeGroup>();
@@ -115,7 +122,13 @@ export function registerShapeHistogram(server: McpServer): void {
           );
         }
 
-        finalList.sort((a, b) => b.retainedSize - a.retainedSize);
+        if (sort_by === 'count') {
+          finalList.sort((a, b) => b.count - a.count);
+        } else if (sort_by === 'self_size') {
+          finalList.sort((a, b) => b.totalSelfSize - a.totalSelfSize);
+        } else {
+          finalList.sort((a, b) => b.retainedSize - a.retainedSize);
+        }
         finalList = finalList.slice(0, limit);
 
         if (finalList.length === 0) {
