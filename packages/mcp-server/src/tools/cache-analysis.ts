@@ -109,17 +109,43 @@ function getOwnerInfo(node: IHeapNode): {name: string; edge: string} {
 function countEntries(node: IHeapNode): {entries: number; tableSlots: number} {
   if (node.name === 'Map' || node.name === 'Set') {
     for (const edge of node.references) {
-      if (edge.name_or_index === 'table' && edge.toNode.type === 'array') {
-        let nonEmpty = 0;
-        for (const e of edge.toNode.references) {
-          if (e.toNode.type !== 'hidden' && e.toNode.id > 3) {
-            nonEmpty++;
-          }
+      const eName = String(edge.name_or_index);
+      if (
+        (eName === 'table' || eName === 'backing_store') &&
+        (edge.toNode.type === 'array' || edge.toNode.type === 'hidden')
+      ) {
+        const tableNode = edge.toNode;
+        let filledSlots = 0;
+        let totalSlots = 0;
+        for (const e of tableNode.references) {
+          if (e.type === 'internal' || e.type === 'hidden') continue;
+          totalSlots++;
+          const target = e.toNode;
+          if (target.id <= 3) continue;
+          if (target.name === 'undefined' || target.name === 'the_hole')
+            continue;
+          filledSlots++;
+        }
+        if (filledSlots === 0 && totalSlots === 0) {
+          filledSlots = tableNode.edge_count;
+          totalSlots = filledSlots;
         }
         const entries =
-          node.name === 'Map' ? Math.floor(nonEmpty / 2) : nonEmpty;
-        return {entries, tableSlots: nonEmpty};
+          node.name === 'Map' ? Math.floor(filledSlots / 2) : filledSlots;
+        return {entries, tableSlots: filledSlots};
       }
+    }
+    // Fallback: count non-internal outgoing edges as a proxy for entries
+    let propertyCount = 0;
+    for (const edge of node.references) {
+      if (edge.type === 'property' || edge.type === 'element') {
+        propertyCount++;
+      }
+    }
+    if (propertyCount > 0) {
+      const entries =
+        node.name === 'Map' ? Math.floor(propertyCount / 2) : propertyCount;
+      return {entries, tableSlots: propertyCount};
     }
     return {entries: 0, tableSlots: 0};
   }

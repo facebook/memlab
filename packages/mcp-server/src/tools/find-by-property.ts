@@ -16,6 +16,8 @@ import {
   serializeNodeSummary,
   isNodeWorthInspecting,
   formatNodeSummaryTable,
+  formatNumber,
+  formatBytes,
   errorResult,
   textResult,
   toolResult,
@@ -43,13 +45,20 @@ export function registerFindByProperty(server: McpServer): void {
         .describe(
           'Optional edge type filter (property, element, context, internal)',
         ),
+      output_mode: z
+        .enum(['full', 'count', 'ids'])
+        .optional()
+        .default('full')
+        .describe(
+          'Output verbosity: "full" returns node summaries (default), "count" returns only the total count and aggregate retained size, "ids" returns only node IDs',
+        ),
       limit: z
         .number()
         .optional()
         .default(20)
         .describe('Maximum number of results (default 20)'),
     },
-    async ({property_name, property_value, edge_type, limit}) => {
+    async ({property_name, property_value, edge_type, output_mode, limit}) => {
       try {
         const snapshot = getSnapshot();
 
@@ -72,12 +81,13 @@ export function registerFindByProperty(server: McpServer): void {
           }
         }
 
-        const results: IHeapNode[] = [];
+        const filterDesc =
+          `"${property_name}"` +
+          (property_value ? ` = "${property_value}"` : '') +
+          (edge_type ? ` (edge type: ${edge_type})` : '');
 
-        snapshot.nodes.forEach(node => {
-          if (!isNodeWorthInspecting(node)) return;
-
-          const hasProperty = node.references.some(edge => {
+        const matchesProperty = (node: IHeapNode): boolean => {
+          return node.references.some(edge => {
             const edgeName = String(edge.name_or_index);
             const nameMatch = isPrefix
               ? edgeName.startsWith(property_name)
@@ -95,10 +105,35 @@ export function registerFindByProperty(server: McpServer): void {
             }
             return true;
           });
+        };
 
-          if (!hasProperty) return;
+        if (output_mode === 'count') {
+          let totalCount = 0;
+          let totalRetained = 0;
+          snapshot.nodes.forEach(node => {
+            if (!isNodeWorthInspecting(node)) return;
+            if (!matchesProperty(node)) return;
+            totalCount++;
+            totalRetained += node.retainedSize;
+          });
+          return toolResult(
+            `Objects with property ${filterDesc}: ${formatNumber(totalCount)} total, ${formatBytes(totalRetained)} aggregate retained size`,
+          );
+        }
 
-          // Insertion sort to keep top N by retained size
+        const results: IHeapNode[] = [];
+        let totalCount = 0;
+
+        snapshot.nodes.forEach(node => {
+          if (!isNodeWorthInspecting(node)) return;
+          if (!matchesProperty(node)) return;
+          totalCount++;
+
+          if (output_mode === 'ids') {
+            results.push(node);
+            return;
+          }
+
           const size = node.retainedSize;
           let inserted = false;
           for (let i = 0; i < results.length; i++) {
@@ -116,16 +151,22 @@ export function registerFindByProperty(server: McpServer): void {
           }
         });
 
-        const summaries = results.map(serializeNodeSummary);
-        const filterDesc =
-          `"${property_name}"` +
-          (property_value ? ` = "${property_value}"` : '') +
-          (edge_type ? ` (edge type: ${edge_type})` : '');
-        if (summaries.length === 0) {
+        if (totalCount === 0) {
           return toolResult(`No objects found with property ${filterDesc}`);
         }
+
+        if (output_mode === 'ids') {
+          const sorted = results
+            .sort((a, b) => b.retainedSize - a.retainedSize)
+            .slice(0, limit);
+          return toolResult(
+            `Found ${formatNumber(totalCount)} objects with property ${filterDesc} (showing ${sorted.length} IDs)\n\nIDs: ${sorted.map(n => n.id).join(', ')}`,
+          );
+        }
+
+        const summaries = results.map(serializeNodeSummary);
         return toolResult(
-          `Found ${summaries.length} objects with property ${filterDesc}\n\n${formatNodeSummaryTable(summaries)}`,
+          `Found ${formatNumber(totalCount)} objects with property ${filterDesc} (showing top ${summaries.length})\n\n${formatNodeSummaryTable(summaries)}`,
         );
       } catch (err) {
         return errorResult(err);

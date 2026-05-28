@@ -43,6 +43,13 @@ export function registerObjectShape(server: McpServer): void {
         .optional()
         .default(false)
         .describe('Include internal/hidden edges (default false)'),
+      non_null_only: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Only show properties whose target is not null/undefined/false/zero. Useful for reducing noise on objects with many empty fields.',
+        ),
       limit: z
         .number()
         .optional()
@@ -51,7 +58,7 @@ export function registerObjectShape(server: McpServer): void {
           'Maximum number of properties to return per node (default 50)',
         ),
     },
-    async ({node_id, node_ids, include_internal, limit}) => {
+    async ({node_id, node_ids, include_internal, non_null_only, limit}) => {
       try {
         const snapshot = getSnapshot();
 
@@ -80,8 +87,40 @@ export function registerObjectShape(server: McpServer): void {
             continue;
           }
 
+          const NULL_NAMES = new Set(['null', 'undefined', 'false', '']);
           const filteredEdges = node.references
-            .filter(edge => include_internal || userEdgeTypes.has(edge.type))
+            .filter(edge => {
+              if (!include_internal && !userEdgeTypes.has(edge.type))
+                return false;
+              if (non_null_only) {
+                const target = edge.toNode;
+                if (target.id <= 3) return false;
+                if (target.type === 'hidden' && target.self_size === 0)
+                  return false;
+                if (NULL_NAMES.has(target.name) && target.self_size === 0)
+                  return false;
+                if (
+                  target.name === 'Oddball' ||
+                  target.name === 'system / Oddball'
+                )
+                  return false;
+                if (target.isString) {
+                  const strNode = target.toStringNode();
+                  if (strNode) {
+                    const val = strNode.stringValue;
+                    if (
+                      val === '' ||
+                      val === '0' ||
+                      val === 'false' ||
+                      val === 'null' ||
+                      val === 'undefined'
+                    )
+                      return false;
+                  }
+                }
+              }
+              return true;
+            })
             .sort((a, b) => b.toNode.retainedSize - a.toNode.retainedSize)
             .slice(0, limit);
 

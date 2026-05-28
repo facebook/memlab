@@ -275,7 +275,169 @@ export function registerCheckHealth(server: McpServer): void {
           });
         }
 
-        // Check 8: Retained module source code
+        // Check 8: Meta module system accumulation (__d / require)
+        let moduleDescriptorCount = 0;
+        let moduleEntryCount = 0;
+
+        snapshot.nodes.forEach(node => {
+          if (node.id <= 3) return;
+          if (node.type !== 'object') return;
+          // Module descriptors created by __d() have a specific shape
+          const hasFactory = node.references.some(
+            e => String(e.name_or_index) === 'factory' && e.type === 'property',
+          );
+          const hasDependencies = node.references.some(
+            e =>
+              String(e.name_or_index) === 'dependencies' &&
+              e.type === 'property',
+          );
+          if (hasFactory && hasDependencies) {
+            moduleDescriptorCount++;
+          }
+          // Module entries in the require map
+          if (node.name === 'Object') {
+            const hasModule = node.references.some(
+              e =>
+                String(e.name_or_index) === 'module' && e.type === 'property',
+            );
+            const hasExports = node.references.some(
+              e =>
+                String(e.name_or_index) === 'exports' && e.type === 'property',
+            );
+            if (hasModule && hasExports) {
+              moduleEntryCount++;
+            }
+          }
+        });
+
+        if (moduleDescriptorCount >= 10000 || moduleEntryCount >= 10000) {
+          const total = moduleDescriptorCount + moduleEntryCount;
+          findings.push({
+            severity: total >= 100000 ? 'warning' : 'info',
+            title: `Meta module system: ${formatNumber(moduleDescriptorCount)} descriptors, ${formatNumber(moduleEntryCount)} entries`,
+            detail:
+              'Large module registries from __d()/require() indicate the entire module graph is retained in memory. Check if unused modules can be lazily loaded or their factory functions released after initialization.',
+            next_step:
+              'memlab_find_by_shape with properties ["factory", "dependencies"] to inspect module descriptors',
+          });
+        }
+
+        // Check 9: ALEA/AutoLogging event accumulation
+        let aleaEventCount = 0;
+        let aleaTotalSize = 0;
+
+        snapshot.nodes.forEach(node => {
+          if (node.id <= 3 || node.type !== 'object') return;
+          const hasEventName = node.references.some(
+            e =>
+              (String(e.name_or_index) === 'event' ||
+                String(e.name_or_index) === 'eventName' ||
+                String(e.name_or_index) === 'event_name') &&
+              e.type === 'property',
+          );
+          const hasLoggingData = node.references.some(
+            e =>
+              (String(e.name_or_index) === 'extra' ||
+                String(e.name_or_index) === 'extraData' ||
+                String(e.name_or_index) === 'loggingData') &&
+              e.type === 'property',
+          );
+          if (hasEventName && hasLoggingData) {
+            aleaEventCount++;
+            aleaTotalSize += node.retainedSize;
+          }
+        });
+
+        if (aleaEventCount >= 1000) {
+          findings.push({
+            severity: aleaTotalSize >= totalSize * 0.05 ? 'warning' : 'info',
+            title: `${formatNumber(aleaEventCount)} AutoLogging/ALEA event objects (${formatBytes(aleaTotalSize)})`,
+            detail:
+              'Event objects with event/eventName + extra/loggingData properties are accumulating. This is a known pattern where logging events are queued but not flushed.',
+            next_step:
+              'memlab_find_by_shape with properties ["event", "extra"] to inspect event objects',
+          });
+        }
+
+        // Check 10: Relay/Flux store sizes
+        const storeNames = ['RelayModernStore', 'RelayStore', 'FluxStore'];
+        snapshot.nodes.forEach(node => {
+          if (node.id <= 3 || node.type !== 'object') return;
+          if (!storeNames.includes(node.name)) return;
+          if (node.retainedSize >= 5 * 1024 * 1024) {
+            const pct =
+              totalSize > 0
+                ? ((node.retainedSize / totalSize) * 100).toFixed(1)
+                : '?';
+            findings.push({
+              severity:
+                node.retainedSize >= totalSize * 0.1 ? 'warning' : 'info',
+              title: `\`${node.name}\` @${node.id} retains ${formatBytes(node.retainedSize)} (${pct}% of heap)`,
+              detail:
+                'Large Relay/Flux store may indicate stale query data or missing garbage collection of normalized records.',
+              next_step: `memlab_dominator_subtree with node_id ${node.id} to see what the store retains`,
+            });
+          }
+        });
+
+        // Check 11: EventHandlerRefInternal leak pattern
+        // Detects refs with non-null element but null handlers — the exact
+        // pattern of a known memory leak where the DOM element is retained
+        // after handlers are removed.
+        let leakyHandlerRefCount = 0;
+        let leakyHandlerRefExampleId = 0;
+        let leakyHandlerRefTotalSize = 0;
+
+        snapshot.nodes.forEach(node => {
+          if (node.id <= 3 || node.type !== 'object') return;
+          if (
+            !node.name.includes('EventHandler') &&
+            !node.name.includes('HandlerRef')
+          )
+            return;
+          let hasElement = false;
+          let handlersNull = false;
+          for (const edge of node.references) {
+            const eName = String(edge.name_or_index);
+            if (
+              (eName === '#element' ||
+                eName === 'element' ||
+                eName === '_element') &&
+              edge.toNode.id > 3 &&
+              edge.toNode.name !== 'undefined' &&
+              edge.toNode.name !== 'null'
+            ) {
+              hasElement = true;
+            }
+            if (
+              (eName === '#handlers' ||
+                eName === 'handlers' ||
+                eName === '_handlers') &&
+              (edge.toNode.id <= 3 ||
+                edge.toNode.name === 'null' ||
+                edge.toNode.name === 'undefined')
+            ) {
+              handlersNull = true;
+            }
+          }
+          if (hasElement && handlersNull) {
+            leakyHandlerRefCount++;
+            leakyHandlerRefTotalSize += node.retainedSize;
+            if (!leakyHandlerRefExampleId) leakyHandlerRefExampleId = node.id;
+          }
+        });
+
+        if (leakyHandlerRefCount >= 10) {
+          findings.push({
+            severity:
+              leakyHandlerRefTotalSize >= totalSize * 0.01 ? 'warning' : 'info',
+            title: `${formatNumber(leakyHandlerRefCount)} EventHandlerRef(s) with element but no handlers`,
+            detail: `These refs retain DOM elements after their handlers were removed — a known leak pattern. Total retained: ${formatBytes(leakyHandlerRefTotalSize)}.`,
+            next_step: `memlab_retainer_trace with node_id ${leakyHandlerRefExampleId} to trace the retention path`,
+          });
+        }
+
+        // Check 12: Retained module source code
         let moduleSourceSize = 0;
         let moduleSourceCount = 0;
 

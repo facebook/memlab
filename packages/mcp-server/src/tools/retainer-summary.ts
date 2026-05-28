@@ -15,6 +15,7 @@ import {getSnapshot} from '../heap-state.js';
 import {
   filterLargestObjects,
   formatBytes,
+  truncateDomToTag,
   errorResult,
   toolResult,
 } from '../utils.js';
@@ -97,6 +98,12 @@ function traceToKey(steps: TraceStep[], frameworkFilter: boolean): string {
 }
 
 function shortenPath(name: string): string {
+  const isDomLike =
+    name.includes('class="') ||
+    name.includes('aria-') ||
+    name.startsWith('<') ||
+    name.startsWith('Detached <');
+  if (isDomLike) return truncateDomToTag(name);
   if (name.length <= 40) return name;
   const parts = name.split('/');
   if (parts.length <= 2) return name;
@@ -246,7 +253,21 @@ export function registerRetainerSummary(server: McpServer): void {
         }
 
         if (nodes.length === 0) {
-          return toolResult(`No objects found for ${label}`);
+          const suggestions: string[] = [`No objects found for ${label}.`, ''];
+          if (class_name) {
+            suggestions.push(
+              `**Possible reasons:**`,
+              `- The class name may not match exactly — V8 uses constructor names, not class declarations`,
+              `- For DOM nodes, try \`name_prefix: "Detached"\` instead of class_name`,
+              `- For shape-based queries, use \`memlab_find_by_shape\` with property names instead`,
+              '',
+              `**Try instead:**`,
+              `- \`memlab_search_nodes\` with a regex pattern to find partial matches`,
+              `- \`memlab_class_histogram\` to see all class names in the snapshot`,
+              `- \`memlab_find_by_property\` if you know a property name on the target objects`,
+            );
+          }
+          return toolResult(suggestions.join('\n'));
         }
 
         const patterns = new Map<
@@ -404,9 +425,25 @@ export function registerRetainerSummary(server: McpServer): void {
         }
 
         if (noTrace > 0) {
-          lines.push(
-            `(${noTrace} instance(s) had no retainer path — root or unreachable nodes)`,
-          );
+          const noTraceNodes = nodes.filter(n => !n.hasPathEdge);
+          const withReferrers = noTraceNodes.filter(
+            n => n.numOfReferrers > 0,
+          ).length;
+          const noReferrers = noTrace - withReferrers;
+          const parts: string[] = [
+            `${noTrace} instance(s) had no retainer path:`,
+          ];
+          if (noReferrers > 0) {
+            parts.push(
+              `${noReferrers} with no referrers (GC-eligible, safe to ignore)`,
+            );
+          }
+          if (withReferrers > 0) {
+            parts.push(
+              `${withReferrers} with referrers but no GC root path (possibly weak-only retention — use \`memlab_get_referrers\` to inspect)`,
+            );
+          }
+          lines.push(`(${parts.join('; ')})`);
         }
 
         return toolResult(lines.join('\n'));

@@ -50,8 +50,26 @@ export function registerRetainerTrace(server: McpServer): void {
         }
 
         if (!node.hasPathEdge) {
+          const isRoot =
+            node.id <= 3 ||
+            node.name === '(GC roots)' ||
+            node.name === '(Strong roots)';
+          const hasReferrers = node.numOfReferrers > 0;
+          if (isRoot) {
+            return toolResult(
+              `@${node_id} is a GC root node (${node.name}) — it has no retainer because it is itself a root of the object graph.`,
+            );
+          }
+          if (hasReferrers) {
+            return toolResult(
+              `@${node_id} (${node.name}, ${node.type}) has ${node.numOfReferrers} referrer(s) but no computed shortest path to a GC root. ` +
+                `This can happen when the dominator tree was computed with a different root set, or when the node is reachable only through weak references. ` +
+                `Use \`memlab_get_referrers\` with node_id ${node_id} to manually trace its incoming edges.`,
+            );
+          }
           return toolResult(
-            'No retainer path available for this node. It may be a root node or unreachable.',
+            `@${node_id} (${node.name}, ${node.type}) has no retainer path and no referrers — it is likely eligible for garbage collection ` +
+              `and retained only because a GC cycle hasn't reclaimed it yet. It is safe to ignore for leak investigation.`,
           );
         }
 

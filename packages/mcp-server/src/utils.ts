@@ -69,22 +69,57 @@ function preferUsefulAttributes(name: string, maxLen: number): string {
   return name;
 }
 
+export function truncateDomToTag(name: string): string {
+  const detached = name.startsWith('Detached ') ? 'Detached ' : '';
+  const nameWithoutDetached = detached ? name.slice(9) : name;
+  const tag =
+    nameWithoutDetached.match(/^<(\w+)/)?.[1] ??
+    nameWithoutDetached.match(/^(\w+)/)?.[1] ??
+    '';
+  if (!tag) return name;
+
+  const testId = name.match(/data-testid="([^"]*)"/);
+  if (testId) return `${detached}<${tag} ${testId[0]}>`;
+
+  const id = name.match(/ id="([^"]*)"/);
+  if (id) return `${detached}<${tag} ${id[0]}>`;
+
+  const ariaLabel = name.match(/aria-label="([^"]*)"/);
+  if (ariaLabel) {
+    const label = ariaLabel[1];
+    const shortLabel = label.length > 30 ? label.slice(0, 30) + '…' : label;
+    return `${detached}<${tag} aria-label="${shortLabel}">`;
+  }
+
+  return `${detached}<${tag}>`;
+}
+
 export function truncateNodeName(
   name: string,
   type: string,
   selfSize: number,
   maxLen = 150,
+  aggressiveDom = false,
 ): string {
   if (type === 'string' || type === 'concatenated string') {
     if (name.length <= maxLen) return name;
     return `${name.slice(0, maxLen)}… (${formatBytes(selfSize)} total)`;
   }
 
-  if (name.includes('class="') && name.length > maxLen) {
-    let processed = preferUsefulAttributes(name, maxLen);
-    processed = truncateDomClasses(processed);
-    if (processed.length <= maxLen) return processed;
-    return `${processed.slice(0, maxLen)}…`;
+  const isDomLike =
+    name.includes('class="') ||
+    name.includes('aria-') ||
+    name.startsWith('<') ||
+    name.startsWith('Detached <');
+  if (isDomLike) {
+    if (aggressiveDom) return truncateDomToTag(name);
+    if (name.length > maxLen) {
+      let processed = preferUsefulAttributes(name, maxLen);
+      processed = truncateDomClasses(processed);
+      if (processed.length <= maxLen) return processed;
+      return `${processed.slice(0, maxLen)}…`;
+    }
+    return name;
   }
 
   if (name.length <= maxLen) return name;

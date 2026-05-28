@@ -54,10 +54,12 @@ import {registerShapeHistogram} from './tools/shape-histogram.js';
 import {registerQuickDiagnosis} from './tools/quick-diagnosis.js';
 import {registerReferrerSummary} from './tools/referrer-summary.js';
 import {registerEventListenerLeaks} from './tools/event-listener-leaks.js';
+import {registerFindByShape} from './tools/find-by-shape.js';
+import {registerWeakMapEntries} from './tools/weakmap-entries.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.4.0',
+  version: '2.5.0',
 });
 
 registerLoadSnapshot(server);
@@ -94,6 +96,8 @@ registerShapeHistogram(server);
 registerQuickDiagnosis(server);
 registerReferrerSummary(server);
 registerEventListenerLeaks(server);
+registerFindByShape(server);
+registerWeakMapEntries(server);
 registerEval(server);
 registerForEach(server);
 

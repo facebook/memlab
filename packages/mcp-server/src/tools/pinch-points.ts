@@ -44,16 +44,16 @@ export function registerPinchPoints(server: McpServer): void {
       min_retained_size: z
         .number()
         .optional()
-        .default(1048576)
+        .default(524288)
         .describe(
-          'Minimum retained size in bytes to consider (default 1 MB). Increase for large snapshots.',
+          'Minimum retained size in bytes to consider (default 512 KB). Increase for large snapshots.',
         ),
       min_ratio: z
         .number()
         .optional()
-        .default(100)
+        .default(50)
         .describe(
-          'Minimum retained_size/self_size ratio (default 100). Higher values find more extreme pinch points.',
+          'Minimum retained_size/self_size ratio (default 50). Higher values find more extreme pinch points.',
         ),
     },
     async ({limit, min_retained_size, min_ratio}) => {
