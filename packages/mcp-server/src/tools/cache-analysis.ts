@@ -274,6 +274,13 @@ export function registerCacheAnalysis(server: McpServer): void {
         .optional()
         .default(['Map', 'Set', 'Array'])
         .describe('Collection types to scan (default: Map, Set, Array)'),
+      detect_object_caches: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'Also scan for ad-hoc object caches: plain objects with shape {rows|data|items|results, timestamp|cachedAt|ttl|expiresAt|updatedAt} where the array property retains significant memory (default true)',
+        ),
       sample_entries: z
         .number()
         .optional()
@@ -296,6 +303,7 @@ export function registerCacheAnalysis(server: McpServer): void {
       min_entries,
       min_retained_size,
       collection_types,
+      detect_object_caches,
       sample_entries,
       compact_samples,
     }) => {
@@ -342,6 +350,70 @@ export function registerCacheAnalysis(server: McpServer): void {
           if (!inserted) caches.push(entry);
           if (caches.length > limit) caches.length = limit;
         });
+
+        // Detect ad-hoc object caches: plain objects with data+timestamp shape
+        if (detect_object_caches) {
+          const DATA_PROPS = new Set(['rows', 'data', 'items', 'results']);
+          const TIMESTAMP_PROPS = new Set([
+            'timestamp',
+            'cachedAt',
+            'ttl',
+            'expiresAt',
+            'updatedAt',
+          ]);
+
+          snapshot.nodes.forEach(node => {
+            if (node.id <= 3) return;
+            if (node.type !== 'object' || node.name !== 'Object') return;
+            if (node.retainedSize < min_retained_size) return;
+
+            let hasDataProp = false;
+            let hasTimestampProp = false;
+            let dataEntryCount = 0;
+            for (const edge of node.references) {
+              if (edge.type !== 'property') continue;
+              const propName = String(edge.name_or_index);
+              if (DATA_PROPS.has(propName)) {
+                hasDataProp = true;
+                if (
+                  edge.toNode.name === 'Array' &&
+                  edge.toNode.type === 'object'
+                ) {
+                  dataEntryCount = edge.toNode.edge_count;
+                }
+              }
+              if (TIMESTAMP_PROPS.has(propName)) {
+                hasTimestampProp = true;
+              }
+            }
+            if (!hasDataProp || !hasTimestampProp) return;
+
+            const owner = getOwnerInfo(node);
+            const entry: CacheEntry = {
+              nodeId: node.id,
+              collectionType: 'Object (ad-hoc cache)',
+              entryCount: dataEntryCount,
+              tableSlots: dataEntryCount,
+              retainedSize: node.retainedSize,
+              selfSize: node.self_size,
+              ownerName: owner.name,
+              ownerEdge: owner.edge,
+              hasWeakRefs: false,
+              framework: '',
+            };
+
+            let inserted = false;
+            for (let i = 0; i < caches.length; i++) {
+              if (entry.retainedSize > caches[i].retainedSize) {
+                caches.splice(i, 0, entry);
+                inserted = true;
+                break;
+              }
+            }
+            if (!inserted) caches.push(entry);
+            if (caches.length > limit) caches.length = limit;
+          });
+        }
 
         if (caches.length === 0) {
           return toolResult(

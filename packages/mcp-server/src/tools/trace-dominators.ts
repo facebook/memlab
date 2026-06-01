@@ -133,8 +133,21 @@ export function registerTraceDominators(server: McpServer): void {
         .describe(
           'Collapse repetitive Promise/PromiseReaction chains into a summary (default true)',
         ),
+      show_siblings: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'At each branch point (childCount > 1), show the top-3 children with their edge names and sizes, giving visibility into where memory fans out (default false)',
+        ),
     },
-    async ({node_id, max_depth, min_retained_size, collapse_promises}) => {
+    async ({
+      node_id,
+      max_depth,
+      min_retained_size,
+      collapse_promises,
+      show_siblings,
+    }) => {
       try {
         const snapshot = getSnapshot();
         const startNode = snapshot.getNodeById(node_id);
@@ -256,6 +269,39 @@ export function registerTraceDominators(server: McpServer): void {
           lines.push(
             `${indent}${arrow}@${s.nodeId} ${name} (${formatBytes(s.retainedSize)})${ann}`,
           );
+
+          // Show top-3 sibling children at branch points
+          if (show_siblings && s.childCount > 1 && !s.collapsedPromiseHops) {
+            const siblings = topChildren.get(s.nodeId);
+            if (siblings && siblings.length > 1) {
+              const parentNode = snapshot.getNodeById(s.nodeId);
+              const siblingIndent = indent + '  ';
+              const nextNodeId =
+                i + 1 < steps.length ? steps[i + 1].nodeId : -1;
+              const otherChildren = siblings
+                .filter(c => c.id !== nextNodeId)
+                .slice(0, 3);
+              if (otherChildren.length > 0) {
+                lines.push(
+                  `${siblingIndent}_(other children at this branch:)_`,
+                );
+                for (const child of otherChildren) {
+                  const cName = truncateNodeName(
+                    child.name,
+                    child.type,
+                    child.self_size,
+                    50,
+                  );
+                  const cEdge = parentNode
+                    ? findEdgeName(parentNode, child.id)
+                    : null;
+                  lines.push(
+                    `${siblingIndent}  [${cEdge ?? '?'}] @${child.id} ${cName} (${formatBytes(child.retainedSize)})`,
+                  );
+                }
+              }
+            }
+          }
         }
 
         // Show top children of the terminal node

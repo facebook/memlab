@@ -169,6 +169,62 @@ export function registerObjectShape(server: McpServer): void {
           sections.push(lines.join('\n'));
         }
 
+        // Compute property overlap summary for batch mode
+        if (ids.length > 1) {
+          const nodePropertySets: Array<{id: number; props: Set<string>}> = [];
+          for (const id of ids) {
+            const node = snapshot.getNodeById(id);
+            if (!node) continue;
+            const props = new Set<string>();
+            for (const edge of node.references) {
+              if (edge.type === 'property') {
+                props.add(String(edge.name_or_index));
+              }
+            }
+            nodePropertySets.push({id, props});
+          }
+
+          if (nodePropertySets.length > 1) {
+            // Group nodes by their property set
+            const shapeGroups = new Map<string, number[]>();
+            for (const {id, props} of nodePropertySets) {
+              const key = [...props].sort().join(',');
+              const group = shapeGroups.get(key);
+              if (group) {
+                group.push(id);
+              } else {
+                shapeGroups.set(key, [id]);
+              }
+            }
+
+            let overlapSummary: string;
+            if (shapeGroups.size === 1) {
+              const [key] = shapeGroups.keys();
+              const propNames = key.split(',');
+              const propsDisplay =
+                propNames.length <= 8
+                  ? `{${propNames.join(', ')}}`
+                  : `{${propNames.slice(0, 6).join(', ')}, ... +${propNames.length - 6}}`;
+              overlapSummary = `${nodePropertySets.length} nodes inspected: all share the same ${propNames.length}-property shape ${propsDisplay}`;
+            } else {
+              const groupDescs: string[] = [];
+              for (const [key, groupIds] of shapeGroups) {
+                const propNames = key.split(',');
+                const propsDisplay =
+                  propNames.length <= 6
+                    ? `{${propNames.join(', ')}}`
+                    : `{${propNames.slice(0, 5).join(', ')}, ... +${propNames.length - 5}}`;
+                groupDescs.push(
+                  `${groupIds.length} ${groupIds.length === 1 ? 'has' : 'share'} ${propsDisplay}`,
+                );
+              }
+              overlapSummary = `${nodePropertySets.length} nodes: ${groupDescs.join(', ')}`;
+            }
+
+            sections.unshift(`**Shape overlap:** ${overlapSummary}`);
+          }
+        }
+
         return toolResult(sections.join('\n\n---\n\n'));
       } catch (err) {
         return errorResult(err);

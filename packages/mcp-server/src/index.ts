@@ -63,7 +63,7 @@ import {registerArrayGroupBy} from './tools/array-group-by.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.7.0',
+  version: '2.8.0',
 });
 
 registerLoadSnapshot(server);

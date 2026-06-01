@@ -15,7 +15,7 @@ import path from 'path';
 import {z} from 'zod';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
 const {getFullHeapFromFile} = memlabHeapAnalysis;
-import {setSnapshot} from '../heap-state.js';
+import {setSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import type {SnapshotEnv} from '../heap-state.js';
 import {
   formatBytes,
@@ -156,6 +156,7 @@ export function registerLoadSnapshot(server: McpServer): void {
     },
     async ({file_path}) => {
       try {
+        const previousMeta = getSnapshotMetadata();
         const resolved = path.resolve(file_path);
         if (!fs.existsSync(resolved)) {
           return errorResult(new Error(`File not found: ${resolved}`));
@@ -196,9 +197,15 @@ export function registerLoadSnapshot(server: McpServer): void {
             : env === 'node'
               ? 'Node.js'
               : 'Unknown';
-        const lines = [
+        const lines: string[] = [];
+        if (previousMeta) {
+          lines.push(
+            `⚠ Replacing previously loaded snapshot "${previousMeta.fileName}"`,
+          );
+        }
+        lines.push(
           `Loaded ${file_path} (${formatBytes(fileStat.size)} on disk): ${formatNumber(nodeCount)} nodes, ${formatNumber(edgeCount)} edges, ${formatBytes(totalSize)} heap size (${envLabel} snapshot)`,
-        ];
+        );
 
         const warnings = quickDiagnosis(snapshot, totalSize);
         if (warnings.length > 0) {

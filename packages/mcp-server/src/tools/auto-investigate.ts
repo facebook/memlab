@@ -654,6 +654,73 @@ function formatTrace(trace: RetainerStep[], maxSteps: number): string {
   return parts.join('\n  → ');
 }
 
+function computeTraceOverlap(
+  a: RetainerStep[],
+  b: RetainerStep[],
+): {prefixLen: number; matchIndex: number} {
+  let prefixLen = 0;
+  const minLen = Math.min(a.length, b.length);
+  for (let i = 0; i < minLen; i++) {
+    if (a[i].nodeId === b[i].nodeId) {
+      prefixLen++;
+    } else {
+      break;
+    }
+  }
+  return {prefixLen, matchIndex: -1};
+}
+
+function findBestTraceMatch(
+  trace: RetainerStep[],
+  previousTraces: RetainerStep[][],
+): {matchedIndex: number; prefixLen: number} | null {
+  let bestMatch: {matchedIndex: number; prefixLen: number} | null = null;
+  for (let j = 0; j < previousTraces.length; j++) {
+    const {prefixLen} = computeTraceOverlap(trace, previousTraces[j]);
+    if (prefixLen > trace.length * 0.5) {
+      if (!bestMatch || prefixLen > bestMatch.prefixLen) {
+        bestMatch = {matchedIndex: j, prefixLen};
+      }
+    }
+  }
+  return bestMatch;
+}
+
+function detectAsyncLocalStorageLeaks(findings: Finding[]): string[] {
+  const alerts: string[] = [];
+  for (const f of findings) {
+    const traceNames = f.trace.map(s => s.name);
+    const traceEdges = f.trace.map(s => s.edgeName ?? '');
+    const hasTCP = traceNames.some(
+      n => n === 'TCP' || n === 'Socket' || n.includes('TCP'),
+    );
+    const hasResourceStore = traceEdges.some(
+      e => e === 'kResourceStore' || e === 'resource_symbol',
+    );
+    const hasAfterContext = traceEdges.some(e => e === 'afterContext');
+    const hasOnClose = traceEdges.some(e => e === 'onClose');
+    const hasContext = traceNames.some(
+      n => n === 'system / Context' || n.startsWith('system /'),
+    );
+
+    if (
+      hasTCP &&
+      hasResourceStore &&
+      (hasAfterContext || hasOnClose) &&
+      hasContext
+    ) {
+      alerts.push(
+        `🔴 **[CRITICAL] AsyncLocalStorage context retained by TCP connection**\n` +
+          `A TCP socket's async context chain retains ${formatBytes(f.node.retainedSize)} of request-scoped data. ` +
+          `The \`onClose\` closure captures the request's AsyncLocalStorage context, which chains to prior contexts via \`previous\` pointers.\n` +
+          `**Fix:** Ensure response bodies are fully consumed/canceled (check \`resp.body.cancel()\`), ` +
+          `or avoid capturing large data in request-scoped closures.`,
+      );
+    }
+  }
+  return alerts;
+}
+
 export function registerAutoInvestigate(server: McpServer): void {
   server.tool(
     'memlab_auto_investigate',
@@ -767,6 +834,7 @@ export function registerAutoInvestigate(server: McpServer): void {
           }
         }
 
+        const previousTraces: RetainerStep[][] = [];
         for (let i = 0; i < findings.length; i++) {
           const f = findings[i] as Finding & {
             collapsed_siblings?: Finding[];
@@ -795,12 +863,32 @@ export function registerAutoInvestigate(server: McpServer): void {
                   ? '🟡'
                   : '🔵';
 
+          // Check if this finding's trace shares a common prefix with a previous one
+          const traceMatch =
+            i > 0 ? findBestTraceMatch(f.trace, previousTraces) : null;
+
           if (siblings.length > 0) {
             lines.push(
               `### ${i + 1}. ${sevIcon} [${f.severity}] \`${name}\` chain — ${formatBytes(totalRetained)} total across ${1 + siblings.length} nodes${pct}`,
             );
             lines.push('');
-            lines.push(`**Retainer chain:** ${formatTrace(f.trace, 8)}`);
+            if (traceMatch) {
+              const divergeStep = f.trace[traceMatch.prefixLen];
+              const divergeEdge = divergeStep?.edgeName ?? '…';
+              const divergeName = divergeStep
+                ? truncateNodeName(
+                    divergeStep.name,
+                    divergeStep.type,
+                    divergeStep.selfSize,
+                    40,
+                  )
+                : '…';
+              lines.push(
+                `**Retainer chain:** (same chain as #${traceMatch.matchedIndex + 1}) → [${divergeEdge}] ${divergeName} — ${formatBytes(f.node.retainedSize)}`,
+              );
+            } else {
+              lines.push(`**Retainer chain:** ${formatTrace(f.trace, 8)}`);
+            }
             lines.push('');
             lines.push(
               `**Same chain contains:** @${f.node.id} (${formatBytes(f.node.retainedSize)})` +
@@ -811,6 +899,24 @@ export function registerAutoInvestigate(server: McpServer): void {
                   )
                   .join(''),
             );
+          } else if (traceMatch) {
+            const divergeStep = f.trace[traceMatch.prefixLen];
+            const divergeEdge = divergeStep?.edgeName ?? '…';
+            const divergeName = divergeStep
+              ? truncateNodeName(
+                  divergeStep.name,
+                  divergeStep.type,
+                  divergeStep.selfSize,
+                  40,
+                )
+              : '…';
+            lines.push(
+              `### ${i + 1}. ${sevIcon} [${f.severity}] @${f.node.id} \`${name}\` (${f.node.type}) — ${formatBytes(f.node.retainedSize)}${pct}`,
+            );
+            lines.push('');
+            lines.push(
+              `**Retainer chain:** (same chain as #${traceMatch.matchedIndex + 1}) → [${divergeEdge}] ${divergeName} — ${formatBytes(f.node.retainedSize)}`,
+            );
           } else {
             lines.push(
               `### ${i + 1}. ${sevIcon} [${f.severity}] @${f.node.id} \`${name}\` (${f.node.type}) — ${formatBytes(f.node.retainedSize)}${pct}`,
@@ -818,6 +924,7 @@ export function registerAutoInvestigate(server: McpServer): void {
             lines.push('');
             lines.push(`**Retainer chain:** ${formatTrace(f.trace, 8)}`);
           }
+          previousTraces.push(f.trace);
           lines.push('');
 
           if (f.pinchPoint) {
@@ -1021,6 +1128,16 @@ export function registerAutoInvestigate(server: McpServer): void {
             '_Repeated identical errors are almost always a bug — a module failing to load, a misconfigured import, or a retry loop that never succeeds._',
           );
           lines.push('');
+        }
+
+        const asyncAlerts = detectAsyncLocalStorageLeaks(findings);
+        if (asyncAlerts.length > 0) {
+          lines.push('## Known Leak Patterns');
+          lines.push('');
+          for (const alert of asyncAlerts) {
+            lines.push(alert);
+            lines.push('');
+          }
         }
 
         const sourceHints = extractSourceHints(findings.map(f => f.trace));

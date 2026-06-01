@@ -302,5 +302,10 @@ When analyzing large snapshots, use these options to reduce token usage:
 | Filter closure variables by size | `memlab_closure_inspection` with `min_retained_size` and `max_variables` |
 | Group referrers by edge/class | `memlab_referrer_summary` |
 | Find repeated errors | `memlab_auto_investigate` or `memlab_check_health` |
+| Detect AsyncLocalStorage/TCP leaks | `memlab_auto_investigate` (auto-detects TCP context retention patterns) |
+| See string interning savings | `memlab_duplicated_strings` (shows per-entry savings and total, plus app/framework actionability) |
+| Detect ad-hoc object caches | `memlab_cache_analysis` with `detect_object_caches: true` (scans for {data, timestamp} shaped objects) |
+| See memory fan-out at branches | `memlab_trace_dominators` with `show_siblings: true` |
+| Compare shapes across nodes | `memlab_object_shape` with `node_ids` array (batch mode shows property overlap summary) |
 | Check global pollution | `memlab_global_variables` |
 | Custom query | `memlab_eval` (includes helpers: `groupReferrersByEdge`, `groupArrayElementsByProperty`, `isOrphaned`, `countUniqueTargets`) or `memlab_for_each` |
