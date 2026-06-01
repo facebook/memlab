@@ -341,17 +341,36 @@ const LISTENER_CONTEXT_KEYWORDS = new Set([
   'self',
 ]);
 
+interface ListenerFanOutInfo {
+  uniqueCallbacks: number;
+  uniqueContexts: number;
+  orphanedContexts: number;
+  contextShapes: Array<{name: string; count: number}>;
+  escalatedSeverity: Severity;
+}
+
 interface SubscriptionAccumulation {
   properties: string[];
   count: number;
   totalSelfSize: number;
   exampleNodeId: number;
+  fanOut?: ListenerFanOutInfo;
 }
 
 function scanSubscriptionAccumulation(
   snapshot: IHeapSnapshot,
   threshold: number,
+  totalSize: number,
 ): SubscriptionAccumulation[] {
+  const CALLBACK_PROPS = new Set(['callback', 'fn', 'handler', 'listener']);
+  const CONTEXT_PROPS_SET = new Set([
+    'context',
+    'ctx',
+    'this',
+    'target',
+    'scope',
+  ]);
+
   const shapeMap = new Map<
     string,
     {
@@ -361,6 +380,10 @@ function scanSubscriptionAccumulation(
       exampleNodeId: number;
       hasListenerProp: boolean;
       hasContextProp: boolean;
+      callbackIds: Set<number>;
+      contextIds: Set<number>;
+      contextShapeMap: Map<string, number>;
+      orphanedContexts: number;
     }
   >();
 
@@ -368,9 +391,20 @@ function scanSubscriptionAccumulation(
     if (node.type !== 'object' || node.id <= 3) return;
     if (node.name !== 'Object') return;
     const names: string[] = [];
+    let callbackId = 0;
+    let contextId = 0;
+    let contextName = '';
     for (const edge of node.references) {
       if (edge.type === 'property') {
-        names.push(String(edge.name_or_index));
+        const pName = String(edge.name_or_index);
+        names.push(pName);
+        if (CALLBACK_PROPS.has(pName)) {
+          callbackId = edge.toNode.id;
+        }
+        if (CONTEXT_PROPS_SET.has(pName)) {
+          contextId = edge.toNode.id;
+          contextName = edge.toNode.name;
+        }
       }
     }
     if (names.length === 0 || names.length > 10) return;
@@ -380,11 +414,32 @@ function scanSubscriptionAccumulation(
     if (existing) {
       existing.count++;
       existing.totalSelfSize += node.self_size;
+      if (callbackId > 0) existing.callbackIds.add(callbackId);
+      if (contextId > 0) {
+        existing.contextIds.add(contextId);
+        existing.contextShapeMap.set(
+          contextName,
+          (existing.contextShapeMap.get(contextName) ?? 0) + 1,
+        );
+        const ctxNode = snapshot.getNodeById(contextId);
+        if (ctxNode && ctxNode.numOfReferrers <= 2) {
+          existing.orphanedContexts++;
+        }
+      }
     } else {
       const hasListener = names.some(
         n => LISTENER_SHAPE_KEYWORDS.has(n) || n.startsWith('on'),
       );
       const hasContext = names.some(n => LISTENER_CONTEXT_KEYWORDS.has(n));
+      const contextShapeMap = new Map<string, number>();
+      let orphanedContexts = 0;
+      if (contextId > 0) {
+        contextShapeMap.set(contextName, 1);
+        const ctxNode = snapshot.getNodeById(contextId);
+        if (ctxNode && ctxNode.numOfReferrers <= 2) {
+          orphanedContexts = 1;
+        }
+      }
       shapeMap.set(key, {
         properties: names,
         count: 1,
@@ -392,13 +447,55 @@ function scanSubscriptionAccumulation(
         exampleNodeId: node.id,
         hasListenerProp: hasListener,
         hasContextProp: hasContext,
+        callbackIds: new Set(callbackId > 0 ? [callbackId] : []),
+        contextIds: new Set(contextId > 0 ? [contextId] : []),
+        contextShapeMap,
+        orphanedContexts,
       });
     }
   });
 
-  return [...shapeMap.values()]
+  const results = [...shapeMap.values()]
     .filter(s => s.count >= threshold && s.hasListenerProp && s.hasContextProp)
     .sort((a, b) => b.totalSelfSize - a.totalSelfSize);
+
+  return results.map(s => {
+    const hasHighFanOut = s.callbackIds.size <= 5 && s.contextIds.size > 10;
+    const hasOrphanedContexts = s.orphanedContexts > s.contextIds.size * 0.5;
+
+    let fanOut: ListenerFanOutInfo | undefined;
+    if (hasHighFanOut || hasOrphanedContexts) {
+      let escalatedSeverity = classifySeverity(s.totalSelfSize, totalSize);
+      if (
+        hasHighFanOut &&
+        hasOrphanedContexts &&
+        (escalatedSeverity === 'LOW' || escalatedSeverity === 'MEDIUM')
+      ) {
+        escalatedSeverity = s.orphanedContexts > 100 ? 'CRITICAL' : 'HIGH';
+      }
+
+      const contextShapes = [...s.contextShapeMap.entries()]
+        .map(([name, count]) => ({name, count}))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+      fanOut = {
+        uniqueCallbacks: s.callbackIds.size,
+        uniqueContexts: s.contextIds.size,
+        orphanedContexts: s.orphanedContexts,
+        contextShapes,
+        escalatedSeverity,
+      };
+    }
+
+    return {
+      properties: s.properties,
+      count: s.count,
+      totalSelfSize: s.totalSelfSize,
+      exampleNodeId: s.exampleNodeId,
+      fanOut,
+    };
+  });
 }
 
 const ERROR_CLASS_NAMES = new Set([
@@ -639,7 +736,9 @@ export function registerAutoInvestigate(server: McpServer): void {
               };
         const shapes = focus === 'all' ? scanTopShapes(snapshot, 5) : [];
         const subscriptions =
-          focus === 'all' ? scanSubscriptionAccumulation(snapshot, 1000) : [];
+          focus === 'all'
+            ? scanSubscriptionAccumulation(snapshot, 1000, totalSize)
+            : [];
         const errorAccum =
           focus === 'all' ? scanErrorAccumulation(snapshot, 10) : [];
 
@@ -853,22 +952,50 @@ export function registerAutoInvestigate(server: McpServer): void {
           lines.push('');
           for (const s of subscriptions.slice(0, 5)) {
             const propsDisplay = `{${s.properties.join(', ')}}`;
-            const subSev = classifySeverity(s.totalSelfSize, totalSize);
+            const baseSev = classifySeverity(s.totalSelfSize, totalSize);
+            const effectiveSev = s.fanOut
+              ? s.fanOut.escalatedSeverity
+              : baseSev;
             const subSevIcon =
-              subSev === 'CRITICAL'
+              effectiveSev === 'CRITICAL'
                 ? '🔴'
-                : subSev === 'HIGH'
+                : effectiveSev === 'HIGH'
                   ? '🟠'
-                  : subSev === 'MEDIUM'
+                  : effectiveSev === 'MEDIUM'
                     ? '🟡'
                     : '🔵';
             lines.push(
-              `- ${subSevIcon} [${subSev}] ${propsDisplay} — **${formatNumber(s.count)}** instances, ${formatBytes(s.totalSelfSize)} self (example: @${s.exampleNodeId})`,
+              `- ${subSevIcon} [${effectiveSev}] ${propsDisplay} — **${formatNumber(s.count)}** instances, ${formatBytes(s.totalSelfSize)} self (example: @${s.exampleNodeId})`,
             );
+
+            if (s.fanOut) {
+              const fo = s.fanOut;
+              lines.push(
+                `  - **Listener fan-out detected:** ${formatNumber(fo.uniqueCallbacks)} unique callback(s), ${formatNumber(fo.uniqueContexts)} unique context(s)`,
+              );
+              if (fo.orphanedContexts > 0) {
+                lines.push(
+                  `  - **${formatNumber(fo.orphanedContexts)} orphaned context(s)** — only retained by listener registrations`,
+                );
+              }
+              if (fo.contextShapes.length > 0) {
+                const shapeStr = fo.contextShapes
+                  .map(cs => `${cs.count}× ${cs.name}`)
+                  .join(', ');
+                lines.push(`  - Context shapes: ${shapeStr}`);
+              }
+              if (effectiveSev !== baseSev) {
+                lines.push(
+                  `  - _Severity escalated from ${baseSev} → ${effectiveSev} due to listener fan-out pattern (few callbacks, many orphaned contexts)_`,
+                );
+              }
+            }
           }
+          lines.push('');
           lines.push(
-            '',
-            '_These may be event listeners, signal subscriptions, or observer registrations that are not being cleaned up. Use `memlab_retainer_summary` with node_ids from the examples to trace the retention pattern._',
+            '_These may be event listeners, signal subscriptions, or observer registrations that are not being cleaned up. ' +
+              'Use `memlab_event_listener_leaks` for detailed listener analysis or ' +
+              '`memlab_retainer_summary` with node_ids from the examples to trace the retention pattern._',
           );
           lines.push('');
         }

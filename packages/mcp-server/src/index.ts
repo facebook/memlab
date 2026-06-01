@@ -59,10 +59,11 @@ import {registerWeakMapEntries} from './tools/weakmap-entries.js';
 import {registerGetValue} from './tools/get-value.js';
 import {registerGetString} from './tools/get-string.js';
 import {registerSearchStrings} from './tools/search-strings.js';
+import {registerArrayGroupBy} from './tools/array-group-by.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.6.0',
+  version: '2.7.0',
 });
 
 registerLoadSnapshot(server);
@@ -106,6 +107,7 @@ registerGetString(server);
 registerSearchStrings(server);
 registerEval(server);
 registerForEach(server);
+registerArrayGroupBy(server);
 
 async function main() {
   const transport = new StdioServerTransport();

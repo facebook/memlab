@@ -281,6 +281,15 @@ export function registerCacheAnalysis(server: McpServer): void {
         .describe(
           'Number of sample entries to show per cache (default 0). Inspects representative key-value pairs showing key type/preview and value shape. Saves 2-3 follow-up tool calls per cache.',
         ),
+      compact_samples: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'Use compact one-line format for sampled entries (default true). ' +
+            'Shows "key_type → value_shape" instead of full object descriptions. ' +
+            'Set to false for verbose entry details.',
+        ),
     },
     async ({
       limit,
@@ -288,6 +297,7 @@ export function registerCacheAnalysis(server: McpServer): void {
       min_retained_size,
       collection_types,
       sample_entries,
+      compact_samples,
     }) => {
       try {
         const snapshot = getSnapshot();
@@ -413,8 +423,22 @@ export function registerCacheAnalysis(server: McpServer): void {
             lines.push(
               `**@${c.nodeId} \`${c.collectionType}\` sample entries (${samples.length} of ${formatNumber(c.entryCount)}):**`,
             );
-            for (const s of samples) {
-              lines.push(`  - ${s.keyPreview} → ${s.valuePreview}`);
+            if (compact_samples) {
+              for (const s of samples) {
+                const compactKey =
+                  s.keyPreview.length > 30
+                    ? s.keyPreview.slice(0, 27) + '...'
+                    : s.keyPreview;
+                const compactVal =
+                  s.valuePreview.length > 50
+                    ? s.valuePreview.slice(0, 47) + '...'
+                    : s.valuePreview;
+                lines.push(`  - ${compactKey} → ${compactVal}`);
+              }
+            } else {
+              for (const s of samples) {
+                lines.push(`  - ${s.keyPreview} → ${s.valuePreview}`);
+              }
             }
             lines.push('');
           }

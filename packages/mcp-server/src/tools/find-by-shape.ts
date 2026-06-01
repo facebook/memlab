@@ -52,6 +52,14 @@ export function registerFindByShape(server: McpServer): void {
         .describe(
           'Output verbosity: "full" returns node summaries (default), "count" returns only count and aggregate size, "ids" returns node IDs',
         ),
+      follow_property: z
+        .string()
+        .optional()
+        .describe(
+          "For each matched object, resolve this property edge and include the target's " +
+            'name, type, and ID in the output. Enables "find objects with shape X and tell ' +
+            'me the distribution of property Y" in a single call.',
+        ),
       limit: z
         .number()
         .optional()
@@ -63,6 +71,7 @@ export function registerFindByShape(server: McpServer): void {
       exclude_properties,
       class_name,
       output_mode,
+      follow_property,
       limit,
     }) => {
       try {
@@ -154,9 +163,66 @@ export function registerFindByShape(server: McpServer): void {
           totalCount > results.length
             ? ` (${formatNumber(totalCount)} total, showing top ${results.length})`
             : '';
-        return toolResult(
-          `Found ${formatNumber(totalCount)} objects matching shape ${shapeDesc}${countNote}\n\n${formatNodeSummaryTable(summaries)}`,
-        );
+
+        const outputLines = [
+          `Found ${formatNumber(totalCount)} objects matching shape ${shapeDesc}${countNote}`,
+          '',
+          formatNodeSummaryTable(summaries),
+        ];
+
+        if (follow_property && results.length > 0) {
+          const followDistribution = new Map<
+            string,
+            {count: number; exampleId: number}
+          >();
+          let missingCount = 0;
+
+          for (const node of results) {
+            let found = false;
+            for (const edge of node.references) {
+              if (String(edge.name_or_index) === follow_property) {
+                const target = edge.toNode;
+                const key = `${target.name} (${target.type})`;
+                const existing = followDistribution.get(key);
+                if (existing) {
+                  existing.count++;
+                } else {
+                  followDistribution.set(key, {
+                    count: 1,
+                    exampleId: target.id,
+                  });
+                }
+                found = true;
+                break;
+              }
+            }
+            if (!found) missingCount++;
+          }
+
+          const sorted = [...followDistribution.entries()].sort(
+            (a, b) => b[1].count - a[1].count,
+          );
+
+          outputLines.push(
+            '',
+            `**Property \`${follow_property}\` distribution across ${results.length} matches:**`,
+          );
+          for (const [key, info] of sorted.slice(0, 15)) {
+            outputLines.push(
+              `  - ${formatNumber(info.count)}× ${key} (example: @${info.exampleId})`,
+            );
+          }
+          if (sorted.length > 15) {
+            outputLines.push(`  - … and ${sorted.length - 15} more types`);
+          }
+          if (missingCount > 0) {
+            outputLines.push(
+              `  - ${formatNumber(missingCount)} object(s) missing property \`${follow_property}\``,
+            );
+          }
+        }
+
+        return toolResult(outputLines.join('\n'));
       } catch (err) {
         return errorResult(err);
       }

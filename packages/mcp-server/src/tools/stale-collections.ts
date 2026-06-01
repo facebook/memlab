@@ -52,6 +52,58 @@ function isOrphanedEntry(node: IHeapNode): boolean {
   return node.numOfReferrers <= 1;
 }
 
+const LISTENER_CALLBACK_PROPS = new Set([
+  'callback',
+  'fn',
+  'handler',
+  'listener',
+]);
+const LISTENER_CONTEXT_PROPS = new Set([
+  'context',
+  'ctx',
+  'this',
+  'target',
+  'scope',
+]);
+
+function isListenerOrphaned(
+  node: IHeapNode,
+  ownershipEdges: Set<string>,
+): boolean {
+  if (node.id <= 3) return false;
+  if (node.type !== 'object') return false;
+
+  let hasOwnershipRef = false;
+  for (const edge of node.referrers) {
+    const eName = String(edge.name_or_index);
+    if (ownershipEdges.has(eName)) {
+      hasOwnershipRef = true;
+      break;
+    }
+  }
+  if (hasOwnershipRef) return false;
+
+  let hasListenerRef = false;
+  for (const edge of node.referrers) {
+    const fromNode = edge.fromNode;
+    if (fromNode.type !== 'object' || fromNode.id <= 3) continue;
+    let fromHasCallback = false;
+    let fromHasContext = false;
+    for (const propEdge of fromNode.references) {
+      if (propEdge.type !== 'property') continue;
+      const pName = String(propEdge.name_or_index);
+      if (LISTENER_CALLBACK_PROPS.has(pName)) fromHasCallback = true;
+      if (LISTENER_CONTEXT_PROPS.has(pName)) fromHasContext = true;
+    }
+    if (fromHasCallback && fromHasContext) {
+      hasListenerRef = true;
+      break;
+    }
+  }
+
+  return hasListenerRef;
+}
+
 function hasTerminalStatus(node: IHeapNode): boolean {
   if (node.id <= 3) return false;
   if (node.type !== 'object') return false;
@@ -124,16 +176,51 @@ export function registerStaleCollections(server: McpServer): void {
           'Minimum total stale retained size in bytes to include (default 0). Use e.g., 10240 for 10 KB to filter noise.',
         ),
       detect_modes: z
-        .array(z.enum(['detached', 'terminal_status', 'orphaned']))
+        .array(
+          z.enum([
+            'detached',
+            'terminal_status',
+            'orphaned',
+            'listener_orphaned',
+          ]),
+        )
         .optional()
         .default(['detached', 'terminal_status'])
         .describe(
           'Which stale detection heuristics to apply. "detached" = detached DOM / unmounted Fiber, ' +
             '"terminal_status" = entries with status stuck at terminal values, ' +
-            '"orphaned" = entries with no referrers outside the collection (can be slow). Default: detached + terminal_status.',
+            '"orphaned" = entries with no referrers outside the collection (can be slow), ' +
+            '"listener_orphaned" = objects only kept alive by event listener registrations ' +
+            '(no ownership references like "msgs", "items", "children" — the classic listener-based ' +
+            'memory leak pattern). Default: detached + terminal_status.',
+        ),
+      ownership_edges: z
+        .array(z.string())
+        .optional()
+        .default([
+          'msgs',
+          'msgChunks',
+          'items',
+          'children',
+          'models',
+          '_models',
+          'entries',
+          'data',
+          'elements',
+        ])
+        .describe(
+          'Property names that constitute "ownership" references for the listener_orphaned ' +
+            'detection mode. Objects that lack any of these incoming edges are considered orphaned. ' +
+            "Customize for your app's collection naming conventions.",
         ),
     },
-    async ({limit, min_stale_count, min_stale_retained_size, detect_modes}) => {
+    async ({
+      limit,
+      min_stale_count,
+      min_stale_retained_size,
+      detect_modes,
+      ownership_edges,
+    }) => {
       try {
         const snapshot = getSnapshot();
         const results: CollectionStat[] = [];
@@ -141,6 +228,9 @@ export function registerStaleCollections(server: McpServer): void {
         const detectDetached = detect_modes.includes('detached');
         const detectTerminal = detect_modes.includes('terminal_status');
         const detectOrphaned = detect_modes.includes('orphaned');
+        const detectListenerOrphaned =
+          detect_modes.includes('listener_orphaned');
+        const ownershipEdgeSet = new Set(ownership_edges);
 
         snapshot.nodes.forEach(node => {
           if (!isCollectionNode(node)) return;
@@ -168,6 +258,14 @@ export function registerStaleCollections(server: McpServer): void {
             if (!isStale && detectOrphaned && isOrphanedEntry(child)) {
               isStale = true;
               if (!reason) reason = 'orphaned entries';
+            }
+            if (
+              !isStale &&
+              detectListenerOrphaned &&
+              isListenerOrphaned(child, ownershipEdgeSet)
+            ) {
+              isStale = true;
+              if (!reason) reason = 'listener-only retention';
             }
             if (isStale) {
               staleCount++;

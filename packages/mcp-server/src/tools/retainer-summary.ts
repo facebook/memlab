@@ -164,6 +164,15 @@ export function registerRetainerSummary(server: McpServer): void {
         .describe(
           'Match nodes whose name starts with this prefix (e.g., "Detached" matches all detached DOM nodes regardless of element type). Use instead of class_name when the exact name varies.',
         ),
+      shape: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Find objects by property shape — objects that have ALL of these property names. ' +
+            'Use instead of class_name when constructor is "Object" and you know the property ' +
+            'structure (e.g., ["callback", "context"]). Matches the {prop1, prop2} naming ' +
+            'from shape_histogram output.',
+        ),
       node_ids: z
         .array(z.number())
         .optional()
@@ -210,6 +219,7 @@ export function registerRetainerSummary(server: McpServer): void {
     async ({
       class_name,
       name_prefix,
+      shape,
       node_ids,
       sample,
       max_depth,
@@ -230,6 +240,24 @@ export function registerRetainerSummary(server: McpServer): void {
             if (node) nodes.push(node);
           }
           label = `${nodes.length} specified node(s)`;
+        } else if (shape && shape.length > 0) {
+          const requiredProps = new Set(shape);
+          nodes = filterLargestObjects(
+            snapshot,
+            node => {
+              if (node.type !== 'object' || node.id <= 3) return false;
+              const foundProps = new Set<string>();
+              for (const edge of node.references) {
+                if (edge.type === 'property') {
+                  const name = String(edge.name_or_index);
+                  if (requiredProps.has(name)) foundProps.add(name);
+                }
+              }
+              return foundProps.size === requiredProps.size;
+            },
+            sample,
+          );
+          label = `shape {${shape.join(', ')}}`;
         } else if (name_prefix) {
           nodes = filterLargestObjects(
             snapshot,
@@ -257,7 +285,7 @@ export function registerRetainerSummary(server: McpServer): void {
         } else {
           return errorResult(
             new Error(
-              'Either class_name, name_prefix, or node_ids must be provided.',
+              'Either class_name, name_prefix, shape, or node_ids must be provided.',
             ),
           );
         }

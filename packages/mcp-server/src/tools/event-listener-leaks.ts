@@ -38,6 +38,18 @@ interface ListenerEntry {
   contextName: string | null;
 }
 
+interface ContextDistribution {
+  uniqueCallbacks: number;
+  uniqueContexts: number;
+  totalListeners: number;
+  contextShapes: Array<{
+    shapeName: string;
+    count: number;
+    exampleId: number;
+  }>;
+  orphanedContextCount: number;
+}
+
 interface EventAccumulation {
   hostNodeId: number;
   hostName: string;
@@ -53,6 +65,7 @@ interface EventAccumulation {
   zombieCount: number;
   duplicateCallbackCount: number;
   totalRetainedSize: number;
+  contextDistribution?: ContextDistribution;
 }
 
 function inspectEventContainer(
@@ -149,6 +162,55 @@ function countZombies(
   return zombies;
 }
 
+function analyzeContextDistribution(
+  listeners: ListenerEntry[],
+  snapshot: ReturnType<typeof getSnapshot>,
+): ContextDistribution {
+  const callbackIds = new Set<number>();
+  const contextIds = new Set<number>();
+  const contextShapeMap = new Map<string, {count: number; exampleId: number}>();
+  let orphanedCount = 0;
+
+  for (const l of listeners) {
+    callbackIds.add(l.callbackId);
+    if (l.contextId != null) {
+      contextIds.add(l.contextId);
+
+      const ctxNode = snapshot.getNodeById(l.contextId);
+      if (ctxNode) {
+        const shapeName = ctxNode.name;
+        const existing = contextShapeMap.get(shapeName);
+        if (existing) {
+          existing.count++;
+        } else {
+          contextShapeMap.set(shapeName, {count: 1, exampleId: ctxNode.id});
+        }
+
+        if (ctxNode.numOfReferrers <= 2) {
+          orphanedCount++;
+        }
+      }
+    }
+  }
+
+  const contextShapes = [...contextShapeMap.entries()]
+    .map(([shapeName, info]) => ({
+      shapeName,
+      count: info.count,
+      exampleId: info.exampleId,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  return {
+    uniqueCallbacks: callbackIds.size,
+    uniqueContexts: contextIds.size,
+    totalListeners: listeners.length,
+    contextShapes,
+    orphanedContextCount: orphanedCount,
+  };
+}
+
 function countDuplicateCallbacks(listeners: ListenerEntry[]): number {
   const callbackContextPairs = new Map<string, number>();
   for (const l of listeners) {
@@ -208,6 +270,16 @@ export function registerEventListenerLeaks(server: McpServer): void {
           'Also detect accumulations of {callback, context}-shaped objects regardless of parent property naming (default true). ' +
             "Catches custom event systems that don't use standard _events/_listeners patterns.",
         ),
+      analyze_contexts: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'For each accumulation, analyze the distribution of unique callbacks vs contexts, ' +
+            'group context objects by shape/class, and detect orphaned contexts (default true). ' +
+            'This is the key signal for identifying listener-based memory leaks where many ' +
+            'orphaned objects register on the same event.',
+        ),
     },
     async ({
       min_listeners,
@@ -215,6 +287,7 @@ export function registerEventListenerLeaks(server: McpServer): void {
       check_zombies,
       extra_event_properties,
       detect_shapes,
+      analyze_contexts,
     }) => {
       try {
         const snapshot = getSnapshot();
@@ -250,6 +323,10 @@ export function registerEventListenerLeaks(server: McpServer): void {
             const duplicateCallbackCount =
               countDuplicateCallbacks(allListeners);
 
+            const contextDist = analyze_contexts
+              ? analyzeContextDistribution(allListeners, snapshot)
+              : undefined;
+
             const entry: EventAccumulation = {
               hostNodeId: node.id,
               hostName: node.name,
@@ -268,6 +345,7 @@ export function registerEventListenerLeaks(server: McpServer): void {
               zombieCount,
               duplicateCallbackCount,
               totalRetainedSize: node.retainedSize,
+              contextDistribution: contextDist,
             };
 
             let inserted = false;
@@ -307,7 +385,7 @@ export function registerEventListenerLeaks(server: McpServer): void {
               totalRetained: number;
               properties: string[];
               exampleId: number;
-              sampleListeners: ListenerEntry[];
+              allListeners: ListenerEntry[];
             }
           >();
 
@@ -348,21 +426,19 @@ export function registerEventListenerLeaks(server: McpServer): void {
             if (existing) {
               existing.count++;
               existing.totalRetained += node.retainedSize;
-              if (existing.sampleListeners.length < 3) {
-                existing.sampleListeners.push({
-                  callbackId,
-                  callbackName,
-                  contextId,
-                  contextName,
-                });
-              }
+              existing.allListeners.push({
+                callbackId,
+                callbackName,
+                contextId,
+                contextName,
+              });
             } else {
               shapeMap.set(key, {
                 count: 1,
                 totalRetained: node.retainedSize,
                 properties: propNames,
                 exampleId: node.id,
-                sampleListeners: [
+                allListeners: [
                   {callbackId, callbackName, contextId, contextName},
                 ],
               });
@@ -371,6 +447,10 @@ export function registerEventListenerLeaks(server: McpServer): void {
 
           for (const [, shape] of shapeMap) {
             if (shape.count < min_listeners) continue;
+
+            const contextDist = analyze_contexts
+              ? analyzeContextDistribution(shape.allListeners, snapshot)
+              : undefined;
 
             const entry: EventAccumulation = {
               hostNodeId: shape.exampleId,
@@ -383,14 +463,15 @@ export function registerEventListenerLeaks(server: McpServer): void {
                 {
                   eventName: '(shape-based)',
                   listenerCount: shape.count,
-                  sampleListeners: shape.sampleListeners,
+                  sampleListeners: shape.allListeners.slice(0, 3),
                 },
               ],
               zombieCount: 0,
               duplicateCallbackCount: countDuplicateCallbacks(
-                shape.sampleListeners,
+                shape.allListeners,
               ),
               totalRetainedSize: shape.totalRetained,
+              contextDistribution: contextDist,
             };
 
             let inserted = false;
@@ -459,6 +540,46 @@ export function registerEventListenerLeaks(server: McpServer): void {
             lines.push(
               `**${formatNumber(a.duplicateCallbackCount)} duplicate callback(s)** — same callback registered multiple times (classic mount/unmount leak)`,
             );
+            lines.push('');
+          }
+
+          if (a.contextDistribution) {
+            const cd = a.contextDistribution;
+            lines.push('**Context distribution:**');
+            lines.push(
+              `- ${formatNumber(cd.uniqueCallbacks)} unique callback(s) across ${formatNumber(cd.totalListeners)} listeners`,
+            );
+            lines.push(
+              `- ${formatNumber(cd.uniqueContexts)} unique context object(s) across ${formatNumber(cd.totalListeners)} listeners`,
+            );
+            if (cd.orphanedContextCount > 0) {
+              const orphanPct =
+                cd.uniqueContexts > 0
+                  ? ` (${((cd.orphanedContextCount / cd.uniqueContexts) * 100).toFixed(0)}%)`
+                  : '';
+              lines.push(
+                `- **${formatNumber(cd.orphanedContextCount)} orphaned context(s)**${orphanPct} — only retained by listener registrations`,
+              );
+            }
+            if (cd.contextShapes.length > 0) {
+              lines.push('- Context shapes:');
+              for (const cs of cd.contextShapes) {
+                lines.push(
+                  `  - ${formatNumber(cs.count)}× \`${cs.shapeName}\` (example: @${cs.exampleId})`,
+                );
+              }
+            }
+            if (
+              cd.uniqueCallbacks <= 3 &&
+              cd.uniqueContexts > 10 &&
+              cd.orphanedContextCount > cd.uniqueContexts * 0.5
+            ) {
+              lines.push('');
+              lines.push(
+                `**⚠ LEAK PATTERN:** Few callbacks (${cd.uniqueCallbacks}) but many orphaned contexts (${formatNumber(cd.orphanedContextCount)}) — ` +
+                  `classic listener-based memory leak where orphaned objects register on shared models but are never unregistered.`,
+              );
+            }
             lines.push('');
           }
 

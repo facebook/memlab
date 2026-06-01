@@ -109,8 +109,24 @@ export function registerClosureInspection(server: McpServer): void {
         .describe(
           'Maximum scope chain depth to walk (default 10). Increase for deeply nested closures.',
         ),
+      min_retained_size: z
+        .number()
+        .optional()
+        .default(0)
+        .describe(
+          'Only show captured variables retaining at least this many bytes (default 0 = show all). ' +
+            'Use e.g. 10240 for 10 KB to filter noise in deeply nested closures.',
+        ),
+      max_variables: z
+        .number()
+        .optional()
+        .default(0)
+        .describe(
+          'Limit output to the top N variables by retained size (default 0 = no limit). ' +
+            'Useful for deeply nested closures with hundreds of captured variables.',
+        ),
     },
-    async ({node_id, max_scope_depth}) => {
+    async ({node_id, max_scope_depth, min_retained_size, max_variables}) => {
       try {
         const snapshot = getSnapshot();
         const node = snapshot.getNodeById(node_id);
@@ -182,6 +198,27 @@ export function registerClosureInspection(server: McpServer): void {
 
         allVars.sort((a, b) => b.retained_size - a.retained_size);
 
+        const totalVarCount = allVars.length;
+        const totalVarRetained = allVars.reduce(
+          (sum, v) => sum + v.retained_size,
+          0,
+        );
+
+        let filteredVars = allVars;
+        if (min_retained_size > 0) {
+          filteredVars = filteredVars.filter(
+            v => v.retained_size >= min_retained_size,
+          );
+        }
+        const effectiveMax =
+          max_variables > 0 ? max_variables : filteredVars.length;
+        const omittedVars = filteredVars.slice(effectiveMax);
+        const omittedRetained = omittedVars.reduce(
+          (sum, v) => sum + v.retained_size,
+          0,
+        );
+        filteredVars = filteredVars.slice(0, effectiveMax);
+
         const location = node.location
           ? {
               script_id: node.location.script_id,
@@ -189,11 +226,6 @@ export function registerClosureInspection(server: McpServer): void {
               column: node.location.column,
             }
           : null;
-
-        const totalCapturedRetained = allVars.reduce(
-          (sum, v) => sum + v.retained_size,
-          0,
-        );
 
         const lines = [
           `**Closure:** ${formatNodeInline(node.id, node.name, node.type, node.self_size)}`,
@@ -215,19 +247,25 @@ export function registerClosureInspection(server: McpServer): void {
             `**Shared Function Info:** @${sharedEdge.toNode.id} ${sharedEdge.toNode.name}`,
           );
         }
+        const showingNote =
+          filteredVars.length < totalVarCount
+            ? ` (showing ${formatNumber(filteredVars.length)} of ${formatNumber(totalVarCount)})`
+            : '';
         lines.push(
-          `**Captured Variables:** ${formatNumber(allVars.length)}, total retained ${formatBytes(totalCapturedRetained)}` +
-            (chainDepth > 1 ? ` (across ${chainDepth} scope levels)` : ''),
+          `**Captured Variables:** ${formatNumber(totalVarCount)}, total retained ${formatBytes(totalVarRetained)}` +
+            (chainDepth > 1 ? ` (across ${chainDepth} scope levels)` : '') +
+            showingNote,
         );
         lines.push('');
 
-        if (allVars.length > 0) {
-          const hasMultipleDepths = new Set(allVars.map(v => v.depth)).size > 1;
+        if (filteredVars.length > 0) {
+          const hasMultipleDepths =
+            new Set(filteredVars.map(v => v.depth)).size > 1;
           const headers = hasMultipleDepths
             ? ['Depth', 'Variable', 'Target', 'Target Type', 'Retained']
             : ['Variable', 'Target', 'Target Type', 'Retained'];
           const rightCols = hasMultipleDepths ? new Set([4]) : new Set([3]);
-          const rows = allVars.map(v => {
+          const rows = filteredVars.map(v => {
             let targetLabel = `@${v.target_id} ${v.target_name}`;
             if (v.string_value != null) {
               const sv = v.string_value;
@@ -245,6 +283,20 @@ export function registerClosureInspection(server: McpServer): void {
             return row;
           });
           lines.push(markdownTable(headers, rows, rightCols));
+
+          if (omittedVars.length > 0) {
+            lines.push('');
+            lines.push(
+              `… and ${formatNumber(omittedVars.length)} more variable(s) retaining ${formatBytes(omittedRetained)} total` +
+                (min_retained_size > 0
+                  ? ` (filtered below ${formatBytes(min_retained_size)})`
+                  : ''),
+            );
+          }
+        } else if (totalVarCount > 0) {
+          lines.push(
+            `All ${formatNumber(totalVarCount)} variables are below the ${formatBytes(min_retained_size)} threshold (${formatBytes(totalVarRetained)} total). Lower min_retained_size to see them.`,
+          );
         }
 
         return toolResult(lines.join('\n'));

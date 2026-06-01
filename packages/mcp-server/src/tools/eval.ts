@@ -157,7 +157,9 @@ export function registerEval(server: McpServer): void {
             'Available globals: snapshot (IHeapSnapshot — use .nodes.forEach(), .getNodeById(), .edges.forEach()), ' +
             'utils (@memlab/core utils with aggregateDominatorMetrics, isFiberNode, isDetachedDOMNode), ' +
             'helpers ({ serializeNodeSummary, serializeNodeDetail, formatBytes, formatNumber, ' +
-            'markdownTable, isNodeWorthInspecting, filterLargestObjects, queryNodes }), ' +
+            'markdownTable, isNodeWorthInspecting, filterLargestObjects, queryNodes, ' +
+            'groupReferrersByEdge(nodeId), groupArrayElementsByProperty(arrayNodeId, propName), ' +
+            'isOrphaned(nodeId, ownershipEdgeNames[]), countUniqueTargets(arrayNodeId, propName) }), ' +
             'and standard JS built-ins. ' +
             'Node traversal: use node.references (outgoing) and node.referrers (incoming) with for-of. ' +
             'Edge properties: .name_or_index, .type, .toNode, .fromNode.',
@@ -186,6 +188,92 @@ export function registerEval(server: McpServer): void {
             consoleOutput.push('[info] ' + args.map(String).join(' ')),
         };
 
+        const groupReferrersByEdge = (nodeId: number) => {
+          const target = snapshot.getNodeById(nodeId);
+          if (!target) return {};
+          const groups: Record<
+            string,
+            Array<{fromName: string; fromType: string; fromId: number}>
+          > = {};
+          for (const edge of target.referrers) {
+            const eName = String(edge.name_or_index);
+            const from = edge.fromNode;
+            if (!groups[eName]) groups[eName] = [];
+            if (groups[eName].length < 10) {
+              groups[eName].push({
+                fromName: from.name,
+                fromType: from.type,
+                fromId: from.id,
+              });
+            }
+          }
+          return groups;
+        };
+
+        const groupArrayElementsByProperty = (
+          arrayNodeId: number,
+          propertyName: string,
+        ) => {
+          const arrNode = snapshot.getNodeById(arrayNodeId);
+          if (!arrNode) return {error: 'Node not found'};
+          const groups: Record<string, {count: number; exampleId: number}> = {};
+          let missing = 0;
+          let total = 0;
+          for (const edge of arrNode.references) {
+            if (edge.type !== 'element') continue;
+            const elem = edge.toNode;
+            if (elem.id <= 3) continue;
+            total++;
+            let found = false;
+            for (const propEdge of elem.references) {
+              if (String(propEdge.name_or_index) === propertyName) {
+                const target = propEdge.toNode;
+                const key = target.name;
+                if (!groups[key])
+                  groups[key] = {count: 0, exampleId: target.id};
+                groups[key].count++;
+                found = true;
+                break;
+              }
+            }
+            if (!found) missing++;
+          }
+          return {groups, total, missing};
+        };
+
+        const isOrphaned = (nodeId: number, ownershipEdgeNames: string[]) => {
+          const target = snapshot.getNodeById(nodeId);
+          if (!target) return false;
+          const ownerSet = new Set(ownershipEdgeNames);
+          for (const edge of target.referrers) {
+            if (ownerSet.has(String(edge.name_or_index))) return false;
+          }
+          return true;
+        };
+
+        const countUniqueTargets = (
+          arrayNodeId: number,
+          propertyName: string,
+        ) => {
+          const arrNode = snapshot.getNodeById(arrayNodeId);
+          if (!arrNode) return {error: 'Node not found'};
+          const uniqueIds = new Set<number>();
+          let total = 0;
+          for (const edge of arrNode.references) {
+            if (edge.type !== 'element') continue;
+            const elem = edge.toNode;
+            if (elem.id <= 3) continue;
+            total++;
+            for (const propEdge of elem.references) {
+              if (String(propEdge.name_or_index) === propertyName) {
+                uniqueIds.add(propEdge.toNode.id);
+                break;
+              }
+            }
+          }
+          return {uniqueCount: uniqueIds.size, totalElements: total};
+        };
+
         const helpers = {
           serializeNodeSummary,
           serializeNodeDetail,
@@ -195,6 +283,10 @@ export function registerEval(server: McpServer): void {
           isNodeWorthInspecting,
           filterLargestObjects,
           queryNodes,
+          groupReferrersByEdge,
+          groupArrayElementsByProperty,
+          isOrphaned,
+          countUniqueTargets,
         };
 
         const sandbox = {

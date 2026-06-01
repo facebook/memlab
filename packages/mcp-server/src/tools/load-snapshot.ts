@@ -137,6 +137,13 @@ function quickDiagnosis(
     warnings.push(`⚠ ${formatNumber(count)}× \`${name}\` instances`);
   }
 
+  if (warnings.length > 0) {
+    warnings.push(
+      '',
+      'Run `memlab_quick_diagnosis` for actionable triage or `memlab_auto_investigate` for deep analysis.',
+    );
+  }
+
   return warnings;
 }
 

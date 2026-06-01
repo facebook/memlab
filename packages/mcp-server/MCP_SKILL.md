@@ -294,8 +294,13 @@ When analyzing large snapshots, use these options to reduce token usage:
 | Find stale Map/Set entries | `memlab_stale_collections` (use `min_stale_count: 5` to filter noise) |
 | Group detached DOM by component | `memlab_detached_dom` with `group_by: "retainer"` or `"testid"` |
 | Find objects by property value | `memlab_find_by_property` with `property_value` (exact string or `/regex/`) |
-| Find listener accumulation | `memlab_event_listener_leaks` |
+| Find listener accumulation | `memlab_event_listener_leaks` (now with context distribution analysis) |
+| Group array elements by property | `memlab_array_group_by` with `element_property` — eliminates common `eval` boilerplate |
+| Find objects by shape and see property distribution | `memlab_find_by_shape` with `follow_property` |
+| Trace retention by object shape (not class name) | `memlab_retainer_summary` with `shape: ["prop1", "prop2"]` |
+| Find listener-orphaned objects | `memlab_stale_collections` with `detect_modes: ["listener_orphaned"]` |
+| Filter closure variables by size | `memlab_closure_inspection` with `min_retained_size` and `max_variables` |
 | Group referrers by edge/class | `memlab_referrer_summary` |
 | Find repeated errors | `memlab_auto_investigate` or `memlab_check_health` |
 | Check global pollution | `memlab_global_variables` |
-| Custom query | `memlab_eval` or `memlab_for_each` |
+| Custom query | `memlab_eval` (includes helpers: `groupReferrersByEdge`, `groupArrayElementsByProperty`, `isOrphaned`, `countUniqueTargets`) or `memlab_for_each` |
