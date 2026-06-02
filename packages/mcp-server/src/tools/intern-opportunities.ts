@@ -317,6 +317,47 @@ export function registerInternOpportunities(server: McpServer): void {
           lines.push('');
         }
 
+        // Detect partial interning patterns (Feedback #3):
+        // If strings in a group have a consistent low duplication factor (e.g., all ~4 copies),
+        // it suggests multiple independent intern pools instead of one shared pool.
+        const partialInternAlerts: string[] = [];
+        for (const g of shown) {
+          if (g.uniqueStrings < 10) continue;
+          const counts = g.topStrings.map(s => s.count);
+          if (counts.length < 2) continue;
+
+          const median = counts.sort((a, b) => a - b)[
+            Math.floor(counts.length / 2)
+          ];
+          if (median < 2 || median > 20) continue;
+
+          const consistent = counts.every(
+            c => c >= median * 0.5 && c <= median * 2,
+          );
+          if (!consistent) continue;
+
+          const perPoolSavings = g.savingsIfInterned;
+          partialInternAlerts.push(
+            `⚠️ **\`.${g.propertyName}\` on \`${g.parentShape.length > 50 ? g.parentShape.slice(0, 47) + '…}' : g.parentShape}\`:** ` +
+              `${formatNumber(g.uniqueStrings)} unique strings each duplicated ~${median}× — ` +
+              `suggests **${median} independent intern pools** instead of one shared pool. ` +
+              `Consolidating into a single shared pool would save ~${formatBytes(perPoolSavings)}.`,
+          );
+        }
+
+        if (partialInternAlerts.length > 0) {
+          lines.push(
+            '## Partial Interning Detected',
+            '',
+            'Strings that are partially deduplicated — interned within each dataset/call but duplicated across them:',
+            '',
+            ...partialInternAlerts,
+            '',
+            '_This typically happens when `internStrings()` or a dedup function creates a new Map per call instead of sharing one across datasets. Fix: lift the intern pool to module scope or pass it as a parameter._',
+            '',
+          );
+        }
+
         lines.push(
           '---',
           '',

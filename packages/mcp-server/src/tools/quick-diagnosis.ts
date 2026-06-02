@@ -206,15 +206,12 @@ export function registerQuickDiagnosis(server: McpServer): void {
           return {key, ...v, retained_size: retainedSize};
         });
 
-        // Use total heap size as denominator so cumulative % reflects each
-        // class's share of the entire heap, not just the displayed classes.
         const totalClassRetained = meta?.totalSize ?? 0;
 
         const classSorted = withRetained
           .sort((a, b) => b.retained_size - a.retained_size)
           .slice(0, top_classes);
-        let cumRetained = 0;
-        const classHeaders = ['Class', 'Type', 'Count', 'Retained', 'Cum %'];
+        const classHeaders = ['Class', 'Type', 'Count', 'Retained', '% Heap'];
         const classRightCols = new Set([2, 3, 4]);
         const classRows = classSorted.map(v => {
           const rawName = v.key.split('::').slice(1).join('::');
@@ -224,17 +221,16 @@ export function registerQuickDiagnosis(server: McpServer): void {
             Math.round(v.total_self_size / v.count),
             80,
           );
-          cumRetained += v.retained_size;
-          const cumPct =
+          const pct =
             totalClassRetained > 0
-              ? ((cumRetained / totalClassRetained) * 100).toFixed(1) + '%'
+              ? ((v.retained_size / totalClassRetained) * 100).toFixed(1) + '%'
               : '-';
           return [
             name,
             v.type,
             formatNumber(v.count),
             formatBytes(v.retained_size),
-            cumPct,
+            pct,
           ];
         });
         lines.push(

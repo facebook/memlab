@@ -153,8 +153,15 @@ export function registerLoadSnapshot(server: McpServer): void {
     'Load and parse a .heapsnapshot file. This builds indexes, computes the dominator tree, and calculates retained sizes. Returns a quick diagnosis highlighting potential issues. Only one snapshot can be loaded at a time.',
     {
       file_path: z.string().describe('Absolute path to a .heapsnapshot file'),
+      max_file_size_mb: z
+        .number()
+        .optional()
+        .default(900)
+        .describe(
+          'Maximum file size in MB to attempt loading (default 900). Snapshots larger than this will return an error instead of risking an OOM crash. Increase if your Node.js process has extra memory (--max-old-space-size).',
+        ),
     },
-    async ({file_path}) => {
+    async ({file_path, max_file_size_mb}) => {
       try {
         const previousMeta = getSnapshotMetadata();
         const resolved = path.resolve(file_path);
@@ -163,12 +170,51 @@ export function registerLoadSnapshot(server: McpServer): void {
         }
         const fileStat = fs.statSync(resolved);
         const fileSizeMB = fileStat.size / (1024 * 1024);
+
+        if (fileSizeMB > max_file_size_mb) {
+          return errorResult(
+            new Error(
+              `Snapshot file is ${formatBytes(fileStat.size)} — exceeds the ${max_file_size_mb} MB safety limit. ` +
+                `Loading snapshots this large often causes the MCP server to crash with an out-of-memory error, ` +
+                `losing all analysis state.\n\n` +
+                `Options:\n` +
+                `1. Use a smaller snapshot from the same app if available\n` +
+                `2. Increase the limit: memlab_load_snapshot({max_file_size_mb: ${Math.ceil(fileSizeMB + 100)}})\n` +
+                `3. Restart the MCP server with more memory: NODE_OPTIONS="--max-old-space-size=8192"`,
+            ),
+          );
+        }
+
         if (fileSizeMB > 200) {
           process.stderr.write(
             `Loading ${formatBytes(fileStat.size)} snapshot — this may take a while (parsing, computing dominators, building indexes)...\n`,
           );
         }
-        const snapshot = await getFullHeapFromFile(resolved);
+
+        let snapshot;
+        try {
+          snapshot = await getFullHeapFromFile(resolved);
+        } catch (loadErr: unknown) {
+          const msg =
+            loadErr instanceof Error ? loadErr.message : String(loadErr);
+          if (
+            msg.includes('heap out of memory') ||
+            msg.includes('allocation failed') ||
+            msg.includes('JavaScript heap') ||
+            msg.includes('ENOMEM')
+          ) {
+            return errorResult(
+              new Error(
+                `Out of memory while loading ${formatBytes(fileStat.size)} snapshot. ` +
+                  `The snapshot requires more memory than is available to the MCP server process.\n\n` +
+                  `Try:\n` +
+                  `1. A smaller snapshot from the same app\n` +
+                  `2. Restart with more memory: NODE_OPTIONS="--max-old-space-size=8192"`,
+              ),
+            );
+          }
+          throw loadErr;
+        }
 
         let nodeCount = 0;
         let edgeCount = 0;

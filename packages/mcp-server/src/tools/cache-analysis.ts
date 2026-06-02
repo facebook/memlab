@@ -573,6 +573,129 @@ export function registerCacheAnalysis(server: McpServer): void {
           `- Check for common patterns: \`memlab_retainer_summary\` with node_ids from the top caches`,
         );
 
+        // Detect byte-tracking mismatch and extract cache config (Feedback #2, #10)
+        const SIZE_PROPS = new Set([
+          'bytes',
+          'size',
+          'currentSize',
+          'currentBytes',
+          'maxBytes',
+          'byteSize',
+          'totalSize',
+        ]);
+        const DISPLAY_CONFIG_PROPS = new Set([
+          'maxBytes',
+          'ttlMs',
+          'maxSize',
+          'maxAge',
+          'capacity',
+          'layer',
+          'name',
+          'namespace',
+          'maxEntries',
+          'ttl',
+        ]);
+        const mismatchAlerts: string[] = [];
+        const configAlerts: string[] = [];
+
+        for (const c of caches.slice(0, 15)) {
+          const node = snapshot.getNodeById(c.nodeId);
+          if (!node) continue;
+
+          let selfReportedSize = -1;
+          let selfReportedProp = '';
+          const configPairs: Array<{key: string; value: string}> = [];
+
+          const scanNode = (n: typeof node) => {
+            for (const edge of n.references) {
+              if (edge.type !== 'property') continue;
+              const eName = String(edge.name_or_index);
+              const target = edge.toNode;
+
+              if (
+                SIZE_PROPS.has(eName) &&
+                selfReportedSize < 0 &&
+                (target.type === 'number' ||
+                  (target.type === 'hidden' &&
+                    target.name === 'system / HeapNumber'))
+              ) {
+                selfReportedSize =
+                  target.self_size === 0 ? 0 : target.self_size;
+                selfReportedProp = eName;
+              }
+
+              if (DISPLAY_CONFIG_PROPS.has(eName)) {
+                let val: string;
+                if (target.isString) {
+                  const s = target.toStringNode();
+                  val = s ? `"${s.stringValue.slice(0, 30)}"` : target.name;
+                } else if (
+                  target.type === 'number' ||
+                  (target.type === 'hidden' &&
+                    target.name === 'system / HeapNumber')
+                ) {
+                  val =
+                    target.self_size === 0
+                      ? 'smi'
+                      : formatBytes(target.self_size);
+                } else {
+                  val = target.name;
+                }
+                configPairs.push({key: eName, value: val});
+              }
+            }
+          };
+
+          scanNode(node);
+          // Also check owner object for config props
+          if (node.hasPathEdge) {
+            const pathEdge = node.pathEdge;
+            if (pathEdge) scanNode(pathEdge.fromNode);
+          }
+
+          if (
+            selfReportedSize >= 0 &&
+            c.retainedSize > selfReportedSize * 5 &&
+            c.retainedSize > 1024 * 1024
+          ) {
+            mismatchAlerts.push(
+              `⚠️ **@${c.nodeId} \`${c.collectionType}\`:** self-reported \`${selfReportedProp}\` tracks ~${formatBytes(selfReportedSize)} but actual retained size is **${formatBytes(c.retainedSize)}** (${Math.round(c.retainedSize / Math.max(selfReportedSize, 1))}×). The cache likely tracks serialized/compressed size but stores deserialized V8 objects that consume far more heap.`,
+            );
+          }
+
+          if (configPairs.length > 0) {
+            const configStr = configPairs
+              .map(p => `${p.key}=${p.value}`)
+              .join(', ');
+            configAlerts.push(
+              `- @${c.nodeId} \`${c.collectionType}\`: ${configStr}`,
+            );
+          }
+        }
+
+        if (mismatchAlerts.length > 0) {
+          lines.push(
+            '',
+            '---',
+            '',
+            '## Byte-Tracking Mismatch',
+            '',
+            'Caches where the self-reported size property significantly underestimates actual heap retention:',
+            '',
+          );
+          lines.push(...mismatchAlerts);
+          lines.push(
+            '',
+            '_This happens when a cache tracks serialized/compressed blob size but stores deserialized V8 objects. Fix: track retained object count or V8 heap cost instead of blob bytes._',
+          );
+        }
+
+        if (configAlerts.length > 0) {
+          lines.push('', '---', '', '## Cache Configuration', '');
+          lines.push(...configAlerts);
+          lines.push('');
+        }
+
         if (sample_entries > 0) {
           lines.push('', '---', '');
           for (const c of caches.slice(0, 5)) {

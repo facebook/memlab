@@ -319,6 +319,65 @@ function scanTopShapes(snapshot: IHeapSnapshot, limit: number): ShapeSummary[] {
     .slice(0, limit);
 }
 
+interface DistributedAccumulation {
+  className: string;
+  nodeType: string;
+  count: number;
+  totalSelfSize: number;
+  avgSize: number;
+  exampleNodeId: number;
+}
+
+function scanDistributedAccumulation(
+  snapshot: IHeapSnapshot,
+  totalSize: number,
+): DistributedAccumulation[] {
+  const classMap = new Map<
+    string,
+    {
+      className: string;
+      nodeType: string;
+      count: number;
+      totalSelfSize: number;
+      exampleNodeId: number;
+    }
+  >();
+
+  snapshot.nodes.forEach(node => {
+    if (node.id <= 3) return;
+    if (node.type === 'hidden' || node.type === 'array') return;
+    const key = `${node.type}::${node.name}`;
+    const existing = classMap.get(key);
+    if (existing) {
+      existing.count++;
+      existing.totalSelfSize += node.self_size;
+    } else {
+      classMap.set(key, {
+        className: node.name,
+        nodeType: node.type,
+        count: 1,
+        totalSelfSize: node.self_size,
+        exampleNodeId: node.id,
+      });
+    }
+  });
+
+  return [...classMap.values()]
+    .filter(c => {
+      if (c.count < 50_000) return false;
+      const avgSize = c.totalSelfSize / c.count;
+      if (avgSize > 10_000) return false;
+      if (totalSize > 0 && c.totalSelfSize < totalSize * 0.03) return false;
+      return true;
+    })
+    .map(c => ({
+      ...c,
+      avgSize: c.totalSelfSize / c.count,
+    }))
+    .sort((a, b) => b.totalSelfSize - a.totalSelfSize)
+    .slice(0, 5);
+}
+
 const LISTENER_SHAPE_KEYWORDS = new Set([
   'callback',
   'handler',
@@ -574,6 +633,7 @@ function tracePrefix(trace: RetainerStep[]): string {
 function deduplicateFindings(findings: Finding[]): Finding[] {
   if (findings.length <= 1) return findings;
 
+  // Phase 1: Collapse findings that share the same retainer trace prefix
   const prefixMap = new Map<
     string,
     {representative: Finding; others: Finding[]}
@@ -609,14 +669,46 @@ function deduplicateFindings(findings: Finding[]): Finding[] {
     }
   }
 
-  const result: Finding[] = [];
+  const prefixResult: Array<Finding & {collapsed_siblings?: Finding[]}> = [];
   for (const {representative, others} of prefixMap.values()) {
     (
       representative as Finding & {collapsed_siblings?: Finding[]}
     ).collapsed_siblings = others;
-    result.push(representative);
+    prefixResult.push(
+      representative as Finding & {collapsed_siblings?: Finding[]},
+    );
   }
-  return result;
+
+  // Phase 2: Collapse findings along the same dominator chain (Feedback #12)
+  // If finding B's node appears in finding A's retainer trace, B is dominated by A
+  if (prefixResult.length <= 1) return prefixResult;
+
+  const traceNodeSets = prefixResult.map(f => {
+    const ids = new Set<number>();
+    for (const step of f.trace) {
+      ids.add(step.nodeId);
+    }
+    return ids;
+  });
+
+  const absorbed = new Set<number>();
+  for (let i = 0; i < prefixResult.length; i++) {
+    if (absorbed.has(i)) continue;
+    for (let j = 0; j < prefixResult.length; j++) {
+      if (i === j || absorbed.has(j)) continue;
+      // If finding j's target node appears in finding i's trace, j is a sub-finding of i
+      if (traceNodeSets[i].has(prefixResult[j].node.id)) {
+        const siblings = prefixResult[i].collapsed_siblings ?? [];
+        siblings.push(prefixResult[j]);
+        const jSiblings = prefixResult[j].collapsed_siblings ?? [];
+        siblings.push(...jSiblings);
+        prefixResult[i].collapsed_siblings = siblings;
+        absorbed.add(j);
+      }
+    }
+  }
+
+  return prefixResult.filter((_, idx) => !absorbed.has(idx));
 }
 
 function formatTrace(trace: RetainerStep[], maxSteps: number): string {
@@ -774,6 +866,59 @@ function detectAsyncContextLeaks(findings: Finding[]): string[] {
           `Ensure \`.catch()\` handlers don't capture the entire response.`,
       );
     }
+
+    // Pattern 4: Undici Client/Pool response retention (Feedback #6)
+    const hasUndiciClient = traceNames.some(
+      n => n === 'Client' || n === 'Pool' || n === 'Agent',
+    );
+    const hasRequestQueue = traceEdges.some(
+      e =>
+        e === 'requests' || e === 'queue' || e === 'pending' || e === 'running',
+    );
+
+    if (
+      hasUndiciClient &&
+      hasRequestQueue &&
+      f.node.retainedSize > 1024 * 1024 &&
+      !seen.has('undici-client')
+    ) {
+      seen.add('undici-client');
+      alerts.push(
+        `🟠 **[HIGH] Undici HTTP Client/Pool retaining ${formatBytes(f.node.retainedSize)} via request queue**\n` +
+          `An Undici Client or Pool object is keeping response data alive through its request queue or closure chain. ` +
+          `This typically happens when HTTP response bodies are not fully consumed or canceled.\n` +
+          `**Fix:** Always consume or cancel response bodies: \`await resp.text()\`, \`resp.body.cancel()\`, ` +
+          `or \`resp.body.destroy()\`. For streaming responses, ensure the readable stream is fully drained.`,
+      );
+    }
+
+    // Pattern 5: mysql2 Connection retaining large data (Feedback #8)
+    const hasMysqlConn = traceNames.some(
+      n =>
+        n === 'Connection' ||
+        n === 'PoolConnection' ||
+        n === 'PromiseConnection',
+    );
+    const hasMysqlEdge = traceEdges.some(
+      e => e === '_protocol' || e === '_statements' || e === 'connectionConfig',
+    );
+
+    if (
+      hasMysqlConn &&
+      hasMysqlEdge &&
+      f.node.retainedSize > 5 * 1024 * 1024 &&
+      !seen.has('mysql2-conn')
+    ) {
+      seen.add('mysql2-conn');
+      alerts.push(
+        `🟠 **[HIGH] mysql2 Connection retaining ${formatBytes(f.node.retainedSize)}**\n` +
+          `A mysql2 Connection object is keeping query results or protocol buffers alive, often through ` +
+          `error event handler closure chains or unreleased prepared statements.\n` +
+          `**Fix:** Set pool \`idleTimeout\` (e.g., 60000ms) to free idle connections. ` +
+          `Ensure query result rows are not captured in long-lived closures. ` +
+          `Consider \`stream()\` instead of \`query()\` for large result sets.`,
+      );
+    }
   }
   return alerts;
 }
@@ -865,6 +1010,10 @@ export function registerAutoInvestigate(server: McpServer): void {
             : [];
         const errorAccum =
           focus === 'all' ? scanErrorAccumulation(snapshot, 10) : [];
+        const distributed =
+          focus === 'all'
+            ? scanDistributedAccumulation(snapshot, totalSize)
+            : [];
 
         const lines: string[] = [`# Auto-Investigation Report`, ''];
 
@@ -1212,6 +1361,35 @@ export function registerAutoInvestigate(server: McpServer): void {
             );
             lines.push('');
           }
+        }
+
+        if (distributed.length > 0) {
+          lines.push(`## Distributed Accumulation`);
+          lines.push('');
+          lines.push(
+            'Classes with many small instances that collectively consume significant memory. No single instance stands out, but the total is substantial:',
+          );
+          lines.push('');
+          for (const d of distributed) {
+            const pct =
+              totalSize > 0
+                ? ` (${((d.totalSelfSize / totalSize) * 100).toFixed(1)}% of heap)`
+                : '';
+            const sevIcon =
+              d.totalSelfSize >= totalSize * 0.1
+                ? '🔴'
+                : d.totalSelfSize >= totalSize * 0.05
+                  ? '🟠'
+                  : '🟡';
+            lines.push(
+              `- ${sevIcon} \`${d.className}\` (${d.nodeType}) — **${formatNumber(d.count)}** instances × ${Math.round(d.avgSize)}B avg = **${formatBytes(d.totalSelfSize)}**${pct} (example: @${d.exampleNodeId})`,
+            );
+          }
+          lines.push(
+            '',
+            '_These won\'t appear in "top retained objects" because no single instance retains enough. Reduce instance count at the source (batch, deduplicate, or filter before storing)._',
+          );
+          lines.push('');
         }
 
         if (subscriptions.length > 0) {

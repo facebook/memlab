@@ -65,7 +65,7 @@ import {registerObjectCostBreakdown} from './tools/object-cost-breakdown.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.9.0',
+  version: '2.10.0',
 });
 
 registerLoadSnapshot(server);

@@ -510,7 +510,84 @@ export function registerCheckHealth(server: McpServer): void {
           }
         }
 
-        // Check 14: Retained module source code
+        // Check 14: WebSocket/TCP connection accumulation (Feedback #4)
+        if (env === 'node') {
+          const CONN_CLASSES = ['TCP', 'Socket', 'TLSSocket', 'WebSocket'];
+          for (const cls of CONN_CLASSES) {
+            const count = classCounts.get(cls) ?? 0;
+            if (count < 1000) continue;
+
+            let connRetained = 0;
+            let connExampleId = 0;
+            snapshot.nodes.forEach(node => {
+              if (node.id <= 3 || node.type !== 'object') return;
+              if (node.name !== cls) return;
+              connRetained += node.retainedSize;
+              if (!connExampleId) connExampleId = node.id;
+            });
+
+            if (connRetained > 1024 * 1024) {
+              findings.push({
+                severity:
+                  connRetained >= totalSize * 0.05 ? 'critical' : 'warning',
+                title: `${formatNumber(count)} \`${cls}\` instances accumulating (${formatBytes(connRetained)} retained)`,
+                detail: `High connection instance count suggests connections are not being properly closed or are accumulating faster than they are cleaned up.`,
+                next_step: `memlab_find_nodes_by_class with class_name "${cls}" to inspect representative instances, then memlab_retainer_trace to find what is keeping them alive`,
+              });
+            }
+          }
+        }
+
+        // Check 15: mysql2/Drizzle connection retention (Feedback #8, #11)
+        if (env === 'node') {
+          let mysqlConnCount = 0;
+          let mysqlConnRetained = 0;
+          let mysqlConnExampleId = 0;
+
+          snapshot.nodes.forEach(node => {
+            if (node.id <= 3 || node.type !== 'object') return;
+            if (
+              node.name !== 'Connection' &&
+              node.name !== 'PoolConnection' &&
+              node.name !== 'PromiseConnection'
+            )
+              return;
+
+            let hasProtocol = false;
+            let hasConfig = false;
+            for (const edge of node.references) {
+              const eName = String(edge.name_or_index);
+              if (eName === '_protocol' || eName === 'stream') {
+                hasProtocol = true;
+              }
+              if (eName === 'config' || eName === 'connectionConfig') {
+                hasConfig = true;
+              }
+            }
+
+            if (hasProtocol && hasConfig) {
+              mysqlConnCount++;
+              mysqlConnRetained += node.retainedSize;
+              if (!mysqlConnExampleId) mysqlConnExampleId = node.id;
+            }
+          });
+
+          if (mysqlConnCount > 0 && mysqlConnRetained > 1024 * 1024) {
+            findings.push({
+              severity:
+                mysqlConnRetained >= totalSize * 0.05 ? 'critical' : 'warning',
+              title: `${mysqlConnCount} mysql2 Connection(s) retaining ${formatBytes(mysqlConnRetained)}`,
+              detail:
+                'mysql2 Connection objects are holding query results, protocol buffers, or error handler closure chains. ' +
+                'This is common when connections stay open in a pool without an idle timeout.',
+              next_step:
+                `memlab_retainer_trace with node_id ${mysqlConnExampleId} to trace the retention chain. ` +
+                'Fix: set pool `idleTimeout` (e.g., 60000ms) to release idle connections, and ensure query results are not captured in long-lived closures',
+            });
+          }
+        }
+
+        // Check 16: Retained module source code
         let moduleSourceSize = 0;
         let moduleSourceCount = 0;
 
