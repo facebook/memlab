@@ -60,10 +60,12 @@ import {registerGetValue} from './tools/get-value.js';
 import {registerGetString} from './tools/get-string.js';
 import {registerSearchStrings} from './tools/search-strings.js';
 import {registerArrayGroupBy} from './tools/array-group-by.js';
+import {registerInternOpportunities} from './tools/intern-opportunities.js';
+import {registerObjectCostBreakdown} from './tools/object-cost-breakdown.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.8.0',
+  version: '2.9.0',
 });
 
 registerLoadSnapshot(server);
@@ -108,6 +110,8 @@ registerSearchStrings(server);
 registerEval(server);
 registerForEach(server);
 registerArrayGroupBy(server);
+registerInternOpportunities(server);
+registerObjectCostBreakdown(server);
 
 async function main() {
   const transport = new StdioServerTransport();

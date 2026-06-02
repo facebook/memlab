@@ -271,21 +271,59 @@ export function registerQuickDiagnosis(server: McpServer): void {
           .slice(0, top_strings);
 
         if (duplicated.length > 0) {
-          const strHeaders = ['Value', 'Copies', 'Total Size'];
-          const strRightCols = new Set([1, 2]);
+          const strHeaders = ['Value', 'Copies', 'Total Size', 'Savings'];
+          const strRightCols = new Set([1, 2, 3]);
           const strRows = duplicated.map(([value, stats]) => {
             const display =
               value.length > 50 ? value.slice(0, 50) + '…' : value;
+            const perCopy =
+              stats.count > 0 ? stats.total_size / stats.count : 0;
+            const savings = (stats.count - 1) * perCopy;
             return [
               sanitizeForTable(display),
               formatNumber(stats.count),
               formatBytes(stats.total_size),
+              formatBytes(savings),
             ];
           });
+
+          const totalDupSavings = duplicated.reduce((sum, [, stats]) => {
+            const perCopy =
+              stats.count > 0 ? stats.total_size / stats.count : 0;
+            return sum + (stats.count - 1) * perCopy;
+          }, 0);
+
           lines.push(
             `## Duplicated Strings (top ${strRows.length})`,
             '',
             markdownTable(strHeaders, strRows, strRightCols),
+            '',
+            `**Total interning savings: ${formatBytes(totalDupSavings)}** (if each string stored once)`,
+            '',
+          );
+        }
+
+        // --- Section 5: String-to-Object Ratio Flag (Feedback #11) ---
+        const stringCount = typeStats.get('string')?.count ?? 0;
+        const objectCount = typeStats.get('object')?.count ?? 0;
+        const heavyDupCount = duplicated.filter(
+          ([, stats]) => stats.count >= 100_000,
+        ).length;
+
+        if (
+          objectCount > 0 &&
+          stringCount / objectCount > 2 &&
+          heavyDupCount > 0
+        ) {
+          const ratio = (stringCount / objectCount).toFixed(1);
+          lines.push(
+            '## ⚠️ High String Duplication Ratio',
+            '',
+            `**${formatNumber(stringCount)} strings / ${formatNumber(objectCount)} objects = ${ratio}:1 ratio** with ${heavyDupCount} string(s) having >100K copies.`,
+            '',
+            'This pattern strongly indicates JSON.parse output or API response data where column values are not interned. String interning at the parse boundary could save significant memory.',
+            '',
+            '**Next step:** `memlab_intern_opportunities` to see savings grouped by property × parent shape.',
             '',
           );
         }

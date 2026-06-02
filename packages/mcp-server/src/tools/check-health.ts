@@ -35,6 +35,8 @@ export function registerCheckHealth(server: McpServer): void {
         let totalSize = 0;
         let totalStringSize = 0;
         let detachedCount = 0;
+        let stringNodeCount = 0;
+        let objectNodeCount = 0;
         const classCounts = new Map<string, number>();
         const stringCounts = new Map<
           string,
@@ -51,6 +53,7 @@ export function registerCheckHealth(server: McpServer): void {
           totalSize += node.self_size;
 
           if (node.type === 'string') {
+            stringNodeCount++;
             totalStringSize += node.self_size;
             if (node.name !== 'system / SlicedString') {
               const key =
@@ -63,6 +66,8 @@ export function registerCheckHealth(server: McpServer): void {
                 stringCounts.set(key, {count: 1, totalSize: node.retainedSize});
               }
             }
+          } else if (node.type === 'object') {
+            objectNodeCount++;
           }
 
           if (
@@ -437,7 +442,75 @@ export function registerCheckHealth(server: McpServer): void {
           });
         }
 
-        // Check 12: Retained module source code
+        // Check 12: String-to-object ratio (Feedback #11)
+        let heavyDupStringCount = 0;
+        for (const [, stats] of stringCounts) {
+          if (stats.count >= 100_000) heavyDupStringCount++;
+        }
+
+        if (
+          objectNodeCount > 0 &&
+          stringNodeCount / objectNodeCount > 2 &&
+          heavyDupStringCount > 0
+        ) {
+          const ratio = (stringNodeCount / objectNodeCount).toFixed(1);
+          findings.push({
+            severity: totalStringSize >= totalSize * 0.3 ? 'warning' : 'info',
+            title: `High string-to-object ratio: ${ratio}:1 with ${heavyDupStringCount} heavily duplicated string(s)`,
+            detail: `${formatNumber(stringNodeCount)} strings vs ${formatNumber(objectNodeCount)} objects. Combined with heavy duplication (>100K copies), this strongly indicates JSON.parse output without string interning.`,
+            next_step:
+              'memlab_intern_opportunities to see savings grouped by property × parent shape',
+          });
+        }
+
+        // Check 13: Async context retention patterns (Feedback #10)
+        if (env === 'node') {
+          let tcpContextLeakCount = 0;
+          let tcpContextExampleId = 0;
+          let tcpContextTotalSize = 0;
+
+          snapshot.nodes.forEach(node => {
+            if (node.id <= 3 || node.type !== 'object') return;
+            if (
+              node.name !== 'TCP' &&
+              node.name !== 'Socket' &&
+              !node.name.includes('TCP')
+            )
+              return;
+
+            let hasResourceStore = false;
+            let contextRetained = 0;
+            for (const edge of node.references) {
+              const eName = String(edge.name_or_index);
+              if (eName === 'kResourceStore' || eName === 'resource_symbol') {
+                hasResourceStore = true;
+                contextRetained = edge.toNode.retainedSize;
+                break;
+              }
+            }
+
+            if (hasResourceStore && contextRetained > 1024 * 1024) {
+              tcpContextLeakCount++;
+              tcpContextTotalSize += contextRetained;
+              if (!tcpContextExampleId) tcpContextExampleId = node.id;
+            }
+          });
+
+          if (tcpContextLeakCount > 0) {
+            findings.push({
+              severity:
+                tcpContextTotalSize >= totalSize * 0.05
+                  ? 'critical'
+                  : 'warning',
+              title: `${tcpContextLeakCount} TCP connection(s) retaining AsyncLocalStorage contexts (${formatBytes(tcpContextTotalSize)})`,
+              detail:
+                'TCP sockets are holding request-scoped data via kResourceStore → afterContext chains. This is a known Next.js/Node.js pattern where unconsumed response bodies keep request contexts alive.',
+              next_step: `memlab_retainer_trace with node_id ${tcpContextExampleId} to see the full async context chain`,
+            });
+          }
+        }
+
+        // Check 14: Retained module source code
         let moduleSourceSize = 0;
         let moduleSourceCount = 0;
 

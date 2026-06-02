@@ -686,11 +686,15 @@ function findBestTraceMatch(
   return bestMatch;
 }
 
-function detectAsyncLocalStorageLeaks(findings: Finding[]): string[] {
+function detectAsyncContextLeaks(findings: Finding[]): string[] {
   const alerts: string[] = [];
+  const seen = new Set<string>();
+
   for (const f of findings) {
     const traceNames = f.trace.map(s => s.name);
     const traceEdges = f.trace.map(s => s.edgeName ?? '');
+
+    // Pattern 1: TCP/Socket → kResourceStore → afterContext (Next.js request context leak)
     const hasTCP = traceNames.some(
       n => n === 'TCP' || n === 'Socket' || n.includes('TCP'),
     );
@@ -707,14 +711,67 @@ function detectAsyncLocalStorageLeaks(findings: Finding[]): string[] {
       hasTCP &&
       hasResourceStore &&
       (hasAfterContext || hasOnClose) &&
-      hasContext
+      hasContext &&
+      !seen.has('tcp-als')
     ) {
+      seen.add('tcp-als');
       alerts.push(
         `🔴 **[CRITICAL] AsyncLocalStorage context retained by TCP connection**\n` +
           `A TCP socket's async context chain retains ${formatBytes(f.node.retainedSize)} of request-scoped data. ` +
           `The \`onClose\` closure captures the request's AsyncLocalStorage context, which chains to prior contexts via \`previous\` pointers.\n` +
           `**Fix:** Ensure response bodies are fully consumed/canceled (check \`resp.body.cancel()\`), ` +
           `or avoid capturing large data in request-scoped closures.`,
+      );
+    }
+
+    // Pattern 2: Generator.parameters_and_registers holding large arrays (Undici response body retention)
+    const hasGenerator = traceNames.some(
+      n => n === 'Generator' || n.includes('Generator'),
+    );
+    const hasParamsAndRegisters = traceEdges.some(
+      e => e === 'parameters_and_registers',
+    );
+
+    if (
+      hasGenerator &&
+      hasParamsAndRegisters &&
+      f.node.retainedSize > 1024 * 1024 &&
+      !seen.has('generator-undici')
+    ) {
+      seen.add('generator-undici');
+      alerts.push(
+        `🟠 **[HIGH] Generator retaining large data via \`parameters_and_registers\`**\n` +
+          `A Generator object holds ${formatBytes(f.node.retainedSize)} through its parameters/registers. ` +
+          `This is a common Undici pattern where an async generator (response body stream) retains the full response buffer.\n` +
+          `**Fix:** Ensure response bodies are fully read and the stream is closed/destroyed after use. ` +
+          `For fetch(), always call \`resp.text()\`, \`resp.json()\`, or \`resp.body.cancel()\`.`,
+      );
+    }
+
+    // Pattern 3: PromiseReaction chains with large retained sizes (unresolved/leaked promises)
+    const hasPromiseReaction = traceNames.some(
+      n => n === 'PromiseReaction' || n === 'Promise',
+    );
+    const hasReactionEdge = traceEdges.some(
+      e =>
+        e === 'reactions_or_result' ||
+        e === 'fulfill_handler' ||
+        e === 'reject_handler',
+    );
+
+    if (
+      hasPromiseReaction &&
+      hasReactionEdge &&
+      f.node.retainedSize > 5 * 1024 * 1024 &&
+      !seen.has('promise-chain')
+    ) {
+      seen.add('promise-chain');
+      alerts.push(
+        `🟠 **[HIGH] Unresolved Promise chain retaining ${formatBytes(f.node.retainedSize)}**\n` +
+          `A PromiseReaction chain is keeping large data alive. This often indicates a stuck async operation ` +
+          `(HTTP request, DB query, timer) whose promise was never resolved or rejected.\n` +
+          `**Fix:** Add timeouts to async operations. Check for \`await\` on promises that may never resolve. ` +
+          `Ensure \`.catch()\` handlers don't capture the entire response.`,
       );
     }
   }
@@ -1048,6 +1105,113 @@ export function registerAutoInvestigate(server: McpServer): void {
             '_Use `memlab_shape_histogram` for full shape analysis with retained sizes._',
           );
           lines.push('');
+
+          // Feedback #4: Low-cardinality column detection
+          // Feedback #8: High-cost unique property detection
+          // For large shapes (>10K instances), sample property value cardinality
+          const columnAlerts: string[] = [];
+
+          // Pre-bucket: collect qualifying shape keys, then single-pass scan
+          const qualifyingShapes = shapes.filter(s => {
+            if (s.count < 10_000) return false;
+            return !!snapshot.getNodeById(s.exampleNodeId);
+          });
+          const shapeBuckets = new Map<string, IHeapNode[]>();
+          for (const s of qualifyingShapes) {
+            shapeBuckets.set(s.properties.join(','), []);
+          }
+
+          if (shapeBuckets.size > 0) {
+            const maxSamples = 200;
+            snapshot.nodes.forEach(node => {
+              if (node.type !== 'object' || node.id <= 3) return;
+              if (node.name !== 'Object') return;
+              const props: string[] = [];
+              for (const edge of node.references) {
+                if (edge.type === 'property') {
+                  props.push(String(edge.name_or_index));
+                }
+              }
+              props.sort();
+              const key = props.join(',');
+              const bucket = shapeBuckets.get(key);
+              if (bucket && bucket.length < maxSamples) {
+                bucket.push(node);
+              }
+            });
+          }
+
+          for (const s of qualifyingShapes) {
+            const sampleNodes = shapeBuckets.get(s.properties.join(',')) ?? [];
+            if (sampleNodes.length < 50) continue;
+
+            // Analyze each property's cardinality and value characteristics
+            for (const propName of s.properties) {
+              const values = new Set<string>();
+              let totalValueSize = 0;
+              let stringValueCount = 0;
+              let allUnique = true;
+
+              for (const node of sampleNodes) {
+                for (const edge of node.references) {
+                  if (
+                    edge.type === 'property' &&
+                    String(edge.name_or_index) === propName
+                  ) {
+                    const target = edge.toNode;
+                    let val = target.name;
+                    if (target.isString) {
+                      const strNode = target.toStringNode();
+                      if (strNode) val = strNode.stringValue;
+                      stringValueCount++;
+                      totalValueSize += target.self_size;
+                    }
+                    if (values.has(val)) allUnique = false;
+                    values.add(val);
+                    break;
+                  }
+                }
+              }
+
+              const cardinality = values.size;
+              const sampleCount = sampleNodes.length;
+
+              // Low cardinality: few unique values relative to instance count
+              if (cardinality <= 20 && sampleCount >= 100) {
+                columnAlerts.push(
+                  `- Property \`${propName}\` has only **${cardinality} unique value(s)** across ${formatNumber(s.count)} instances — low-cardinality column suitable for pre-filtering at the data source or string interning`,
+                );
+              }
+
+              // High-cost unique: all values unique, string, large average size
+              if (
+                allUnique &&
+                stringValueCount > sampleCount * 0.8 &&
+                cardinality > sampleCount * 0.9
+              ) {
+                const avgSize = totalValueSize / stringValueCount;
+                if (avgSize > 50 && s.count > 10_000) {
+                  const estimatedWaste = avgSize * s.count;
+                  columnAlerts.push(
+                    `- Property \`${propName}\` has **all unique string values** (avg ${Math.round(avgSize)}B each × ${formatNumber(s.count)} instances = ~${formatBytes(estimatedWaste)}) — verify this field is needed by consumers`,
+                  );
+                }
+              }
+            }
+          }
+
+          if (columnAlerts.length > 0) {
+            lines.push('## Data Column Analysis');
+            lines.push('');
+            lines.push('Property value analysis across large object shapes:');
+            lines.push('');
+            lines.push(...columnAlerts);
+            lines.push(
+              '',
+              '_Low-cardinality columns can often be filtered at the data source (SQL WHERE clause). High-cost unique string properties should be verified as needed by consumers._',
+            );
+            lines.push('');
+          }
         }
 
         if (subscriptions.length > 0) {
@@ -1130,7 +1294,7 @@ export function registerAutoInvestigate(server: McpServer): void {
           lines.push('');
         }
 
-        const asyncAlerts = detectAsyncLocalStorageLeaks(findings);
+        const asyncAlerts = detectAsyncContextLeaks(findings);
         if (asyncAlerts.length > 0) {
           lines.push('## Known Leak Patterns');
           lines.push('');

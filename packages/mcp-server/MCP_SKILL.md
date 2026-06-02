@@ -55,17 +55,22 @@ Triggered when: triage shows high string duplication or strings consuming >30%
 of heap.
 
 1. `memlab_duplicated_strings` — identify top duplicated strings by total
-   retained size. Use `include_node_ids: true` only when you plan to follow up
-   with `retainer_summary` (omitting node IDs saves tokens per entry).
-2. `memlab_string_patterns` — group strings by prefix to find families (API
+   retained size and per-entry savings. Use `include_node_ids: true` only when
+   you plan to follow up with `retainer_summary` (omitting node IDs saves tokens
+   per entry).
+2. `memlab_intern_opportunities` — **start here for interning**: groups
+   duplicated strings by the property name and parent object shape that holds
+   them, showing total savings per (property × shape) combination. This replaces
+   the manual workflow of duplicated_strings → retainer_summary → codebase grep.
+3. `memlab_string_patterns` — group strings by prefix to find families (API
    responses, IDs, URLs)
-3. `memlab_sliced_strings` — check if small substrings keep massive parent
+4. `memlab_sliced_strings` — check if small substrings keep massive parent
    strings alive
-4. For the top duplicated string: `memlab_retainer_summary` with
+5. For the top duplicated string: `memlab_retainer_summary` with
    `class_name: "string"` or use `node_ids` from the duplicated_strings output
    (with `include_node_ids: true`) to cluster retainer patterns. Use
    `compact: true` and `framework_filter: true` to reduce token usage.
-5. Follow the dominant retainer chain to identify the code path creating
+6. Follow the dominant retainer chain to identify the code path creating
    duplicates
 
 **Common fixes:**
@@ -115,7 +120,13 @@ retaining >5% of heap.
    structure to identify distinct record types (often reveals 3-5 distinct
    shapes behind millions of "Object" instances)
 3. `memlab_cache_analysis` — scan for unbounded Map/Set/Array caches with high
-   entry counts and no eviction
+   entry counts and no eviction. Also detects ad-hoc TTL caches, configured
+   caches, warm-on-boot caches, and globalThis registries. Use
+   `detect_identical_entries: true` to flag caches with structurally identical
+   entries (suggests caching once instead of per-key).
+3b. `memlab_object_cost_breakdown` — when a cache uses more memory than
+   expected, this tool shows the V8 overhead breakdown (object headers, heap
+   numbers vs SMIs, collection storage) and compares to theoretical minimum
 4. `memlab_pinch_points` — find small objects retaining disproportionately
    large subtrees (best candidates to free)
 5. For the top anomalous class: `memlab_retainer_summary` with its class

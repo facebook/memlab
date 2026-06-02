@@ -279,7 +279,14 @@ export function registerCacheAnalysis(server: McpServer): void {
         .optional()
         .default(true)
         .describe(
-          'Also scan for ad-hoc object caches: plain objects with shape {rows|data|items|results, timestamp|cachedAt|ttl|expiresAt|updatedAt} where the array property retains significant memory (default true)',
+          'Also scan for ad-hoc object caches: plain objects with TTL-cache shapes ({result,expiresAt}, {data,timestamp}, {value,ts}), objects with cache config properties (ttlMs, maxSize, retentionMs), globalThis properties retaining >1 MB, and objects with refreshTimer/inflight patterns (default true)',
+        ),
+      detect_identical_entries: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'Compare entries within each cache for structural similarity (same array lengths, similar retained sizes). Flags caches where multiple entries appear to contain identical data — suggests caching once instead of per-key (default true)',
         ),
       sample_entries: z
         .number()
@@ -304,6 +311,7 @@ export function registerCacheAnalysis(server: McpServer): void {
       min_retained_size,
       collection_types,
       detect_object_caches,
+      detect_identical_entries,
       sample_entries,
       compact_samples,
     }) => {
@@ -351,16 +359,55 @@ export function registerCacheAnalysis(server: McpServer): void {
           if (caches.length > limit) caches.length = limit;
         });
 
-        // Detect ad-hoc object caches: plain objects with data+timestamp shape
+        // Detect ad-hoc object caches: plain objects with cache-like shapes
         if (detect_object_caches) {
-          const DATA_PROPS = new Set(['rows', 'data', 'items', 'results']);
+          const DATA_PROPS = new Set([
+            'rows',
+            'data',
+            'items',
+            'results',
+            'result',
+            'value',
+            'response',
+            'payload',
+          ]);
           const TIMESTAMP_PROPS = new Set([
             'timestamp',
             'cachedAt',
             'ttl',
             'expiresAt',
             'updatedAt',
+            'ts',
+            'ttlMs',
+            'expiry',
+            'createdAt',
           ]);
+          const CONFIG_PROPS = new Set([
+            'ttlMs',
+            'maxSize',
+            'retentionMs',
+            'maxAge',
+            'capacity',
+          ]);
+          const INFLIGHT_PROPS = new Set([
+            'refreshTimer',
+            'inflight',
+            'pending',
+            'refreshInterval',
+          ]);
+
+          const insertCache = (entry: CacheEntry) => {
+            let inserted = false;
+            for (let i = 0; i < caches.length; i++) {
+              if (entry.retainedSize > caches[i].retainedSize) {
+                caches.splice(i, 0, entry);
+                inserted = true;
+                break;
+              }
+            }
+            if (!inserted) caches.push(entry);
+            if (caches.length > limit) caches.length = limit;
+          };
 
           snapshot.nodes.forEach(node => {
             if (node.id <= 3) return;
@@ -369,7 +416,11 @@ export function registerCacheAnalysis(server: McpServer): void {
 
             let hasDataProp = false;
             let hasTimestampProp = false;
+            let hasConfigProp = false;
+            let hasInflightProp = false;
             let dataEntryCount = 0;
+            let cacheType = 'Object (ad-hoc cache)';
+
             for (const edge of node.references) {
               if (edge.type !== 'property') continue;
               const propName = String(edge.name_or_index);
@@ -382,16 +433,25 @@ export function registerCacheAnalysis(server: McpServer): void {
                   dataEntryCount = edge.toNode.edge_count;
                 }
               }
-              if (TIMESTAMP_PROPS.has(propName)) {
-                hasTimestampProp = true;
-              }
+              if (TIMESTAMP_PROPS.has(propName)) hasTimestampProp = true;
+              if (CONFIG_PROPS.has(propName)) hasConfigProp = true;
+              if (INFLIGHT_PROPS.has(propName)) hasInflightProp = true;
             }
-            if (!hasDataProp || !hasTimestampProp) return;
+
+            // Match any cache-like pattern
+            const isTTLCache = hasDataProp && hasTimestampProp;
+            const isConfiguredCache = hasDataProp && hasConfigProp;
+            const isWarmCache = hasDataProp && hasInflightProp;
+
+            if (!isTTLCache && !isConfiguredCache && !isWarmCache) return;
+
+            if (isConfiguredCache) cacheType = 'Object (configured cache)';
+            if (isWarmCache) cacheType = 'Object (warm-on-boot cache)';
 
             const owner = getOwnerInfo(node);
-            const entry: CacheEntry = {
+            insertCache({
               nodeId: node.id,
-              collectionType: 'Object (ad-hoc cache)',
+              collectionType: cacheType,
               entryCount: dataEntryCount,
               tableSlots: dataEntryCount,
               retainedSize: node.retainedSize,
@@ -400,18 +460,46 @@ export function registerCacheAnalysis(server: McpServer): void {
               ownerEdge: owner.edge,
               hasWeakRefs: false,
               framework: '',
-            };
+            });
+          });
 
-            let inserted = false;
-            for (let i = 0; i < caches.length; i++) {
-              if (entry.retainedSize > caches[i].retainedSize) {
-                caches.splice(i, 0, entry);
-                inserted = true;
-                break;
-              }
+          // Detect globalThis properties retaining >1 MB
+          snapshot.nodes.forEach(node => {
+            if (node.id <= 3 || node.type !== 'object') return;
+            if (
+              node.name !== 'Window' &&
+              node.name !== 'global' &&
+              node.name !== 'globalThis'
+            )
+              return;
+
+            for (const edge of node.references) {
+              if (edge.type !== 'property') continue;
+              const target = edge.toNode;
+              if (target.retainedSize < 1024 * 1024) continue;
+              if (target.id <= 3) continue;
+
+              const propName = String(edge.name_or_index);
+              // Skip well-known globals
+              if (
+                propName.startsWith('__') &&
+                (propName.endsWith('__') || propName === '__proto__')
+              )
+                continue;
+
+              insertCache({
+                nodeId: target.id,
+                collectionType: 'Global registry',
+                entryCount: target.edge_count,
+                tableSlots: target.edge_count,
+                retainedSize: target.retainedSize,
+                selfSize: target.self_size,
+                ownerName: node.name,
+                ownerEdge: propName,
+                hasWeakRefs: false,
+                framework: '',
+              });
             }
-            if (!inserted) caches.push(entry);
-            if (caches.length > limit) caches.length = limit;
           });
         }
 
@@ -513,6 +601,123 @@ export function registerCacheAnalysis(server: McpServer): void {
               }
             }
             lines.push('');
+          }
+        }
+
+        // Detect structurally identical cache entries
+        if (detect_identical_entries) {
+          const identicalAlerts: string[] = [];
+
+          for (const c of caches.slice(0, 10)) {
+            if (c.collectionType === 'Global registry') continue;
+            const node = snapshot.getNodeById(c.nodeId);
+            if (!node) continue;
+            if (c.collectionType !== 'Map' && c.collectionType !== 'Set')
+              continue;
+
+            // Sample entries and compare structural fingerprints
+            const entryFingerprints: Array<{
+              arrayLength: number;
+              retainedSize: number;
+              childCount: number;
+            }> = [];
+
+            for (const edge of node.references) {
+              if (
+                edge.name_or_index !== 'table' ||
+                edge.toNode.type !== 'array'
+              )
+                continue;
+
+              const allRefs: IHeapNode[] = [];
+              for (const te of edge.toNode.references) {
+                allRefs.push(te.toNode);
+              }
+
+              // For Maps: entries are key-value pairs
+              const step = c.collectionType === 'Map' ? 2 : 1;
+              const valOffset = c.collectionType === 'Map' ? 1 : 0;
+
+              for (
+                let i = valOffset;
+                i < allRefs.length && entryFingerprints.length < 10;
+                i += step
+              ) {
+                const val = allRefs[i];
+                if (val.id <= 3 || val.type === 'hidden') continue;
+                if (val.name === 'undefined' || val.name === 'the_hole')
+                  continue;
+
+                let arrayLength = -1;
+                let childCount = 0;
+                for (const ve of val.references) {
+                  childCount++;
+                  if (
+                    ve.type === 'property' &&
+                    ve.toNode.name === 'Array' &&
+                    ve.toNode.type === 'object'
+                  ) {
+                    arrayLength = ve.toNode.edge_count;
+                  }
+                }
+
+                entryFingerprints.push({
+                  arrayLength,
+                  retainedSize: val.retainedSize,
+                  childCount,
+                });
+              }
+              break;
+            }
+
+            if (entryFingerprints.length < 2) continue;
+
+            // Check if entries are structurally similar
+            const ref = entryFingerprints[0];
+            let identicalCount = 0;
+            const sizeThreshold = ref.retainedSize * 0.1; // 10% tolerance
+
+            for (let i = 1; i < entryFingerprints.length; i++) {
+              const fp = entryFingerprints[i];
+              const sizeSimilar =
+                Math.abs(fp.retainedSize - ref.retainedSize) < sizeThreshold;
+              const structSimilar =
+                fp.arrayLength === ref.arrayLength &&
+                fp.arrayLength > 0 &&
+                fp.childCount === ref.childCount;
+
+              if (sizeSimilar && structSimilar) {
+                identicalCount++;
+              }
+            }
+
+            if (
+              identicalCount >= 2 ||
+              (entryFingerprints.length <= 5 &&
+                identicalCount === entryFingerprints.length - 1)
+            ) {
+              const totalIdentical = identicalCount + 1;
+              const perEntry = ref.retainedSize;
+              identicalAlerts.push(
+                `⚠️ **@${c.nodeId} \`${c.collectionType}\`:** ${totalIdentical} entries appear structurally identical (~${formatBytes(perEntry)} each, array length ${ref.arrayLength}). ` +
+                  `Consider caching once instead of per-key — potential savings: ~${formatBytes(perEntry * (totalIdentical - 1))}.`,
+              );
+            }
+          }
+
+          if (identicalAlerts.length > 0) {
+            lines.push(
+              '',
+              '---',
+              '',
+              '## Identical Cache Entries Detected',
+              '',
+            );
+            lines.push(...identicalAlerts);
+            lines.push(
+              '',
+              '_Entries have matching array lengths, child counts, and retained sizes. The cache key may not affect the cached data — consider deduplicating._',
+            );
           }
         }
 
