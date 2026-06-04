@@ -254,48 +254,110 @@ export interface QueryNodesResult {
   total_count: number;
   nodes?: NodeSummary[];
   ids?: number[];
+  timed_out?: boolean;
 }
 
 export function queryNodes(
   snapshot: IHeapSnapshot,
   filter: (node: IHeapNode) => boolean,
-  opts: {limit: number; offset: number; outputMode: OutputMode},
+  opts: {
+    limit: number;
+    offset: number;
+    outputMode: OutputMode;
+    budget?: {tick: () => void};
+  },
 ): QueryNodesResult {
-  const {limit, offset, outputMode} = opts;
+  const {limit, offset, outputMode, budget} = opts;
+  let timedOut = false;
 
   if (outputMode === 'count') {
     let total = 0;
-    snapshot.nodes.forEach(node => {
-      if (filter(node)) total++;
-    });
-    return {total_count: total};
+    try {
+      snapshot.nodes.forEach(node => {
+        budget?.tick();
+        if (filter(node)) total++;
+      });
+    } catch (e) {
+      if (e instanceof ScanTimeoutError) timedOut = true;
+      else throw e;
+    }
+    return {total_count: total, timed_out: timedOut || undefined};
   }
 
   // Collect all matching nodes sorted by retained size desc
   const sorted: IHeapNode[] = [];
-  snapshot.nodes.forEach(node => {
-    if (!filter(node)) return;
-    const size = node.retainedSize;
-    let i: number;
-    for (i = sorted.length - 1; i >= 0; --i) {
-      if (sorted[i].retainedSize >= size) {
-        sorted.splice(i + 1, 0, node);
-        break;
+  try {
+    snapshot.nodes.forEach(node => {
+      budget?.tick();
+      if (!filter(node)) return;
+      const size = node.retainedSize;
+      let i: number;
+      for (i = sorted.length - 1; i >= 0; --i) {
+        if (sorted[i].retainedSize >= size) {
+          sorted.splice(i + 1, 0, node);
+          break;
+        }
       }
-    }
-    if (i < 0) {
-      sorted.unshift(node);
-    }
-  });
+      if (i < 0) {
+        sorted.unshift(node);
+      }
+    });
+  } catch (e) {
+    if (e instanceof ScanTimeoutError) timedOut = true;
+    else throw e;
+  }
 
   const total_count = sorted.length;
   const sliced = sorted.slice(offset, offset + limit);
 
   if (outputMode === 'ids') {
-    return {total_count, ids: sliced.map(n => n.id)};
+    return {
+      total_count,
+      ids: sliced.map(n => n.id),
+      timed_out: timedOut || undefined,
+    };
   }
 
-  return {total_count, nodes: sliced.map(serializeNodeSummary)};
+  return {
+    total_count,
+    nodes: sliced.map(serializeNodeSummary),
+    timed_out: timedOut || undefined,
+  };
+}
+
+/**
+ * Thrown by a scan budget when a full-heap walk exceeds its wall-clock limit.
+ * Callers catch this to return partial results with a clear note, instead of
+ * letting a runaway scan run for many minutes (Feedback round 2 §1/§2).
+ */
+export class ScanTimeoutError extends Error {
+  constructor(
+    public iterations: number,
+    public timeoutMs: number,
+  ) {
+    super(`Scan exceeded its ${timeoutMs}ms budget after ~${iterations} nodes`);
+    this.name = 'ScanTimeoutError';
+  }
+}
+
+/**
+ * Wall-clock budget for full-heap scans. Call `tick()` once per iteration; it
+ * cheaply checks elapsed time every few thousand iterations and throws a
+ * {@link ScanTimeoutError} when the budget is exceeded. This bounds the damage
+ * of an expensive scan on a huge (e.g. multi-million-node browser) heap and
+ * returns control to the server cleanly rather than wedging it.
+ */
+export function makeScanBudget(timeoutMs: number): {tick: () => void} {
+  const start = Date.now();
+  let i = 0;
+  return {
+    tick() {
+      i++;
+      if ((i & 0x3fff) === 0 && Date.now() - start > timeoutMs) {
+        throw new ScanTimeoutError(i, timeoutMs);
+      }
+    },
+  };
 }
 
 export function formatBytes(bytes: number): string {
@@ -377,22 +439,25 @@ export function formatQueryNodesResult(
   result: QueryNodesResult,
   offset?: number,
 ): string {
+  const partial = result.timed_out
+    ? '\n\n⚠ Scan hit its time budget and returned PARTIAL results (counts shown are a lower bound). Raise timeout_ms, add filters, or use an indexed tool — large browser heaps are slow to full-scan.'
+    : '';
   if (result.nodes != null) {
     if (result.nodes.length === 0) {
-      return `No matching nodes found (total: ${formatNumber(result.total_count)})`;
+      return `No matching nodes found (total: ${formatNumber(result.total_count)})${partial}`;
     }
     const lines = [`Total: ${formatNumber(result.total_count)} nodes\n`];
     lines.push(formatNodeSummaryTable(result.nodes));
-    return lines.join('\n');
+    return lines.join('\n') + partial;
   }
   if (result.ids != null) {
     const lines = [
       `Total: ${formatNumber(result.total_count)} | Showing ${formatNumber(result.ids.length)} (offset ${offset ?? 0})`,
     ];
     lines.push(`IDs: ${result.ids.join(', ')}`);
-    return lines.join('\n');
+    return lines.join('\n') + partial;
   }
-  return `Total matching nodes: ${formatNumber(result.total_count)}`;
+  return `Total matching nodes: ${formatNumber(result.total_count)}${partial}`;
 }
 
 export function snapshotHeader(): string {

@@ -17,6 +17,8 @@ import {
   errorResult,
   textResult,
   toolResult,
+  makeScanBudget,
+  ScanTimeoutError,
 } from '../utils.js';
 
 // Common built-in Window properties that should be excluded.
@@ -280,10 +282,19 @@ export function registerGlobalVariables(server: McpServer): void {
         .optional()
         .default(20)
         .describe('Maximum number of results (default 20)'),
+      timeout_ms: z
+        .number()
+        .optional()
+        .default(45000)
+        .describe(
+          'Wall-clock budget for the full-heap scan (default 45000). On very large browser heaps, returns partial results with a note instead of hanging.',
+        ),
     },
-    async ({limit}) => {
+    async ({limit, timeout_ms}) => {
       try {
         const snapshot = getSnapshot();
+        const budget = makeScanBudget(timeout_ms);
+        let timedOut = false;
 
         const globals: Array<{
           name: string;
@@ -299,42 +310,54 @@ export function registerGlobalVariables(server: McpServer): void {
             ? (name: string) => name === 'global' || name === 'Global'
             : (name: string) => name.startsWith('Window ');
 
-        snapshot.nodes.forEach(node => {
-          if (!globalMatcher(node.name)) return;
+        try {
+          snapshot.nodes.forEach(node => {
+            budget.tick();
+            if (!globalMatcher(node.name)) return;
 
-          for (const edge of node.references) {
-            const edgeName = String(edge.name_or_index);
-            // Skip built-in globals
-            if (BUILTIN_GLOBALS.has(edgeName)) continue;
-            // Skip internal/hidden edges
-            if (edge.type === 'hidden' || edge.type === 'internal') continue;
-            // Skip symbol edges
-            if (edgeName.startsWith('<symbol>')) continue;
-            // Skip non-inspectable target types
-            const target = edge.toNode;
-            if (
-              target.type === 'hidden' ||
-              target.type === 'array' ||
-              target.type === 'number'
-            )
-              continue;
+            for (const edge of node.references) {
+              const edgeName = String(edge.name_or_index);
+              // Skip built-in globals
+              if (BUILTIN_GLOBALS.has(edgeName)) continue;
+              // Skip internal/hidden edges
+              if (edge.type === 'hidden' || edge.type === 'internal') continue;
+              // Skip symbol edges
+              if (edgeName.startsWith('<symbol>')) continue;
+              // Skip non-inspectable target types
+              const target = edge.toNode;
+              if (
+                target.type === 'hidden' ||
+                target.type === 'array' ||
+                target.type === 'number'
+              )
+                continue;
 
-            globals.push({
-              name: edgeName,
-              target_id: target.id,
-              target_name: target.name,
-              target_type: target.type,
-              retained_size: target.retainedSize,
-            });
-          }
-        });
+              globals.push({
+                name: edgeName,
+                target_id: target.id,
+                target_name: target.name,
+                target_type: target.type,
+                retained_size: target.retainedSize,
+              });
+            }
+          });
+        } catch (e) {
+          if (e instanceof ScanTimeoutError) timedOut = true;
+          else throw e;
+        }
 
         // Sort by retained size descending
         globals.sort((a, b) => b.retained_size - a.retained_size);
         const topGlobals = globals.slice(0, limit);
 
+        const timeoutNote = timedOut
+          ? `\n\n⚠ Scan hit the ${timeout_ms}ms budget and returned PARTIAL results (raise timeout_ms to scan the whole heap).`
+          : '';
+
         if (topGlobals.length === 0) {
-          return toolResult('No non-built-in global variables found.');
+          return toolResult(
+            'No non-built-in global variables found.' + timeoutNote,
+          );
         }
         const headers = [
           'Variable',
@@ -352,7 +375,7 @@ export function registerGlobalVariables(server: McpServer): void {
           formatBytes(g.retained_size),
         ]);
         return toolResult(
-          `Global variables (${topGlobals.length} found)\n\n${markdownTable(headers, rows, rightCols)}`,
+          `Global variables (${topGlobals.length} found)\n\n${markdownTable(headers, rows, rightCols)}${timeoutNote}`,
         );
       } catch (err) {
         return errorResult(err);

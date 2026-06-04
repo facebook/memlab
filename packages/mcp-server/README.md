@@ -166,6 +166,43 @@ Input:  { limit?: 15, min_entries?: 200, min_retained_size?: 262144 }
 Output: candidates with kind, entry count, retained size, sample keys
 ```
 
+### `memlab_sequence_analysis`
+
+Trend analysis across an ordered sequence of 3+ snapshots. Loads each transiently (does not change the active snapshot), reports each class's count at every step, and labels "↑ every step" (leak signal) vs "grew net (noisy)". Lists classes new since baseline.
+
+```
+Input:  { paths: ["a","b","c"], limit?: 25, min_growth_count?: 50,
+          monotonic_only?: false, max_file_size_mb?: 900 }
+Output: per-step heap totals + growing classes with per-step counts and verdict
+```
+
+### `memlab_dev_artifacts`
+
+Browser snapshots: classify large retainers as production vs. dev-only (retained solely via `__REACT_DEVTOOLS_GLOBAL_HOOK__`, `__REDUX_DEVTOOLS_EXTENSION__`, `window.Debug`, …) and total the bytes to exclude from leak headlines. `memlab_detached_dom` also reports the dev-only share inline.
+
+```
+Input:  { limit?: 25, min_retained_size?: 524288, only_dev?: false }
+Output: dev-only byte total + per-object classification (production | dev-only via <global>)
+```
+
+### `memlab_event_registry`
+
+Detector for per-model event registries (Backbone/observer): objects mapping event names to arrays of `{callback, context}`. Reports top event names by listener count, listeners-per-host distribution, and a structural-vs-leak verdict.
+
+```
+Input:  { min_events?: 2, limit?: 20, timeout_ms?: 45000 }
+Output: registry stats + top events + verdict (structural O(hosts) vs re-subscription leak)
+```
+
+### `memlab_server_status`
+
+Cheap liveness/health check — returns instantly with process RSS, uptime, and resident snapshots. Use to confirm the server is responsive (vs. stuck behind a heavy scan) and to watch RSS against the snapshot-size ceiling.
+
+```
+Input:  {}
+Output: status, uptime, RSS, resident snapshots
+```
+
 ### `memlab_snapshot_summary`
 
 Overview stats: total nodes/edges, total size, breakdown by node type with dominator-aware aggregate retained sizes.

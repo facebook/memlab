@@ -23,6 +23,7 @@ import {
   toolResult,
 } from '../utils.js';
 import type {OutputMode} from '../utils.js';
+import {collectDevRoots, classifyDevOnly} from './dev-artifacts.js';
 
 function isDetachedDOMNode(node: IHeapNode): boolean {
   if (node.id <= 3) return false;
@@ -114,8 +115,15 @@ export function registerDetachedDom(server: McpServer): void {
         .describe(
           'Maximum number of results (default 20, up to 10000 for ids mode)',
         ),
+      classify_dev_only: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          "Report how much detached DOM is retained ONLY via dev/extension globals (__REACT_DEVTOOLS_GLOBAL_HOOK__, window.Debug, …) and would be GC'd in production (default true). Use memlab_dev_artifacts for the full breakdown.",
+        ),
     },
-    async ({output_mode, group_by, offset, limit}) => {
+    async ({output_mode, group_by, offset, limit, classify_dev_only}) => {
       try {
         const env = getSnapshotEnv();
         if (env === 'node') {
@@ -129,16 +137,21 @@ export function registerDetachedDom(server: McpServer): void {
           );
         }
         const snapshot = getSnapshot();
+        const devRoots = classify_dev_only ? collectDevRoots(snapshot) : null;
 
         if (group_by) {
           const groups = new Map<string, GroupStats>();
           let totalDetached = 0;
           let totalRetainedAll = 0;
+          let devOnlyRetained = 0;
 
           snapshot.nodes.forEach(node => {
             if (!isDetachedDOMNode(node)) return;
             totalDetached++;
             totalRetainedAll += node.retainedSize;
+            if (devRoots && classifyDevOnly(node, devRoots).devOnly) {
+              devOnlyRetained += node.retainedSize;
+            }
 
             let key: string;
             switch (group_by) {
@@ -215,6 +228,17 @@ export function registerDetachedDom(server: McpServer): void {
             markdownTable(headers, rows, rightCols),
           ];
 
+          if (devRoots && devRoots.byId.size > 0 && devOnlyRetained > 0) {
+            const pct =
+              totalRetainedAll > 0
+                ? ((devOnlyRetained / totalRetainedAll) * 100).toFixed(0)
+                : '0';
+            lines.push(
+              '',
+              `⚠ **${formatBytes(devOnlyRetained)} (${pct}%) of this detached DOM is retained ONLY via dev/extension globals** (${[...new Set(devRoots.byId.values())].join(', ')}) — it would be garbage-collected in production. Exclude it from leak totals; run \`memlab_dev_artifacts\` for the breakdown.`,
+            );
+          }
+
           if (sorted.length > 0) {
             lines.push(
               '',
@@ -236,13 +260,18 @@ export function registerDetachedDom(server: McpServer): void {
 
         const output = formatQueryNodesResult(result, offset);
         if (result.total_count > 0 && output_mode === 'full') {
+          const devNote =
+            devRoots && devRoots.byId.size > 0
+              ? ` Dev/extension globals (${[...new Set(devRoots.byId.values())].join(', ')}) are present — run \`memlab_dev_artifacts\` to exclude DevTools-only retention from leak totals.`
+              : '';
           return toolResult(
             output +
               '\n\n---\n\n' +
               '**Suggested action:** Check for missing `removeEventListener` calls, ' +
               'React component cleanup in `useEffect` return, or refs not cleared on unmount. ' +
               'Use `memlab_retainer_trace` on top entries to find the retention path. ' +
-              'Use `group_by: "retainer"` to see which components are retaining the most detached DOM.',
+              'Use `group_by: "retainer"` to see which components are retaining the most detached DOM.' +
+              devNote,
           );
         }
         return toolResult(output);

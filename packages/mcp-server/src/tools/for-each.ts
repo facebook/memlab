@@ -233,7 +233,9 @@ export function registerForEach(server: McpServer): void {
           err.message.includes('Script execution timed out')
         ) {
           return errorResult(
-            new Error(`Execution timed out after ${timeout_ms}ms`),
+            new Error(
+              `Execution timed out after ${timeout_ms}ms. Increase timeout_ms, or use a dedicated indexed tool (memlab_find_by_property, memlab_property_distribution, memlab_class_histogram) instead of a full-snapshot walk on a large heap.`,
+            ),
           );
         }
         return errorResult(err);

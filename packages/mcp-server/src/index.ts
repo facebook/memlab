@@ -65,10 +65,14 @@ import {registerObjectCostBreakdown} from './tools/object-cost-breakdown.js';
 import {registerSnapshots} from './tools/snapshots.js';
 import {registerPropertyDistribution} from './tools/property-distribution.js';
 import {registerGrowthSignals} from './tools/growth-signals.js';
+import {registerServerStatus} from './tools/server-status.js';
+import {registerDevArtifacts} from './tools/dev-artifacts.js';
+import {registerSequenceAnalysis} from './tools/sequence-analysis.js';
+import {registerEventRegistry} from './tools/event-registry.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.11.0',
+  version: '2.12.0',
 });
 
 registerLoadSnapshot(server);
@@ -118,6 +122,10 @@ registerObjectCostBreakdown(server);
 registerSnapshots(server);
 registerPropertyDistribution(server);
 registerGrowthSignals(server);
+registerServerStatus(server);
+registerDevArtifacts(server);
+registerSequenceAnalysis(server);
+registerEventRegistry(server);
 
 async function main() {
   const transport = new StdioServerTransport();

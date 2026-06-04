@@ -211,14 +211,21 @@ function analyzeContextDistribution(
   };
 }
 
+// A duplicate is the SAME callback function instance bound to the SAME context
+// instance, registered more than once. We key by node ids (callbackId +
+// contextId), NOT by name/shape — keying by name counted distinct closures that
+// merely share a name across different hosts as "duplicates", which produced
+// wildly inflated counts (e.g. 99.95%) on per-model registries that are really
+// structural, one-listener-per-model (Feedback §8).
 function countDuplicateCallbacks(listeners: ListenerEntry[]): number {
-  const callbackContextPairs = new Map<string, number>();
+  const pairs = new Map<string, number>();
   for (const l of listeners) {
-    const key = `${l.callbackName}\0${l.contextName ?? ''}`;
-    callbackContextPairs.set(key, (callbackContextPairs.get(key) ?? 0) + 1);
+    if (l.callbackId <= 0) continue;
+    const key = `${l.callbackId}\0${l.contextId ?? 0}`;
+    pairs.set(key, (pairs.get(key) ?? 0) + 1);
   }
   let duplicates = 0;
-  for (const count of callbackContextPairs.values()) {
+  for (const count of pairs.values()) {
     if (count > 1) duplicates += count - 1;
   }
   return duplicates;
@@ -499,6 +506,8 @@ export function registerEventListenerLeaks(server: McpServer): void {
           `## Event Listener Leak Detection`,
           `Found ${accumulations.length} object(s) with potential listener accumulation`,
           '',
+          '_"Duplicates" = the same callback instance bound to the same context, registered more than once (by node id, not by name/shape). One listener per distinct model/host is structural, not a leak._',
+          '',
         ];
 
         const headers = [
@@ -538,7 +547,7 @@ export function registerEventListenerLeaks(server: McpServer): void {
           }
           if (a.duplicateCallbackCount > 0) {
             lines.push(
-              `**${formatNumber(a.duplicateCallbackCount)} duplicate callback(s)** — same callback registered multiple times (classic mount/unmount leak)`,
+              `**${formatNumber(a.duplicateCallbackCount)} duplicate callback(s)** — the same callback *instance* bound to the same context registered more than once (classic mount/unmount leak). One listener per distinct model is structural, not a duplicate.`,
             );
             lines.push('');
           }

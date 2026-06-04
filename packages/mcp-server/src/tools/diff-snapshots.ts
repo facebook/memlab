@@ -15,7 +15,7 @@ import path from 'path';
 import {z} from 'zod';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
 const {getFullHeapFromFile} = memlabHeapAnalysis;
-import {setSnapshot} from '../heap-state.js';
+import {setSnapshot, getCurrentHandle} from '../heap-state.js';
 import {
   formatBytes,
   formatNumber,
@@ -46,22 +46,41 @@ function buildHistogram(snapshot: IHeapSnapshot): Map<string, ClassStats> {
   return map;
 }
 
+// Value-named string "classes" (literal values used as the class name, e.g.
+// "554", "1780525701808.81", "o:10,add") are noise in a diff (§10).
+function isValueNamedStringClass(type: string, name: string): boolean {
+  if (type !== 'string' && type !== 'concatenated string') return false;
+  if (name.length < 8) return true;
+  if (/^[\s\d.,:+-]*$/.test(name)) return true;
+  return false;
+}
+
 export function registerDiffSnapshots(server: McpServer): void {
   server.tool(
     'memlab_diff_snapshots',
-    'Compare two heap snapshots by class histogram. Shows classes that grew, shrunk, appeared, or disappeared between "before" and "after" snapshots. The "after" snapshot becomes the active snapshot for subsequent analysis.',
+    'Compare two heap snapshots by class histogram. Shows classes that grew, shrunk, appeared, or disappeared between "before" and "after" snapshots. By default the "after" snapshot becomes the active snapshot (set set_active:false to leave your active snapshot unchanged). For an ordered sequence of 3+ snapshots, use memlab_sequence_analysis instead.',
     {
       before_path: z
         .string()
-        .describe('Absolute path to the "before" .heapsnapshot file'),
+        .optional()
+        .describe(
+          'Path to the "before" snapshot (local, manifold://, or bare filename). Aliases: before, baseline.',
+        ),
       after_path: z
         .string()
-        .describe('Absolute path to the "after" .heapsnapshot file'),
+        .optional()
+        .describe(
+          'Path to the "after" snapshot (local, manifold://, or bare filename). Aliases: after, target.',
+        ),
+      before: z.string().optional().describe('Alias for before_path.'),
+      after: z.string().optional().describe('Alias for after_path.'),
+      baseline: z.string().optional().describe('Alias for before_path.'),
+      target: z.string().optional().describe('Alias for after_path.'),
       limit: z
         .number()
         .optional()
         .default(30)
-        .describe('Maximum rows per section (default 30)'),
+        .describe('Maximum rows per section / top_n (default 30)'),
       min_count_delta: z
         .number()
         .optional()
@@ -76,17 +95,54 @@ export function registerDiffSnapshots(server: McpServer): void {
         .describe(
           'Minimum absolute change in self size (bytes) to show (default 0).',
         ),
+      include_value_classes: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Include anonymous value-named string "classes" (e.g. "554", literal values used as names). Default false: they are filtered and rolled up into a single "(string literals)" row to cut noise (§10).',
+        ),
+      hide_zero_size_delta: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'Hide rows whose self-size delta is 0 B (default true) — these are usually noise.',
+        ),
+      set_active: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'Make the "after" snapshot the active one for subsequent tools (default true). Set false to leave your current active snapshot unchanged.',
+        ),
     },
     async ({
       before_path,
       after_path,
+      before,
+      after,
+      baseline,
+      target,
       limit,
       min_count_delta,
       min_size_delta,
+      include_value_classes,
+      hide_zero_size_delta,
+      set_active,
     }) => {
       try {
-        const resolvedBefore = path.resolve(before_path);
-        const resolvedAfter = path.resolve(after_path);
+        const beforeArg = before_path ?? before ?? baseline;
+        const afterArg = after_path ?? after ?? target;
+        if (!beforeArg || !afterArg) {
+          return errorResult(
+            new Error(
+              'Provide both a before and an after snapshot. Accepted names: before_path/before/baseline and after_path/after/target.',
+            ),
+          );
+        }
+        const resolvedBefore = path.resolve(beforeArg);
+        const resolvedAfter = path.resolve(afterArg);
 
         if (!fs.existsSync(resolvedBefore)) {
           return errorResult(
@@ -127,13 +183,16 @@ export function registerDiffSnapshots(server: McpServer): void {
             hasModule = true;
         });
         const afterEnv = hasWindow ? 'browser' : hasModule ? 'node' : 'unknown';
-        setSnapshot(afterSnapshot, after_path, {
-          fileName: path.basename(after_path),
-          nodeCount: afterNodeCount,
-          edgeCount: afterEdgeCount,
-          totalSize: afterTotalSize,
-          env: afterEnv as 'browser' | 'node' | 'unknown',
-        });
+        let activeHandle: string | null = getCurrentHandle();
+        if (set_active) {
+          activeHandle = setSnapshot(afterSnapshot, afterArg, {
+            fileName: path.basename(afterArg),
+            nodeCount: afterNodeCount,
+            edgeCount: afterEdgeCount,
+            totalSize: afterTotalSize,
+            env: afterEnv as 'browser' | 'node' | 'unknown',
+          }).handle;
+        }
 
         // Compute deltas
         const allKeys = new Set([...beforeHist.keys(), ...afterHist.keys()]);
@@ -151,6 +210,15 @@ export function registerDiffSnapshots(server: McpServer): void {
         }
 
         const diffs: DiffEntry[] = [];
+        // Rollup accumulator for filtered value-named string classes (§10).
+        const rollup = {
+          grewCount: 0,
+          grewSize: 0,
+          grewClasses: 0,
+          shrunkCount: 0,
+          shrunkSize: 0,
+          shrunkClasses: 0,
+        };
         for (const key of allKeys) {
           const before = beforeHist.get(key);
           const after = afterHist.get(key);
@@ -167,18 +235,63 @@ export function registerDiffSnapshots(server: McpServer): void {
           ) {
             continue;
           }
+          if (hide_zero_size_delta && sizeDelta === 0) continue;
 
           const parts = key.split('::');
+          const type = parts[0];
+          const name = parts.slice(1).join('::');
+
+          if (!include_value_classes && isValueNamedStringClass(type, name)) {
+            if (countDelta > 0) {
+              rollup.grewCount += countDelta;
+              rollup.grewSize += sizeDelta;
+              rollup.grewClasses++;
+            } else if (countDelta < 0) {
+              rollup.shrunkCount += countDelta;
+              rollup.shrunkSize += sizeDelta;
+              rollup.shrunkClasses++;
+            }
+            continue;
+          }
+
           diffs.push({
             key,
-            name: parts.slice(1).join('::'),
-            type: parts[0],
+            name,
+            type,
             before_count: bc,
             after_count: ac,
             count_delta: countDelta,
             before_size: bs,
             after_size: as_,
             size_delta: sizeDelta,
+          });
+        }
+
+        // Emit the rolled-up value-string classes as single synthetic rows.
+        if (rollup.grewClasses > 0) {
+          diffs.push({
+            key: 'string::(string literals)',
+            name: `(string literals ×${formatNumber(rollup.grewClasses)})`,
+            type: 'string',
+            before_count: 0,
+            after_count: rollup.grewCount,
+            count_delta: rollup.grewCount,
+            before_size: 0,
+            after_size: rollup.grewSize,
+            size_delta: rollup.grewSize,
+          });
+        }
+        if (rollup.shrunkClasses > 0) {
+          diffs.push({
+            key: 'string::(string literals)-shrunk',
+            name: `(string literals ×${formatNumber(rollup.shrunkClasses)})`,
+            type: 'string',
+            before_count: -rollup.shrunkCount,
+            after_count: 0,
+            count_delta: rollup.shrunkCount,
+            before_size: -rollup.shrunkSize,
+            after_size: 0,
+            size_delta: rollup.shrunkSize,
           });
         }
 
@@ -286,7 +399,9 @@ export function registerDiffSnapshots(server: McpServer): void {
         }
 
         lines.push(
-          `\n*The "after" snapshot is now active for further analysis.*`,
+          set_active
+            ? `\n*The "after" snapshot is now the active snapshot${activeHandle ? ` (handle: ${activeHandle})` : ''} for further analysis. Pass set_active:false to keep your current one.*`
+            : `\n*Active snapshot left unchanged${activeHandle ? ` (handle: ${activeHandle})` : ''} (set_active:false).*`,
         );
 
         return toolResult(lines.join('\n'));

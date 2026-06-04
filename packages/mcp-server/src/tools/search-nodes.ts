@@ -18,6 +18,7 @@ import {
   errorResult,
   textResult,
   toolResult,
+  makeScanBudget,
 } from '../utils.js';
 import type {OutputMode} from '../utils.js';
 
@@ -67,6 +68,13 @@ export function registerSearchNodes(server: McpServer): void {
         .describe(
           'Maximum number of results (default 20, up to 10000 for ids mode)',
         ),
+      timeout_ms: z
+        .number()
+        .optional()
+        .default(45000)
+        .describe(
+          'Wall-clock budget for the full-heap scan (default 45000). On very large browser heaps, returns partial results with a note instead of hanging.',
+        ),
     },
     async ({
       name_pattern,
@@ -77,6 +85,7 @@ export function registerSearchNodes(server: McpServer): void {
       output_mode,
       offset,
       limit,
+      timeout_ms,
     }) => {
       try {
         const snapshot = getSnapshot();
@@ -103,6 +112,7 @@ export function registerSearchNodes(server: McpServer): void {
           limit: effectiveLimit,
           offset,
           outputMode: output_mode as OutputMode,
+          budget: makeScanBudget(timeout_ms),
         });
 
         return toolResult(formatQueryNodesResult(result, offset));

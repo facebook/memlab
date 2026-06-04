@@ -21,6 +21,8 @@ import {
   errorResult,
   textResult,
   toolResult,
+  makeScanBudget,
+  ScanTimeoutError,
 } from '../utils.js';
 
 export function registerFindByProperty(server: McpServer): void {
@@ -68,6 +70,13 @@ export function registerFindByProperty(server: McpServer): void {
         .optional()
         .default(20)
         .describe('Maximum number of results (default 20)'),
+      timeout_ms: z
+        .number()
+        .optional()
+        .default(45000)
+        .describe(
+          'Wall-clock budget for the full-heap scan (default 45000). On very large browser heaps the scan returns partial results with a note instead of running for many minutes.',
+        ),
     },
     async ({
       property_name,
@@ -76,9 +85,12 @@ export function registerFindByProperty(server: McpServer): void {
       edge_type,
       output_mode,
       limit,
+      timeout_ms,
     }) => {
       try {
         const snapshot = getSnapshot();
+        const budget = makeScanBudget(timeout_ms);
+        let timedOut = false;
 
         // Use prefix matching for names ending with $ (React dynamic suffixes)
         const isPrefix = property_name.endsWith('$');
@@ -131,49 +143,64 @@ export function registerFindByProperty(server: McpServer): void {
           });
         };
 
+        const timeoutNote = `\n\n⚠ Scan hit the ${timeout_ms}ms budget and returned PARTIAL results. Narrow the query (add edge_type, a more specific property_name), raise timeout_ms, or prefer an indexed tool. Browser heaps with millions of native/InternalNode nodes are slow to full-scan.`;
+
         if (output_mode === 'count') {
           let totalCount = 0;
           let totalRetained = 0;
-          snapshot.nodes.forEach(node => {
-            if (!isNodeWorthInspecting(node)) return;
-            if (!matchesProperty(node)) return;
-            totalCount++;
-            totalRetained += node.retainedSize;
-          });
+          try {
+            snapshot.nodes.forEach(node => {
+              budget.tick();
+              if (!isNodeWorthInspecting(node)) return;
+              if (!matchesProperty(node)) return;
+              totalCount++;
+              totalRetained += node.retainedSize;
+            });
+          } catch (e) {
+            if (e instanceof ScanTimeoutError) timedOut = true;
+            else throw e;
+          }
           return toolResult(
-            `Objects with property ${filterDesc}: ${formatNumber(totalCount)} total, ${formatBytes(totalRetained)} aggregate retained size`,
+            `Objects with property ${filterDesc}: ${formatNumber(totalCount)}${timedOut ? '+' : ''} total, ${formatBytes(totalRetained)} aggregate retained size` +
+              (timedOut ? timeoutNote : ''),
           );
         }
 
         const results: IHeapNode[] = [];
         let totalCount = 0;
 
-        snapshot.nodes.forEach(node => {
-          if (!isNodeWorthInspecting(node)) return;
-          if (!matchesProperty(node)) return;
-          totalCount++;
+        try {
+          snapshot.nodes.forEach(node => {
+            budget.tick();
+            if (!isNodeWorthInspecting(node)) return;
+            if (!matchesProperty(node)) return;
+            totalCount++;
 
-          if (output_mode === 'ids') {
-            results.push(node);
-            return;
-          }
-
-          const size = node.retainedSize;
-          let inserted = false;
-          for (let i = 0; i < results.length; i++) {
-            if (size > results[i].retainedSize) {
-              results.splice(i, 0, node);
-              inserted = true;
-              break;
+            if (output_mode === 'ids') {
+              results.push(node);
+              return;
             }
-          }
-          if (!inserted) {
-            results.push(node);
-          }
-          if (results.length > limit) {
-            results.length = limit;
-          }
-        });
+
+            const size = node.retainedSize;
+            let inserted = false;
+            for (let i = 0; i < results.length; i++) {
+              if (size > results[i].retainedSize) {
+                results.splice(i, 0, node);
+                inserted = true;
+                break;
+              }
+            }
+            if (!inserted) {
+              results.push(node);
+            }
+            if (results.length > limit) {
+              results.length = limit;
+            }
+          });
+        } catch (e) {
+          if (e instanceof ScanTimeoutError) timedOut = true;
+          else throw e;
+        }
 
         if (totalCount === 0) {
           return toolResult(`No objects found with property ${filterDesc}`);
@@ -184,13 +211,15 @@ export function registerFindByProperty(server: McpServer): void {
             .sort((a, b) => b.retainedSize - a.retainedSize)
             .slice(0, limit);
           return toolResult(
-            `Found ${formatNumber(totalCount)} objects with property ${filterDesc} (showing ${sorted.length} IDs)\n\nIDs: ${sorted.map(n => n.id).join(', ')}`,
+            `Found ${formatNumber(totalCount)}${timedOut ? '+' : ''} objects with property ${filterDesc} (showing ${sorted.length} IDs)\n\nIDs: ${sorted.map(n => n.id).join(', ')}` +
+              (timedOut ? timeoutNote : ''),
           );
         }
 
         const summaries = results.map(serializeNodeSummary);
         return toolResult(
-          `Found ${formatNumber(totalCount)} objects with property ${filterDesc} (showing top ${summaries.length})\n\n${formatNodeSummaryTable(summaries)}`,
+          `Found ${formatNumber(totalCount)}${timedOut ? '+' : ''} objects with property ${filterDesc} (showing top ${summaries.length})\n\n${formatNodeSummaryTable(summaries)}` +
+            (timedOut ? timeoutNote : ''),
         );
       } catch (err) {
         return errorResult(err);

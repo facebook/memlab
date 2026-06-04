@@ -285,6 +285,68 @@ accumulating before a second capture is available.
    integers (time-series / append-only logs) and large ever-growing Arrays.
    This is a heuristic; confirm with a later snapshot + `memlab_diff_snapshots`.
 
+### Path J: Sequence / trend across 3+ snapshots
+
+Triggered when: the question is "is anything growing unboundedly across N
+captures?"
+
+1. `memlab_sequence_analysis` with an ordered `paths` list — loads each snapshot
+   transiently (does NOT change the active snapshot), reports each class's count
+   at every step, and labels **"↑ every step" (leak signal)** vs **"grew net
+   (noisy)"** (GC/navigation). Lists classes new since baseline. Prefer this over
+   chaining `diff_snapshots` pairwise.
+2. Load the last snapshot and localize with `cache_analysis` /
+   `event_listener_leaks` / `event_registry` / `growth_signals` (object-identity
+   matching across captures isn't possible — node ids differ per snapshot).
+
+### Path K: Browser — real leaks vs dev/extension artifacts
+
+Triggered when: a browser snapshot shows a huge detached-DOM tree / retainer and
+you must decide if it is production-relevant.
+
+1. `memlab_dev_artifacts` — classifies large retainers as **production** vs
+   **dev-only** (retained solely via `__REACT_DEVTOOLS_GLOBAL_HOOK__`,
+   `__REDUX_DEVTOOLS_EXTENSION__`, `window.Debug`, …) and totals the bytes to
+   exclude from headline leak numbers. `detached_dom` reports the dev-only share
+   inline.
+2. `memlab_event_registry` — Backbone/observer per-model registries
+   (`{"change:name":[{callback,context}], …}`): top event names by listener
+   count, listeners-per-host distribution, and a structural-vs-leak verdict.
+
+## eval / for_each calling conventions
+
+`memlab_eval` and `memlab_for_each` run in a sandbox with strict conventions —
+violating them yields opaque errors:
+
+- **Assign output to `result`** — never `return` at the top level ("Illegal
+  return statement").
+- **Iterate all nodes with `snapshot.nodes.forEach(node => { … })`**, not
+  `for...of` (`snapshot.nodes` is not for-of iterable). `node.references` /
+  `node.referrers` ARE for-of iterable.
+- **`retained_size` is unreliable inside eval** — it can read back ~0 for every
+  node on some loads. Counts, property/edge walks, and string values are
+  trustworthy; for authoritative retained sizes use the dedicated tools
+  (`largest_objects`, `class_histogram`, `pinch_points`, `object_shape`).
+- Run `memlab_eval({mode:"describe_env"})` to print the in-scope globals, the
+  IHeapNode/IHeapEdge API, and a runnable example before writing code.
+
+```
+const counts = {};
+snapshot.nodes.forEach(node => { counts[node.type] = (counts[node.type] || 0) + 1; });
+result = counts;
+```
+
+## Reliability on large browser heaps
+
+Full-heap scan tools (`search_nodes`, `find_by_property`, `global_variables`,
+and `eval`/`for_each` walks) are slow on multi-million-node browser snapshots.
+They now take a `timeout_ms` budget and **return partial results instead of
+hanging** the server. Prefer index-backed tools first (`diff_snapshots`,
+`detached_dom`, `event_listener_leaks`, `cache_analysis`). `memlab_server_status`
+returns instantly to confirm the server is responsive and to watch RSS. If the
+server is genuinely wedged by a prior long/interrupted call, a fresh server
+instance fully recovers it (restart and reload the snapshot).
+
 ## Step 3: Deep Dive
 
 When you've identified a suspicious node or pattern, use these tools for
@@ -391,6 +453,13 @@ When analyzing large snapshots, use these options to reduce token usage:
 | Expand a truncated retainer trace | `memlab_retainer_trace` with `expand: true` |
 | Inspect a suspended generator/async frame | `memlab_closure_inspection` on the Generator node |
 | Trim repeated header/suggestion tokens | `memlab_snapshots` (or `memlab_load_snapshot`) with `quiet: true` / `suppress_suggestions: true` |
+| Trend across 3+ ordered snapshots | `memlab_sequence_analysis` with `paths: [...]` |
+| Real leak vs DevTools artifact (browser) | `memlab_dev_artifacts` (also inline in `memlab_detached_dom`) |
+| Per-model event registry breakdown | `memlab_event_registry` |
+| Confirm server is responsive / check RSS | `memlab_server_status` |
+| Learn the eval sandbox API | `memlab_eval` with `mode: "describe_env"` |
+| Bound a slow full-heap scan | `search_nodes`/`find_by_property`/`global_variables` `timeout_ms` |
+| Diff with friendly names / keep active snapshot | `memlab_diff_snapshots` `before`/`after`/`baseline`/`target`, `set_active:false` |
 | See string interning savings | `memlab_duplicated_strings` (shows per-entry savings and total, plus app/framework actionability) |
 | Detect ad-hoc object caches | `memlab_cache_analysis` with `detect_object_caches: true` (scans for {data, timestamp} shaped objects) |
 | See memory fan-out at branches | `memlab_trace_dominators` with `show_siblings: true` |

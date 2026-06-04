@@ -34,14 +34,14 @@ import {
 
 // The bucket the Nest auto-capture + the Manifold links in diffs use, so a
 // bare snapshot filename resolves predictably (Feedback §7).
-const DEFAULT_MANIFOLD_BUCKET = 'nest_server_nodejs_heap_snapshots';
+export const DEFAULT_MANIFOLD_BUCKET = 'nest_server_nodejs_heap_snapshots';
 
 /**
  * Resolve a `file_path` that may be a local path, a `manifold://bucket/key`
  * URL, or a bare snapshot filename to a local path, fetching from Manifold
  * into a temp dir when needed. Returns {localPath, fetchedFrom}.
  */
-function resolveSnapshotPath(filePath: string): {
+export function resolveSnapshotPath(filePath: string): {
   localPath: string;
   fetchedFrom: string | null;
 } {
@@ -169,8 +169,13 @@ function quickDiagnosis(
     );
   }
 
+  // Suppress noise: tiny or purely-numeric/SMI-like strings duplicate heavily
+  // but carry no signal (e.g. "5" ×3,372, "0" ×2,733). Require some length and
+  // non-numeric content to be worth flagging.
+  const isNoisyDupKey = (s: string): boolean =>
+    s.length < 8 || /^[\s\d.,:+-]*$/.test(s);
   const highDups = [...stringCounts.entries()]
-    .filter(([, count]) => count >= 1000)
+    .filter(([val, count]) => count >= 1000 && !isNoisyDupKey(val))
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3);
   for (const [val, count] of highDups) {

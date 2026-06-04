@@ -141,7 +141,8 @@ export function registerEval(server: McpServer): void {
       '`.toNode`, `.fromNode`.\n' +
       '**Iterating all nodes:** `snapshot.nodes.forEach(node => { ... })` — NOT for-of.\n' +
       '**Get node by ID:** `snapshot.getNodeById(id)` returns IHeapNode or null.\n' +
-      '**String values:** `node.toStringNode()?.stringValue` for string nodes.\n\n' +
+      '**String values:** `node.toStringNode()?.stringValue` for string nodes.\n' +
+      '**Caveat — retained_size is unreliable here:** inside eval, `node.retained_size`/`.retainedSize` can read back ~0 for every node on some loads. Node counts, property/edge walks, and string values ARE trustworthy; for authoritative retained sizes use the dedicated tools (`memlab_largest_objects`, `memlab_class_histogram`, `memlab_pinch_points`, `memlab_object_shape`).\n\n' +
       '**Example — inspect Map entries:**\n' +
       '```\nconst map = snapshot.getNodeById(12345);\nconst entries = [];\n' +
       'for (const edge of map.references) {\n' +
@@ -150,8 +151,16 @@ export function registerEval(server: McpServer): void {
       '      entries.push({name: te.toNode.name, type: te.toNode.type});\n' +
       '    }\n  }\n}\nresult = entries.slice(0, 10);\n```',
     {
+      mode: z
+        .enum(['eval', 'describe_env'])
+        .optional()
+        .default('eval')
+        .describe(
+          '"eval" (default) runs `code`. "describe_env" ignores `code` and returns the in-scope globals, the IHeapNode/IHeapEdge API, and the required calling conventions (`result =`, `.forEach`) so you can self-correct before running.',
+        ),
       code: z
         .string()
+        .optional()
         .describe(
           'JavaScript code to execute. Must assign the output to a `result` variable. ' +
             'Available globals: snapshot (IHeapSnapshot — use .nodes.forEach(), .getNodeById(), .edges.forEach()), ' +
@@ -172,8 +181,18 @@ export function registerEval(server: McpServer): void {
           'Execution timeout in milliseconds (default 60000). Full-snapshot scans on large heaps may need 120000+.',
         ),
     },
-    async ({code, timeout_ms}) => {
+    async ({mode, code, timeout_ms}) => {
       try {
+        if (mode === 'describe_env') {
+          return toolResult(describeEnv());
+        }
+        if (code == null || code.trim() === '') {
+          return errorResult(
+            new Error(
+              'No code provided. Pass `code`, or use mode:"describe_env" to see the available globals and conventions.',
+            ),
+          );
+        }
         const snapshot = getSnapshot();
 
         const consoleOutput: string[] = [];
@@ -326,6 +345,18 @@ export function registerEval(server: McpServer): void {
         const script = new vm.Script(code, {filename: 'memlab_eval'});
         script.runInContext(context, {timeout: timeout_ms});
 
+        // Actionable hint when nothing was assigned to `result` (the #1 user
+        // error — code that `return`s a value or runs a value-returning IIFE
+        // never populates `result`, so output is silently "undefined").
+        if (sandbox.result === undefined && consoleOutput.length === 0) {
+          return toolResult(
+            'Your code ran without error but never assigned to `result`, so there is nothing to return.\n' +
+              'Assign the value you want back to `result` (do NOT use `return` at the top level), e.g.:\n' +
+              '  `result = someValue;`\n' +
+              'Use mode:"describe_env" to see the full calling convention.',
+          );
+        }
+
         let output: string;
         try {
           output = JSON.stringify(sandbox.result, null, 2) ?? 'undefined';
@@ -345,16 +376,63 @@ export function registerEval(server: McpServer): void {
 
         return toolResult(output);
       } catch (err) {
-        if (
-          err instanceof Error &&
-          err.message.includes('Script execution timed out')
-        ) {
-          return errorResult(
-            new Error(`Execution timed out after ${timeout_ms}ms`),
-          );
-        }
-        return errorResult(err);
+        return errorResult(new Error(actionableEvalError(err, code)));
       }
     },
   );
+}
+
+// Map the opaque VM errors that the documented calling-convention mistakes
+// produce into actionable guidance (Feedback §3).
+function actionableEvalError(err: unknown, code: string | undefined): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes('Script execution timed out')) {
+    return `Execution timed out. Increase timeout_ms, or narrow the scan (filter earlier, use a dedicated tool like memlab_find_by_property/memlab_property_distribution instead of a full snapshot.nodes walk).`;
+  }
+  if (msg.includes('Illegal return statement')) {
+    return `Illegal return statement: you cannot \`return\` at the top level here. Assign the value to \`result\` instead — e.g. \`result = ...;\`. (Use mode:"describe_env" for the convention.)`;
+  }
+  if (msg.includes('is not iterable')) {
+    return `${msg}\nHint: \`snapshot.nodes\` is not a for-of iterable. Use \`snapshot.nodes.forEach(node => { ... })\` (and \`snapshot.edges.forEach(...)\`). \`node.references\`/\`node.referrers\` ARE for-of iterable.`;
+  }
+  if (
+    code &&
+    /\bfor\s*\(\s*(const|let|var)\b.*\bof\b.*\bsnapshot\.nodes\b/.test(code)
+  ) {
+    return `${msg}\nHint: iterate all nodes with \`snapshot.nodes.forEach(node => { ... })\`, not \`for...of\`.`;
+  }
+  return msg;
+}
+
+function describeEnv(): string {
+  return [
+    '# memlab_eval environment',
+    '',
+    '## Calling conventions (REQUIRED)',
+    '- Assign your output to `result` — do NOT use `return` at the top level (that throws "Illegal return statement").',
+    '- Iterate all nodes with `snapshot.nodes.forEach(node => { ... })` and all edges with `snapshot.edges.forEach(...)`. `snapshot.nodes` is NOT a for-of iterable.',
+    '- `node.references` (outgoing) and `node.referrers` (incoming) ARE for-of iterable.',
+    '',
+    '## In-scope globals',
+    '- `snapshot` — IHeapSnapshot: `.nodes.forEach(cb)`, `.edges.forEach(cb)`, `.getNodeById(id)`.',
+    '- `utils` — @memlab/core utils (e.g. `aggregateDominatorMetrics`, `isFiberNode`, `isDetachedDOMNode`).',
+    '- `helpers` — `serializeNodeSummary`, `serializeNodeDetail`, `formatBytes`, `formatNumber`, `markdownTable`, `isNodeWorthInspecting`, `filterLargestObjects`, `queryNodes`, `groupReferrersByEdge(nodeId)`, `groupArrayElementsByProperty(arrayNodeId, prop)`, `isOrphaned(nodeId, ownerEdges[])`, `countUniqueTargets(arrayNodeId, prop)`.',
+    '- Standard JS built-ins (Array, Object, Map, Set, JSON, Math, RegExp, …). No require/process/fs/network.',
+    '',
+    '## IHeapNode API',
+    '`.id`, `.name`, `.type`, `.self_size`, `.retainedSize` (alias `.retained_size`), `.edge_count`, `.is_detached`, `.numOfReferrers` (alias `.referrer_count`), `.isString`, `.toStringNode()?.stringValue`, `.hasPathEdge`, `.pathEdge`, `.dominatorNode`, `.location` (`script_id`/`line`/`column`).',
+    '',
+    '## Caveat: retained_size',
+    'Inside eval, `.retainedSize`/`.retained_size` can read back ~0 for every node on some loads. Counts, property/edge walks, and string values are reliable; for authoritative retained sizes use `memlab_largest_objects`, `memlab_class_histogram`, `memlab_pinch_points`, or `memlab_object_shape`.',
+    '',
+    '## IHeapEdge API',
+    '`.name_or_index`, `.type` (property/element/context/internal/hidden/shortcut), `.toNode`, `.fromNode`.',
+    '',
+    '## Runnable example',
+    '```',
+    'const counts = {};',
+    'snapshot.nodes.forEach(node => { counts[node.type] = (counts[node.type] || 0) + 1; });',
+    'result = counts;',
+    '```',
+  ].join('\n');
 }
