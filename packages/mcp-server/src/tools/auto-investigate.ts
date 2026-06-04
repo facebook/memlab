@@ -20,6 +20,7 @@ import {
   truncateNodeName,
   errorResult,
   toolResult,
+  suggestionsSuppressed,
 } from '../utils.js';
 
 interface RetainerStep {
@@ -630,6 +631,43 @@ function tracePrefix(trace: RetainerStep[]): string {
   return trace.map(s => `${s.name}(${s.type})`).join('->');
 }
 
+/**
+ * True if `ancestor` dominates `descendant` in the dominator tree (i.e. all
+ * paths from the GC root to `descendant` pass through `ancestor`, so
+ * `ancestor.retainedSize` already includes `descendant.retainedSize`). Walks
+ * the unique dominator chain upward, bounded to avoid pathological depth.
+ */
+function isDominatorAncestor(
+  ancestor: IHeapNode,
+  descendant: IHeapNode,
+  maxWalk = 500,
+): boolean {
+  if (ancestor.id === descendant.id) return false;
+  let cur: IHeapNode | null = descendant.dominatorNode ?? null;
+  let steps = 0;
+  while (cur && steps < maxWalk) {
+    if (cur.id === ancestor.id) return true;
+    if (cur.dominatorNode?.id === cur.id) break; // reached root self-loop
+    cur = cur.dominatorNode ?? null;
+    steps++;
+  }
+  return false;
+}
+
+/**
+ * Correct combined retained size for a set of nodes that may overlap on the
+ * dominator tree. In a dominator tree two nodes' retained subtrees are either
+ * nested or disjoint, so we keep only dominator-maximal members (drop any node
+ * dominated by another member, whose bytes are already counted) and sum those.
+ * This never exceeds the heap total — fixing the ">100% of heap" accounting.
+ */
+function combinedRetainedSize(nodes: IHeapNode[]): number {
+  const maximal = nodes.filter(
+    n => !nodes.some(o => o.id !== n.id && isDominatorAncestor(o, n)),
+  );
+  return maximal.reduce((sum, n) => sum + n.retainedSize, 0);
+}
+
 function deduplicateFindings(findings: Finding[]): Finding[] {
   if (findings.length <= 1) return findings;
 
@@ -679,8 +717,12 @@ function deduplicateFindings(findings: Finding[]): Finding[] {
     );
   }
 
-  // Phase 2: Collapse findings along the same dominator chain (Feedback #12)
-  // If finding B's node appears in finding A's retainer trace, B is dominated by A
+  // Phase 2: Merge findings that retain the *same dominated subtree* — whether
+  // because one node dominates the other in the dominator tree (so their
+  // retained sizes overlap) or because the same big subtree is reachable two
+  // ways and shows up under two different top retainers (Feedback §2a, §1a).
+  // The larger-retained node becomes the representative; the other is recorded
+  // as an alternate path so we report ONE finding instead of two ~equal ones.
   if (prefixResult.length <= 1) return prefixResult;
 
   const traceNodeSets = prefixResult.map(f => {
@@ -694,17 +736,26 @@ function deduplicateFindings(findings: Finding[]): Finding[] {
   const absorbed = new Set<number>();
   for (let i = 0; i < prefixResult.length; i++) {
     if (absorbed.has(i)) continue;
-    for (let j = 0; j < prefixResult.length; j++) {
-      if (i === j || absorbed.has(j)) continue;
-      // If finding j's target node appears in finding i's trace, j is a sub-finding of i
-      if (traceNodeSets[i].has(prefixResult[j].node.id)) {
-        const siblings = prefixResult[i].collapsed_siblings ?? [];
-        siblings.push(prefixResult[j]);
-        const jSiblings = prefixResult[j].collapsed_siblings ?? [];
-        siblings.push(...jSiblings);
-        prefixResult[i].collapsed_siblings = siblings;
-        absorbed.add(j);
-      }
+    for (let j = i + 1; j < prefixResult.length; j++) {
+      if (absorbed.has(j)) continue;
+      const a = prefixResult[i].node;
+      const b = prefixResult[j].node;
+      const related =
+        isDominatorAncestor(a, b) ||
+        isDominatorAncestor(b, a) ||
+        traceNodeSets[i].has(b.id) ||
+        traceNodeSets[j].has(a.id);
+      if (!related) continue;
+
+      // Keep the larger-retained finding as representative.
+      const keepIdx = a.retainedSize >= b.retainedSize ? i : j;
+      const dropIdx = keepIdx === i ? j : i;
+      const siblings = prefixResult[keepIdx].collapsed_siblings ?? [];
+      siblings.push(prefixResult[dropIdx]);
+      siblings.push(...(prefixResult[dropIdx].collapsed_siblings ?? []));
+      prefixResult[keepIdx].collapsed_siblings = siblings;
+      absorbed.add(dropIdx);
+      if (dropIdx === i) break; // i itself was absorbed; advance outer loop
     }
   }
 
@@ -923,6 +974,184 @@ function detectAsyncContextLeaks(findings: Finding[]): string[] {
   return alerts;
 }
 
+// Framework class-name signatures. These are scanned heap-wide (not just along
+// the top retainer traces) because framework internals frequently accumulate
+// across many small objects that never surface as a single "top retained
+// object" — yet are high-signal root causes (Feedback §2b).
+const OTEL_METRIC_CLASSES = new Set([
+  'SyncMetricStorage',
+  'AsyncMetricStorage',
+  'TemporalMetricProcessor',
+  'DeltaMetricProcessor',
+  'AttributeHashMap',
+  'HashMap',
+  'MetricStorageRegistry',
+]);
+
+const RELAY_STORE_CLASSES = new Set([
+  'RelayModernStore',
+  'RelayRecordSource',
+  'RecordSource',
+  'RelayModernRecord',
+  'RelayReader',
+  'DataChecker',
+]);
+
+interface FrameworkAccumulator {
+  count: number;
+  totalRetained: number;
+  exampleId: number;
+  maxEntries: number;
+}
+
+function mapEntryCount(node: IHeapNode): number {
+  for (const edge of node.references) {
+    const n = String(edge.name_or_index);
+    if (
+      (n === 'table' || n === 'backing_store') &&
+      (edge.toNode.type === 'array' || edge.toNode.type === 'hidden')
+    ) {
+      return edge.toNode.edge_count;
+    }
+  }
+  return node.edge_count;
+}
+
+function detectFrameworkLeaks(
+  snapshot: IHeapSnapshot,
+  totalSize: number,
+): string[] {
+  const alerts: string[] = [];
+  const otel = new Map<string, FrameworkAccumulator>();
+  const relay = new Map<string, FrameworkAccumulator>();
+  let topGenerator: {id: number; retained: number} | null = null;
+  let generatorCount = 0;
+
+  const accumulate = (
+    map: Map<string, FrameworkAccumulator>,
+    node: IHeapNode,
+    entries: number,
+  ): void => {
+    const e = map.get(node.name);
+    if (e) {
+      e.count++;
+      e.totalRetained += node.retainedSize;
+      e.maxEntries = Math.max(e.maxEntries, entries);
+      if (
+        node.retainedSize >
+        (snapshot.getNodeById(e.exampleId)?.retainedSize ?? 0)
+      ) {
+        e.exampleId = node.id;
+      }
+    } else {
+      map.set(node.name, {
+        count: 1,
+        totalRetained: node.retainedSize,
+        exampleId: node.id,
+        maxEntries: entries,
+      });
+    }
+  };
+
+  snapshot.nodes.forEach(node => {
+    if (node.id <= 3) return;
+
+    if (OTEL_METRIC_CLASSES.has(node.name) && node.type === 'object') {
+      // Find the largest child Map/HashMap (the attribute->aggregation table).
+      let entries = 0;
+      for (const edge of node.references) {
+        const t = edge.toNode;
+        if (t.name === 'Map' || t.name === 'HashMap' || t.name === 'Set') {
+          entries = Math.max(entries, mapEntryCount(t));
+        }
+      }
+      accumulate(otel, node, entries);
+    }
+
+    if (RELAY_STORE_CLASSES.has(node.name) && node.type === 'object') {
+      accumulate(relay, node, mapEntryCount(node));
+    }
+
+    if (
+      node.name === 'Generator' &&
+      node.type === 'object' &&
+      node.retainedSize > 1024 * 1024
+    ) {
+      generatorCount++;
+      if (!topGenerator || node.retainedSize > topGenerator.retained) {
+        topGenerator = {id: node.id, retained: node.retainedSize};
+      }
+    }
+  });
+
+  // OpenTelemetry metric cardinality explosion.
+  const otelTotal = [...otel.values()].reduce((s, e) => s + e.totalRetained, 0);
+  const otelMaxEntries = Math.max(
+    0,
+    ...[...otel.values()].map(e => e.maxEntries),
+  );
+  if (
+    otel.size > 0 &&
+    (otelTotal > 5 * 1024 * 1024 ||
+      (totalSize > 0 && otelTotal > totalSize * 0.03) ||
+      otelMaxEntries >= 1000)
+  ) {
+    const top = [...otel.entries()]
+      .sort((a, b) => b[1].totalRetained - a[1].totalRetained)
+      .slice(0, 3)
+      .map(
+        ([name, e]) =>
+          `${name} (${formatNumber(e.count)}×, ${formatBytes(e.totalRetained)}${e.maxEntries > 0 ? `, up to ${formatNumber(e.maxEntries)} attribute keys` : ''}, e.g. @${e.exampleId})`,
+      )
+      .join('; ');
+    alerts.push(
+      `🔴 **[CRITICAL] OpenTelemetry metric cardinality explosion**\n` +
+        `OTel metric-storage internals retain ${formatBytes(otelTotal)} via per-attribute aggregation maps: ${top}.\n` +
+        `This is the classic Node OTel footgun: a high-cardinality attribute (request id, full URL with ids, user id) is used as a metric dimension, so each distinct value allocates a new aggregation in the \`AttributeHashMap\` / \`_valueMap\`.\n` +
+        `**Confirm:** \`memlab_property_distribution\` on the metric attribute shape, or \`memlab_search_strings\` for the serialized attribute keys (e.g. \`[["http.route","/x/<uuid>"]]\`).\n` +
+        `**Fix:** remove or bucket high-cardinality attributes (template the route: \`/artifact/:id\`), or add an allowed-attributes view so unbounded dimensions never enter the metric.`,
+    );
+  }
+
+  // Relay store growth.
+  const relayTotal = [...relay.values()].reduce(
+    (s, e) => s + e.totalRetained,
+    0,
+  );
+  if (
+    relay.size > 0 &&
+    (relayTotal > 5 * 1024 * 1024 ||
+      (totalSize > 0 && relayTotal > totalSize * 0.05))
+  ) {
+    const top = [...relay.entries()]
+      .sort((a, b) => b[1].totalRetained - a[1].totalRetained)
+      .slice(0, 3)
+      .map(
+        ([name, e]) =>
+          `${name} (${formatNumber(e.count)}×, ${formatBytes(e.totalRetained)}, e.g. @${e.exampleId})`,
+      )
+      .join('; ');
+    alerts.push(
+      `🟠 **[HIGH] Relay store retaining ${formatBytes(relayTotal)}**\n` +
+        `Relay record source/store internals are holding a large normalized cache: ${top}.\n` +
+        `**Fix:** ensure queries are disposed/GC'd (check \`retain()\` without matching \`dispose()\`), enable store garbage collection (\`gcReleaseBufferSize\`), or scope long-lived environments per request instead of a single global store.`,
+    );
+  }
+
+  // Suspended async functions (generators) retaining large locals.
+  if (topGenerator) {
+    const g: {id: number; retained: number} = topGenerator;
+    alerts.push(
+      `🟠 **[HIGH] Suspended async function retaining ${formatBytes(g.retained)}**\n` +
+        `${formatNumber(generatorCount)} generator/async frame(s) >1 MB are parked mid-\`await\`, keeping their local variables (response buffers, accumulated rows) alive while the awaited resource never settles. Largest: @${g.id}.\n` +
+        `**Inspect:** \`memlab_closure_inspection(${g.id})\` resolves the frame's \`parameters_and_registers\` to source variable names.\n` +
+        `**Fix:** add timeouts/cancellation to the awaited operation; fully consume or cancel streamed response bodies (\`await resp.text()\` / \`resp.body.cancel()\`); avoid capturing whole datasets in the async frame.`,
+    );
+  }
+
+  return alerts;
+}
+
 export function registerAutoInvestigate(server: McpServer): void {
   server.tool(
     'memlab_auto_investigate',
@@ -1046,12 +1275,17 @@ export function registerAutoInvestigate(server: McpServer): void {
             collapsed_siblings?: Finding[];
           };
           const siblings = f.collapsed_siblings ?? [];
-          const totalRetained =
-            f.node.retainedSize +
-            siblings.reduce((s, sib) => s + sib.node.retainedSize, 0);
+          // Dominator-aware combined size: members on the same chain overlap,
+          // so we must not sum their retained sizes (that produced the old
+          // ">100% of heap" bug). combinedRetainedSize() keeps only
+          // dominator-maximal members.
+          const totalRetained = combinedRetainedSize([
+            f.node,
+            ...siblings.map(s => s.node),
+          ]);
           const pct =
             totalSize > 0
-              ? ` (${((totalRetained / totalSize) * 100).toFixed(1)}% of heap)`
+              ? ` (${Math.min(100, (totalRetained / totalSize) * 100).toFixed(1)}% of heap)`
               : '';
           const name = truncateNodeName(
             f.node.name,
@@ -1075,7 +1309,7 @@ export function registerAutoInvestigate(server: McpServer): void {
 
           if (siblings.length > 0) {
             lines.push(
-              `### ${i + 1}. ${sevIcon} [${f.severity}] \`${name}\` chain — ${formatBytes(totalRetained)} total across ${1 + siblings.length} nodes${pct}`,
+              `### ${i + 1}. ${sevIcon} [${f.severity}] \`${name}\` — ${formatBytes(totalRetained)} retained, same subtree reached via ${1 + siblings.length} retainer(s)${pct}`,
             );
             lines.push('');
             if (traceMatch) {
@@ -1097,7 +1331,7 @@ export function registerAutoInvestigate(server: McpServer): void {
             }
             lines.push('');
             lines.push(
-              `**Same chain contains:** @${f.node.id} (${formatBytes(f.node.retainedSize)})` +
+              `**Alternate retainers of the same subtree** (retained sizes overlap — not additive): @${f.node.id} (${formatBytes(f.node.retainedSize)})` +
                 siblings
                   .map(
                     sib =>
@@ -1350,11 +1584,19 @@ export function registerAutoInvestigate(server: McpServer): void {
           }
 
           if (columnAlerts.length > 0) {
+            // Cap to the most relevant lines — on wide shapes this section
+            // used to emit ~100 near-identical lines (Feedback §4).
+            const COLUMN_ALERT_CAP = 12;
             lines.push('## Data Column Analysis');
             lines.push('');
             lines.push('Property value analysis across large object shapes:');
             lines.push('');
-            lines.push(...columnAlerts);
+            lines.push(...columnAlerts.slice(0, COLUMN_ALERT_CAP));
+            if (columnAlerts.length > COLUMN_ALERT_CAP) {
+              lines.push(
+                `- … and ${columnAlerts.length - COLUMN_ALERT_CAP} more column(s). Use \`memlab_property_distribution\` to drill into a specific property.`,
+              );
+            }
             lines.push(
               '',
               '_Low-cardinality columns can often be filtered at the data source (SQL WHERE clause). High-cost unique string properties should be verified as needed by consumers._',
@@ -1473,10 +1715,13 @@ export function registerAutoInvestigate(server: McpServer): void {
         }
 
         const asyncAlerts = detectAsyncContextLeaks(findings);
-        if (asyncAlerts.length > 0) {
+        const frameworkAlerts =
+          focus === 'all' ? detectFrameworkLeaks(snapshot, totalSize) : [];
+        const allPatternAlerts = [...frameworkAlerts, ...asyncAlerts];
+        if (allPatternAlerts.length > 0) {
           lines.push('## Known Leak Patterns');
           lines.push('');
-          for (const alert of asyncAlerts) {
+          for (const alert of allPatternAlerts) {
             lines.push(alert);
             lines.push('');
           }
@@ -1498,35 +1743,37 @@ export function registerAutoInvestigate(server: McpServer): void {
           lines.push('');
         }
 
-        lines.push('## Suggested Next Steps');
-        lines.push('');
-        let stepNum = 1;
-        if (findings[0]?.pinchPoint) {
-          const pp = findings[0].pinchPoint;
+        if (!suggestionsSuppressed()) {
+          lines.push('## Suggested Next Steps');
+          lines.push('');
+          let stepNum = 1;
+          if (findings[0]?.pinchPoint) {
+            const pp = findings[0].pinchPoint;
+            lines.push(
+              `${stepNum++}. Inspect pinch point: \`memlab_get_node(${pp.nodeId})\` then \`memlab_dominator_subtree(${pp.nodeId})\``,
+            );
+          }
           lines.push(
-            `${stepNum++}. Inspect pinch point: \`memlab_get_node(${pp.nodeId})\` then \`memlab_dominator_subtree(${pp.nodeId})\``,
+            `${stepNum++}. Trace top retainer: \`memlab_trace_dominators(${findings[0].node.id})\` for full dominator chain in one call`,
           );
-        }
-        lines.push(
-          `${stepNum++}. Trace top retainer: \`memlab_trace_dominators(${findings[0].node.id})\` for full dominator chain in one call`,
-        );
-        lines.push(
-          `${stepNum++}. Check for patterns: \`memlab_retainer_summary\` with class name of top objects`,
-        );
-        if (promises.pendingCount > 0 && promises.topPending.length > 0) {
           lines.push(
-            `${stepNum++}. Investigate pending promises: \`memlab_trace_dominators(${promises.topPending[0].nodeId})\``,
+            `${stepNum++}. Check for patterns: \`memlab_retainer_summary\` with class name of top objects`,
           );
-        }
-        if (caches.length > 0) {
-          lines.push(
-            `${stepNum++}. Analyze caches: \`memlab_cache_analysis\` for detailed cache inspection`,
-          );
-        }
-        if (shapes.length > 0) {
-          lines.push(
-            `${stepNum++}. Explore data shapes: \`memlab_shape_histogram\` for detailed shape clustering`,
-          );
+          if (promises.pendingCount > 0 && promises.topPending.length > 0) {
+            lines.push(
+              `${stepNum++}. Investigate pending promises: \`memlab_trace_dominators(${promises.topPending[0].nodeId})\``,
+            );
+          }
+          if (caches.length > 0) {
+            lines.push(
+              `${stepNum++}. Analyze caches: \`memlab_cache_analysis\` for detailed cache inspection`,
+            );
+          }
+          if (shapes.length > 0) {
+            lines.push(
+              `${stepNum++}. Explore data shapes: \`memlab_shape_histogram\` for detailed shape clustering`,
+            );
+          }
         }
 
         return toolResult(lines.join('\n'));

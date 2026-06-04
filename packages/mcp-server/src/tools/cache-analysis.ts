@@ -19,6 +19,7 @@ import {
   truncateNodeName,
   errorResult,
   toolResult,
+  suggestionsSuppressed,
 } from '../utils.js';
 
 interface CacheEntry {
@@ -32,6 +33,27 @@ interface CacheEntry {
   ownerEdge: string;
   hasWeakRefs: boolean;
   framework: string;
+  classification: 'cache-like' | 'collection';
+}
+
+const CACHE_EDGE_RE =
+  /cache|memo|store|registry|lru|dedup|pool|index|lookup|byId|byKey/i;
+
+/**
+ * Distinguish a genuine cache (named like one, owned by a cache class, or
+ * carrying cache config) from a plain large collection / per-request working
+ * set. Avoids over-labeling every big Map/Array as an "unbounded cache"
+ * (Feedback §2c).
+ */
+function classifyCollection(
+  collectionType: string,
+  ownerEdge: string,
+  framework: string,
+): 'cache-like' | 'collection' {
+  if (framework) return 'cache-like';
+  if (/cache/i.test(collectionType)) return 'cache-like';
+  if (CACHE_EDGE_RE.test(ownerEdge)) return 'cache-like';
+  return 'collection';
 }
 
 function identifyCacheFramework(node: IHeapNode, ownerEdge: string): string {
@@ -345,6 +367,11 @@ export function registerCacheAnalysis(server: McpServer): void {
             ownerEdge: owner.edge,
             hasWeakRefs: hasWeakRefEntries(node),
             framework,
+            classification: classifyCollection(
+              node.name,
+              owner.edge,
+              framework,
+            ),
           };
 
           let inserted = false;
@@ -460,6 +487,7 @@ export function registerCacheAnalysis(server: McpServer): void {
               ownerEdge: owner.edge,
               hasWeakRefs: false,
               framework: '',
+              classification: classifyCollection(cacheType, owner.edge, ''),
             });
           });
 
@@ -498,6 +526,11 @@ export function registerCacheAnalysis(server: McpServer): void {
                 ownerEdge: propName,
                 hasWeakRefs: false,
                 framework: '',
+                classification: classifyCollection(
+                  'Global registry',
+                  propName,
+                  '',
+                ),
               });
             }
           });
@@ -516,6 +549,7 @@ export function registerCacheAnalysis(server: McpServer): void {
         const headers = [
           'ID',
           'Type',
+          'Kind',
           'Entries',
           ...(hasSlotDifference ? ['Table Slots'] : []),
           'Retained',
@@ -526,8 +560,8 @@ export function registerCacheAnalysis(server: McpServer): void {
           ...(hasAnyFramework ? ['Framework'] : []),
         ];
         const rightCols = hasSlotDifference
-          ? new Set([2, 3, 4, 5])
-          : new Set([2, 3, 4]);
+          ? new Set([3, 4, 5, 6])
+          : new Set([3, 4, 5]);
         const rows = caches.map(c => {
           const pct =
             totalSize > 0
@@ -536,6 +570,7 @@ export function registerCacheAnalysis(server: McpServer): void {
           return [
             `@${c.nodeId}`,
             c.collectionType,
+            c.classification,
             formatNumber(c.entryCount),
             ...(hasSlotDifference ? [formatNumber(c.tableSlots)] : []),
             formatBytes(c.retainedSize),
@@ -551,27 +586,36 @@ export function registerCacheAnalysis(server: McpServer): void {
           (sum, c) => sum + c.retainedSize,
           0,
         );
+        const cacheLike = caches.filter(
+          c => c.classification === 'cache-like',
+        ).length;
 
         const lines = [
-          `Cache analysis: ${caches.length} potential unbounded cache(s), ${formatBytes(totalRetained)} total retained`,
+          `Cache analysis: ${caches.length} large collection(s) (${cacheLike} cache-like, ${caches.length - cacheLike} plain collection/working-set), ${formatBytes(totalRetained)} total retained`,
           '',
           markdownTable(headers, rows, rightCols),
+          '',
+          '**Kind:**',
+          '- **cache-like** — named like a cache, owned by a cache class, or carrying TTL/maxSize config. Missing eviction here is a likely leak.',
+          '- **collection** — a plain large Map/Set/Array or per-request working set. Large is not the same as leaking; confirm it is actually retained across requests before treating it as a leak.',
           '',
           '**Risk indicators:**',
           '- **Weak? = No** means entries are strongly held and will never be evicted by GC',
           '- High entry count with no eviction suggests unbounded growth',
           '- Check if the owner has `clear()`, `delete()`, or LRU logic',
-          '',
-          '**Suggested next steps:**',
         ];
 
-        const top = caches[0];
-        lines.push(
-          `- Inspect largest cache: \`memlab_object_shape(${top.nodeId})\``,
-          `- See what it retains: \`memlab_dominator_subtree(${top.nodeId})\``,
-          `- Trace its retainer: \`memlab_retainer_trace(${top.nodeId})\``,
-          `- Check for common patterns: \`memlab_retainer_summary\` with node_ids from the top caches`,
-        );
+        if (!suggestionsSuppressed()) {
+          const top = caches[0];
+          lines.push(
+            '',
+            '**Suggested next steps:**',
+            `- Inspect largest cache: \`memlab_object_shape(${top.nodeId})\``,
+            `- See what it retains: \`memlab_dominator_subtree(${top.nodeId})\``,
+            `- Trace its retainer: \`memlab_retainer_trace(${top.nodeId})\``,
+            `- Check for common patterns: \`memlab_retainer_summary\` with node_ids from the top caches`,
+          );
+        }
 
         // Detect byte-tracking mismatch and extract cache config (Feedback #2, #10)
         const SIZE_PROPS = new Set([

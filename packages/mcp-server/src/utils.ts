@@ -9,7 +9,11 @@
  */
 
 import type {IHeapNode, IHeapEdge, IHeapSnapshot} from '@memlab/core';
-import {getSnapshotMetadata} from './heap-state.js';
+import {
+  getSnapshotMetadata,
+  getSessionConfig,
+  shouldEmitHeader,
+} from './heap-state.js';
 
 export interface NodeSummary {
   id: number;
@@ -101,7 +105,11 @@ export function truncateNodeName(
   maxLen = 150,
   aggressiveDom = false,
 ): string {
-  if (type === 'string' || type === 'concatenated string') {
+  if (
+    type === 'string' ||
+    type === 'concatenated string' ||
+    type === 'sliced string'
+  ) {
     if (name.length <= maxLen) return name;
     return `${name.slice(0, maxLen)}… (${formatBytes(selfSize)} total)`;
   }
@@ -404,9 +412,18 @@ export function textResult(text: string) {
 }
 
 export function toolResult(text: string) {
-  const header = snapshotHeader();
+  const header = shouldEmitHeader() ? snapshotHeader() : '';
   const body = header ? `${header}\n\n${text}` : text;
   return {content: [{type: 'text' as const, text: body}]};
+}
+
+/**
+ * Whether tools should omit "Suggested next steps" / "How to fix" trailers.
+ * Honors the session-level `suppressSuggestions` config so callers can trim
+ * repeated boilerplate tokens across a long investigation.
+ */
+export function suggestionsSuppressed(): boolean {
+  return getSessionConfig().suppressSuggestions;
 }
 
 export function jsonResult(data: unknown) {

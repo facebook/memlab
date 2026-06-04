@@ -11,14 +11,33 @@ CLI, programmatic API), see the [AI Assistant Guide](../../AI.md).
 
 ## Step 0: Obtain the Snapshot
 
-If the user provides a local file path, load it directly. If the snapshot is
-hosted remotely, download it first:
+`memlab_load_snapshot` accepts three forms of `file_path`:
+
+- A **local absolute path** (e.g. `/tmp/snapshot.heapsnapshot`).
+- A **`manifold://bucket/key` URL** — fetched automatically into a temp dir.
+- A **bare snapshot filename** (no slashes) — resolved against the
+  `nest_server_nodejs_heap_snapshots` bucket (where Nest auto-capture and the
+  Manifold links in diffs live) and fetched automatically.
+
+So for Nest auto-captured snapshots you can pass the filename directly instead
+of shelling out to `manifold get`. For other remote URLs, download first:
 
 ```bash
 curl -o /tmp/snapshot.heapsnapshot <URL>
 ```
 
 Then proceed to Step 1.
+
+### Working with multiple snapshots
+
+Pass `keep_previous: true` to `memlab_load_snapshot` to keep earlier snapshots
+resident (for before/after diffing or app-to-app comparison). Each loaded
+snapshot gets a **handle**; use `memlab_snapshots` to list them, switch the
+active one (`action: "switch", handle: "..."`), or unload one to free memory
+(`action: "unload"`). Node ids are only valid within the snapshot they came
+from — switch to the right handle before reusing an id. Each resident snapshot
+holds its full graph in memory, so watch the server's RSS for multi-GB heaps;
+unload snapshots you're done with.
 
 ## Step 1: Load and Triage
 
@@ -33,7 +52,12 @@ Then proceed to Step 1.
    objects, traces retainer chains with severity scoring
    (CRITICAL/HIGH/MEDIUM/LOW), identifies pinch points, detects unbounded
    caches, scans for pending Promises, summarizes object shape clusters, and
-   extracts source file hints from retainer paths.
+   extracts source file hints from retainer paths. It also **merges multi-path
+   retention** (one subtree reached via several retainers is reported once, with
+   correct — never >100% — combined retained size) and runs **framework
+   detectors**: OpenTelemetry metric cardinality explosion, Relay store growth,
+   suspended async-function frames, undici pool buffering, and
+   AsyncLocalStorage/TCP context retention.
 5. If you need more detail, call `memlab_check_health` for comprehensive
    prioritized triage.
 6. Note the environment (Browser vs Node.js) from the output — this determines
@@ -229,6 +253,38 @@ Error instances.
 - Error objects stored in arrays/maps without bounds → add eviction or limit
   collection size
 
+### Path H: Cardinality Explosion (metrics / cache keys / per-record fields)
+
+Triggered when: `auto_investigate` reports an OpenTelemetry metric cardinality
+pattern, or a shape's property has very high distinct-value count, or memory is
+dominated by many small per-key entries.
+
+1. `memlab_auto_investigate` — its "Known Leak Patterns" section flags OTel
+   metric storage (`SyncMetricStorage` / `TemporalMetricProcessor` /
+   `AttributeHashMap` with large `_valueMap`).
+2. `memlab_property_distribution` — **the key tool**: for a class/shape and a
+   property, reports value cardinality plus the top-K most frequent values.
+   Use it on the offending metric attribute, cache key, or record field to
+   confirm the explosion and see the offending values.
+3. `memlab_search_strings` — regex over string nodes to find the serialized
+   attribute keys (e.g. `/\[\["http.route","\/x\/[0-9a-f-]+"\]\]/`).
+
+**Common fixes:**
+- High-cardinality attribute used as a metric dimension → template/bucket it
+  (`/artifact/:id` instead of `/artifact/<uuid>`), or add an allowed-attributes
+  view so unbounded dimensions never enter the metric.
+- Cache keyed by a unique-per-request value → key by the stable part, or add an
+  LRU bound.
+
+### Path I: Single-Snapshot Growth Guess (no baseline available)
+
+Triggered when: you only have one snapshot and want to guess what is
+accumulating before a second capture is available.
+
+1. `memlab_growth_signals` — flags Maps/Sets keyed by timestamps or sequential
+   integers (time-series / append-only logs) and large ever-growing Arrays.
+   This is a heuristic; confirm with a later snapshot + `memlab_diff_snapshots`.
+
 ## Step 3: Deep Dive
 
 When you've identified a suspicious node or pattern, use these tools for
@@ -244,7 +300,14 @@ detailed investigation:
   `node_ids`)
 - `memlab_retainer_trace` — shortest path from GC root (why is this alive?)
 - `memlab_dominator_subtree` — what would be freed if this node were collected
-- `memlab_closure_inspection` — captured variables in a closure
+- `memlab_closure_inspection` — captured variables in a closure, OR (for a
+  suspended generator/async frame) the `parameters_and_registers` slots with
+  source variable names resolved where the value is also context-allocated
+- `memlab_property_distribution` — value cardinality + top-K values for a
+  property (cardinality-explosion diagnosis)
+- `memlab_retainer_trace` with `expand: true` — show every node on the path
+  (don't collapse internal runs) when the library/app boundary is hidden in the
+  elided middle; the trace also highlights the first source-located app frame
 - `memlab_eval` / `memlab_for_each` — custom analysis when built-in tools
   don't cover the query
 
@@ -276,6 +339,11 @@ When analyzing large snapshots, use these options to reduce token usage:
 - **`memlab_class_histogram` with `suppress_suggestions: true`** — omits
   "Suggested next steps" boilerplate on repeat calls. The cumulative % column
   lets you stop reading when you hit 95%
+- **Session output controls** — pass `quiet: true` to `memlab_load_snapshot`
+  (or `memlab_snapshots`) to print the `> Snapshot: …` header once per snapshot
+  instead of on every result, and `suppress_suggestions: true` to drop the
+  "Suggested next steps" trailers across all tools. Both add up over a long
+  (40+ call) investigation
 - **Parallel calls** — after `memlab_load_snapshot`, all tools are read-only.
   Batch independent calls (e.g., `quick_diagnosis` + `auto_investigate`) in a
   single message for parallel execution
@@ -314,6 +382,15 @@ When analyzing large snapshots, use these options to reduce token usage:
 | Group referrers by edge/class | `memlab_referrer_summary` |
 | Find repeated errors | `memlab_auto_investigate` or `memlab_check_health` |
 | Detect AsyncLocalStorage/TCP leaks | `memlab_auto_investigate` (auto-detects TCP context retention patterns) |
+| Detect OTel metric cardinality / Relay / suspended-async | `memlab_auto_investigate` (framework detectors in "Known Leak Patterns") |
+| See a property's value cardinality + top values | `memlab_property_distribution` |
+| Guess what's growing from one snapshot | `memlab_growth_signals` |
+| Load from Manifold / bare filename | `memlab_load_snapshot` with `manifold://…` or a bare snapshot filename |
+| Keep multiple snapshots / switch between them | `memlab_load_snapshot` with `keep_previous: true`, then `memlab_snapshots` |
+| Decode a numeric property by name | `memlab_get_value` with `node_id` + `property_name` |
+| Expand a truncated retainer trace | `memlab_retainer_trace` with `expand: true` |
+| Inspect a suspended generator/async frame | `memlab_closure_inspection` on the Generator node |
+| Trim repeated header/suggestion tokens | `memlab_snapshots` (or `memlab_load_snapshot`) with `quiet: true` / `suppress_suggestions: true` |
 | See string interning savings | `memlab_duplicated_strings` (shows per-entry savings and total, plus app/framework actionability) |
 | Detect ad-hoc object caches | `memlab_cache_analysis` with `detect_object_caches: true` (scans for {data, timestamp} shaped objects) |
 | See memory fan-out at branches | `memlab_trace_dominators` with `show_siblings: true` |

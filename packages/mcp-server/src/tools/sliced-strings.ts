@@ -17,7 +17,6 @@ import {
   markdownTable,
   truncateNodeName,
   errorResult,
-  textResult,
   toolResult,
 } from '../utils.js';
 
@@ -60,11 +59,12 @@ export function registerSlicedStrings(server: McpServer): void {
         const parentMap = new Map<number, ParentStats>();
 
         snapshot.nodes.forEach(node => {
-          const isSliced =
-            node.type === 'string' && node.name === 'system / SlicedString';
-          const isConcat =
-            node.type === 'concatenated string' ||
-            (node.type === 'string' && node.name === 'system / ConsString');
+          // V8 represents these as distinct node *types*, not as `string`
+          // nodes with a special name. A sliced string shares the backing
+          // store of a parent; a concatenated (cons) string references two
+          // halves via `first`/`second`.
+          const isSliced = node.type === 'sliced string';
+          const isConcat = node.type === 'concatenated string';
 
           if (!isSliced && !isConcat) return;
 
@@ -76,18 +76,15 @@ export function registerSlicedStrings(server: McpServer): void {
             concatTotalSize += node.self_size;
           }
 
-          // For sliced strings, follow the 'parent' edge to find the
-          // backing string
+          // Only sliced strings keep a single large parent alive through the
+          // `parent` edge. (Cons strings split across two halves and rarely
+          // pin one oversized backing buffer, so they're counted but not
+          // attributed to a parent here.)
+          if (!isSliced) return;
           for (const edge of node.references) {
+            if (String(edge.name_or_index) !== 'parent') continue;
             const target = edge.toNode;
-            if (target.type !== 'string') continue;
-            // Skip other sliced/concat strings — find the actual parent
-            if (
-              target.name === 'system / SlicedString' ||
-              target.name === 'system / ConsString'
-            ) {
-              continue;
-            }
+            if (!target.isString) continue;
 
             const existing = parentMap.get(target.id);
             if (existing) {
@@ -103,6 +100,7 @@ export function registerSlicedStrings(server: McpServer): void {
                 sliced_total_size: node.self_size,
               });
             }
+            break;
           }
         });
 

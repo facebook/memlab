@@ -153,7 +153,9 @@ export function registerObjectShape(server: McpServer): void {
                 targetLabel = `@${target.id} "${val.length > 60 ? val.slice(0, 60) + '...' : val}"`;
               }
             } else if (target.name === 'smi number' && target.self_size === 0) {
-              targetLabel = `${target.id >> 1} (smi)`;
+              // Decoded SMI value (id >> 1). Include the node id so it can be
+              // passed to memlab_get_value if needed (Feedback §1c).
+              targetLabel = `${target.id >> 1} (smi int, @${target.id})`;
             } else if (target.name === 'heap number') {
               targetLabel = `@${target.id} (heap number)`;
             }

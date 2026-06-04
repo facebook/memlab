@@ -90,14 +90,58 @@ function walkScopeChain(
   return {variables: allVars, depth};
 }
 
+function findEdge(node: IHeapNode, name: string) {
+  return node.references.find(e => String(e.name_or_index) === name) ?? null;
+}
+
+interface RegisterEntry {
+  index: number;
+  target: IHeapNode;
+  resolvedName: string | null;
+}
+
+/**
+ * For a suspended generator/async frame, enumerate its
+ * `parameters_and_registers` FixedArray. Register slots are opaque numeric
+ * indices in the snapshot, but values that are *also* context-allocated show
+ * up as named variables in the scope chain — so we cross-reference by target
+ * node id to recover source variable names where possible (Feedback §3a).
+ */
+function inspectFrameRegisters(
+  generator: IHeapNode,
+  nameById: Map<number, string>,
+  minRetained: number,
+): RegisterEntry[] {
+  const parEdge = findEdge(generator, 'parameters_and_registers');
+  if (!parEdge) return [];
+  const arr = parEdge.toNode;
+  const entries: RegisterEntry[] = [];
+  for (const edge of arr.references) {
+    if (edge.type !== 'element') continue;
+    const target = edge.toNode;
+    if (target.id <= 3) continue;
+    if (target.name === 'undefined' || target.name === 'the_hole') continue;
+    if (target.retainedSize < minRetained) continue;
+    const idx = Number(edge.name_or_index);
+    entries.push({
+      index: Number.isFinite(idx) ? idx : -1,
+      target,
+      resolvedName: nameById.get(target.id) ?? null,
+    });
+  }
+  entries.sort((a, b) => b.target.retainedSize - a.target.retainedSize);
+  return entries;
+}
+
 export function registerClosureInspection(server: McpServer): void {
   server.tool(
     'memlab_closure_inspection',
-    'Inspect a closure (function) node to show its captured variables from the enclosing scope. ' +
-      'Walks the FULL scope chain via "previous" edges on V8 Context objects, reporting variables ' +
-      'at each scope depth. Shows the function name, source location, and all context-bound ' +
-      'variables with their types and sizes. Critical for diagnosing closure-based memory leaks ' +
-      'where a function unintentionally retains large objects through nested scope contexts.',
+    'Inspect a closure (function) OR a suspended generator/async frame to show its captured/live variables. ' +
+      'For closures, walks the FULL scope chain via "previous" edges on V8 Context objects, reporting variables ' +
+      'at each scope depth. For generators (suspended async functions), additionally decodes the ' +
+      '`parameters_and_registers` array and resolves register slots to source variable names where the value is ' +
+      'also context-allocated. Shows the function name, source location, and all bound variables with types and sizes. ' +
+      'Critical for diagnosing closure- and suspended-async-based memory leaks where a frame unintentionally retains large objects.',
     {
       node_id: z
         .number()
@@ -134,21 +178,36 @@ export function registerClosureInspection(server: McpServer): void {
           return errorResult(`Node with id ${node_id} not found`);
         }
 
-        if (node.type !== 'closure') {
+        // A suspended generator/async frame has a parameters_and_registers
+        // array. Treat such nodes as inspectable frames too.
+        const registersEdge = findEdge(node, 'parameters_and_registers');
+        const isGenerator = registersEdge != null;
+
+        if (node.type !== 'closure' && !isGenerator) {
           return toolResult(
-            `Node @${node_id} is not a closure (type is "${node.type}"). This tool is designed for closure nodes.`,
+            `Node @${node_id} is not a closure or generator frame (type is "${node.type}"). This tool is designed for closure nodes and suspended generator/async frames (which expose parameters_and_registers).`,
           );
         }
 
-        // Also look for the "shared" edge which points to SharedFunctionInfo
-        const sharedEdge = node.references.find(
-          e => String(e.name_or_index) === 'shared' && e.type === 'internal',
-        );
+        // For a generator, the function/closure lives behind the "function"
+        // edge; resolve scope context and shared info from there.
+        const fnNode = isGenerator
+          ? (findEdge(node, 'function')?.toNode ?? node)
+          : node;
 
-        // Get the context chain — the scope object this closure closes over
-        const contextEdge = node.references.find(
-          e => String(e.name_or_index) === 'context' && e.type === 'internal',
-        );
+        // Also look for the "shared" edge which points to SharedFunctionInfo
+        const sharedEdge =
+          fnNode.references.find(
+            e => String(e.name_or_index) === 'shared' && e.type === 'internal',
+          ) ?? findEdge(fnNode, 'shared');
+
+        // Get the context chain — the scope object this frame closes over
+        const contextEdge =
+          fnNode.references.find(
+            e => String(e.name_or_index) === 'context' && e.type === 'internal',
+          ) ??
+          findEdge(node, 'context') ??
+          findEdge(fnNode, 'context');
 
         // Also collect direct context-type edges from the closure itself
         const directVars = node.references
@@ -219,18 +278,24 @@ export function registerClosureInspection(server: McpServer): void {
         );
         filteredVars = filteredVars.slice(0, effectiveMax);
 
-        const location = node.location
+        const locNode = fnNode.location ? fnNode : node;
+        const location = locNode.location
           ? {
-              script_id: node.location.script_id,
-              line: node.location.line,
-              column: node.location.column,
+              script_id: locNode.location.script_id,
+              line: locNode.location.line,
+              column: locNode.location.column,
             }
           : null;
 
         const lines = [
-          `**Closure:** ${formatNodeInline(node.id, node.name, node.type, node.self_size)}`,
+          `**${isGenerator ? 'Suspended frame' : 'Closure'}:** ${formatNodeInline(node.id, node.name, node.type, node.self_size)}`,
           `**Self Size:** ${formatBytes(node.self_size)} | **Retained Size:** ${formatBytes(node.retainedSize)}`,
         ];
+        if (isGenerator && fnNode !== node) {
+          lines.push(
+            `**Function:** ${formatNodeInline(fnNode.id, fnNode.name, fnNode.type, fnNode.self_size)}`,
+          );
+        }
         if (location) {
           lines.push(
             `**Location:** script ${location.script_id}, line ${location.line}, col ${location.column}`,
@@ -297,6 +362,55 @@ export function registerClosureInspection(server: McpServer): void {
           lines.push(
             `All ${formatNumber(totalVarCount)} variables are below the ${formatBytes(min_retained_size)} threshold (${formatBytes(totalVarRetained)} total). Lower min_retained_size to see them.`,
           );
+        }
+
+        // For suspended generator/async frames, decode parameters_and_registers.
+        if (isGenerator) {
+          const nameById = new Map<number, string>();
+          for (const v of allVars) {
+            if (!nameById.has(v.target_id)) {
+              nameById.set(v.target_id, v.variable_name);
+            }
+          }
+          const regs = inspectFrameRegisters(node, nameById, min_retained_size);
+          lines.push('');
+          lines.push(
+            `**Live registers (\`parameters_and_registers\`):** ${formatNumber(regs.length)} slot(s) retaining ≥ ${formatBytes(min_retained_size)}`,
+          );
+          if (regs.length > 0) {
+            const effMax = max_variables > 0 ? max_variables : regs.length;
+            const headers = [
+              'Slot',
+              'Source name',
+              'Target',
+              'Type',
+              'Retained',
+            ];
+            const rightCols = new Set([4]);
+            const rows = regs.slice(0, effMax).map(r => {
+              let targetLabel = `@${r.target.id} ${r.target.name}`;
+              if (r.target.isString) {
+                const s = r.target.toStringNode();
+                if (s) {
+                  const v = s.stringValue;
+                  targetLabel = `@${r.target.id} "${v.length > 50 ? v.slice(0, 50) + '...' : v}"`;
+                }
+              }
+              return [
+                r.index >= 0 ? `[${r.index}]` : '?',
+                r.resolvedName ?? '(unnamed register)',
+                targetLabel,
+                r.target.type,
+                formatBytes(r.target.retainedSize),
+              ];
+            });
+            lines.push('');
+            lines.push(markdownTable(headers, rows, rightCols));
+            lines.push('');
+            lines.push(
+              '_Register slots are bytecode-local indices. Names are recovered when the value is also context-allocated (appears in the scope chain above); slots shown as "(unnamed register)" are stack-only temporaries whose source name is not in the snapshot._',
+            );
+          }
         }
 
         return toolResult(lines.join('\n'));

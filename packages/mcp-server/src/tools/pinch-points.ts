@@ -19,6 +19,7 @@ import {
   truncateNodeName,
   errorResult,
   toolResult,
+  suggestionsSuppressed,
 } from '../utils.js';
 
 interface PinchPointEntry {
@@ -143,16 +144,18 @@ export function registerPinchPoints(server: McpServer): void {
           markdownTable(headers, rows, rightCols),
           '',
           '**Interpretation:** Each row is a small object retaining a large subtree. Freeing it (e.g., clearing a cache, removing an event listener) would reclaim the retained size.',
-          '',
-          '**Suggested next steps:**',
         ];
 
-        const top = candidates[0];
-        lines.push(
-          `- Inspect top pinch point: \`memlab_get_node(${top.nodeId})\` → \`memlab_object_shape(${top.nodeId})\``,
-          `- See what it retains: \`memlab_dominator_subtree(${top.nodeId})\``,
-          `- Trace how it's kept alive: \`memlab_retainer_trace(${top.nodeId})\``,
-        );
+        if (!suggestionsSuppressed()) {
+          const top = candidates[0];
+          lines.push(
+            '',
+            '**Suggested next steps:**',
+            `- Inspect top pinch point: \`memlab_get_node(${top.nodeId})\` → \`memlab_object_shape(${top.nodeId})\``,
+            `- See what it retains: \`memlab_dominator_subtree(${top.nodeId})\``,
+            `- Trace how it's kept alive: \`memlab_retainer_trace(${top.nodeId})\``,
+          );
+        }
 
         return toolResult(lines.join('\n'));
       } catch (err) {

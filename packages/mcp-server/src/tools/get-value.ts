@@ -17,6 +17,7 @@ import {
   formatNodeInline,
   errorResult,
   toolResult,
+  suggestionsSuppressed,
 } from '../utils.js';
 
 function decodeSmi(node: IHeapNode): number | null {
@@ -95,17 +96,44 @@ export function registerGetValue(server: McpServer): void {
     {
       node_id: z
         .number()
-        .describe('The numeric ID of the number node to decode'),
+        .describe(
+          'The numeric ID of the number node to decode, OR (with property_name) the owner object whose numeric property should be decoded.',
+        ),
+      property_name: z
+        .string()
+        .optional()
+        .describe(
+          'Optional: decode this numeric property of node_id instead of node_id itself. Lets you decode an inline SMI/number property by (node_id, property_name) without first looking up the value node.',
+        ),
     },
-    async ({node_id}) => {
+    async ({node_id, property_name}) => {
       try {
         const snapshot = getSnapshot();
-        const node = snapshot.getNodeById(node_id);
-        if (!node) {
+        const owner = snapshot.getNodeById(node_id);
+        if (!owner) {
           return errorResult(`Node with id ${node_id} not found`);
+        }
+        let node = owner;
+        if (property_name != null) {
+          const edge = owner.references.find(
+            e =>
+              e.type === 'property' &&
+              String(e.name_or_index) === property_name,
+          );
+          if (!edge) {
+            return errorResult(
+              `Property "${property_name}" not found on @${node_id} (${owner.name}).`,
+            );
+          }
+          node = edge.toNode;
         }
 
         const lines: string[] = [];
+        if (property_name != null) {
+          lines.push(
+            `**Property:** \`${property_name}\` on @${node_id} ${owner.name} (${owner.type})`,
+          );
+        }
         lines.push(
           `**Node:** ${formatNodeInline(node.id, node.name, node.type, node.self_size)}`,
         );
@@ -118,7 +146,7 @@ export function registerGetValue(server: McpServer): void {
         if (smiValue !== null) {
           lines.push(`**Decoded SMI Value:** ${smiValue}`);
           lines.push(
-            `**Encoding:** SMI (Small Integer) — value = node_id >> 1 = ${node_id} >> 1 = ${smiValue}`,
+            `**Encoding:** SMI (Small Integer) — value = node_id >> 1 = ${node.id} >> 1 = ${smiValue}`,
           );
         } else {
           const heapNum = decodeHeapNumber(node);
@@ -133,7 +161,7 @@ export function registerGetValue(server: McpServer): void {
             lines.push(`**Type:** Number node (unrecognized encoding)`);
           } else {
             lines.push(
-              `**Note:** Node @${node_id} is not a number node (type: "${node.type}", name: "${node.name}").`,
+              `**Note:** Node @${node.id} is not a number node (type: "${node.type}", name: "${node.name}").`,
             );
             lines.push(
               'This tool is designed for "smi number" and "heap number" nodes.',
@@ -165,19 +193,21 @@ export function registerGetValue(server: McpServer): void {
           }
         }
 
-        lines.push('');
-        lines.push('**Suggested next steps:**');
-        if (contexts.length > 0) {
+        if (!suggestionsSuppressed()) {
+          lines.push('');
+          lines.push('**Suggested next steps:**');
+          if (contexts.length > 0) {
+            lines.push(
+              `- Inspect owner: \`memlab_object_shape(${contexts[0].ownerId})\``,
+            );
+            lines.push(
+              `- Trace owner retention: \`memlab_retainer_trace(${contexts[0].ownerId})\``,
+            );
+          }
           lines.push(
-            `- Inspect owner: \`memlab_object_shape(${contexts[0].ownerId})\``,
-          );
-          lines.push(
-            `- Trace owner retention: \`memlab_retainer_trace(${contexts[0].ownerId})\``,
+            `- For all number properties on an object, use \`memlab_object_shape\` — it decodes SMI values inline`,
           );
         }
-        lines.push(
-          `- For all number properties on an object, use \`memlab_object_shape\` — it decodes SMI values inline`,
-        );
 
         return toolResult(lines.join('\n'));
       } catch (err) {

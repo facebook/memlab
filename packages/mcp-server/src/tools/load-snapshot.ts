@@ -11,11 +11,18 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapSnapshot} from '@memlab/core';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
+import {execFileSync} from 'child_process';
 import {z} from 'zod';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
 const {getFullHeapFromFile} = memlabHeapAnalysis;
-import {setSnapshot, getSnapshotMetadata} from '../heap-state.js';
+import {
+  setSnapshot,
+  getSnapshotMetadata,
+  setSessionConfig,
+  listSnapshots,
+} from '../heap-state.js';
 import type {SnapshotEnv} from '../heap-state.js';
 import {
   formatBytes,
@@ -24,6 +31,56 @@ import {
   errorResult,
   textResult,
 } from '../utils.js';
+
+// The bucket the Nest auto-capture + the Manifold links in diffs use, so a
+// bare snapshot filename resolves predictably (Feedback §7).
+const DEFAULT_MANIFOLD_BUCKET = 'nest_server_nodejs_heap_snapshots';
+
+/**
+ * Resolve a `file_path` that may be a local path, a `manifold://bucket/key`
+ * URL, or a bare snapshot filename to a local path, fetching from Manifold
+ * into a temp dir when needed. Returns {localPath, fetchedFrom}.
+ */
+function resolveSnapshotPath(filePath: string): {
+  localPath: string;
+  fetchedFrom: string | null;
+} {
+  // Already a local file? Use it directly.
+  const asLocal = path.resolve(filePath);
+  if (!filePath.startsWith('manifold://') && fs.existsSync(asLocal)) {
+    return {localPath: asLocal, fetchedFrom: null};
+  }
+
+  let manifoldKey: string | null = null;
+  if (filePath.startsWith('manifold://')) {
+    manifoldKey = filePath.slice('manifold://'.length);
+  } else if (!filePath.includes('/') && /\.heapsnapshot$/i.test(filePath)) {
+    // Bare snapshot filename → resolve against the default bucket's flat/ tree.
+    manifoldKey = `${DEFAULT_MANIFOLD_BUCKET}/flat/${filePath}`;
+  }
+
+  if (!manifoldKey) {
+    // Nothing we can fetch; let the caller report "file not found".
+    return {localPath: asLocal, fetchedFrom: null};
+  }
+
+  // A Manifold key must be bucket/key; if only a key was given, prefix bucket.
+  if (!manifoldKey.includes('/')) {
+    manifoldKey = `${DEFAULT_MANIFOLD_BUCKET}/${manifoldKey}`;
+  }
+
+  const dest = path.join(
+    os.tmpdir(),
+    `memlab-${path.basename(manifoldKey).replace(/[^A-Za-z0-9._-]/g, '_')}`,
+  );
+  process.stderr.write(`Fetching ${manifoldKey} from Manifold → ${dest}…\n`);
+  execFileSync('manifold', ['get', manifoldKey, dest], {
+    stdio: ['ignore', 'ignore', 'pipe'],
+    timeout: 5 * 60 * 1000,
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  return {localPath: dest, fetchedFrom: manifoldKey};
+}
 
 interface LargestObjInfo {
   id: number;
@@ -93,7 +150,9 @@ function quickDiagnosis(
       largeStrings.push({id: node.id, name: node.name, size: node.self_size});
     }
 
-    if (node.type === 'string' && node.name !== 'system / SlicedString') {
+    // Count flat-string duplication only. Sliced strings (type 'sliced
+    // string') share a parent's storage, so they aren't independent dupes.
+    if (node.type === 'string') {
       const key = node.name.length > 100 ? node.name.slice(0, 100) : node.name;
       stringCounts.set(key, (stringCounts.get(key) ?? 0) + 1);
     }
@@ -150,9 +209,38 @@ function quickDiagnosis(
 export function registerLoadSnapshot(server: McpServer): void {
   server.tool(
     'memlab_load_snapshot',
-    'Load and parse a .heapsnapshot file. This builds indexes, computes the dominator tree, and calculates retained sizes. Returns a quick diagnosis highlighting potential issues. Only one snapshot can be loaded at a time.',
+    'Load and parse a .heapsnapshot file. This builds indexes, computes the dominator tree, and calculates retained sizes. Returns a quick diagnosis highlighting potential issues. Accepts a local absolute path, a manifold:// URL, or a bare snapshot filename (resolved against the nest_server_nodejs_heap_snapshots bucket and fetched automatically). Multiple snapshots can be kept resident — pass keep_previous:true to load several for diffing/comparison; switch between them with memlab_snapshots.',
     {
-      file_path: z.string().describe('Absolute path to a .heapsnapshot file'),
+      file_path: z
+        .string()
+        .describe(
+          'A local absolute path to a .heapsnapshot file, a manifold:// URL (manifold://bucket/key), or a bare snapshot filename to fetch from the nest_server_nodejs_heap_snapshots bucket.',
+        ),
+      alias: z
+        .string()
+        .optional()
+        .describe(
+          'Optional short handle to identify this snapshot in a multi-snapshot session (defaults to the file name). Node ids are only valid within the snapshot they came from.',
+        ),
+      keep_previous: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Keep previously-loaded snapshots resident instead of replacing them (default false). Enables before/after diffing and app-to-app comparison without reloading. Each resident snapshot holds its full graph in memory — watch server RSS for very large heaps.',
+        ),
+      quiet: z
+        .boolean()
+        .optional()
+        .describe(
+          'Session output control: when true, the per-call "> Snapshot: …" header is printed once instead of on every subsequent tool result (saves tokens over a long investigation).',
+        ),
+      suppress_suggestions: z
+        .boolean()
+        .optional()
+        .describe(
+          'Session output control: when true, tools omit their "Suggested next steps" trailers to save tokens.',
+        ),
       max_file_size_mb: z
         .number()
         .optional()
@@ -161,12 +249,50 @@ export function registerLoadSnapshot(server: McpServer): void {
           'Maximum file size in MB to attempt loading (default 900). Snapshots larger than this will return an error instead of risking an OOM crash. Increase if your Node.js process has extra memory (--max-old-space-size).',
         ),
     },
-    async ({file_path, max_file_size_mb}) => {
+    async ({
+      file_path,
+      alias,
+      keep_previous,
+      quiet,
+      suppress_suggestions,
+      max_file_size_mb,
+    }) => {
       try {
+        if (quiet != null || suppress_suggestions != null) {
+          setSessionConfig({
+            ...(quiet != null ? {quietHeader: quiet} : {}),
+            ...(suppress_suggestions != null
+              ? {suppressSuggestions: suppress_suggestions}
+              : {}),
+          });
+        }
         const previousMeta = getSnapshotMetadata();
-        const resolved = path.resolve(file_path);
+        let resolved: string;
+        let fetchedFrom: string | null = null;
+        try {
+          const r = resolveSnapshotPath(file_path);
+          resolved = r.localPath;
+          fetchedFrom = r.fetchedFrom;
+        } catch (fetchErr) {
+          const msg =
+            fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+          return errorResult(
+            new Error(
+              `Failed to fetch "${file_path}" from Manifold: ${msg}\n` +
+                `Ensure the 'manifold' CLI is installed and you have access to the bucket, ` +
+                `or pass a local absolute path instead.`,
+            ),
+          );
+        }
         if (!fs.existsSync(resolved)) {
-          return errorResult(new Error(`File not found: ${resolved}`));
+          return errorResult(
+            new Error(
+              `File not found: ${resolved}` +
+                (file_path.includes('/')
+                  ? ''
+                  : ` (also tried fetching "${file_path}" from the ${DEFAULT_MANIFOLD_BUCKET} bucket)`),
+            ),
+          );
         }
         const fileStat = fs.statSync(resolved);
         const fileSizeMB = fileStat.size / (1024 * 1024);
@@ -228,14 +354,21 @@ export function registerLoadSnapshot(server: McpServer): void {
         });
 
         const env = detectEnv(snapshot);
-        const fileName = path.basename(file_path);
-        setSnapshot(snapshot, file_path, {
-          fileName,
-          nodeCount,
-          edgeCount,
-          totalSize,
-          env,
-        });
+        const fileName = path.basename(
+          fetchedFrom ?? file_path.replace(/^manifold:\/\//, ''),
+        );
+        const meta = setSnapshot(
+          snapshot,
+          resolved,
+          {
+            fileName,
+            nodeCount,
+            edgeCount,
+            totalSize,
+            env,
+          },
+          {alias, replace: !keep_previous},
+        );
 
         const envLabel =
           env === 'browser'
@@ -244,14 +377,30 @@ export function registerLoadSnapshot(server: McpServer): void {
               ? 'Node.js'
               : 'Unknown';
         const lines: string[] = [];
-        if (previousMeta) {
+        if (previousMeta && !keep_previous) {
           lines.push(
             `⚠ Replacing previously loaded snapshot "${previousMeta.fileName}"`,
           );
         }
+        if (fetchedFrom) {
+          lines.push(`Fetched from Manifold: ${fetchedFrom}`);
+        }
         lines.push(
-          `Loaded ${file_path} (${formatBytes(fileStat.size)} on disk): ${formatNumber(nodeCount)} nodes, ${formatNumber(edgeCount)} edges, ${formatBytes(totalSize)} heap size (${envLabel} snapshot)`,
+          `Loaded ${fileName} (${formatBytes(fileStat.size)} on disk): ${formatNumber(nodeCount)} nodes, ${formatNumber(edgeCount)} edges, ${formatBytes(totalSize)} heap size (${envLabel} snapshot) [handle: ${meta.handle}]`,
         );
+        if (keep_previous) {
+          const all = listSnapshots();
+          if (all.length > 1) {
+            lines.push(
+              `Resident snapshots (${all.length}): ${all
+                .map(
+                  m =>
+                    `${m.handle === meta.handle ? '→ ' : ''}${m.handle} (${formatBytes(m.totalSize)})`,
+                )
+                .join(', ')}. Switch with memlab_snapshots.`,
+            );
+          }
+        }
 
         const warnings = quickDiagnosis(snapshot, totalSize);
         if (warnings.length > 0) {

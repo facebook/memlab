@@ -14,7 +14,13 @@ import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
-import {formatBytes, formatNumber, errorResult, toolResult} from '../utils.js';
+import {
+  formatBytes,
+  formatNumber,
+  errorResult,
+  toolResult,
+  suggestionsSuppressed,
+} from '../utils.js';
 
 interface ShapeGroup {
   properties: string[];
@@ -64,15 +70,22 @@ export function registerShapeHistogram(server: McpServer): void {
           'Filter to objects with this constructor name (e.g., "Object"). If omitted, includes all object-type nodes.',
         ),
       sort_by: z
-        .enum(['retained_size', 'count', 'self_size'])
+        .enum(['retained_size', 'retained', 'count', 'self_size', 'self'])
         .optional()
         .default('retained_size')
         .describe(
-          'Sort order: "retained_size" (default), "count" (instance count — find accumulation patterns), or "self_size".',
+          'Sort order: "retained_size" (default; alias "retained"), "count" (instance count — find accumulation patterns), or "self_size" (alias "self").',
         ),
     },
     async ({limit, min_count, min_retained_size, class_name, sort_by}) => {
       try {
+        // Normalize sort aliases so the vocabulary matches other tools.
+        const sort =
+          sort_by === 'retained'
+            ? 'retained_size'
+            : sort_by === 'self'
+              ? 'self_size'
+              : sort_by;
         const snapshot = getSnapshot();
         const shapeMap = new Map<string, ShapeGroup>();
 
@@ -122,9 +135,9 @@ export function registerShapeHistogram(server: McpServer): void {
           );
         }
 
-        if (sort_by === 'count') {
+        if (sort === 'count') {
           finalList.sort((a, b) => b.count - a.count);
-        } else if (sort_by === 'self_size') {
+        } else if (sort === 'self_size') {
           finalList.sort((a, b) => b.totalSelfSize - a.totalSelfSize);
         } else {
           finalList.sort((a, b) => b.retainedSize - a.retainedSize);
@@ -156,18 +169,23 @@ export function registerShapeHistogram(server: McpServer): void {
           lines.push(`   Example: @${g.exampleNodeId}`);
         }
 
-        lines.push('', '**Suggested next steps:**');
-        const top = finalList[0];
-        lines.push(
-          `- Inspect example: \`memlab_object_shape(${top.exampleNodeId})\``,
-        );
-        lines.push(
-          `- Trace retention: \`memlab_retainer_trace(${top.exampleNodeId})\``,
-        );
-        if (finalList.length > 1) {
+        if (!suggestionsSuppressed()) {
+          lines.push('', '**Suggested next steps:**');
+          const top = finalList[0];
           lines.push(
-            `- Compare shapes: \`memlab_object_shape\` on examples from different shapes`,
+            `- Inspect example: \`memlab_object_shape(${top.exampleNodeId})\``,
           );
+          lines.push(
+            `- Distribution of a property's values: \`memlab_property_distribution\` (cardinality + top values)`,
+          );
+          lines.push(
+            `- Trace retention: \`memlab_retainer_trace(${top.exampleNodeId})\``,
+          );
+          if (finalList.length > 1) {
+            lines.push(
+              `- Compare shapes: \`memlab_object_shape\` on examples from different shapes`,
+            );
+          }
         }
 
         return toolResult(lines.join('\n'));

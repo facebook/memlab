@@ -6,6 +6,8 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that 
 
 The MCP server loads and analyzes large heap snapshots in memory, which can exceed Node.js's default heap limit. You need to configure `--max-old-space-size=8192` (or higher) to avoid out-of-memory crashes. The configuration examples below include this setting.
 
+**Snapshot-size ceiling.** The server holds the full parsed graph (nodes, edges, dominator tree, indexes) resident, so its own RSS is roughly **3–5× the on-disk snapshot size**. With the recommended `--max-old-space-size=8192`, snapshots up to ~850 MB on disk have been analyzed reliably; `memlab_load_snapshot` refuses files above `max_file_size_mb` (default 900) to avoid OOM crashes that would lose all state. For larger heaps, raise both `--max-old-space-size` and `max_file_size_mb`. When loading multiple snapshots with `keep_previous: true`, each resident snapshot adds its full graph to RSS — unload ones you're done with via `memlab_snapshots`.
+
 ## Quick Start
 
 ### Option 1: Global install
@@ -126,11 +128,42 @@ console.log(`Heap snapshot written to ${snapshot}`);
 
 ### `memlab_load_snapshot`
 
-Load and parse a `.heapsnapshot` file. Builds indexes, computes the dominator tree, and calculates retained sizes.
+Load and parse a `.heapsnapshot` file. Builds indexes, computes the dominator tree, and calculates retained sizes. `file_path` may be a local absolute path, a `manifold://bucket/key` URL, or a bare snapshot filename (resolved against the `nest_server_nodejs_heap_snapshots` bucket and fetched via `manifold get`). Pass `keep_previous: true` to keep earlier snapshots resident for diffing/comparison (each gets a handle; manage with `memlab_snapshots`). `quiet` / `suppress_suggestions` set session-wide output controls to trim repeated boilerplate.
 
 ```
-Input:  { file_path: "/path/to/snapshot.heapsnapshot" }
-Output: { status, file_path, node_count, edge_count, total_size }
+Input:  { file_path: "snap.heapsnapshot" | "/abs/path" | "manifold://bucket/key",
+          alias?: "before", keep_previous?: false, quiet?: false,
+          suppress_suggestions?: false, max_file_size_mb?: 900 }
+Output: { status, file_path, node_count, edge_count, total_size, handle }
+```
+
+### `memlab_snapshots`
+
+Manage the multi-snapshot session and session output controls.
+
+```
+Input:  { action?: "list"|"switch"|"unload", handle?: "before",
+          quiet?: bool, suppress_suggestions?: bool }
+Output: resident snapshots (active one marked), or switch/unload result
+```
+
+### `memlab_property_distribution`
+
+For a class/shape and a property, report value cardinality plus the top-K most frequent values. The key tool for diagnosing cardinality explosions (OTel metric attributes, cache keys, per-record fields).
+
+```
+Input:  { property: "http.route", class_name?: "Object", shape?: ["a","b"],
+          top_k?: 15, min_count?: 1 }
+Output: { scanned, distinct_values, top_values: [{ value, count, pct }] }
+```
+
+### `memlab_growth_signals`
+
+Single-snapshot heuristic that flags likely unbounded growth: Maps/Sets keyed by timestamps or sequential integers, and large ever-growing Arrays. Confirm with a later snapshot + `memlab_diff_snapshots`.
+
+```
+Input:  { limit?: 15, min_entries?: 200, min_retained_size?: 262144 }
+Output: candidates with kind, entry count, retained size, sample keys
 ```
 
 ### `memlab_snapshot_summary`

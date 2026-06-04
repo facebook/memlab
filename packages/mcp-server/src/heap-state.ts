@@ -13,6 +13,12 @@ import type {IHeapSnapshot} from '@memlab/core';
 export type SnapshotEnv = 'browser' | 'node' | 'unknown';
 
 export interface SnapshotMetadata {
+  /**
+   * Stable, human-friendly handle for this snapshot within the session.
+   * Node ids are only valid relative to the snapshot they were read from;
+   * the handle identifies which loaded snapshot a given id belongs to.
+   */
+  handle: string;
   filePath: string;
   fileName: string;
   nodeCount: number;
@@ -21,33 +27,156 @@ export interface SnapshotMetadata {
   env: SnapshotEnv;
 }
 
-let currentSnapshot: IHeapSnapshot | null = null;
-let currentMetadata: SnapshotMetadata | null = null;
+interface LoadedSnapshot {
+  snapshot: IHeapSnapshot;
+  metadata: SnapshotMetadata;
+}
+
+// Multiple snapshots can be resident at once (for diffing and before/after
+// comparison). The "current" handle is the default target for tools that
+// don't take an explicit snapshot argument.
+const loaded = new Map<string, LoadedSnapshot>();
+let currentHandle: string | null = null;
+
+/**
+ * Session-level output controls to trim repeated boilerplate tokens.
+ * - `quietHeader`: when true, the per-call snapshot header is printed only
+ *   once per loaded snapshot instead of on every tool result.
+ * - `suppressSuggestions`: when true, tools omit their "Suggested next steps"
+ *   trailers.
+ */
+export interface SessionConfig {
+  quietHeader: boolean;
+  suppressSuggestions: boolean;
+}
+
+const sessionConfig: SessionConfig = {
+  quietHeader: false,
+  suppressSuggestions: false,
+};
+
+// Tracks whether the header has been emitted since the current snapshot was
+// loaded/activated, so `quietHeader` can print it exactly once.
+let headerEmitted = false;
+
+export function getSessionConfig(): SessionConfig {
+  return sessionConfig;
+}
+
+export function setSessionConfig(patch: Partial<SessionConfig>): SessionConfig {
+  if (patch.quietHeader != null) sessionConfig.quietHeader = patch.quietHeader;
+  if (patch.suppressSuggestions != null) {
+    sessionConfig.suppressSuggestions = patch.suppressSuggestions;
+  }
+  return sessionConfig;
+}
+
+/**
+ * Returns true exactly once per loaded snapshot when `quietHeader` is on,
+ * and always when it is off. Tools call this from `toolResult` to decide
+ * whether to prepend the snapshot header.
+ */
+export function shouldEmitHeader(): boolean {
+  if (!sessionConfig.quietHeader) return true;
+  if (headerEmitted) return false;
+  headerEmitted = true;
+  return true;
+}
+
+function uniqueHandle(base: string): string {
+  // Sanitize to a short slug, then disambiguate against existing handles.
+  const slug =
+    base
+      .replace(/\.heapsnapshot$/i, '')
+      .replace(/[^A-Za-z0-9._-]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 40) || 'snapshot';
+  if (!loaded.has(slug)) return slug;
+  let i = 2;
+  while (loaded.has(`${slug}#${i}`)) i++;
+  return `${slug}#${i}`;
+}
 
 export function getSnapshot(): IHeapSnapshot {
-  if (!currentSnapshot) {
+  const entry = currentHandle ? loaded.get(currentHandle) : undefined;
+  if (!entry) {
     throw new Error('No heap snapshot loaded. Use memlab_load_snapshot first.');
   }
-  return currentSnapshot;
+  return entry.snapshot;
 }
 
 export function getFilePath(): string | null {
-  return currentMetadata?.filePath ?? null;
+  if (!currentHandle) return null;
+  return loaded.get(currentHandle)?.metadata.filePath ?? null;
 }
 
 export function getSnapshotEnv(): SnapshotEnv {
-  return currentMetadata?.env ?? 'unknown';
+  if (!currentHandle) return 'unknown';
+  return loaded.get(currentHandle)?.metadata.env ?? 'unknown';
 }
 
 export function getSnapshotMetadata(): SnapshotMetadata | null {
-  return currentMetadata;
+  if (!currentHandle) return null;
+  return loaded.get(currentHandle)?.metadata ?? null;
 }
 
+/**
+ * Register a snapshot and make it the current one.
+ *
+ * @param snapshot parsed heap snapshot
+ * @param filePath absolute path the snapshot was loaded from
+ * @param metadata derived stats (handle is assigned here if not supplied)
+ * @param opts.alias preferred handle; falls back to the file name
+ * @param opts.replace when true (default), unload all other snapshots first,
+ *        preserving the single-resident memory profile. When false, keep
+ *        previously-loaded snapshots resident for diffing/comparison.
+ */
 export function setSnapshot(
   snapshot: IHeapSnapshot,
   filePath: string,
-  metadata: Omit<SnapshotMetadata, 'filePath'>,
-): void {
-  currentSnapshot = snapshot;
-  currentMetadata = {filePath, ...metadata};
+  metadata: Omit<SnapshotMetadata, 'filePath' | 'handle'>,
+  opts: {alias?: string; replace?: boolean} = {},
+): SnapshotMetadata {
+  const replace = opts.replace ?? true;
+  if (replace) {
+    loaded.clear();
+  }
+  const handle = uniqueHandle(opts.alias || metadata.fileName);
+  const full: SnapshotMetadata = {handle, filePath, ...metadata};
+  loaded.set(handle, {snapshot, metadata: full});
+  currentHandle = handle;
+  headerEmitted = false;
+  return full;
+}
+
+export function listSnapshots(): SnapshotMetadata[] {
+  return [...loaded.values()].map(l => l.metadata);
+}
+
+export function getCurrentHandle(): string | null {
+  return currentHandle;
+}
+
+export function getSnapshotByHandle(handle: string): IHeapSnapshot | null {
+  return loaded.get(handle)?.snapshot ?? null;
+}
+
+export function getMetadataByHandle(handle: string): SnapshotMetadata | null {
+  return loaded.get(handle)?.metadata ?? null;
+}
+
+export function setCurrentSnapshot(handle: string): boolean {
+  if (!loaded.has(handle)) return false;
+  currentHandle = handle;
+  headerEmitted = false;
+  return true;
+}
+
+export function removeSnapshot(handle: string): boolean {
+  const existed = loaded.delete(handle);
+  if (existed && currentHandle === handle) {
+    currentHandle = loaded.size > 0 ? [...loaded.keys()][0] : null;
+    headerEmitted = false;
+  }
+  return existed;
 }

@@ -24,12 +24,12 @@ import {
 export function registerWeakMapEntries(server: McpServer): void {
   server.tool(
     'memlab_weakmap_entries',
-    'Enumerate key-value pairs in a WeakMap. WeakMaps are commonly used for DataStore, private fields, and metadata caches. Since WeakMap keys are weakly held, their entries reveal which objects are associated and what metadata is stored. Use this to investigate DataStore-based patterns, React internal state, and framework caches.',
+    'Enumerate the key-value pairs of ONE WeakMap (node_id is REQUIRED — this is not a global scan). WeakMaps back DataStore, private fields, and metadata caches; since keys are weakly held, their entries reveal which objects are associated and what metadata is stored. First locate a WeakMap with memlab_find_nodes_by_class("WeakMap") (or memlab_largest_objects), then pass its node id here.',
     {
       node_id: z
         .number()
         .describe(
-          'The numeric ID of a WeakMap node. Find WeakMaps with memlab_find_nodes_by_class("WeakMap").',
+          'REQUIRED. The numeric ID of a single WeakMap node. Find candidates with memlab_find_nodes_by_class("WeakMap"); there is no scan-all-WeakMaps mode.',
         ),
       limit: z
         .number()
@@ -37,11 +37,11 @@ export function registerWeakMapEntries(server: McpServer): void {
         .default(20)
         .describe('Maximum number of entries to return (default 20)'),
       sort_by: z
-        .enum(['retained_size', 'key_name'])
+        .enum(['retained_size', 'retained', 'key_name'])
         .optional()
         .default('retained_size')
         .describe(
-          'Sort entries by key retained size or key name (default: retained_size)',
+          'Sort entries by key retained size ("retained_size", alias "retained") or key name ("key_name"). Default: retained_size.',
         ),
     },
     async ({node_id, limit, sort_by}) => {
@@ -130,7 +130,7 @@ export function registerWeakMapEntries(server: McpServer): void {
           );
         }
 
-        if (sort_by === 'retained_size') {
+        if (sort_by === 'retained_size' || sort_by === 'retained') {
           entries.sort(
             (a, b) =>
               b.keyRetained +

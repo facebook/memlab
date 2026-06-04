@@ -21,6 +21,7 @@ import {
   formatNumber,
   markdownTable,
   truncateNodeName,
+  suggestionsSuppressed,
 } from '../utils.js';
 
 export function registerClassHistogram(server: McpServer): void {
@@ -184,7 +185,7 @@ export function registerClassHistogram(server: McpServer): void {
           markdownTable(headers, rows, rightCols),
         ];
 
-        if (!suppress_suggestions) {
+        if (!suppress_suggestions && !suggestionsSuppressed()) {
           const highCount = sorted.filter(v => v.count >= 1000);
           if (highCount.length > 0) {
             lines.push('', '**Suggested next steps:**');

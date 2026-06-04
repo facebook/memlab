@@ -40,8 +40,15 @@ export function registerRetainerTrace(server: McpServer): void {
         .describe(
           'Show retained size at each node in the trace (default true). Makes it easy to see where memory concentrates along the path.',
         ),
+      expand: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Expand the elided middle: show every node on the path instead of collapsing consecutive V8/internal runs. Use when the interesting library/application boundary is hidden inside a "… N internal node(s) …" gap.',
+        ),
     },
-    async ({node_id, max_depth, show_sizes}) => {
+    async ({node_id, max_depth, show_sizes, expand}) => {
       try {
         const snapshot = getSnapshot();
         const node = snapshot.getNodeById(node_id);
@@ -100,34 +107,51 @@ export function registerRetainerTrace(server: McpServer): void {
         // Reverse to get root-first order
         reverseItems.reverse();
 
-        // Collapse consecutive internal/V8 nodes for readability
+        // Collapse consecutive internal/V8 nodes for readability, unless the
+        // caller asked to expand the full path (Feedback §3c).
         const collapsed: Array<{
           node: IHeapNode;
           edgeName?: string;
           edgeType?: string;
           collapsedCount?: number;
         }> = [];
-        let internalRun = 0;
-        for (const item of reverseItems) {
-          if (!isNodeWorthInspecting(item.node) && collapsed.length > 0) {
-            internalRun++;
-          } else {
-            if (internalRun > 0) {
-              collapsed.push({
-                node: item.node,
-                edgeName: item.edgeName,
-                edgeType: item.edgeType,
-                collapsedCount: internalRun,
-              });
-              internalRun = 0;
+        if (expand) {
+          collapsed.push(...reverseItems);
+        } else {
+          let internalRun = 0;
+          for (const item of reverseItems) {
+            if (!isNodeWorthInspecting(item.node) && collapsed.length > 0) {
+              internalRun++;
             } else {
-              collapsed.push(item);
+              if (internalRun > 0) {
+                collapsed.push({
+                  node: item.node,
+                  edgeName: item.edgeName,
+                  edgeType: item.edgeType,
+                  collapsedCount: internalRun,
+                });
+                internalRun = 0;
+              } else {
+                collapsed.push(item);
+              }
             }
           }
+          if (internalRun > 0 && collapsed.length > 0) {
+            const last = collapsed[collapsed.length - 1];
+            last.collapsedCount = (last.collapsedCount ?? 0) + internalRun;
+          }
         }
-        if (internalRun > 0 && collapsed.length > 0) {
-          const last = collapsed[collapsed.length - 1];
-          last.collapsedCount = (last.collapsedCount ?? 0) + internalRun;
+
+        // Highlight the application/library boundary: the node closest to the
+        // target that has a source location (i.e. user/app code, not a V8
+        // internal). Helps when the boundary is otherwise buried in the path.
+        let appFrame: IHeapNode | null = null;
+        for (let i = reverseItems.length - 1; i >= 0; i--) {
+          const n = reverseItems[i].node;
+          if (n.location && isNodeWorthInspecting(n)) {
+            appFrame = n;
+            break;
+          }
         }
 
         const fullLength = reverseItems.length;
@@ -142,6 +166,16 @@ export function registerRetainerTrace(server: McpServer): void {
           `Retainer trace for @${node_id} (${fullLength} nodes${depthNote}):`,
           '',
         ];
+        if (appFrame) {
+          const loc = appFrame.location;
+          lines.push(
+            `First source-located (app) frame: @${appFrame.id} ${formatNodeInline(appFrame.id, appFrame.name, appFrame.type, appFrame.self_size)}` +
+              (loc
+                ? ` — script ${loc.script_id}:${loc.line}:${loc.column}`
+                : ''),
+            '',
+          );
+        }
 
         if (show_sizes) {
           // Vertical format with sizes for readability
