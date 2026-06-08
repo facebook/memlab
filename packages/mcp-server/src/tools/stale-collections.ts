@@ -9,7 +9,7 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
-import type {IHeapNode, IHeapEdge} from '@memlab/core';
+import type {IHeapNode, IHeapEdge, IHeapSnapshot} from '@memlab/core';
 import {z} from 'zod';
 import {getSnapshot, getSnapshotEnv} from '../heap-state.js';
 import {
@@ -66,41 +66,65 @@ const LISTENER_CONTEXT_PROPS = new Set([
   'scope',
 ]);
 
+/**
+ * One pass over the heap to collect the ids of objects that look like a listener
+ * record — i.e. they carry BOTH a callback-ish and a context-ish property
+ * (`{callback, context}`, `{fn, ctx}`, …). Precomputing this once turns the
+ * `listener_orphaned` check from O(entries × referrers × referrer-edges) — a
+ * per-entry re-walk of every referrer's outgoing edges — into an O(1) set lookup
+ * per referrer, which is what made the unbounded scan wedge on large Node heaps.
+ */
+function buildListenerObjectIds(
+  snapshot: IHeapSnapshot,
+  deadline: number,
+): {ids: Set<number>; timedOut: boolean} {
+  const ids = new Set<number>();
+  let timedOut = false;
+  let seen = 0;
+  snapshot.nodes.forEach(node => {
+    if (timedOut) return;
+    // This precompute is a full O(N) pass; keep it inside the same wall-clock
+    // budget as the scan so timeout_ms bounds the whole operation.
+    if ((seen++ & 0x7ff) === 0 && Date.now() > deadline) {
+      timedOut = true;
+      return;
+    }
+    if (node.type !== 'object' || node.id <= 3) return;
+    let hasCallback = false;
+    let hasContext = false;
+    for (const edge of node.references) {
+      if (edge.type !== 'property') continue;
+      const pName = String(edge.name_or_index);
+      if (LISTENER_CALLBACK_PROPS.has(pName)) hasCallback = true;
+      else if (LISTENER_CONTEXT_PROPS.has(pName)) hasContext = true;
+      if (hasCallback && hasContext) {
+        ids.add(node.id);
+        break;
+      }
+    }
+  });
+  return {ids, timedOut};
+}
+
 function isListenerOrphaned(
   node: IHeapNode,
   ownershipEdges: Set<string>,
+  listenerObjectIds: Set<number>,
 ): boolean {
   if (node.id <= 3) return false;
   if (node.type !== 'object') return false;
 
-  let hasOwnershipRef = false;
-  for (const edge of node.referrers) {
-    const eName = String(edge.name_or_index);
-    if (ownershipEdges.has(eName)) {
-      hasOwnershipRef = true;
-      break;
-    }
-  }
-  if (hasOwnershipRef) return false;
-
+  // Single pass over the entry's (typically few) referrers: an ownership edge
+  // disqualifies it; a referrer that is a known listener record qualifies it.
   let hasListenerRef = false;
   for (const edge of node.referrers) {
-    const fromNode = edge.fromNode;
-    if (fromNode.type !== 'object' || fromNode.id <= 3) continue;
-    let fromHasCallback = false;
-    let fromHasContext = false;
-    for (const propEdge of fromNode.references) {
-      if (propEdge.type !== 'property') continue;
-      const pName = String(propEdge.name_or_index);
-      if (LISTENER_CALLBACK_PROPS.has(pName)) fromHasCallback = true;
-      if (LISTENER_CONTEXT_PROPS.has(pName)) fromHasContext = true;
+    if (ownershipEdges.has(String(edge.name_or_index))) {
+      return false;
     }
-    if (fromHasCallback && fromHasContext) {
+    if (listenerObjectIds.has(edge.fromNode.id)) {
       hasListenerRef = true;
-      break;
     }
   }
-
   return hasListenerRef;
 }
 
@@ -213,6 +237,23 @@ export function registerStaleCollections(server: McpServer): void {
             'detection mode. Objects that lack any of these incoming edges are considered orphaned. ' +
             "Customize for your app's collection naming conventions.",
         ),
+      timeout_ms: z
+        .number()
+        .optional()
+        .default(45000)
+        .describe(
+          'Wall-clock budget for the scan (default 45000). On very large heaps the per-entry ' +
+            'checks (esp. orphaned/listener_orphaned) can be expensive; when the budget is hit the ' +
+            'tool returns partial results with a note instead of hanging.',
+        ),
+      max_children_per_collection: z
+        .number()
+        .optional()
+        .default(200000)
+        .describe(
+          'Cap on how many entries are examined per collection (default 200000). Collections larger ' +
+            'than this are partially scanned (noted in output) so one giant collection cannot dominate runtime.',
+        ),
     },
     async ({
       limit,
@@ -220,6 +261,8 @@ export function registerStaleCollections(server: McpServer): void {
       min_stale_retained_size,
       detect_modes,
       ownership_edges,
+      timeout_ms,
+      max_children_per_collection,
     }) => {
       try {
         const snapshot = getSnapshot();
@@ -232,7 +275,27 @@ export function registerStaleCollections(server: McpServer): void {
           detect_modes.includes('listener_orphaned');
         const ownershipEdgeSet = new Set(ownership_edges);
 
+        // Wall-clock budget + per-collection cap so a huge heap/collection
+        // returns partial results instead of wedging.
+        const deadline = Date.now() + timeout_ms;
+        let timedOut = false;
+        let cappedCollections = 0;
+        let scanned = 0;
+
+        // Precompute listener-record ids once (single pass) so the
+        // listener_orphaned check is an O(1) lookup per referrer instead of a
+        // per-entry re-walk of every referrer's edges. This pass is itself a
+        // full O(N) traversal, so it shares the same deadline as the scan —
+        // timeout_ms bounds the whole operation, precompute included.
+        let listenerObjectIds = new Set<number>();
+        if (detectListenerOrphaned) {
+          const built = buildListenerObjectIds(snapshot, deadline);
+          listenerObjectIds = built.ids;
+          if (built.timedOut) timedOut = true;
+        }
+
         snapshot.nodes.forEach(node => {
+          if (timedOut) return;
           if (!isCollectionNode(node)) return;
 
           const children = getCollectionChildren(node);
@@ -242,6 +305,19 @@ export function registerStaleCollections(server: McpServer): void {
           let reason = '';
 
           for (const edge of children) {
+            // Bounded: check the deadline every ~2k entries; cap per collection.
+            // The interval is kept small so a heavy per-entry cost (e.g.
+            // terminal_status walking each entry's edges) can't blow well past
+            // the budget between checks.
+            if ((scanned & 0x7ff) === 0 && Date.now() > deadline) {
+              timedOut = true;
+              break;
+            }
+            scanned++;
+            if (totalChildren >= max_children_per_collection) {
+              cappedCollections++;
+              break;
+            }
             totalChildren++;
             const child = edge.toNode;
             if (child.id <= 3) continue;
@@ -262,7 +338,7 @@ export function registerStaleCollections(server: McpServer): void {
             if (
               !isStale &&
               detectListenerOrphaned &&
-              isListenerOrphaned(child, ownershipEdgeSet)
+              isListenerOrphaned(child, ownershipEdgeSet, listenerObjectIds)
             ) {
               isStale = true;
               if (!reason) reason = 'listener-only retention';
@@ -291,18 +367,37 @@ export function registerStaleCollections(server: McpServer): void {
         results.sort((a, b) => b.stale_retained_size - a.stale_retained_size);
         const topResults = results.slice(0, limit);
 
+        const scanNotes: string[] = [];
+        if (timedOut) {
+          const where =
+            scanned === 0
+              ? 'while precomputing listener records (before scanning collections)'
+              : `after ${formatNumber(scanned)} entries`;
+          scanNotes.push(
+            `⚠ Scan hit the ${formatNumber(timeout_ms)}ms time budget ${where} — results are PARTIAL. Re-run with a higher \`timeout_ms\`, narrow \`detect_modes\`, or raise \`min_stale_count\` to focus.`,
+          );
+        }
+        if (cappedCollections > 0) {
+          scanNotes.push(
+            `⚠ ${formatNumber(cappedCollections)} collection(s) exceeded \`max_children_per_collection\` (${formatNumber(max_children_per_collection)}) and were only partially scanned.`,
+          );
+        }
+        const scanNote =
+          scanNotes.length > 0 ? scanNotes.join('\n') + '\n\n' : '';
+
         if (topResults.length === 0) {
           const env = getSnapshotEnv();
           if (env === 'node') {
             return toolResult(
-              'No stale collections found. This is a Node.js snapshot — detached DOM detection is not applicable.\n\n' +
+              scanNote +
+                'No stale collections found. This is a Node.js snapshot — detached DOM detection is not applicable.\n\n' +
                 'For Node.js memory investigation, try:\n' +
                 '- `memlab_largest_objects` — find objects consuming the most memory\n' +
                 '- `memlab_class_histogram` — per-class instance counts and sizes\n' +
                 '- `memlab_sliced_strings` — find sliced strings keeping large parents alive',
             );
           }
-          return toolResult('No stale collections found.');
+          return toolResult(scanNote + 'No stale collections found.');
         }
         const hasMultipleReasons =
           new Set(topResults.map(r => r.stale_reason)).size > 1;
@@ -321,7 +416,7 @@ export function registerStaleCollections(server: McpServer): void {
           formatBytes(r.stale_retained_size),
           ...(hasMultipleReasons ? [r.stale_reason] : []),
         ]);
-        const output = `Stale collections (${topResults.length} found)\n\n${markdownTable(headers, rows, rightCols)}`;
+        const output = `${scanNote}Stale collections (${topResults.length} found)\n\n${markdownTable(headers, rows, rightCols)}`;
         return toolResult(
           output +
             '\n\n---\n\n' +
