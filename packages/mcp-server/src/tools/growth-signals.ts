@@ -18,6 +18,7 @@ import {
   markdownTable,
   errorResult,
   toolResult,
+  hasFreshnessTimestampSibling,
 } from '../utils.js';
 
 type KeyPattern = 'sequential-int' | 'timestamp' | 'monotonic-string' | 'mixed';
@@ -118,6 +119,10 @@ export function registerGrowthSignals(server: McpServer): void {
         const meta = getSnapshotMetadata();
         const totalSize = meta?.totalSize ?? 0;
         const candidates: GrowthCandidate[] = [];
+        // Count of large arrays skipped because they are the data side of a
+        // load-once `{entries, loadedAt}`-style TTL cache (a point-in-time
+        // snapshot, not append-only growth). Feedback round 4 §C.
+        let excludedLoadOnce = 0;
 
         const insert = (c: GrowthCandidate) => {
           let i = 0;
@@ -164,6 +169,13 @@ export function registerGrowthSignals(server: McpServer): void {
           } else if (node.name === 'Array') {
             const count = node.edge_count;
             if (count < min_entries) return;
+            // A large array held by a `{..., loadedAt/timestamp}` cache wrapper
+            // is a load-once snapshot refreshed wholesale, not append-only
+            // growth — don't flag it as a growth signal. Feedback round 4 §C.
+            if (hasFreshnessTimestampSibling(node)) {
+              excludedLoadOnce++;
+              return;
+            }
             // Heuristic: large dense arrays are append-only growth candidates.
             insert({
               nodeId: node.id,
@@ -176,9 +188,14 @@ export function registerGrowthSignals(server: McpServer): void {
           }
         });
 
+        const loadOnceNote =
+          excludedLoadOnce > 0
+            ? ` (${formatNumber(excludedLoadOnce)} large array(s) held by a \`{…, loadedAt/timestamp}\` cache wrapper were excluded as load-once snapshots, not append-only growth)`
+            : '';
+
         if (candidates.length === 0) {
           return toolResult(
-            `No growth signals found (no timestamp/sequentially-keyed collections or large arrays >= ${formatNumber(min_entries)} entries and >= ${formatBytes(min_retained_size)}). This is a single-snapshot heuristic — capture a second snapshot later and use memlab_diff_snapshots to confirm actual growth.`,
+            `No growth signals found (no timestamp/sequentially-keyed collections or large arrays >= ${formatNumber(min_entries)} entries and >= ${formatBytes(min_retained_size)})${loadOnceNote}. This is a single-snapshot heuristic — capture a second snapshot later and use memlab_diff_snapshots to confirm actual growth.`,
           );
         }
 
@@ -209,6 +226,7 @@ export function registerGrowthSignals(server: McpServer): void {
           '',
           markdownTable(headers, rows, rightCols),
           '',
+          ...(loadOnceNote ? [`_Note:${loadOnceNote}_`, ''] : []),
           '_Heuristic only — timestamp/sequential keys and large dense arrays *suggest* append-only growth but do not prove it. Confirm by capturing a later snapshot and running `memlab_diff_snapshots`, or trace one with `memlab_retainer_trace` to see what keeps it alive._',
         ];
 

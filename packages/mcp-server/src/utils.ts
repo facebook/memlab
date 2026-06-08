@@ -222,6 +222,72 @@ export function isNodeWorthInspecting(node: IHeapNode): boolean {
   return true;
 }
 
+/**
+ * Property names that mark a "freshness" timestamp on a TTL/warm cache wrapper
+ * object (e.g. `{entries, loadedAt}`, `{items, timestamp}`). Their presence next
+ * to a large array/Map means the collection was loaded as a point-in-time
+ * snapshot, not appended to over time. Shared by cache-analysis (to recognize
+ * the cache shape) and growth-signals (to suppress the append-only
+ * false-positive on load-once caches). Feedback round 4 §B/§C.
+ */
+export const FRESHNESS_TIMESTAMP_PROPS: ReadonlySet<string> = new Set([
+  'timestamp',
+  'loadedAt',
+  'loaded_at',
+  'ts',
+  'cachedAt',
+  'cached_at',
+  'fetchedAt',
+  'fetched_at',
+  'lastFetched',
+  'lastLoaded',
+  'lastUpdated',
+  'updatedAt',
+  'expiresAt',
+  'expiry',
+]);
+
+/**
+ * True when `node` (typically a large Array/Map) is held by a wrapper object
+ * that also carries a freshness-timestamp sibling property — i.e. it is the data
+ * side of a `{entries, loadedAt}`-style TTL/warm cache, loaded once rather than
+ * grown unboundedly.
+ */
+export function hasFreshnessTimestampSibling(node: IHeapNode): boolean {
+  for (const ref of node.referrers) {
+    if (ref.type !== 'property') continue;
+    const parent = ref.fromNode;
+    if (!parent) continue;
+    for (const edge of parent.references) {
+      if (
+        edge.type === 'property' &&
+        FRESHNESS_TIMESTAMP_PROPS.has(String(edge.name_or_index))
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Heuristic: does a (JSON-ish) string look like a cached *failure* response?
+ * Cached error payloads are both wasted memory and a signal that an upstream
+ * dependency is failing — surfacing them links a memory finding to a likely
+ * correctness bug. Conservative: requires a JSON-object/array head plus an
+ * explicit failure marker. Feedback round 4 §D.
+ */
+export function looksLikeFailurePayload(value: string): boolean {
+  const head = value.length > 4096 ? value.slice(0, 4096) : value;
+  const trimmed = head.trimStart();
+  if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return false;
+  return (
+    /\bUNKNOWN_FAILURE\b/.test(head) ||
+    /"status"\s*:\s*"[^"]*(?:FAILURE|FAILED|ERROR)/i.test(head) ||
+    /"error"\s*:\s*"(?!null)[^"]+/i.test(head)
+  );
+}
+
 export function filterLargestObjects(
   snapshot: IHeapSnapshot,
   filter: (node: IHeapNode) => boolean,

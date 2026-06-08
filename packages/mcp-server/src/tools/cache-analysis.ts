@@ -397,6 +397,14 @@ export function registerCacheAnalysis(server: McpServer): void {
             'value',
             'response',
             'payload',
+            // Common collection-property names on Nest/in-process TTL caches
+            // that were missed before (e.g. `{entries, timestamp, map}`,
+            // `{records, loadedAt}`). Feedback round 4 §B.
+            'entries',
+            'records',
+            'nodes',
+            'list',
+            'cache',
           ]);
           const TIMESTAMP_PROPS = new Set([
             'timestamp',
@@ -408,6 +416,17 @@ export function registerCacheAnalysis(server: McpServer): void {
             'ttlMs',
             'expiry',
             'createdAt',
+            // Freshness markers used by load-once warm caches. `loadedAt` in
+            // particular is a very common Nest pattern that was missed before.
+            // Feedback round 4 §B.
+            'loadedAt',
+            'loaded_at',
+            'cached_at',
+            'fetchedAt',
+            'fetched_at',
+            'lastFetched',
+            'lastLoaded',
+            'lastUpdated',
           ]);
           const CONFIG_PROPS = new Set([
             'ttlMs',

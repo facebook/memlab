@@ -11,7 +11,12 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
-import {formatBytes, errorResult, toolResult} from '../utils.js';
+import {
+  formatBytes,
+  errorResult,
+  toolResult,
+  looksLikeFailurePayload,
+} from '../utils.js';
 
 export function registerDuplicatedStrings(server: McpServer): void {
   server.tool(
@@ -181,8 +186,32 @@ export function registerDuplicatedStrings(server: McpServer): void {
               : '';
           return `${i + 1}. "${val}" x ${d.count} copies, ${d.total_size_formatted} total${savingsLabel}${actionLabel}${nodeIdsPart}${context}`;
         });
+        // Cached failure payloads: duplicated JSON-ish strings carrying an
+        // explicit failure/error marker. These are both wasted memory and a
+        // signal that an upstream dependency is failing (and that failures are
+        // being cached). Feedback round 4 §D.
+        const failurePayloads = duplicated.filter(d =>
+          looksLikeFailurePayload(d.value),
+        );
+
         const hasHeavyDups = duplicated.some(d => d.count >= 1000);
         const suggestions: string[] = [];
+        if (failurePayloads.length > 0) {
+          const totalFailureCopies = failurePayloads.reduce(
+            (sum, d) => sum + d.count,
+            0,
+          );
+          const failureBytes = failurePayloads.reduce(
+            (sum, d) => sum + d.total_size,
+            0,
+          );
+          suggestions.push(
+            `⚠️ **Cached failure payloads detected:** ${failurePayloads.length} of the duplicated strings look like cached error/failure responses ` +
+              `(${totalFailureCopies.toLocaleString('en-US')} copies, ${formatBytes(failureBytes)}). ` +
+              'This usually means an upstream dependency is failing AND those failures are being cached. ' +
+              'Check the upstream call (permissions, timeouts, bad input) and avoid caching error responses (or cache them with a short TTL).',
+          );
+        }
         if (hasHeavyDups) {
           suggestions.push(
             '**Suggested action:** Heavily duplicated strings often come from `JSON.parse()` or API responses. ' +
