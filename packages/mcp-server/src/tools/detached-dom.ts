@@ -19,7 +19,6 @@ import {
   formatNumber,
   markdownTable,
   errorResult,
-  textResult,
   toolResult,
 } from '../utils.js';
 import type {OutputMode} from '../utils.js';
@@ -88,7 +87,8 @@ interface GroupStats {
 export function registerDetachedDom(server: McpServer): void {
   server.tool(
     'memlab_detached_dom',
-    'Find detached DOM elements still retained in memory. These are common sources of memory leaks — DOM nodes removed from the document but kept alive by JavaScript references. Supports count-only and ids-only modes for large result sets. Use group_by to aggregate by element tag, retainer pattern, or data-testid.',
+    'Find detached DOM elements still retained in memory. These are common sources of memory leaks — DOM nodes removed from the document but kept alive by JavaScript references. Supports count-only and ids-only modes for large result sets. Use group_by to aggregate by element tag, retainer pattern, or data-testid. ' +
+      '⚠ Full-heap scan — slow on very large heaps (millions of nodes); use count-only / ids-only modes and group_by to bound output.',
     {
       output_mode: z
         .enum(['full', 'count', 'ids'])

@@ -241,7 +241,8 @@ export function registerEventListenerLeaks(server: McpServer): void {
       'where the context/ctx object has no other referrers (zombie listeners), and multiple entries ' +
       'with the same callback (mount/unmount leaks). ' +
       'Use extra_event_properties to detect app-specific event container property names ' +
-      '(e.g., "#eventMap" for private class fields).',
+      '(e.g., "#eventMap" for private class fields). ' +
+      '⚠ Full-heap scan — slow on very large heaps (millions of nodes).',
     {
       min_listeners: z
         .number()

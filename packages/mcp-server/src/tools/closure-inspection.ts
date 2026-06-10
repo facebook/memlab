@@ -164,10 +164,10 @@ export function registerClosureInspection(server: McpServer): void {
       max_variables: z
         .number()
         .optional()
-        .default(0)
+        .default(20)
         .describe(
-          'Limit output to the top N variables by retained size (default 0 = no limit). ' +
-            'Useful for deeply nested closures with hundreds of captured variables.',
+          'Limit output to the top N variables by retained size (default 20; pass 0 for no limit). ' +
+            'The default caps deeply nested closures (which can have 100+ captured variables) to the top 20 by retained size, with the remainder summarized as "… and N more". Raise it or pass 0 to see everything.',
         ),
     },
     async ({node_id, max_scope_depth, min_retained_size, max_variables}) => {

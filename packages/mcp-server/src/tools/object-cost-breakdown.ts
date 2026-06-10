@@ -151,8 +151,15 @@ export function registerObjectCostBreakdown(server: McpServer): void {
         .describe(
           'Number of instances to sample for property analysis (default 100)',
         ),
+      show_property_table: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Show the per-property "Property Details" table (default false). Off by default because for generic high-variance classes (Object/Array) it is long and low-signal; turn on when analyzing a single homogeneous shape.',
+        ),
     },
-    async ({class_name, node_id, sample_size}) => {
+    async ({class_name, node_id, sample_size, show_property_table}) => {
       try {
         const snapshot = getSnapshot();
         const meta = getSnapshotMetadata();
@@ -215,11 +222,26 @@ export function registerObjectCostBreakdown(server: McpServer): void {
           );
         }
 
+        // AUTHORITATIVE totals: sum the *measured* self size over EVERY instance
+        // (not sample×count). This is the number the headline and "% of heap"
+        // are computed from, so the report can never exceed the real footprint
+        // (Feedback §1a — the old sample-extrapolation produced 296% of heap).
+        let realTotalSelfSize = 0;
+        for (const node of instances) {
+          realTotalSelfSize += node.self_size;
+        }
+        const realAvgSelf = realTotalSelfSize / instances.length;
+
         // Compute aggregate stats
-        let totalSelfSize = 0;
         let totalRetainedSize = 0;
         let heapNumberCount = 0;
         let smiCount = 0;
+
+        // Per-instance own-property counts, to measure shape variance. A high
+        // spread here means uniform `count × per-instance-cost` modelling is
+        // invalid (Feedback §1a) — different instances have wildly different
+        // property counts (e.g. a few giant config objects among small ones).
+        const ownPropCounts: number[] = [];
 
         // Collection membership
         let inMapCount = 0;
@@ -228,11 +250,12 @@ export function registerObjectCostBreakdown(server: McpServer): void {
 
         const sampled = instances.slice(0, sample_size);
         for (const node of sampled) {
-          totalSelfSize += node.self_size;
           totalRetainedSize += node.retainedSize;
 
+          let ownProps = 0;
           for (const edge of node.references) {
             if (edge.type !== 'property') continue;
+            ownProps++;
             const target = edge.toNode;
             const isHeapNum =
               target.type === 'number' ||
@@ -246,6 +269,7 @@ export function registerObjectCostBreakdown(server: McpServer): void {
               heapNumberCount++;
             }
           }
+          ownPropCounts.push(ownProps);
 
           // Check if stored in collections
           for (const ref of node.referrers) {
@@ -272,14 +296,40 @@ export function registerObjectCostBreakdown(server: McpServer): void {
         }
 
         const count = sampled.length;
-        const avgSelf = totalSelfSize / count;
         const avgRetained = totalRetainedSize / count;
         const avgHeapNumbers = heapNumberCount / count;
         const avgSmis = smiCount / count;
 
+        // Shape variance: mean and coefficient-of-variation of per-instance own
+        // property counts. avgOwnProps drives the per-instance cost model (NOT
+        // the count of *distinct* property names across instances, which for a
+        // generic `Object` class can be in the thousands and is what produced
+        // the bogus >100%-of-heap total). High CV ⇒ extrapolation is unsafe.
+        const avgOwnProps =
+          ownPropCounts.reduce((s, c) => s + c, 0) /
+          Math.max(1, ownPropCounts.length);
+        const maxOwnProps =
+          ownPropCounts.length > 0 ? Math.max(...ownPropCounts) : 0;
+        const ownPropVariance =
+          ownPropCounts.reduce(
+            (s, c) => s + (c - avgOwnProps) * (c - avgOwnProps),
+            0,
+          ) / Math.max(1, ownPropCounts.length);
+        const ownPropStdDev = Math.sqrt(ownPropVariance);
+        const shapeCV = avgOwnProps > 0 ? ownPropStdDev / avgOwnProps : 0;
+        // A generic container class with widely varying property counts.
+        const highShapeVariance =
+          shapeCV > 0.5 && maxOwnProps - avgOwnProps > 8;
+
         // Property breakdown
         const propBreakdown = analyzePropertyCosts(instances, sample_size);
-        const numProperties = propBreakdown.length;
+        // Distinct property names seen across sampled instances. For a single
+        // homogeneous shape this equals the per-instance property count; for a
+        // grab-bag `Object` class it can be far larger (the variance signal).
+        const numDistinctProps = propBreakdown.length;
+        // Per-instance property count used for the cost model — capped so a few
+        // huge outliers can't inflate the estimate above the measured size.
+        const numProperties = Math.round(avgOwnProps);
 
         // V8 overhead estimates (based on V8 internals)
         const V8_OBJECT_HEADER = 12; // map pointer + hash + properties
@@ -295,11 +345,20 @@ export function registerObjectCostBreakdown(server: McpServer): void {
         const estimatedPerInstance =
           objectOverhead + propertiesOverhead + heapNumOverhead;
 
-        // Theoretical minimum: using TypedArrays for numeric data
-        const numericProps = propBreakdown.filter(
+        // Theoretical minimum: using TypedArrays for numeric data. Scale the
+        // numeric/non-numeric split (measured over distinct property names) onto
+        // the per-instance property count so it can't exceed numProperties and
+        // go negative for high-variance classes (Feedback §1a).
+        const numericPropsDistinct = propBreakdown.filter(
           p => p.type === 'heap number' || p.type === 'smi',
         ).length;
-        const nonNumericProps = numProperties - numericProps;
+        const numericFraction =
+          numDistinctProps > 0 ? numericPropsDistinct / numDistinctProps : 0;
+        const numericProps = Math.min(
+          numProperties,
+          Math.round(numProperties * numericFraction),
+        );
+        const nonNumericProps = Math.max(0, numProperties - numericProps);
         const theoreticalMin =
           numericProps * 8 + // Float64 in TypedArray
           nonNumericProps * V8_PROPERTY_POINTER + // pointers for non-numeric
@@ -312,17 +371,40 @@ export function registerObjectCostBreakdown(server: McpServer): void {
           (inArrayCount / count) * V8_ARRAY_SLOT;
 
         const totalPerInstance = estimatedPerInstance + collectionOverhead;
-        const totalAllInstances = totalPerInstance * instances.length;
-        const theoreticalTotal = theoreticalMin * instances.length;
+        // Headline footprint is the MEASURED self size of every instance plus
+        // the (estimated, external) collection-entry overhead — never the
+        // per-instance model × count, which over-counts on high-variance
+        // classes. Collection overhead lives outside the object's own self size,
+        // so it is added on top of the measured total (Feedback §1a).
+        const collectionTotal = collectionOverhead * instances.length;
+        const totalAllInstances = realTotalSelfSize + collectionTotal;
+        // Theoretical minimum can't exceed what we actually measured.
+        const theoreticalTotal = Math.min(
+          theoreticalMin * instances.length,
+          realTotalSelfSize,
+        );
 
         const lines: string[] = [
           `# Object Cost Breakdown: \`${targetName}\`${targetShape ? ` {${targetShape.slice(0, 5).join(', ')}${targetShape.length > 5 ? ', …' : ''}}` : ''}`,
           '',
-          `**Instances:** ${formatNumber(instances.length)} | **Sampled:** ${formatNumber(count)}`,
-          '',
-          '## Per-Instance Cost',
+          `**Instances:** ${formatNumber(instances.length)} | **Sampled:** ${formatNumber(count)} | **Measured total self size:** ${formatBytes(realTotalSelfSize)} (avg ${Math.round(realAvgSelf)}B/instance)`,
           '',
         ];
+
+        // Feedback §1a: when an unconstrained class (e.g. `Object`/`Array`) mixes
+        // wildly different shapes, a uniform per-instance cost model is invalid.
+        // Warn loudly and steer to per-shape tools instead of printing a
+        // misleading extrapolated total.
+        if (highShapeVariance && !targetShape) {
+          lines.push(
+            `> ⚠️ **High shape variance** — sampled instances range from ${Math.min(...ownPropCounts)} to ${maxOwnProps} own properties (avg ${avgOwnProps.toFixed(1)}, σ=${ownPropStdDev.toFixed(1)}), and ${formatNumber(numDistinctProps)} distinct property names appear across the class. ` +
+              `A single per-instance cost model does **not** apply here — the figures below use the *average* shape and the **measured** ${formatBytes(realTotalSelfSize)} total, not sampled outliers × count. ` +
+              `For a meaningful per-shape breakdown, run \`memlab_shape_histogram\` (or re-run this tool with a \`node_id\` to pin one concrete shape).`,
+            '',
+          );
+        }
+
+        lines.push('## Per-Instance Cost (average shape)', '');
 
         const costHeaders = ['Component', 'Bytes', 'Notes'];
         const costRightCols = new Set([1]);
@@ -374,9 +456,9 @@ export function registerObjectCostBreakdown(server: McpServer): void {
         }
 
         costRows.push([
-          '**Total per instance**',
+          '**Modeled per instance**',
           `**${Math.round(totalPerInstance)}**`,
-          `Actual avg self: ${Math.round(avgSelf)}B, retained: ${formatBytes(avgRetained)}`,
+          `Measured avg self: ${Math.round(realAvgSelf)}B, retained: ${formatBytes(avgRetained)}`,
         ]);
         costRows.push([
           '_Theoretical min_',
@@ -389,30 +471,47 @@ export function registerObjectCostBreakdown(server: McpServer): void {
         lines.push(markdownTable(costHeaders, costRows, costRightCols));
         lines.push('');
 
-        // Totals
+        // Totals — anchored on the MEASURED self size so the headline can never
+        // exceed the real heap footprint (Feedback §1a).
         lines.push('## Total Memory Impact');
         lines.push('');
         lines.push(
-          `- **Current:** ${Math.round(totalPerInstance)}B × ${formatNumber(instances.length)} = **${formatBytes(totalAllInstances)}**`,
+          `- **Current (measured self size):** ${formatBytes(realTotalSelfSize)} across ${formatNumber(instances.length)} instances`,
         );
+        if (collectionTotal > 0) {
+          lines.push(
+            `- **+ estimated collection-entry overhead:** ${formatBytes(collectionTotal)} (external Map/Set/Array storage holding these instances) → **${formatBytes(totalAllInstances)}** total`,
+          );
+        }
         lines.push(
-          `- **Theoretical minimum:** ${Math.round(theoreticalMin)}B × ${formatNumber(instances.length)} = **${formatBytes(theoreticalTotal)}**`,
+          `- **Theoretical minimum:** ~${formatBytes(theoreticalTotal)} (capped at measured self size)`,
         );
-        const overhead = totalAllInstances - theoreticalTotal;
+        const overhead = realTotalSelfSize - theoreticalTotal;
         if (overhead > 0 && theoreticalTotal > 0) {
           lines.push(
-            `- **V8 overhead:** ${formatBytes(overhead)} (${((overhead / totalAllInstances) * 100).toFixed(0)}% of total)`,
+            `- **V8 overhead vs theoretical:** ~${formatBytes(overhead)} (${((overhead / realTotalSelfSize) * 100).toFixed(0)}% of self size)`,
           );
         }
         if (totalSize > 0) {
-          lines.push(
-            `- **% of heap:** ${((totalAllInstances / totalSize) * 100).toFixed(1)}% current, ${((theoreticalTotal / totalSize) * 100).toFixed(1)}% theoretical`,
-          );
+          // Clamp defensively; measured self size already can't exceed the heap.
+          const pctHeap = Math.min(
+            100,
+            (realTotalSelfSize / totalSize) * 100,
+          ).toFixed(1);
+          lines.push(`- **% of heap (self size):** ${pctHeap}%`);
         }
         lines.push('');
 
-        // Property breakdown
-        if (propBreakdown.length > 0) {
+        // Property breakdown — gated behind show_property_table because for
+        // generic high-variance classes this 20-row table is long and low-signal
+        // (Feedback §5).
+        if (!show_property_table && propBreakdown.length > 0) {
+          lines.push(
+            `_${formatNumber(numDistinctProps)} distinct propert${numDistinctProps === 1 ? 'y' : 'ies'} seen across sampled instances. Pass \`show_property_table:true\` for the per-property cost table._`,
+            '',
+          );
+        }
+        if (show_property_table && propBreakdown.length > 0) {
           lines.push('## Property Details');
           lines.push('');
           const propHeaders = [

@@ -29,12 +29,17 @@ interface InternGroup {
   savingsIfInterned: number;
   topStrings: Array<{value: string; count: number; size: number}>;
   exampleParentId: number;
+  // True when the group shows the partial-interning signature (each string
+  // duplicated a consistent ~N×) — its savings are CROSS-load and cannot be
+  // captured by a per-load/per-request intern pool (Feedback round 3 §1c).
+  crossLoad?: boolean;
 }
 
 export function registerInternOpportunities(server: McpServer): void {
   server.tool(
     'memlab_intern_opportunities',
-    'Identify string interning opportunities by grouping duplicated strings by the property name and parent object shape that holds them. Shows total savings per (property × shape) combination — the key metric for deciding where to add a string interning pool. Replaces the manual workflow of: duplicated_strings → retainer_summary → codebase grep.',
+    'Identify string interning opportunities by grouping duplicated strings by the property name and parent object shape that holds them. Shows total savings per (property × shape) combination — the key metric for deciding where to add a string interning pool. Replaces the manual workflow of: duplicated_strings → retainer_summary → codebase grep. ' +
+      '⚠ Full-heap scan (builds string-duplication groups) — slow and memory-heavy on very large heaps (millions of nodes); raise min_copies / min_savings to bound it.',
     {
       limit: z
         .number()
@@ -252,14 +257,50 @@ export function registerInternOpportunities(server: McpServer): void {
           );
         }
 
-        const totalSavings = shown.reduce(
-          (sum, g) => sum + g.savingsIfInterned,
-          0,
-        );
-        const pctOfHeap =
+        // Detect partial interning patterns (Feedback #3) and, while we're here,
+        // mark which groups' savings are CROSS-load (not capturable by a per-load
+        // intern pool) so the headline can split the two (Feedback round 3 §1c).
+        const partialInternAlerts: string[] = [];
+        for (const g of shown) {
+          if (g.uniqueStrings < 10) continue;
+          const counts = g.topStrings.map(s => s.count);
+          if (counts.length < 2) continue;
+
+          const median = counts.sort((a, b) => a - b)[
+            Math.floor(counts.length / 2)
+          ];
+          if (median < 2 || median > 20) continue;
+
+          const consistent = counts.every(
+            c => c >= median * 0.5 && c <= median * 2,
+          );
+          if (!consistent) continue;
+
+          g.crossLoad = true;
+          const perPoolSavings = g.savingsIfInterned;
+          partialInternAlerts.push(
+            `⚠️ **\`.${g.propertyName}\` on \`${g.parentShape.length > 50 ? g.parentShape.slice(0, 47) + '…}' : g.parentShape}\`:** ` +
+              `${formatNumber(g.uniqueStrings)} unique strings each duplicated ~${median}× — ` +
+              `suggests **${median} independent intern pools** instead of one shared pool. ` +
+              `Consolidating into a single shared pool would save ~${formatBytes(perPoolSavings)}.`,
+          );
+        }
+
+        // Split savings: within-load is what a per-load/per-request intern pool
+        // can actually capture; cross-load duplication needs a shared/module
+        // pool or a retention/concurrency fix (Feedback round 3 §1c).
+        const withinLoadSavings = shown
+          .filter(g => !g.crossLoad)
+          .reduce((sum, g) => sum + g.savingsIfInterned, 0);
+        const crossLoadSavings = shown
+          .filter(g => g.crossLoad)
+          .reduce((sum, g) => sum + g.savingsIfInterned, 0);
+        const totalSavings = withinLoadSavings + crossLoadSavings;
+        const pctOf = (n: number): string =>
           totalSize > 0
-            ? ` (${((totalSavings / totalSize) * 100).toFixed(1)}% of heap)`
+            ? ` (${((n / totalSize) * 100).toFixed(1)}% of heap)`
             : '';
+        const pctOfHeap = pctOf(totalSavings);
 
         const headers = [
           'Property',
@@ -293,10 +334,19 @@ export function registerInternOpportunities(server: McpServer): void {
           ];
         });
 
-        const lines = [
+        const headerLines: string[] = [
           `# String Interning Opportunities`,
           '',
-          `**Total savings if top ${shown.length} groups are interned: ${formatBytes(totalSavings)}${pctOfHeap}**`,
+          `**Total duplication across top ${shown.length} groups: ${formatBytes(totalSavings)}${pctOfHeap}**`,
+          `- **Within-load (capturable by a per-load/per-request intern pool): ${formatBytes(withinLoadSavings)}${pctOf(withinLoadSavings)}**`,
+        ];
+        if (crossLoadSavings > 0) {
+          headerLines.push(
+            `- **Cross-load (NOT capturable by a per-request pool — needs a shared/module-scope pool or a retention/concurrency fix): ${formatBytes(crossLoadSavings)}${pctOf(crossLoadSavings)}**`,
+          );
+        }
+        const lines = [
+          ...headerLines,
           '',
           markdownTable(headers, rows, rightCols),
           '',
@@ -315,34 +365,6 @@ export function registerInternOpportunities(server: McpServer): void {
             );
           }
           lines.push('');
-        }
-
-        // Detect partial interning patterns (Feedback #3):
-        // If strings in a group have a consistent low duplication factor (e.g., all ~4 copies),
-        // it suggests multiple independent intern pools instead of one shared pool.
-        const partialInternAlerts: string[] = [];
-        for (const g of shown) {
-          if (g.uniqueStrings < 10) continue;
-          const counts = g.topStrings.map(s => s.count);
-          if (counts.length < 2) continue;
-
-          const median = counts.sort((a, b) => a - b)[
-            Math.floor(counts.length / 2)
-          ];
-          if (median < 2 || median > 20) continue;
-
-          const consistent = counts.every(
-            c => c >= median * 0.5 && c <= median * 2,
-          );
-          if (!consistent) continue;
-
-          const perPoolSavings = g.savingsIfInterned;
-          partialInternAlerts.push(
-            `⚠️ **\`.${g.propertyName}\` on \`${g.parentShape.length > 50 ? g.parentShape.slice(0, 47) + '…}' : g.parentShape}\`:** ` +
-              `${formatNumber(g.uniqueStrings)} unique strings each duplicated ~${median}× — ` +
-              `suggests **${median} independent intern pools** instead of one shared pool. ` +
-              `Consolidating into a single shared pool would save ~${formatBytes(perPoolSavings)}.`,
-          );
         }
 
         if (partialInternAlerts.length > 0) {

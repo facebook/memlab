@@ -9,8 +9,39 @@
  */
 
 import type {IHeapSnapshot} from '@memlab/core';
+import {tickAnalysis} from './analysis-budget.js';
 
 export type SnapshotEnv = 'browser' | 'node' | 'unknown';
+
+// Wrap the snapshot's full-collection iterators so every heap walk feeds the
+// active wall-clock guardrail (see analysis-budget.ts) without each tool having
+// to wire it in. `snapshot.nodes`/`snapshot.edges` are stable objects assigned
+// once at parse time, so patching their `forEach` once is durable; we mark the
+// collection to stay idempotent across the many getSnapshot() calls per session.
+const TICK_PATCHED = '__memlabTickPatched';
+
+function patchForEachMethods(collection: unknown, methods: string[]): void {
+  if (!collection || typeof collection !== 'object') return;
+  const c = collection as Record<string, unknown>;
+  if (c[TICK_PATCHED]) return;
+  for (const m of methods) {
+    const fn = c[m];
+    if (typeof fn !== 'function') continue;
+    const orig = (fn as (cb: (...a: unknown[]) => unknown) => unknown).bind(c);
+    c[m] = (cb: (...a: unknown[]) => unknown) =>
+      orig((...args: unknown[]) => {
+        tickAnalysis();
+        return cb(...args);
+      });
+  }
+  Object.defineProperty(c, TICK_PATCHED, {value: true, enumerable: false});
+}
+
+function instrumentSnapshot(snapshot: IHeapSnapshot): void {
+  const s = snapshot as unknown as {nodes?: unknown; edges?: unknown};
+  patchForEachMethods(s.nodes, ['forEach', 'forEachTraceable']);
+  patchForEachMethods(s.edges, ['forEach']);
+}
 
 export interface SnapshotMetadata {
   /**
@@ -102,6 +133,7 @@ export function getSnapshot(): IHeapSnapshot {
   if (!entry) {
     throw new Error('No heap snapshot loaded. Use memlab_load_snapshot first.');
   }
+  instrumentSnapshot(entry.snapshot);
   return entry.snapshot;
 }
 

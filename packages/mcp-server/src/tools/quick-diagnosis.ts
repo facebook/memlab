@@ -63,7 +63,8 @@ function getContentPreview(node: IHeapNode): string {
 export function registerQuickDiagnosis(server: McpServer): void {
   server.tool(
     'memlab_quick_diagnosis',
-    'Combined diagnosis tool that returns snapshot summary, top objects by retained size, class histogram, and duplicated strings in a single call. Saves 3-4 round trips and reduces token overhead from repeated headers. Use this as the first analysis tool after memlab_load_snapshot for an immediate comprehensive overview.',
+    'Combined diagnosis tool that returns snapshot summary, top objects by retained size, class histogram, and duplicated strings in a single call. Saves 3-4 round trips and reduces token overhead from repeated headers. Use this as the first analysis tool after memlab_load_snapshot for an immediate comprehensive overview. ' +
+      'By DEFAULT every section runs in a single O(N) pass (the class histogram reports retained size as a lower/upper-bound range rather than the exact dominator-deduped value), so it is safe on large heaps. Pass `exact_retained_size:true` ONLY when the user explicitly wants exact per-class retained sizes — that adds a per-class dominator walk that can stall or OOM the server on snapshots with millions of nodes.',
     {
       top_objects: z
         .number()
@@ -80,8 +81,15 @@ export function registerQuickDiagnosis(server: McpServer): void {
         .optional()
         .default(10)
         .describe('Number of top duplicated strings (default 10)'),
+      exact_retained_size: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Compute EXACT dominator-deduped retained size for the class histogram via aggregateDominatorMetrics. DEFAULT false: the class histogram shows a retained-size range (lower = self size, upper = Σ raw retained) computed in the O(N) pass. Set true ONLY on explicit user request — the exact walk can be very slow or time out on huge heaps.',
+        ),
     },
-    async ({top_objects, top_classes, top_strings}) => {
+    async ({top_objects, top_classes, top_strings, exact_retained_size}) => {
       try {
         const snapshot = getSnapshot();
         const meta = getSnapshotMetadata();
@@ -169,7 +177,8 @@ export function registerQuickDiagnosis(server: McpServer): void {
           {
             count: number;
             total_self_size: number;
-            node_ids: HeapNodeIdSet;
+            raw_retained: number;
+            node_ids: HeapNodeIdSet | null;
             type: string;
           }
         >();
@@ -181,12 +190,15 @@ export function registerQuickDiagnosis(server: McpServer): void {
           if (entry) {
             entry.count++;
             entry.total_self_size += node.self_size;
-            entry.node_ids.add(node.id);
+            entry.raw_retained += node.retainedSize;
+            if (entry.node_ids) entry.node_ids.add(node.id);
           } else {
             classMap.set(key, {
               count: 1,
               total_self_size: node.self_size,
-              node_ids: new NumericSet([node.id]),
+              raw_retained: node.retainedSize,
+              // Per-node ids are only needed for the opt-in exact dominator walk.
+              node_ids: exact_retained_size ? new NumericSet([node.id]) : null,
               type: node.type,
             });
           }
@@ -196,22 +208,31 @@ export function registerQuickDiagnosis(server: McpServer): void {
           ([, v]) => v.count >= 1,
         );
 
+        // By DEFAULT skip the exact dominator walk (the part that stalls the
+        // server on huge heaps) and rank by the upper-bound raw retained sum;
+        // only compute exact dominator-deduped retained when explicitly asked.
         const withRetained = classEntries.map(([key, v]) => {
-          const retainedSize = utils.aggregateDominatorMetrics(
-            v.node_ids,
-            snapshot,
-            () => true,
-            (node: IHeapNode) => node.retainedSize,
-          );
-          return {key, ...v, retained_size: retainedSize};
+          let exact: number | null = null;
+          if (exact_retained_size && v.node_ids) {
+            exact = utils.aggregateDominatorMetrics(
+              v.node_ids,
+              snapshot,
+              () => true,
+              (node: IHeapNode) => node.retainedSize,
+            );
+          }
+          const rank = exact ?? v.raw_retained;
+          return {key, ...v, exact, rank};
         });
 
         const totalClassRetained = meta?.totalSize ?? 0;
 
         const classSorted = withRetained
-          .sort((a, b) => b.retained_size - a.retained_size)
+          .sort((a, b) => b.rank - a.rank)
           .slice(0, top_classes);
-        const classHeaders = ['Class', 'Type', 'Count', 'Retained', '% Heap'];
+        const classHeaders = exact_retained_size
+          ? ['Class', 'Type', 'Count', 'Retained', '% Heap']
+          : ['Class', 'Type', 'Count', 'Retained ≤ (upper)', '% Heap ≤'];
         const classRightCols = new Set([2, 3, 4]);
         const classRows = classSorted.map(v => {
           const rawName = v.key.split('::').slice(1).join('::');
@@ -223,14 +244,16 @@ export function registerQuickDiagnosis(server: McpServer): void {
           );
           const pct =
             totalClassRetained > 0
-              ? ((v.retained_size / totalClassRetained) * 100).toFixed(1) + '%'
+              ? ((v.rank / totalClassRetained) * 100).toFixed(1) + '%'
               : '-';
           return [
             name,
             v.type,
             formatNumber(v.count),
-            formatBytes(v.retained_size),
-            pct,
+            exact_retained_size
+              ? formatBytes(v.exact ?? 0)
+              : `≤ ${formatBytes(v.raw_retained)}`,
+            exact_retained_size ? pct : `≤ ${pct}`,
           ];
         });
         lines.push(
@@ -239,6 +262,12 @@ export function registerQuickDiagnosis(server: McpServer): void {
           markdownTable(classHeaders, classRows, classRightCols),
           '',
         );
+        if (!exact_retained_size) {
+          lines.push(
+            "_Class `Retained` is an **upper bound** (Σ each instance's retained size, which double-counts shared subtrees); the lower bound is the class self size. The exact dominator-deduped value needs a per-class dominator walk (slow / can time out on large heaps) — pass `exact_retained_size:true` for it._",
+            '',
+          );
+        }
 
         // --- Section 4: Duplicated Strings ---
         const stringMap = new Map<

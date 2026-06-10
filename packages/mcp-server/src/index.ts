@@ -13,6 +13,7 @@ import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import memlabCore from '@memlab/core';
 const {config, ErrorHandling} = memlabCore;
+import {installAnalysisGuardrail} from './guardrail.js';
 
 // Ensure errors throw exceptions instead of calling process.exit(1),
 // so the MCP server can return proper error responses to the client.
@@ -74,6 +75,11 @@ const server = new McpServer({
   name: 'memlab',
   version: '2.12.0',
 });
+
+// Wrap every tool with a wall-clock guardrail (default 90s, override per-call
+// with timeout_ms or globally with MEMLAB_ANALYSIS_TIMEOUT_MS). Must run before
+// the tools are registered so their handlers are wrapped.
+installAnalysisGuardrail(server);
 
 registerLoadSnapshot(server);
 registerSnapshotSummary(server);

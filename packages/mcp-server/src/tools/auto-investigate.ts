@@ -10,6 +10,8 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode, IHeapEdge, IHeapSnapshot} from '@memlab/core';
+import memlabCore from '@memlab/core';
+const {utils, NumericSet} = memlabCore;
 import {z} from 'zod';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {
@@ -18,6 +20,7 @@ import {
   formatBytes,
   formatNumber,
   truncateNodeName,
+  instrumentationRetainerNote,
   errorResult,
   toolResult,
   suggestionsSuppressed,
@@ -657,15 +660,25 @@ function isDominatorAncestor(
 /**
  * Correct combined retained size for a set of nodes that may overlap on the
  * dominator tree. In a dominator tree two nodes' retained subtrees are either
- * nested or disjoint, so we keep only dominator-maximal members (drop any node
- * dominated by another member, whose bytes are already counted) and sum those.
- * This never exceeds the heap total — fixing the ">100% of heap" accounting.
+ * nested or disjoint, so only dominator-maximal members are counted (any node
+ * dominated by another member has its bytes already included). This never
+ * exceeds the heap total — fixing the ">100% of heap" accounting.
+ *
+ * Delegates to memlab's `aggregateDominatorMetrics`, which dedups by walking
+ * each node's dominator chain once against a set — O(N·D) (N = nodes, D =
+ * dominator depth), versus the previous O(N²·D) pairwise `isDominatorAncestor`
+ * scan.
  */
-function combinedRetainedSize(nodes: IHeapNode[]): number {
-  const maximal = nodes.filter(
-    n => !nodes.some(o => o.id !== n.id && isDominatorAncestor(o, n)),
+function combinedRetainedSize(
+  nodes: IHeapNode[],
+  snapshot: IHeapSnapshot,
+): number {
+  return utils.aggregateDominatorMetrics(
+    new NumericSet(nodes.map(n => n.id)),
+    snapshot,
+    () => true,
+    (node: IHeapNode) => node.retainedSize,
   );
-  return maximal.reduce((sum, n) => sum + n.retainedSize, 0);
 }
 
 function deduplicateFindings(findings: Finding[]): Finding[] {
@@ -1017,6 +1030,21 @@ function mapEntryCount(node: IHeapNode): number {
   return node.edge_count;
 }
 
+// In-process source-map caches (@jridgewell/trace-mapping). These decode huge
+// nested mapping arrays for stack-trace symbolication and are a recurring
+// top-retainer across the Nest SSR fleet (Feedback round 3 §2a).
+const SOURCEMAP_CLASSES = new Set(['TraceMap', 'AnyMap', 'SourceMapConsumer']);
+
+interface SourceMapAccumulator {
+  count: number;
+  totalRetained: number;
+  decodedRetained: number;
+  encodedRetained: number;
+  sourcesContentRetained: number;
+  exampleId: number;
+  exampleRetained: number;
+}
+
 function detectFrameworkLeaks(
   snapshot: IHeapSnapshot,
   totalSize: number,
@@ -1024,6 +1052,15 @@ function detectFrameworkLeaks(
   const alerts: string[] = [];
   const otel = new Map<string, FrameworkAccumulator>();
   const relay = new Map<string, FrameworkAccumulator>();
+  const sourceMaps: SourceMapAccumulator = {
+    count: 0,
+    totalRetained: 0,
+    decodedRetained: 0,
+    encodedRetained: 0,
+    sourcesContentRetained: 0,
+    exampleId: 0,
+    exampleRetained: 0,
+  };
   let topGenerator: {id: number; retained: number} | null = null;
   let generatorCount = 0;
 
@@ -1070,6 +1107,26 @@ function detectFrameworkLeaks(
 
     if (RELAY_STORE_CLASSES.has(node.name) && node.type === 'object') {
       accumulate(relay, node, mapEntryCount(node));
+    }
+
+    if (SOURCEMAP_CLASSES.has(node.name) && node.type === 'object') {
+      sourceMaps.count++;
+      sourceMaps.totalRetained += node.retainedSize;
+      if (node.retainedSize > sourceMaps.exampleRetained) {
+        sourceMaps.exampleRetained = node.retainedSize;
+        sourceMaps.exampleId = node.id;
+      }
+      for (const edge of node.references) {
+        if (edge.type !== 'property') continue;
+        const p = String(edge.name_or_index);
+        if (p === '_decoded') {
+          sourceMaps.decodedRetained += edge.toNode.retainedSize;
+        } else if (p === '_encoded') {
+          sourceMaps.encodedRetained += edge.toNode.retainedSize;
+        } else if (p === 'sourcesContent') {
+          sourceMaps.sourcesContentRetained += edge.toNode.retainedSize;
+        }
+      }
     }
 
     if (
@@ -1138,6 +1195,34 @@ function detectFrameworkLeaks(
     );
   }
 
+  // In-process source-map / symbolicator caches.
+  if (
+    sourceMaps.count > 0 &&
+    (sourceMaps.totalRetained > 2 * 1024 * 1024 ||
+      (totalSize > 0 && sourceMaps.totalRetained > totalSize * 0.03))
+  ) {
+    const parts: string[] = [];
+    if (sourceMaps.decodedRetained > 0) {
+      parts.push(`_decoded ${formatBytes(sourceMaps.decodedRetained)}`);
+    }
+    if (sourceMaps.encodedRetained > 0) {
+      parts.push(`_encoded ${formatBytes(sourceMaps.encodedRetained)}`);
+    }
+    if (sourceMaps.sourcesContentRetained > 0) {
+      parts.push(
+        `sourcesContent ${formatBytes(sourceMaps.sourcesContentRetained)}`,
+      );
+    }
+    const split = parts.length > 0 ? ` (${parts.join(', ')})` : '';
+    alerts.push(
+      `🟠 **[HIGH] In-process source-map cache retaining ${formatBytes(sourceMaps.totalRetained)}**\n` +
+        `${formatNumber(sourceMaps.count)} \`TraceMap\`/source-map object(s) (\`@jridgewell/trace-mapping\`) are cached in-process for stack-trace symbolication${split}. Largest: @${sourceMaps.exampleId}. ` +
+        `The decoded mappings (\`_decoded\`) are huge nested arrays; on the Nest SSR fleet these are typically held by the OTel structured logger, the patched console, or a \`beforeExit\` closure.\n` +
+        `**Inspect:** \`memlab_dominator_subtree(${sourceMaps.exampleId})\` to see the decoded arrays; \`memlab_retainer_trace(${sourceMaps.exampleId})\` for who holds the cache.\n` +
+        `**Fix:** strip \`sourcesContent\` from the maps, cap/evict the symbolication cache, or move symbolication out-of-process. Every Nest server that symbolicates errors in-process hits this.`,
+    );
+  }
+
   // Suspended async functions (generators) retaining large locals.
   if (topGenerator) {
     const g: {id: number; retained: number} = topGenerator;
@@ -1149,6 +1234,268 @@ function detectFrameworkLeaks(
     );
   }
 
+  return alerts;
+}
+
+/**
+ * Classify the long-lived GC root a closure hangs off of, by scanning its
+ * retainer path for the high-signal structures that pin request-scoped data for
+ * a connection/process lifetime (Feedback round 3 §2b/§2c).
+ */
+function classifyLongLivedHolder(trace: RetainerStep[]): string | null {
+  for (const s of trace) {
+    const n = s.name;
+    const e = s.edgeName ?? '';
+    if (
+      n === 'Timeout' ||
+      n === 'TimersList' ||
+      e === '_onTimeout' ||
+      e === '_idleNext' ||
+      e === '_repeat'
+    ) {
+      return 'setInterval/setTimeout timer';
+    }
+    if (e === 'onClose') return 'onClose handler';
+    if (n === 'TCP' || n === 'Socket' || n === 'ReusedHandle') {
+      return 'keep-alive socket';
+    }
+    if (
+      e === 'kResourceStore' ||
+      e === 'resource_symbol' ||
+      /AsyncLocalStorage/.test(n)
+    ) {
+      return 'AsyncLocalStorage store';
+    }
+    if (e === '_events' || /EventEmitter/.test(n))
+      return 'EventEmitter listener';
+    if (e === 'signal' || n === 'AbortSignal') return 'AbortSignal listener';
+  }
+  return null;
+}
+
+/**
+ * Find the single largest variable a closure/context captures — the dominant
+ * captured scope member, which is usually what makes an oversized handler
+ * closure expensive.
+ */
+function dominantCapturedVar(
+  closure: IHeapNode,
+): {name: string; retained: number; targetName: string} | null {
+  let ctx: IHeapNode | null = null;
+  for (const edge of closure.references) {
+    if (
+      (edge.type === 'internal' || edge.type === 'context') &&
+      String(edge.name_or_index) === 'context'
+    ) {
+      ctx = edge.toNode;
+      break;
+    }
+  }
+  let best: {name: string; retained: number; targetName: string} | null = null;
+  const consider = (node: IHeapNode): void => {
+    for (const edge of node.references) {
+      if (edge.type !== 'context' && edge.type !== 'property') continue;
+      const name = String(edge.name_or_index);
+      if (name === 'previous' || name === 'native_context') continue;
+      const t = edge.toNode;
+      if (t.id <= 3) continue;
+      if (!best || t.retainedSize > best.retained) {
+        best = {name, retained: t.retainedSize, targetName: t.name};
+      }
+    }
+  };
+  consider(closure);
+  if (ctx) consider(ctx);
+  return best;
+}
+
+/**
+ * Proactively surface the most common Node server leak shape this round: a
+ * long-lived closure (setInterval/onClose/listener) that captures a large
+ * variable it barely uses, pinning it for the connection/process lifetime.
+ * `closure_inspection` already computes the per-variable breakdown — this just
+ * flags the handler closures so the model doesn't have to suspect them first
+ * (Feedback round 3 §2b).
+ */
+function scanOversizedClosures(
+  snapshot: IHeapSnapshot,
+  totalSize: number,
+): string[] {
+  const closureMin = Math.max(
+    1024 * 1024,
+    totalSize > 0 ? totalSize * 0.02 : 0,
+  );
+  const candidates: IHeapNode[] = [];
+  snapshot.nodes.forEach(node => {
+    if (node.type !== 'closure' || node.id <= 3) return;
+    if (node.retainedSize < closureMin) return;
+    candidates.push(node);
+  });
+  candidates.sort((a, b) => b.retainedSize - a.retainedSize);
+
+  const alerts: string[] = [];
+  const seen = new Set<string>();
+  for (const closure of candidates.slice(0, 30)) {
+    const trace = getRetainerPath(closure);
+    const holder = classifyLongLivedHolder(trace);
+    if (!holder) continue;
+    const dom = dominantCapturedVar(closure);
+    const key = `${holder}|${dom?.name ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const domStr = dom
+      ? ` Its largest captured variable is \`${dom.name}\` → ${dom.targetName} (${formatBytes(dom.retained)})` +
+        (dom.retained > closure.retainedSize * 0.6
+          ? ' — the bulk of the retention, and quite possibly captured but barely used.'
+          : '.')
+      : '';
+    alerts.push(
+      `🟠 **[HIGH] Oversized closure on a long-lived ${holder} retaining ${formatBytes(closure.retainedSize)}**\n` +
+        `Closure @${closure.id}${closure.name ? ` \`${truncateNodeName(closure.name, closure.type, closure.self_size, 40)}\`` : ''} is reachable from a ${holder} and keeps its captured scope alive for that root's lifetime.${domStr}\n` +
+        `**Inspect:** \`memlab_closure_inspection(${closure.id}, {min_retained_size: 102400})\` for the full per-variable capture breakdown.\n` +
+        `**Fix:** extract only the fields the callback needs before registering it (don't close over the whole request scope / serialized blob), or clear the timer / unregister the listener when the request or connection ends.`,
+    );
+    if (alerts.length >= 5) break;
+  }
+  return alerts;
+}
+
+// Keys that mark a record as a log/conversation/message entry. An append-only
+// accumulation of these is a runaway-appender signature (Feedback round 3 §2d).
+const MESSAGE_RECORD_KEYS = new Set([
+  'role',
+  'content',
+  'message',
+  'msg',
+  'timestamp',
+  'ts',
+  'level',
+  'type',
+  'text',
+]);
+// Fields whose value usually discriminates the record kind, used to test
+// whether a few values repeat across most records.
+const DISCRIMINATOR_KEYS = ['role', 'level', 'type', 'message', 'msg'];
+
+/**
+ * A property whose value is expected to be unique per record. If such a field
+ * has far fewer distinct values than instances, the SAME records are retained
+ * multiple times (Feedback round 3 §1b).
+ */
+function looksUniqueKey(name: string): boolean {
+  return (
+    /^(id|_id|uuid|guid|key|hash|sku|pk|cursor|etag)$/i.test(name) ||
+    /(_id|Id|Key|Uuid|Guid|Hash)$/.test(name)
+  );
+}
+
+/**
+ * Detect append-only logs/conversations: a very high count of a uniform record
+ * shape dominated by a few repeated field values (e.g. 696K `{role, content,
+ * timestamp}` objects from a scheduler that re-appends the same system/error
+ * message forever). `growth_signals` misses these because they aren't keyed the
+ * way its heuristic expects (Feedback round 3 §2d).
+ */
+function scanAppendOnlyRecords(
+  snapshot: IHeapSnapshot,
+  totalSize: number,
+): string[] {
+  const shapeMap = new Map<
+    string,
+    {
+      properties: string[];
+      count: number;
+      totalSelfSize: number;
+      exampleNodeId: number;
+      exampleIds: number[];
+    }
+  >();
+
+  snapshot.nodes.forEach(node => {
+    if (node.type !== 'object' || node.id <= 3) return;
+    if (node.name !== 'Object') return;
+    const names: string[] = [];
+    for (const edge of node.references) {
+      if (edge.type === 'property') names.push(String(edge.name_or_index));
+    }
+    if (names.length === 0 || names.length > 12) return;
+    if (!names.some(n => MESSAGE_RECORD_KEYS.has(n.toLowerCase()))) return;
+    names.sort();
+    const key = names.join(',');
+    const ex = shapeMap.get(key);
+    if (ex) {
+      ex.count++;
+      ex.totalSelfSize += node.self_size;
+      if (ex.exampleIds.length < 100) ex.exampleIds.push(node.id);
+    } else {
+      shapeMap.set(key, {
+        properties: names,
+        count: 1,
+        totalSelfSize: node.self_size,
+        exampleNodeId: node.id,
+        exampleIds: [node.id],
+      });
+    }
+  });
+
+  const hits = [...shapeMap.values()]
+    .filter(s => s.count >= 50_000)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3);
+
+  const alerts: string[] = [];
+  for (const s of hits) {
+    // Test a discriminator field for value concentration over the sample.
+    const field =
+      DISCRIMINATOR_KEYS.find(k => s.properties.includes(k)) ?? null;
+    let concentration = '';
+    if (field) {
+      const freq = new Map<string, number>();
+      let sampled = 0;
+      for (const id of s.exampleIds) {
+        const node = snapshot.getNodeById(id);
+        if (!node) continue;
+        for (const edge of node.references) {
+          if (
+            edge.type === 'property' &&
+            String(edge.name_or_index) === field
+          ) {
+            let val = edge.toNode.name;
+            if (edge.toNode.isString) {
+              const sn = edge.toNode.toStringNode();
+              if (sn) val = sn.stringValue;
+            }
+            freq.set(val, (freq.get(val) ?? 0) + 1);
+            sampled++;
+            break;
+          }
+        }
+      }
+      if (sampled > 0) {
+        const top = [...freq.entries()].sort((a, b) => b[1] - a[1])[0];
+        if (top) {
+          const pct = ((top[1] / sampled) * 100).toFixed(0);
+          const valDisp =
+            top[0].length > 40 ? top[0].slice(0, 40) + '…' : top[0];
+          concentration = ` The \`${field}\` field is dominated by one value ("${valDisp}", ${pct}% of sampled records) — a strong append-only signature.`;
+        }
+      }
+    }
+    const pctHeap =
+      totalSize > 0
+        ? ` (${((s.totalSelfSize / totalSize) * 100).toFixed(1)}% of heap self size)`
+        : '';
+    const propsDisplay =
+      s.properties.length <= 6
+        ? `{${s.properties.join(', ')}}`
+        : `{${s.properties.slice(0, 5).join(', ')}, … +${s.properties.length - 5}}`;
+    alerts.push(
+      `🟠 **[HIGH] Append-only record accumulation — ${formatNumber(s.count)}× ${propsDisplay}**\n` +
+        `${formatNumber(s.count)} uniform message/log records (${formatBytes(s.totalSelfSize)} self${pctHeap}, example @${s.exampleNodeId}).${concentration}\n` +
+        `**Fix:** bound the conversation/log history (ring buffer, max length, or periodic flush). Check for a scheduler/retry loop that re-appends the same system or error message without ever trimming.`,
+    );
+  }
   return alerts;
 }
 
@@ -1279,10 +1626,10 @@ export function registerAutoInvestigate(server: McpServer): void {
           // so we must not sum their retained sizes (that produced the old
           // ">100% of heap" bug). combinedRetainedSize() keeps only
           // dominator-maximal members.
-          const totalRetained = combinedRetainedSize([
-            f.node,
-            ...siblings.map(s => s.node),
-          ]);
+          const totalRetained = combinedRetainedSize(
+            [f.node, ...siblings.map(s => s.node)],
+            snapshot,
+          );
           const pct =
             totalSize > 0
               ? ` (${Math.min(100, (totalRetained / totalSize) * 100).toFixed(1)}% of heap)`
@@ -1365,6 +1712,10 @@ export function registerAutoInvestigate(server: McpServer): void {
             lines.push(`**Retainer chain:** ${formatTrace(f.trace, 8)}`);
           }
           previousTraces.push(f.trace);
+          const instrNote = instrumentationRetainerNote(f.trace);
+          if (instrNote) {
+            lines.push(`> ⚠ ${instrNote}`);
+          }
           lines.push('');
 
           if (f.pinchPoint) {
@@ -1491,8 +1842,11 @@ export function registerAutoInvestigate(server: McpServer): void {
 
           // Feedback #4: Low-cardinality column detection
           // Feedback #8: High-cost unique property detection
+          // Feedback round 3 §1b: same-object duplication detection
           // For large shapes (>10K instances), sample property value cardinality
           const columnAlerts: string[] = [];
+          const duplicationAlerts: string[] = [];
+          const dupShapesSeen = new Set<string>();
 
           // Pre-bucket: collect qualifying shape keys, then single-pass scan
           const qualifyingShapes = shapes.filter(s => {
@@ -1558,9 +1912,35 @@ export function registerAutoInvestigate(server: McpServer): void {
 
               const cardinality = values.size;
               const sampleCount = sampleNodes.length;
+              const uniqueKey = looksUniqueKey(propName);
+              const shapeKey = s.properties.join(',');
 
-              // Low cardinality: few unique values relative to instance count
-              if (cardinality <= 20 && sampleCount >= 100) {
+              // Same-object duplication vs genuine low cardinality (§1b): a field
+              // that *should* be unique per record but has far fewer distinct
+              // values than sampled instances means the SAME records are retained
+              // N times — a retention/concurrency fix, not interning.
+              if (
+                uniqueKey &&
+                sampleCount >= 100 &&
+                cardinality >= 1 &&
+                cardinality < sampleCount * 0.6 &&
+                !dupShapesSeen.has(shapeKey)
+              ) {
+                const dupFactor = Math.round(
+                  sampleCount / Math.max(1, cardinality),
+                );
+                if (dupFactor >= 2) {
+                  dupShapesSeen.add(shapeKey);
+                  duplicationAlerts.push(
+                    `- \`${propName}\` (a unique-looking key) has only **${formatNumber(cardinality)} distinct value(s)** across ${formatNumber(sampleCount)} sampled of ${formatNumber(s.count)} total \`{${s.properties.slice(0, 4).join(', ')}${s.properties.length > 4 ? ', …' : ''}}\` instances — looks like **~${dupFactor} retained copies of the same records**, not a low-cardinality column. Investigate **retention/concurrency** (e.g. many concurrent requests each holding a full copy of this dataset), NOT string interning.`,
+                  );
+                }
+              } else if (
+                !uniqueKey &&
+                cardinality <= 20 &&
+                sampleCount >= 100
+              ) {
+                // Genuine low-cardinality column.
                 columnAlerts.push(
                   `- Property \`${propName}\` has only **${cardinality} unique value(s)** across ${formatNumber(s.count)} instances — low-cardinality column suitable for pre-filtering at the data source or string interning`,
                 );
@@ -1581,6 +1961,21 @@ export function registerAutoInvestigate(server: McpServer): void {
                 }
               }
             }
+          }
+
+          if (duplicationAlerts.length > 0) {
+            lines.push('## Same-Object Duplication');
+            lines.push('');
+            lines.push(
+              'Unique-looking keys with far fewer distinct values than instances — the same records appear to be retained multiple times:',
+            );
+            lines.push('');
+            lines.push(...duplicationAlerts.slice(0, 8));
+            lines.push(
+              '',
+              '_This is a retention/concurrency issue, **not** an interning opportunity: interning a per-record copy cannot reclaim duplicated whole records. Trace one example with `memlab_retainer_summary` / `memlab_trace_dominators` to find why N copies are kept alive (e.g. unbounded request concurrency, a cache keyed per-request, or fan-out without back-pressure)._',
+            );
+            lines.push('');
           }
 
           if (columnAlerts.length > 0) {
@@ -1717,7 +2112,18 @@ export function registerAutoInvestigate(server: McpServer): void {
         const asyncAlerts = detectAsyncContextLeaks(findings);
         const frameworkAlerts =
           focus === 'all' ? detectFrameworkLeaks(snapshot, totalSize) : [];
-        const allPatternAlerts = [...frameworkAlerts, ...asyncAlerts];
+        const closureAlerts =
+          focus === 'all' || focus === 'closures'
+            ? scanOversizedClosures(snapshot, totalSize)
+            : [];
+        const appendOnlyAlerts =
+          focus === 'all' ? scanAppendOnlyRecords(snapshot, totalSize) : [];
+        const allPatternAlerts = [
+          ...frameworkAlerts,
+          ...closureAlerts,
+          ...appendOnlyAlerts,
+          ...asyncAlerts,
+        ];
         if (allPatternAlerts.length > 0) {
           lines.push('## Known Leak Patterns');
           lines.push('');

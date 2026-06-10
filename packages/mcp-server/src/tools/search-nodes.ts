@@ -16,7 +16,6 @@ import {
   queryNodes,
   formatQueryNodesResult,
   errorResult,
-  textResult,
   toolResult,
   makeScanBudget,
 } from '../utils.js';
@@ -25,7 +24,8 @@ import type {OutputMode} from '../utils.js';
 export function registerSearchNodes(server: McpServer): void {
   server.tool(
     'memlab_search_nodes',
-    'General-purpose search for heap nodes by combining filters: name pattern (regex), node type, minimum retained/self size, and detachment status. Results sorted by retained size. Supports count-only and ids-only modes for large result sets.',
+    'General-purpose search for heap nodes by combining filters: name pattern (regex), node type, minimum retained/self size, and detachment status. Results sorted by retained size. Supports count-only and ids-only modes for large result sets. ' +
+      '⚠ Full-heap scan — slow on very large heaps (millions of nodes); narrow with node type / min size filters and use count-only or ids-only modes.',
     {
       name_pattern: z
         .string()

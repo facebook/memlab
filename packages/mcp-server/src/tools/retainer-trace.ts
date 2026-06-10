@@ -16,8 +16,8 @@ import {
   formatNodeInline,
   formatBytes,
   isNodeWorthInspecting,
+  instrumentationRetainerNote,
   errorResult,
-  textResult,
   toolResult,
 } from '../utils.js';
 
@@ -175,6 +175,19 @@ export function registerRetainerTrace(server: McpServer): void {
                 : ''),
             '',
           );
+        }
+
+        // Flag paths that only reach this node through instrumentation
+        // (patched console / OTel context), which misleads "who owns it"
+        // (Feedback §3a).
+        const instrNote = instrumentationRetainerNote(
+          reverseItems.map(it => ({
+            name: it.node.name,
+            edgeName: it.edgeName,
+          })),
+        );
+        if (instrNote) {
+          lines.push(`⚠ ${instrNote}`, '');
         }
 
         if (show_sizes) {

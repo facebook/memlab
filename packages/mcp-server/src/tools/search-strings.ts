@@ -26,7 +26,8 @@ export function registerSearchStrings(server: McpServer): void {
       'Unlike memlab_search_nodes which searches by node name/class, this searches the ' +
       'actual text content of strings. Essential for finding string constants (error messages, ' +
       'event names, config keys, URLs) and tracing them back to their origin. ' +
-      'Supports exact substring match and regex patterns.',
+      'Supports exact substring match and regex patterns. ' +
+      "⚠ Full-heap scan over every string's content — slow on very large heaps (millions of nodes); use a specific pattern and a small limit.",
     {
       pattern: z
         .string()

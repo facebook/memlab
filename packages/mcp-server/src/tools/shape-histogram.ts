@@ -26,7 +26,8 @@ interface ShapeGroup {
   properties: string[];
   count: number;
   totalSelfSize: number;
-  nodeIds: HeapNodeIdSet;
+  rawRetained: number;
+  nodeIds: HeapNodeIdSet | null;
   exampleNodeId: number;
 }
 
@@ -45,7 +46,8 @@ function getPropertyNames(node: IHeapNode): string[] | null {
 export function registerShapeHistogram(server: McpServer): void {
   server.tool(
     'memlab_shape_histogram',
-    'Group objects by their property structure (shape/hidden class). Objects with the same set of property names are grouped together, revealing distinct record types. Much more useful than class_histogram when most objects are generic "Object" — this tells you exactly what data structures exist and how much memory each shape consumes. Essential for data-heavy apps where millions of "Object" instances hide 3-5 distinct record shapes.',
+    'Group objects by their property structure (shape/hidden class). Objects with the same set of property names are grouped together, revealing distinct record types. Much more useful than class_histogram when most objects are generic "Object" — this tells you exactly what data structures exist and how much memory each shape consumes. Essential for data-heavy apps where millions of "Object" instances hide 3-5 distinct record shapes. ' +
+      'By DEFAULT retained size per shape is reported as a cheap RANGE (lower = Σ self size, upper = Σ retained size) from a single O(N) pass; sorting/filtering by retained uses the upper bound. The exact dominator-deduped value needs a per-shape dominator walk that can stall/OOM the server on very large heaps — pass `exact_retained_size:true` ONLY when the user explicitly asks for it.',
     {
       limit: z
         .number()
@@ -74,10 +76,24 @@ export function registerShapeHistogram(server: McpServer): void {
         .optional()
         .default('retained_size')
         .describe(
-          'Sort order: "retained_size" (default; alias "retained"), "count" (instance count — find accumulation patterns), or "self_size" (alias "self").',
+          'Sort order: "retained_size" (default; alias "retained" — uses the upper-bound retained unless exact_retained_size is set), "count" (instance count — find accumulation patterns), or "self_size" (alias "self").',
+        ),
+      exact_retained_size: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Compute the EXACT dominator-deduped retained size per shape via aggregateDominatorMetrics. DEFAULT false: report a retained-size range instead (lower = Σ self size, upper = Σ raw retained) from the O(N) pass; sorting/filtering by retained uses the upper bound. Set true ONLY on explicit user request — the exact walk can be very slow or time out on huge heaps.',
         ),
     },
-    async ({limit, min_count, min_retained_size, class_name, sort_by}) => {
+    async ({
+      limit,
+      min_count,
+      min_retained_size,
+      class_name,
+      sort_by,
+      exact_retained_size,
+    }) => {
       try {
         // Normalize sort aliases so the vocabulary matches other tools.
         const sort =
@@ -102,13 +118,16 @@ export function registerShapeHistogram(server: McpServer): void {
           if (existing) {
             existing.count++;
             existing.totalSelfSize += node.self_size;
-            existing.nodeIds.add(node.id);
+            existing.rawRetained += node.retainedSize;
+            if (existing.nodeIds) existing.nodeIds.add(node.id);
           } else {
             shapeMap.set(key, {
               properties: props,
               count: 1,
               totalSelfSize: node.self_size,
-              nodeIds: new NumericSet([node.id]),
+              rawRetained: node.retainedSize,
+              // Per-node ids only needed for the opt-in exact dominator walk.
+              nodeIds: exact_retained_size ? new NumericSet([node.id]) : null,
               exampleNodeId: node.id,
             });
           }
@@ -118,20 +137,27 @@ export function registerShapeHistogram(server: McpServer): void {
           g => g.count >= min_count,
         );
 
+        // By DEFAULT skip the exact dominator walk (the part that stalls the
+        // server on huge heaps) and rank/filter by the upper-bound raw retained
+        // sum; only compute exact dominator-deduped retained when asked.
         const withRetained = filtered.map(g => {
-          const retainedSize = utils.aggregateDominatorMetrics(
-            g.nodeIds,
-            snapshot,
-            () => true,
-            (node: IHeapNode) => node.retainedSize,
-          );
-          return {...g, retainedSize};
+          let exact: number | null = null;
+          if (exact_retained_size && g.nodeIds) {
+            exact = utils.aggregateDominatorMetrics(
+              g.nodeIds,
+              snapshot,
+              () => true,
+              (node: IHeapNode) => node.retainedSize,
+            );
+          }
+          const retainedRank = exact ?? g.rawRetained;
+          return {...g, exact, retainedRank};
         });
 
         let finalList = withRetained;
         if (min_retained_size != null) {
           finalList = finalList.filter(
-            g => g.retainedSize >= min_retained_size,
+            g => g.retainedRank >= min_retained_size,
           );
         }
 
@@ -140,7 +166,7 @@ export function registerShapeHistogram(server: McpServer): void {
         } else if (sort === 'self_size') {
           finalList.sort((a, b) => b.totalSelfSize - a.totalSelfSize);
         } else {
-          finalList.sort((a, b) => b.retainedSize - a.retainedSize);
+          finalList.sort((a, b) => b.retainedRank - a.retainedRank);
         }
         finalList = finalList.slice(0, limit);
 
@@ -163,10 +189,20 @@ export function registerShapeHistogram(server: McpServer): void {
               ? `{${g.properties.join(', ')}}`
               : `{${g.properties.slice(0, 6).join(', ')}, … +${g.properties.length - 6} more}`;
 
+          const retainedStr = exact_retained_size
+            ? `${formatBytes(g.exact ?? 0)} retained, ${formatBytes(g.totalSelfSize)} self`
+            : `retained ∈ [${formatBytes(g.totalSelfSize)}, ≤ ${formatBytes(g.rawRetained)}]`;
           lines.push(
-            `${i + 1}. **${propsDisplay}** — ${formatNumber(g.count)} instances, ${formatBytes(g.retainedSize)} retained, ${formatBytes(g.totalSelfSize)} self`,
+            `${i + 1}. **${propsDisplay}** — ${formatNumber(g.count)} instances, ${retainedStr}`,
           );
           lines.push(`   Example: @${g.exampleNodeId}`);
+        }
+
+        if (!exact_retained_size) {
+          lines.push(
+            '',
+            "_Retained shown as a range `[lower, ≤ upper]`: lower = Σ self size (objects' own bytes), upper = Σ retained size (double-counts subtrees shared between instances on the dominator tree). The exact dominator-deduped value needs a per-shape dominator walk that can stall or time out on large heaps — pass `exact_retained_size:true` for it._",
+          );
         }
 
         if (!suggestionsSuppressed()) {

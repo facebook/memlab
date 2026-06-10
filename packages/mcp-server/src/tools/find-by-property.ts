@@ -10,6 +10,8 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode} from '@memlab/core';
+import memlabCore from '@memlab/core';
+const {utils, NumericSet} = memlabCore;
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
 import {
@@ -19,7 +21,6 @@ import {
   formatNumber,
   formatBytes,
   errorResult,
-  textResult,
   toolResult,
   makeScanBudget,
   ScanTimeoutError,
@@ -147,21 +148,30 @@ export function registerFindByProperty(server: McpServer): void {
 
         if (output_mode === 'count') {
           let totalCount = 0;
-          let totalRetained = 0;
+          const nodeIds = new NumericSet();
           try {
             snapshot.nodes.forEach(node => {
               budget.tick();
               if (!isNodeWorthInspecting(node)) return;
               if (!matchesProperty(node)) return;
               totalCount++;
-              totalRetained += node.retainedSize;
+              nodeIds.add(node.id);
             });
           } catch (e) {
             if (e instanceof ScanTimeoutError) timedOut = true;
             else throw e;
           }
+          // Dominator-aware aggregate: property-matching objects can nest on the
+          // dominator tree, so a raw sum of retainedSize would double-count and
+          // can exceed 100% of heap. On a timeout this reflects the partial set.
+          const totalRetained = utils.aggregateDominatorMetrics(
+            nodeIds,
+            snapshot,
+            () => true,
+            (node: IHeapNode) => node.retainedSize,
+          );
           return toolResult(
-            `Objects with property ${filterDesc}: ${formatNumber(totalCount)}${timedOut ? '+' : ''} total, ${formatBytes(totalRetained)} aggregate retained size` +
+            `Objects with property ${filterDesc}: ${formatNumber(totalCount)}${timedOut ? '+' : ''} total, ${formatBytes(totalRetained)} aggregate retained size (dominator-deduplicated)` +
               (timedOut ? timeoutNote : ''),
           );
         }

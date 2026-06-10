@@ -142,7 +142,7 @@ export function registerEval(server: McpServer): void {
       '**Iterating all nodes:** `snapshot.nodes.forEach(node => { ... })` — NOT for-of.\n' +
       '**Get node by ID:** `snapshot.getNodeById(id)` returns IHeapNode or null.\n' +
       '**String values:** `node.toStringNode()?.stringValue` for string nodes.\n' +
-      '**Caveat — retained_size is unreliable here:** inside eval, `node.retained_size`/`.retainedSize` can read back ~0 for every node on some loads. Node counts, property/edge walks, and string values ARE trustworthy; for authoritative retained sizes use the dedicated tools (`memlab_largest_objects`, `memlab_class_histogram`, `memlab_pinch_points`, `memlab_object_shape`).\n\n' +
+      '**Caveat — retained_size is unreliable here:** inside eval, `node.retained_size`/`.retainedSize` can read back ~0 for every node on some loads. Node counts, property/edge walks, and string values ARE trustworthy. For authoritative retained sizes call `helpers.retainedSize(id)` / `helpers.retainedSizes([ids])` (they re-resolve the node on the real snapshot), or use the dedicated tools (`memlab_largest_objects`, `memlab_class_histogram`, `memlab_pinch_points`, `memlab_object_shape`).\n\n' +
       '**Example — inspect Map entries:**\n' +
       '```\nconst map = snapshot.getNodeById(12345);\nconst entries = [];\n' +
       'for (const edge of map.references) {\n' +
@@ -168,7 +168,8 @@ export function registerEval(server: McpServer): void {
             'helpers ({ serializeNodeSummary, serializeNodeDetail, formatBytes, formatNumber, ' +
             'markdownTable, isNodeWorthInspecting, filterLargestObjects, queryNodes, ' +
             'groupReferrersByEdge(nodeId), groupArrayElementsByProperty(arrayNodeId, propName), ' +
-            'isOrphaned(nodeId, ownershipEdgeNames[]), countUniqueTargets(arrayNodeId, propName) }), ' +
+            'isOrphaned(nodeId, ownershipEdgeNames[]), countUniqueTargets(arrayNodeId, propName), ' +
+            'retainedSize(id), retainedSizes(ids[]) }), ' +
             'and standard JS built-ins. ' +
             'Node traversal: use node.references (outgoing) and node.referrers (incoming) with for-of. ' +
             'Edge properties: .name_or_index, .type, .toNode, .fromNode.',
@@ -270,6 +271,24 @@ export function registerEval(server: McpServer): void {
           return true;
         };
 
+        // Authoritative retained sizes (Feedback round 3 §3b). Reading
+        // `.retainedSize` off proxied/iterated nodes inside eval can come back
+        // ~0; these helpers look the node up fresh on the real snapshot (the
+        // same path the dedicated tools use) so custom analyses can rank by
+        // retained size.
+        const retainedSize = (id: number): number => {
+          const n = snapshot.getNodeById(id);
+          return n ? n.retainedSize : 0;
+        };
+        const retainedSizes = (ids: number[]): Record<number, number> => {
+          const out: Record<number, number> = {};
+          for (const id of ids) {
+            const n = snapshot.getNodeById(id);
+            out[id] = n ? n.retainedSize : 0;
+          }
+          return out;
+        };
+
         const countUniqueTargets = (
           arrayNodeId: number,
           propertyName: string,
@@ -306,6 +325,8 @@ export function registerEval(server: McpServer): void {
           groupArrayElementsByProperty,
           isOrphaned,
           countUniqueTargets,
+          retainedSize,
+          retainedSizes,
         };
 
         const sandbox = {
@@ -416,14 +437,14 @@ function describeEnv(): string {
     '## In-scope globals',
     '- `snapshot` — IHeapSnapshot: `.nodes.forEach(cb)`, `.edges.forEach(cb)`, `.getNodeById(id)`.',
     '- `utils` — @memlab/core utils (e.g. `aggregateDominatorMetrics`, `isFiberNode`, `isDetachedDOMNode`).',
-    '- `helpers` — `serializeNodeSummary`, `serializeNodeDetail`, `formatBytes`, `formatNumber`, `markdownTable`, `isNodeWorthInspecting`, `filterLargestObjects`, `queryNodes`, `groupReferrersByEdge(nodeId)`, `groupArrayElementsByProperty(arrayNodeId, prop)`, `isOrphaned(nodeId, ownerEdges[])`, `countUniqueTargets(arrayNodeId, prop)`.',
+    '- `helpers` — `serializeNodeSummary`, `serializeNodeDetail`, `formatBytes`, `formatNumber`, `markdownTable`, `isNodeWorthInspecting`, `filterLargestObjects`, `queryNodes`, `groupReferrersByEdge(nodeId)`, `groupArrayElementsByProperty(arrayNodeId, prop)`, `isOrphaned(nodeId, ownerEdges[])`, `countUniqueTargets(arrayNodeId, prop)`, `retainedSize(id)`, `retainedSizes(ids[])`.',
     '- Standard JS built-ins (Array, Object, Map, Set, JSON, Math, RegExp, …). No require/process/fs/network.',
     '',
     '## IHeapNode API',
     '`.id`, `.name`, `.type`, `.self_size`, `.retainedSize` (alias `.retained_size`), `.edge_count`, `.is_detached`, `.numOfReferrers` (alias `.referrer_count`), `.isString`, `.toStringNode()?.stringValue`, `.hasPathEdge`, `.pathEdge`, `.dominatorNode`, `.location` (`script_id`/`line`/`column`).',
     '',
     '## Caveat: retained_size',
-    'Inside eval, `.retainedSize`/`.retained_size` can read back ~0 for every node on some loads. Counts, property/edge walks, and string values are reliable; for authoritative retained sizes use `memlab_largest_objects`, `memlab_class_histogram`, `memlab_pinch_points`, or `memlab_object_shape`.',
+    'Inside eval, `.retainedSize`/`.retained_size` can read back ~0 for every node on some loads. Counts, property/edge walks, and string values are reliable. For authoritative retained sizes call `helpers.retainedSize(id)` or `helpers.retainedSizes([ids])` (they re-resolve the node on the real snapshot, so you can rank custom analyses by retained size), or use `memlab_largest_objects`, `memlab_class_histogram`, `memlab_pinch_points`, or `memlab_object_shape`.',
     '',
     '## IHeapEdge API',
     '`.name_or_index`, `.type` (property/element/context/internal/hidden/shortcut), `.toNode`, `.fromNode`.',

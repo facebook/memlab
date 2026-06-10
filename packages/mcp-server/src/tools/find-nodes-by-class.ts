@@ -10,6 +10,8 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode} from '@memlab/core';
+import memlabCore from '@memlab/core';
+const {utils, NumericSet} = memlabCore;
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
 import {
@@ -19,7 +21,6 @@ import {
   formatNumber,
   formatBytes,
   errorResult,
-  textResult,
   toolResult,
 } from '../utils.js';
 
@@ -52,19 +53,28 @@ export function registerFindNodesByClass(server: McpServer): void {
 
         if (output_mode === 'count') {
           let totalCount = 0;
-          let totalRetained = 0;
           let totalSelf = 0;
+          const nodeIds = new NumericSet();
           snapshot.nodes.forEach(node => {
             if (!classFilter(node)) return;
             totalCount++;
-            totalRetained += node.retainedSize;
             totalSelf += node.self_size;
+            nodeIds.add(node.id);
           });
           if (totalCount === 0) {
             return toolResult(`No objects found with class "${class_name}"`);
           }
+          // Dominator-aware aggregate: instances of a class often nest on the
+          // dominator tree (e.g. a Foo retaining another Foo), so a raw sum of
+          // retainedSize would double-count and can exceed 100% of heap.
+          const totalRetained = utils.aggregateDominatorMetrics(
+            nodeIds,
+            snapshot,
+            () => true,
+            (node: IHeapNode) => node.retainedSize,
+          );
           return toolResult(
-            `"${class_name}": ${formatNumber(totalCount)} instances, ${formatBytes(totalSelf)} total self size, ${formatBytes(totalRetained)} aggregate retained size`,
+            `"${class_name}": ${formatNumber(totalCount)} instances, ${formatBytes(totalSelf)} total self size, ${formatBytes(totalRetained)} aggregate retained size (dominator-deduplicated)`,
           );
         }
 

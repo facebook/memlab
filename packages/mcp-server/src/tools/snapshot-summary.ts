@@ -12,22 +12,33 @@ import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import memlabCore from '@memlab/core';
 import type {IHeapNode, HeapNodeIdSet} from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
+import {z} from 'zod';
 import {getSnapshot, getFilePath} from '../heap-state.js';
 import {
   formatBytes,
   formatNumber,
   markdownTable,
+  detectAppName,
   errorResult,
-  textResult,
   toolResult,
 } from '../utils.js';
 
 export function registerSnapshotSummary(server: McpServer): void {
   server.tool(
     'memlab_snapshot_summary',
-    'Get an overview of the loaded heap snapshot: total nodes, edges, size, and breakdown by node type with count, self size, and aggregate retained size (dominator-aware, no double-counting). Includes anomaly detection for high-count classes that may indicate leaks. Follow up with memlab_class_histogram for per-class breakdown, or memlab_duplicated_strings to find string duplication.',
-    {},
-    async () => {
+    'Get an overview of the loaded heap snapshot: total nodes, edges, size, and per-node-type breakdown with count and self size. ' +
+      'By DEFAULT retained size per type is reported as a cheap RANGE (lower bound = Σ self size, upper bound = Σ retained size) computed in a single O(N) pass — the exact dominator-deduped retained size needs a per-type dominator walk that can stall/OOM the server on very large heaps. Pass `exact_retained_size:true` ONLY when the user explicitly asks for the exact figure. ' +
+      'Includes anomaly detection for high-count classes. Follow up with memlab_class_histogram for a per-class breakdown, or memlab_duplicated_strings to find string duplication.',
+    {
+      exact_retained_size: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Compute the EXACT dominator-deduped retained size per node type via aggregateDominatorMetrics. DEFAULT false: report a range instead (lower = Σ self size, upper = Σ raw retained size), which is fast and safe on huge heaps. Set true ONLY on explicit user request — the exact walk can be very slow or time out on snapshots with millions of nodes and deep dominator chains.',
+        ),
+    },
+    async ({exact_retained_size}) => {
       try {
         const snapshot = getSnapshot();
 
@@ -36,7 +47,12 @@ export function registerSnapshotSummary(server: McpServer): void {
         let totalSelfSize = 0;
         const typeStats = new Map<
           string,
-          {count: number; self_size: number; node_ids: HeapNodeIdSet}
+          {
+            count: number;
+            self_size: number;
+            raw_retained: number;
+            node_ids: HeapNodeIdSet | null;
+          }
         >();
 
         snapshot.nodes.forEach(node => {
@@ -44,60 +60,98 @@ export function registerSnapshotSummary(server: McpServer): void {
           totalSelfSize += node.self_size;
           let stats = typeStats.get(node.type);
           if (!stats) {
-            stats = {count: 0, self_size: 0, node_ids: new NumericSet()};
+            stats = {
+              count: 0,
+              self_size: 0,
+              raw_retained: 0,
+              // Only collect per-node ids for the exact dominator walk, which
+              // is opt-in — in the default range mode they would waste memory.
+              node_ids: exact_retained_size ? new NumericSet() : null,
+            };
             typeStats.set(node.type, stats);
           }
           stats.count++;
           stats.self_size += node.self_size;
-          stats.node_ids.add(node.id);
+          stats.raw_retained += node.retainedSize;
+          if (stats.node_ids) stats.node_ids.add(node.id);
         });
         snapshot.edges.forEach(() => {
           edgeCount++;
         });
 
-        // Compute aggregate retained size per type using dominator-aware
-        // aggregation. This deduplicates overlapping retained sizes in the
-        // dominator tree so the result reflects how much memory would be freed
-        // if all nodes of a given type were garbage-collected together.
+        // Retained size per type. By DEFAULT we do NOT run the exact
+        // dominator-aware aggregation (utils.aggregateDominatorMetrics): on
+        // large heaps with deep dominator chains it is the operation that
+        // stalls/OOMs the server. Instead we report a cheap range computed in
+        // the O(N) pass above:
+        //   - lower bound = Σ self size (the objects' own bytes; never
+        //     double-counts, but excludes everything they retain)
+        //   - upper bound = Σ retained size (raw; double-counts memory shared
+        //     between instances on the dominator tree)
+        // The true dominator-deduped value lies in [lower, upper]. Pass
+        // exact_retained_size:true to compute the exact figure anyway.
         const breakdown: {
           type: string;
           count: number;
           self_size: number;
-          retained_size: number;
+          raw_retained: number;
+          exact: number | null;
         }[] = [];
 
         for (const [type, stats] of typeStats) {
-          const retainedSize = utils.aggregateDominatorMetrics(
-            stats.node_ids,
-            snapshot,
-            () => true,
-            (node: IHeapNode) => node.retainedSize,
-          );
+          let exact: number | null = null;
+          if (exact_retained_size && stats.node_ids) {
+            exact = utils.aggregateDominatorMetrics(
+              stats.node_ids,
+              snapshot,
+              () => true,
+              (node: IHeapNode) => node.retainedSize,
+            );
+          }
           breakdown.push({
             type,
             count: stats.count,
             self_size: stats.self_size,
-            retained_size: retainedSize,
+            raw_retained: stats.raw_retained,
+            exact,
           });
         }
 
-        breakdown.sort((a, b) => b.retained_size - a.retained_size);
+        breakdown.sort((a, b) =>
+          exact_retained_size
+            ? (b.exact ?? 0) - (a.exact ?? 0)
+            : b.raw_retained - a.raw_retained,
+        );
 
+        const appName = detectAppName(snapshot);
         const lines = [
           `**File:** ${getFilePath()}`,
+          ...(appName
+            ? [`**Detected app:** \`${appName}\` (from bundle paths)`]
+            : []),
           `**Nodes:** ${formatNumber(nodeCount)} | **Edges:** ${formatNumber(edgeCount)} | **Total Self Size:** ${formatBytes(totalSelfSize)}`,
           '',
         ];
 
-        const headers = ['Type', 'Count', 'Self Size', 'Retained Size'];
+        const headers = exact_retained_size
+          ? ['Type', 'Count', 'Self Size', 'Retained Size']
+          : ['Type', 'Count', 'Self (lower)', 'Retained ≤ (upper)'];
         const rightCols = new Set([1, 2, 3]);
         const rows = breakdown.map(b => [
           b.type,
           formatNumber(b.count),
           formatBytes(b.self_size),
-          formatBytes(b.retained_size),
+          exact_retained_size
+            ? formatBytes(b.exact ?? 0)
+            : `≤ ${formatBytes(b.raw_retained)}`,
         ]);
         lines.push(markdownTable(headers, rows, rightCols));
+        if (!exact_retained_size) {
+          lines.push(
+            '',
+            "_Retained size is shown as a **range** to avoid an expensive dominator walk. The true dominator-deduped retained size of each type lies between the **lower bound** (`Self` = the objects' own bytes) and the **upper bound** (`Retained ≤` = Σ of each instance's retained size, which double-counts memory shared between instances on the dominator tree). Computing the exact value needs a per-type dominator walk — slow and, on large heaps with deep PromiseReaction/Context chains, prone to stalling or timing out. Pass `exact_retained_size:true` to compute it anyway._",
+          );
+        }
 
         // Anomaly detection: find classes with unusually high instance counts
         const classMap = new Map<string, {count: number; type: string}>();

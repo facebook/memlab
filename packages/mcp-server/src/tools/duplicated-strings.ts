@@ -21,7 +21,8 @@ import {
 export function registerDuplicatedStrings(server: McpServer): void {
   server.tool(
     'memlab_duplicated_strings',
-    'Find duplicated string instances in the heap. Shows strings that appear multiple times, ranked by total retained size — a common source of memory waste. Use after memlab_class_histogram shows high string counts.',
+    'Find duplicated string instances in the heap. Shows strings that appear multiple times, ranked by total retained size — a common source of memory waste. Use after memlab_class_histogram shows high string counts. ' +
+      '⚠ Full-heap scan — slow and memory-heavy on very large heaps (millions of nodes); raise min_count to bound the work.',
     {
       limit: z
         .number()

@@ -15,7 +15,6 @@ import {
   formatBytes,
   markdownTable,
   errorResult,
-  textResult,
   toolResult,
   makeScanBudget,
   ScanTimeoutError,
@@ -275,7 +274,8 @@ const BUILTIN_GLOBALS = new Set([
 export function registerGlobalVariables(server: McpServer): void {
   server.tool(
     'memlab_global_variables',
-    'Find non-built-in global variables on the Window object (browser) or global object (Node.js), sorted by retained size. These are application-specific globals that may indicate memory issues.',
+    'Find non-built-in global variables on the Window object (browser) or global object (Node.js), sorted by retained size. These are application-specific globals that may indicate memory issues. ' +
+      '⚠ Full-heap scan — slow on very large heaps (millions of nodes).',
     {
       limit: z
         .number()

@@ -8,12 +8,26 @@
  * @oncall memory_lab
  */
 
-import type {IHeapNode, IHeapEdge, IHeapSnapshot} from '@memlab/core';
+import type {
+  IHeapNode,
+  IHeapEdge,
+  IHeapSnapshot,
+  HeapNodeIdSet,
+} from '@memlab/core';
 import {
   getSnapshotMetadata,
   getSessionConfig,
   shouldEmitHeader,
 } from './heap-state.js';
+// ScanTimeoutError / makeScanBudget moved to analysis-budget.ts (shared, no
+// import cycle). Re-exported here so existing `from '../utils.js'` imports in
+// the tools keep working unchanged.
+import {
+  ScanTimeoutError,
+  makeScanBudget,
+  tickAnalysis,
+} from './analysis-budget.js';
+export {ScanTimeoutError, makeScanBudget};
 
 export interface NodeSummary {
   id: number;
@@ -392,38 +406,135 @@ export function queryNodes(
 }
 
 /**
- * Thrown by a scan budget when a full-heap walk exceeds its wall-clock limit.
- * Callers catch this to return partial results with a clear note, instead of
- * letting a runaway scan run for many minutes (Feedback round 2 §1/§2).
+ * Dominator-deduped retained size for a set of nodes, with a BOUNDED upward
+ * dominator walk (default 500 steps, mirroring auto-investigate's
+ * `isDominatorAncestor` maxWalk). For each node we walk up its dominator chain
+ * looking for another in-set ancestor; if one is found the node is dominated
+ * (its bytes are already counted by that ancestor) so we skip it, otherwise we
+ * add its retained size.
+ *
+ * Unlike `@memlab/core`'s `aggregateDominatorMetrics`, the walk is capped and
+ * allocates no per-node Set, so a pathological deep dominator chain (e.g. a long
+ * PromiseReaction linked list) cannot make this blow up. Trade-off: if a node's
+ * nearest in-set dominator is deeper than `maxWalk`, we conservatively KEEP it
+ * (treat it as maximal), which can OVER-count — so `exact` is returned `false`
+ * whenever any node's walk was truncated, letting callers mark the figure as an
+ * upper bound. Calls `tickAnalysis()` per node so it also honors the wall-clock
+ * guardrail.
  */
-export class ScanTimeoutError extends Error {
-  constructor(
-    public iterations: number,
-    public timeoutMs: number,
-  ) {
-    super(`Scan exceeded its ${timeoutMs}ms budget after ~${iterations} nodes`);
-    this.name = 'ScanTimeoutError';
+export function boundedDominatorRetainedSize(
+  ids: HeapNodeIdSet,
+  snapshot: IHeapSnapshot,
+  maxWalk = 500,
+): {retained: number; exact: boolean} {
+  let retained = 0;
+  let exact = true;
+  for (const id of ids) {
+    tickAnalysis();
+    const node = snapshot.getNodeById(id);
+    if (!node) continue;
+    let dominated = false;
+    let truncated = false;
+    let cur: IHeapNode | null = node.dominatorNode ?? null;
+    let steps = 0;
+    while (cur) {
+      if (steps >= maxWalk) {
+        truncated = true;
+        break;
+      }
+      if (cur.id === node.id) break; // reached self
+      if (ids.has(cur.id)) {
+        dominated = true;
+        break;
+      }
+      const next: IHeapNode | null = cur.dominatorNode ?? null;
+      if (next && next.id === cur.id) break; // root self-loop
+      cur = next;
+      steps++;
+    }
+    if (!dominated) {
+      retained += node.retainedSize;
+      if (truncated) exact = false;
+    }
   }
+  return {retained, exact};
 }
 
 /**
- * Wall-clock budget for full-heap scans. Call `tick()` once per iteration; it
- * cheaply checks elapsed time every few thousand iterations and throws a
- * {@link ScanTimeoutError} when the budget is exceeded. This bounds the damage
- * of an expensive scan on a huge (e.g. multi-million-node browser) heap and
- * returns control to the server cleanly rather than wedging it.
+ * Best-effort detection of which app a Node snapshot came from, by tallying the
+ * `/app(s)/<name>/` segment in bundle paths embedded throughout the heap (string
+ * node values, function/script names). Returns the most common segment, or null
+ * if nothing decisive is found (Feedback round 3 §3d).
  */
-export function makeScanBudget(timeoutMs: number): {tick: () => void} {
-  const start = Date.now();
-  let i = 0;
-  return {
-    tick() {
-      i++;
-      if ((i & 0x3fff) === 0 && Date.now() - start > timeoutMs) {
-        throw new ScanTimeoutError(i, timeoutMs);
-      }
-    },
-  };
+export function detectAppName(snapshot: IHeapSnapshot): string | null {
+  const counts = new Map<string, number>();
+  const re = /\/apps?\/([A-Za-z0-9_.-]{2,40})\//;
+  const skip = new Set([
+    'node_modules',
+    'dist',
+    'src',
+    'build',
+    'lib',
+    'packages',
+    'common',
+    'shared',
+  ]);
+  snapshot.nodes.forEach(node => {
+    const name = node.name;
+    if (!name || name.indexOf('/app') === -1) return;
+    const m = re.exec(name);
+    if (!m) return;
+    const seg = m[1];
+    if (skip.has(seg)) return;
+    counts.set(seg, (counts.get(seg) ?? 0) + 1);
+  });
+  let best: string | null = null;
+  let bestN = 0;
+  for (const [k, v] of counts) {
+    if (v > bestN) {
+      best = k;
+      bestN = v;
+    }
+  }
+  return bestN >= 3 ? best : null;
+}
+
+/**
+ * Recognize retainer paths that route through runtime instrumentation — a
+ * patched global `console`, OpenTelemetry context chains, structured loggers,
+ * etc. Such paths are frequently reported as the GC owner even though the
+ * *logical* owner (a module cache, an OTel logger, a source-map cache) lives
+ * elsewhere and is only incidentally reachable via the instrumentation's
+ * captured-closure → `context` → `previous` → `Context` chain. Returns a short
+ * annotation when the path looks instrumentation-routed, else null
+ * (Feedback round 3 §3a).
+ */
+export function instrumentationRetainerNote(
+  steps: Array<{name: string; edgeName?: string}>,
+): string | null {
+  let viaConsole = false;
+  let viaOtel = false;
+  for (const s of steps) {
+    const n = s.name ?? '';
+    const e = s.edgeName ?? '';
+    if (n === 'console' || e === 'console') viaConsole = true;
+    if (/Logger|loggerConfigurator|DiagConsole/i.test(n)) viaConsole = true;
+    if (/opentelemetry|@opentelemetry|otel/i.test(n) || /otel/i.test(e)) {
+      viaOtel = true;
+    }
+  }
+  // The misleading shape is console/logger → captured closure → Context chain
+  // linked by `previous` pointers.
+  const hasContextChain = steps.some(
+    s => s.name === 'system / Context' || s.edgeName === 'previous',
+  );
+  if (viaConsole && hasContextChain) {
+    return '(reached via patched `console` / instrumentation context chain — likely NOT the logical owner; the real owner is usually a module cache or logger reached another way)';
+  }
+  if (viaOtel && hasContextChain) {
+    return '(reached via OpenTelemetry instrumentation context chain — likely NOT the logical owner)';
+  }
+  return null;
 }
 
 export function formatBytes(bytes: number): string {

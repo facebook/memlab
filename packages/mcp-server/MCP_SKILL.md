@@ -45,9 +45,12 @@ unload snapshots you're done with.
 2. Read the quick diagnosis output carefully — it flags the highest-severity
    issues immediately.
 3. Call `memlab_quick_diagnosis` for a combined overview in one call — it
-   returns snapshot summary, top objects by retained size, class histogram with
-   cumulative %, and duplicated strings. This saves 3-4 round trips compared
-   to calling each tool separately.
+   returns snapshot summary, top objects by retained size, a class histogram
+   (retained size shown as a lower/upper-bound range by default), and
+   duplicated strings. This saves 3-4 round trips compared to calling each tool
+   separately. Pass `exact_retained_size:true` only if the user explicitly
+   wants exact per-class retained sizes — that adds a per-class dominator walk
+   that can stall on very large heaps.
 4. Call `memlab_auto_investigate` for deep analysis — it finds the top retained
    objects, traces retainer chains with severity scoring
    (CRITICAL/HIGH/MEDIUM/LOW), identifies pinch points, detects unbounded
@@ -137,12 +140,18 @@ Triggered when: triage shows detached DOM elements.
 Triggered when: triage shows classes with >10,000 instances or a single object
 retaining >5% of heap.
 
-1. `memlab_class_histogram` — see per-class instance counts and retained sizes
-   with cumulative % column (stop reading when cumulative % hits 95%). Use
+1. `memlab_class_histogram` — see per-class instance counts and self sizes. It
+   runs with `include_retained_size: false` by default (fast single O(N) pass,
+   sorted by self size) — the safe default on large heaps. Only pass
+   `include_retained_size: true` if the user EXPLICITLY asks for dominator-aware
+   retained sizes; that path walks the dominator tree and can be slow or time
+   out on very large heaps (deep PromiseReaction/Context chains). Use
    `suppress_suggestions: true` on repeat calls to save tokens.
 2. `memlab_shape_histogram` — group generic `Object` instances by property
    structure to identify distinct record types (often reveals 3-5 distinct
-   shapes behind millions of "Object" instances)
+   shapes behind millions of "Object" instances). Retained size per shape is a
+   lower/upper-bound range by default; pass `exact_retained_size:true` (slow on
+   huge heaps) for the exact dominator-deduped value.
 3. `memlab_cache_analysis` — scan for unbounded Map/Set/Array caches with high
    entry counts and no eviction. Also detects ad-hoc TTL caches, configured
    caches, warm-on-boot caches, and globalThis registries. Use
@@ -419,13 +428,13 @@ When analyzing large snapshots, use these options to reduce token usage:
 | Trace from retainer to data (one call) | `memlab_trace_dominators` |
 | Identify distinct record types | `memlab_shape_histogram` |
 | Get detailed triage | `memlab_check_health` |
-| Get overview | `memlab_snapshot_summary` or `memlab_reports` with `full_analysis` |
+| Get overview | `memlab_snapshot_summary` (retained per type shown as a range by default; `exact_retained_size:true` for exact — may stall on huge heaps) or `memlab_reports` with `full_analysis` |
 | Find what to free for max impact | `memlab_pinch_points` |
 | Detect unbounded caches | `memlab_cache_analysis` |
 | Find leaking DOM | `memlab_detached_dom` |
 | Find duplicated strings | `memlab_duplicated_strings` → `memlab_string_patterns` |
 | Find large objects | `memlab_largest_objects` |
-| See per-class breakdown | `memlab_class_histogram` |
+| See per-class breakdown (counts + self size) | `memlab_class_histogram` (defaults to `include_retained_size:false`; set `true` only on explicit request — may be slow/time out on huge heaps) |
 | Understand why object is alive | `memlab_retainer_trace` |
 | See retention patterns across instances | `memlab_retainer_summary` (use `compact: true`, `framework_filter: true` for token savings) |
 | Inspect multiple objects at once | `memlab_object_shape` with `node_ids` array |
