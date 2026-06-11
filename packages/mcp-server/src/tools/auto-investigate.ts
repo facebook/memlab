@@ -19,12 +19,14 @@ import {
   isNodeWorthInspecting,
   formatBytes,
   formatNumber,
+  formatRetainerTree,
   truncateNodeName,
   instrumentationRetainerNote,
   errorResult,
   toolResult,
   suggestionsSuppressed,
 } from '../utils.js';
+import type {RetainerTreeStep} from '../utils.js';
 
 interface RetainerStep {
   nodeId: number;
@@ -788,26 +790,33 @@ function formatTrace(trace: RetainerStep[], maxSteps: number): string {
     collapsed.push(step);
   }
 
-  const shown =
-    collapsed.length <= maxSteps
-      ? collapsed
-      : [...collapsed.slice(0, 3), ...collapsed.slice(-2)];
+  const overLimit = collapsed.length > maxSteps;
+  const shown = overLimit
+    ? [...collapsed.slice(0, 3), ...collapsed.slice(-2)]
+    : collapsed;
 
-  const parts: string[] = [];
-  for (let i = 0; i < shown.length; i++) {
-    const s = shown[i];
-    const name = truncateNodeName(s.name, s.type, s.selfSize, 50);
-    parts.push(
-      `@${s.nodeId} ${name} (${s.type}) [${formatBytes(s.retainedSize)}]`,
-    );
-    if (i === 2 && collapsed.length > maxSteps) {
-      parts.push(`  … ${collapsed.length - 5} more nodes …`);
-    }
-    if (i < shown.length - 1 && s.edgeName != null) {
-      parts[parts.length - 1] += ` --${s.edgeName}-->`;
-    }
-  }
-  return parts.join('\n  → ');
+  // Render as a top-down indented tree so the retention direction is
+  // unambiguous (GC root on top, each node retained by the one above it).
+  // `s.edgeName` is the OUTGOING edge (s -> next); the edge pointing INTO a node
+  // is the previous node's edgeName, which is what the renderer surfaces.
+  const treeSteps: RetainerTreeStep[] = shown.map((s, i) => ({
+    id: s.nodeId,
+    name: truncateNodeName(s.name, s.type, s.selfSize, 50),
+    type: s.type,
+    retainedSize: s.retainedSize,
+    // `shown[i - 1].edgeName` is the previous node's OUTGOING edge = the edge
+    // INTO this node, but only when the two are actually adjacent. At the
+    // truncation boundary (i === 3) `shown[2]`'s outgoing edge points into the
+    // elided `collapsed[3]`, not into this tail node, so leave it undefined
+    // rather than misattribute an unrelated edge — the gap is already marked by
+    // `collapsedBefore`.
+    edgeName:
+      i > 0 && !(overLimit && i === 3) ? shown[i - 1].edgeName : undefined,
+    // The two tail nodes were sliced off the end, so the hop into the first of
+    // them crosses the elided middle — mark the gap.
+    collapsedBefore: overLimit && i === 3 ? collapsed.length - 5 : undefined,
+  }));
+  return formatRetainerTree(treeSteps, {showSizes: true});
 }
 
 function computeTraceOverlap(
@@ -1674,7 +1683,7 @@ export function registerAutoInvestigate(server: McpServer): void {
                 `**Retainer chain:** (same chain as #${traceMatch.matchedIndex + 1}) → [${divergeEdge}] ${divergeName} — ${formatBytes(f.node.retainedSize)}`,
               );
             } else {
-              lines.push(`**Retainer chain:** ${formatTrace(f.trace, 8)}`);
+              lines.push(`**Retainer chain:**\n${formatTrace(f.trace, 8)}`);
             }
             lines.push('');
             lines.push(
@@ -1709,7 +1718,7 @@ export function registerAutoInvestigate(server: McpServer): void {
               `### ${i + 1}. ${sevIcon} [${f.severity}] @${f.node.id} \`${name}\` (${f.node.type}) — ${formatBytes(f.node.retainedSize)}${pct}`,
             );
             lines.push('');
-            lines.push(`**Retainer chain:** ${formatTrace(f.trace, 8)}`);
+            lines.push(`**Retainer chain:**\n${formatTrace(f.trace, 8)}`);
           }
           previousTraces.push(f.trace);
           const instrNote = instrumentationRetainerNote(f.trace);

@@ -599,6 +599,127 @@ export function formatNodeInline(
   return `@${id} ${displayName} (${type})`;
 }
 
+/**
+ * One step of a retainer path, root-first. `edgeName` is the name of the edge
+ * that points INTO this node from its retainer (i.e. parent → this node, the
+ * property / element / context slot through which the parent holds this node).
+ * The GC root (first step) has no incoming edge. `collapsedBefore` records how
+ * many uninteresting internal nodes were elided immediately above this node.
+ */
+export interface RetainerTreeStep {
+  id: number;
+  name: string;
+  type: string;
+  retainedSize?: number;
+  selfSize?: number;
+  edgeName?: string;
+  collapsedBefore?: number;
+}
+
+function formatEdgeLabel(name: string): string {
+  const trimmed = name.length > 40 ? `${name.slice(0, 39)}…` : name;
+  if (/^\d+$/.test(trimmed)) return `[${trimmed}]`; // array / element index
+  if (/^[A-Za-z_$][\w$]*$/.test(trimmed)) return `.${trimmed}`; // property
+  return trimmed; // synthetic edge (e.g. "[entry]", "<symbol>")
+}
+
+function retainerMarker(i: number, len: number): string {
+  if (i === 0) return '   ← GC root';
+  if (i === len - 1) return '   ← retained object';
+  return '';
+}
+
+/**
+ * Deep-trace fallback: a flat "ladder" with a constant left margin. Each node
+ * sits at column 0 and a `↓` connector line carries the edge label / elision
+ * note between nodes. Reads top→down = "retains", same as the indented tree, but
+ * the indentation never grows — so a 20-hop chain still fits an 80-column
+ * terminal where the nested tree would push the leaf off the right edge.
+ */
+function formatRetainerLadder(
+  steps: RetainerTreeStep[],
+  showSizes: boolean,
+): string {
+  const lines: string[] = [];
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    if (i > 0) {
+      // The connector carries the elision note (if any) and the edge that the
+      // parent holds this node through — always show the edge when we have it.
+      const parts = ['  ↓'];
+      if (s.collapsedBefore && s.collapsedBefore > 0) {
+        parts.push(`… ${s.collapsedBefore} internal node(s) …`);
+      }
+      if (s.edgeName != null) {
+        parts.push(formatEdgeLabel(s.edgeName));
+      }
+      lines.push(parts.join(' '));
+    }
+    const size =
+      showSizes && s.retainedSize != null
+        ? `  — ${formatBytes(s.retainedSize)}`
+        : '';
+    const nodeStr = formatNodeInline(s.id, s.name, s.type, s.selfSize);
+    lines.push(`${nodeStr}${size}${retainerMarker(i, steps.length)}`);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Render a retainer path so it reads in a single, unambiguous direction: the GC
+ * root is at the top, and **every node is retained by the one above it**. The
+ * edge that connects a parent to its child is embedded in the connector
+ * (`└─ .prop →` / `└─ [2] →`, ladder: `↓ .prop`), and sizes as `— <bytes>`.
+ *
+ * Shallow chains use a nested indented tree (one indent level = one hop).
+ * **Deep chains automatically switch to a flat `↓` ladder** (controlled by
+ * `maxTreeDepth`, default 8) so growing indentation never pushes the leaf node
+ * off the right edge of a narrow terminal.
+ *
+ * This deliberately avoids the older inline style that mixed `←` (retained-by)
+ * and `→` (references) arrows on the same line, which made the direction of a
+ * trace genuinely hard to read in analysis output and diff summaries. Always
+ * prefer this renderer when presenting a retainer chain to a human.
+ */
+export function formatRetainerTree(
+  steps: RetainerTreeStep[],
+  opts: {showSizes?: boolean; maxTreeDepth?: number} = {},
+): string {
+  const {showSizes = true, maxTreeDepth = 8} = opts;
+  if (steps.length === 0) return '';
+  // Past this depth the nested indentation gets too wide for a narrow terminal,
+  // so fall back to the constant-margin ladder (user feedback).
+  if (steps.length > maxTreeDepth) {
+    return formatRetainerLadder(steps, showSizes);
+  }
+  const lines: string[] = [];
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    const isRoot = i === 0;
+    const pad = isRoot ? '' : ' '.repeat(2 + 3 * (i - 1));
+    if (s.collapsedBefore && s.collapsedBefore > 0) {
+      lines.push(`${pad}└─ … ${s.collapsedBefore} internal node(s) …`);
+    }
+    // Embed the edge the parent holds this node through directly in the
+    // connector (`└─ .prop →`, `└─ [2] →`) — it's the most actionable part of
+    // the trace, and keeping it on the connector reads as "parent --edge--> child".
+    const connector = isRoot
+      ? ''
+      : s.edgeName != null
+        ? `└─ ${formatEdgeLabel(s.edgeName)} → `
+        : '└─ ';
+    const size =
+      showSizes && s.retainedSize != null
+        ? `  — ${formatBytes(s.retainedSize)}`
+        : '';
+    const nodeStr = formatNodeInline(s.id, s.name, s.type, s.selfSize);
+    lines.push(
+      `${pad}${connector}${nodeStr}${size}${retainerMarker(i, steps.length)}`,
+    );
+  }
+  return lines.join('\n');
+}
+
 export function formatNodeSummaryTable(nodes: NodeSummary[]): string {
   const headers = ['ID', 'Name', 'Type', 'Self Size', 'Retained Size'];
   const rightCols = new Set([3, 4]);

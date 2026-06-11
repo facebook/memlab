@@ -392,6 +392,54 @@ Summarize your findings with:
 5. **Verification** — how to confirm the fix works (re-take snapshot,
    `diff_snapshots`)
 
+### Presenting retainer chains (analysis output AND diff summaries)
+
+A retainer chain is the single most-quoted piece of a memory investigation, so
+render it so a human can read it at a glance. **Always present it as a top-down
+indented tree inside a fenced code block:** the GC root on top, and **each node
+retained by the one directly above it** (one indent level = one hop further from
+the GC root). `memlab_retainer_trace` (with `show_sizes`, the default) and
+`memlab_auto_investigate` already emit exactly this shape — copy it straight
+through into your report and the Phabricator diff summary instead of
+re-rendering it.
+
+**Never mix `←` (retained-by) and `→` (references) arrows on the same line.**
+That ambiguity — e.g. `<- defaultExport -> $3 (closure) -> system / Context` —
+is the #1 reason traces become unreadable. Pick one direction and stick to it:
+top→down means "retains".
+
+```
+@1 Window (native)  — 605 MB   ← GC root
+  └─ .WAWebUploadManager → @5 WAWebUploadManager (object)  — 605 MB
+     └─ .table → @9 Map (object)  — 605 MB   (in-flight upload registry)
+        └─ [entry] → @14 Promise (object)  — 602 MB
+           └─ … 2 internal node(s) …
+           └─ .n → @42 ArrayBuffer (object)  — 605 MB   ← retained object (ciphertextHmac)
+```
+
+The edge the parent holds each node through is embedded in the connector
+(`└─ .prop →`, `└─ [2] →` for an array index). Annotate, don't re-flow: keep those
+edge labels and the `— <bytes>` sizes from the tool output, and add a short
+plain-English note in parentheses when a node's role isn't obvious
+(`(in-flight upload registry)`). For very long chains, lean on the tool's own
+elision (`… N internal node(s) …` / `max_depth` / `framework_filter: true`)
+rather than inventing your own.
+
+**Deep chains:** nested indentation gets too wide for a narrow terminal once a
+trace is more than ~8 hops, so the tools automatically switch to a flat `↓`
+ladder (constant left margin, `↓` connector = "retains") for long traces. Keep
+that flat form when you quote it — don't re-indent a deep chain back into a tree.
+
+```
+@1 Window (native)  — 605 MB   ← GC root
+  ↓ .WAWebUploadManager
+@5 WAWebUploadManager (object)  — 605 MB
+  ↓ .table
+@9 Map (object)  — 605 MB
+  ↓ … 2 internal node(s) … .n
+@42 ArrayBuffer (object)  — 605 MB   ← retained object
+```
+
 ## Token Efficiency Tips
 
 When analyzing large snapshots, use these options to reduce token usage:

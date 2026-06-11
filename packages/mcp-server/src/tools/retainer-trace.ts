@@ -14,12 +14,13 @@ import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
 import {
   formatNodeInline,
-  formatBytes,
+  formatRetainerTree,
   isNodeWorthInspecting,
   instrumentationRetainerNote,
   errorResult,
   toolResult,
 } from '../utils.js';
+import type {RetainerTreeStep} from '../utils.js';
 
 export function registerRetainerTrace(server: McpServer): void {
   server.tool(
@@ -164,8 +165,13 @@ export function registerRetainerTrace(server: McpServer): void {
           : '';
         const lines = [
           `Retainer trace for @${node_id} (${fullLength} nodes${depthNote}):`,
-          '',
         ];
+        if (show_sizes) {
+          lines.push(
+            '(top = GC root; each node is retained by the one above it)',
+          );
+        }
+        lines.push('');
         if (appFrame) {
           const loc = appFrame.location;
           lines.push(
@@ -191,31 +197,39 @@ export function registerRetainerTrace(server: McpServer): void {
         }
 
         if (show_sizes) {
-          // Vertical format with sizes for readability
-          for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            const n = item.node;
-            const sizeStr = formatBytes(n.retainedSize);
-            const nodeStr = formatNodeInline(n.id, n.name, n.type, n.self_size);
-            if (item.collapsedCount && item.collapsedCount > 0) {
-              lines.push(`  ← [${item.collapsedCount} internal node(s)] ←`);
-            }
-            if (i === 0) {
-              lines.push(`${nodeStr} [${sizeStr}]`);
-            } else {
-              const prevItem = items[i - 1];
-              const edgeLabel = prevItem.edgeName ?? '?';
-              lines.push(`  ← ${edgeLabel} ← ${nodeStr} [${sizeStr}]`);
-            }
-          }
+          // Top-down indented tree: GC root at the top, each node retained by
+          // the one above it. Single, unambiguous reading direction (no mixing
+          // of ← and → on one line).
+          // `item.edgeName` is the OUTGOING edge (item -> next), so the edge
+          // pointing INTO item is the previous item's edgeName. The helper wants
+          // each node's incoming edge.
+          const treeSteps: RetainerTreeStep[] = items.map((item, i) => ({
+            id: item.node.id,
+            name: item.node.name,
+            type: item.node.type,
+            retainedSize: item.node.retainedSize,
+            selfSize: item.node.self_size,
+            edgeName: i > 0 ? items[i - 1].edgeName : undefined,
+            collapsedBefore: item.collapsedCount,
+          }));
           if (truncated && max_depth != null) {
-            lines.push(`  ← ... (${fullLength - max_depth} more nodes) ...`);
-            const target = reverseItems[reverseItems.length - 1];
-            const tn = target.node;
-            lines.push(
-              `  ← ${formatNodeInline(tn.id, tn.name, tn.type, tn.self_size)} [${formatBytes(tn.retainedSize)}]`,
-            );
+            const target = reverseItems[reverseItems.length - 1].node;
+            treeSteps.push({
+              id: target.id,
+              name: target.name,
+              type: target.type,
+              retainedSize: target.retainedSize,
+              selfSize: target.self_size,
+              // The target's real incoming edge is one of the elided middle
+              // nodes' edges and isn't available here. `items[last].edgeName`
+              // is the edge into the FIRST elided node, not into the target, so
+              // using it would misattribute an unrelated property to the target.
+              // Leave it undefined so no bogus `└─ .prop →` label is rendered.
+              edgeName: undefined,
+              collapsedBefore: fullLength - max_depth,
+            });
           }
+          lines.push(formatRetainerTree(treeSteps, {showSizes: true}));
         } else {
           // Compact inline chain format
           const parts: string[] = [];
