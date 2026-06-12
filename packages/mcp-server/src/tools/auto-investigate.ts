@@ -1893,6 +1893,12 @@ export function registerAutoInvestigate(server: McpServer): void {
 
             // Analyze each property's cardinality and value characteristics
             for (const propName of s.properties) {
+              // Skip prototype / internal pseudo-properties — they are not data
+              // columns, so "pre-filter / intern this column" advice is noise
+              // (Feedback round 4 §2).
+              if (propName === '__proto__' || propName.startsWith('<')) {
+                continue;
+              }
               const values = new Set<string>();
               let totalValueSize = 0;
               let stringValueCount = 0;
@@ -1949,9 +1955,15 @@ export function registerAutoInvestigate(server: McpServer): void {
                 cardinality <= 20 &&
                 sampleCount >= 100
               ) {
-                // Genuine low-cardinality column.
+                // Genuine low-cardinality column. Only suggest string interning
+                // when the column actually holds strings — interning a numeric
+                // (SMI/heap-number) or boolean column is meaningless
+                // (Feedback round 4 §2).
+                const isStringColumn = stringValueCount >= sampleCount * 0.5;
                 columnAlerts.push(
-                  `- Property \`${propName}\` has only **${cardinality} unique value(s)** across ${formatNumber(s.count)} instances — low-cardinality column suitable for pre-filtering at the data source or string interning`,
+                  isStringColumn
+                    ? `- Property \`${propName}\` has only **${cardinality} unique value(s)** across ${formatNumber(s.count)} instances — low-cardinality column suitable for pre-filtering at the data source or string interning`
+                    : `- Property \`${propName}\` has only **${cardinality} unique value(s)** across ${formatNumber(s.count)} instances — low-cardinality column suitable for pre-filtering at the data source`,
                 );
               }
 
