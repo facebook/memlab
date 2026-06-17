@@ -1890,8 +1890,19 @@ export function registerAutoInvestigate(server: McpServer): void {
           for (const s of qualifyingShapes) {
             const sampleNodes = shapeBuckets.get(s.properties.join(',')) ?? [];
             if (sampleNodes.length < 50) continue;
+            const sampleCount = sampleNodes.length;
+            const shapeKey = s.properties.join(',');
 
-            // Analyze each property's cardinality and value characteristics
+            // Pass 1: per-property cardinality / value characteristics over the
+            // sample.
+            interface PropStat {
+              name: string;
+              cardinality: number;
+              stringValueCount: number;
+              totalValueSize: number;
+              allUnique: boolean;
+            }
+            const propStats: PropStat[] = [];
             for (const propName of s.properties) {
               // Skip prototype / internal pseudo-properties — they are not data
               // columns, so "pre-filter / intern this column" advice is noise
@@ -1924,60 +1935,78 @@ export function registerAutoInvestigate(server: McpServer): void {
                   }
                 }
               }
+              propStats.push({
+                name: propName,
+                cardinality: values.size,
+                stringValueCount,
+                totalValueSize,
+                allUnique,
+              });
+            }
 
-              const cardinality = values.size;
-              const sampleCount = sampleNodes.length;
-              const uniqueKey = looksUniqueKey(propName);
-              const shapeKey = s.properties.join(',');
-
-              // Same-object duplication vs genuine low cardinality (§1b): a field
-              // that *should* be unique per record but has far fewer distinct
-              // values than sampled instances means the SAME records are retained
-              // N times — a retention/concurrency fix, not interning.
-              if (
-                uniqueKey &&
-                sampleCount >= 100 &&
-                cardinality >= 1 &&
-                cardinality < sampleCount * 0.6 &&
-                !dupShapesSeen.has(shapeKey)
-              ) {
-                const dupFactor = Math.round(
-                  sampleCount / Math.max(1, cardinality),
+            // Same-object duplication (§1b), copy-factor corrected (round 4 §1a):
+            // derive the factor from the MOST-DISTINCT string-valued field — the
+            // record's true discriminator — NOT from an arbitrary unique-looking
+            // field. The old code did `sampleCount / cardinality` on any
+            // `*_id`-shaped key, so a CONSTANT field (e.g. `gala_project_id`
+            // with 1 value) reported "~200 copies" when the real duplication was
+            // 2×. If even the most-distinct field repeats, the whole record is
+            // duplicated; if the most-distinct field is ~unique, there is no
+            // duplication regardless of how many constant columns exist.
+            const stringStats = propStats.filter(
+              p => p.stringValueCount >= sampleCount * 0.5,
+            );
+            let maxCard = 0;
+            let discrim = '';
+            for (const p of stringStats) {
+              if (p.cardinality > maxCard) {
+                maxCard = p.cardinality;
+                discrim = p.name;
+              }
+            }
+            if (
+              stringStats.length > 0 &&
+              maxCard >= 1 &&
+              maxCard < sampleCount * 0.6 &&
+              sampleCount >= 100 &&
+              !dupShapesSeen.has(shapeKey)
+            ) {
+              const copyFactor = Math.round(sampleCount / maxCard);
+              if (copyFactor >= 2) {
+                dupShapesSeen.add(shapeKey);
+                duplicationAlerts.push(
+                  `- \`{${s.properties.slice(0, 4).join(', ')}${s.properties.length > 4 ? ', …' : ''}}\` (${formatNumber(s.count)} total instances): even the most-distinct field \`${discrim}\` has only **${formatNumber(maxCard)} distinct value(s)** across ${formatNumber(sampleCount)} sampled — the same records appear to be retained **≈${copyFactor}×** (sample-based estimate; confirm the exact factor with \`memlab_property_distribution\` on \`${discrim}\`, or a content-hash count). Investigate **retention/concurrency** (e.g. many concurrent requests each holding a full copy of this dataset, or the same listing materialized twice), NOT string interning.`,
                 );
-                if (dupFactor >= 2) {
-                  dupShapesSeen.add(shapeKey);
-                  duplicationAlerts.push(
-                    `- \`${propName}\` (a unique-looking key) has only **${formatNumber(cardinality)} distinct value(s)** across ${formatNumber(sampleCount)} sampled of ${formatNumber(s.count)} total \`{${s.properties.slice(0, 4).join(', ')}${s.properties.length > 4 ? ', …' : ''}}\` instances — looks like **~${dupFactor} retained copies of the same records**, not a low-cardinality column. Investigate **retention/concurrency** (e.g. many concurrent requests each holding a full copy of this dataset), NOT string interning.`,
-                  );
-                }
-              } else if (
-                !uniqueKey &&
-                cardinality <= 20 &&
-                sampleCount >= 100
-              ) {
+              }
+            }
+
+            // Pass 2: per-property low-cardinality + high-cost-unique notes.
+            for (const p of propStats) {
+              const uniqueKey = looksUniqueKey(p.name);
+              if (!uniqueKey && p.cardinality <= 20 && sampleCount >= 100) {
                 // Genuine low-cardinality column. Only suggest string interning
                 // when the column actually holds strings — interning a numeric
                 // (SMI/heap-number) or boolean column is meaningless
                 // (Feedback round 4 §2).
-                const isStringColumn = stringValueCount >= sampleCount * 0.5;
+                const isStringColumn = p.stringValueCount >= sampleCount * 0.5;
                 columnAlerts.push(
                   isStringColumn
-                    ? `- Property \`${propName}\` has only **${cardinality} unique value(s)** across ${formatNumber(s.count)} instances — low-cardinality column suitable for pre-filtering at the data source or string interning`
-                    : `- Property \`${propName}\` has only **${cardinality} unique value(s)** across ${formatNumber(s.count)} instances — low-cardinality column suitable for pre-filtering at the data source`,
+                    ? `- Property \`${p.name}\` has only **${p.cardinality} unique value(s)** across ${formatNumber(s.count)} instances — low-cardinality column suitable for pre-filtering at the data source or string interning`
+                    : `- Property \`${p.name}\` has only **${p.cardinality} unique value(s)** across ${formatNumber(s.count)} instances — low-cardinality column suitable for pre-filtering at the data source`,
                 );
               }
 
-              // High-cost unique: all values unique, string, large average size
+              // High-cost unique: all values unique, string, large average size.
               if (
-                allUnique &&
-                stringValueCount > sampleCount * 0.8 &&
-                cardinality > sampleCount * 0.9
+                p.allUnique &&
+                p.stringValueCount > sampleCount * 0.8 &&
+                p.cardinality > sampleCount * 0.9
               ) {
-                const avgSize = totalValueSize / stringValueCount;
+                const avgSize = p.totalValueSize / p.stringValueCount;
                 if (avgSize > 50 && s.count > 10_000) {
                   const estimatedWaste = avgSize * s.count;
                   columnAlerts.push(
-                    `- Property \`${propName}\` has **all unique string values** (avg ${Math.round(avgSize)}B each × ${formatNumber(s.count)} instances = ~${formatBytes(estimatedWaste)}) — verify this field is needed by consumers`,
+                    `- Property \`${p.name}\` has **all unique string values** (avg ${Math.round(avgSize)}B each × ${formatNumber(s.count)} instances = ~${formatBytes(estimatedWaste)}) — verify this field is needed by consumers`,
                   );
                 }
               }

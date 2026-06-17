@@ -110,11 +110,31 @@ export function registerSlicedStrings(server: McpServer): void {
           );
         }
 
-        let parents = [...parentMap.values()];
+        const allParents = [...parentMap.values()];
+        const totalPinnedBytes = allParents.reduce(
+          (sum, p) => sum + p.self_size,
+          0,
+        );
+
+        // Don't go silent when `min_parent_size` filters everything out. On the
+        // common "many medium parents" case (each parent sub-MB but thousands of
+        // them, e.g. ~250 KB JSON records) the filter used to hide every row and
+        // the tool reported nothing actionable. Fall back to the largest parents
+        // with a note, and ALWAYS report the aggregate bytes pinned so the "lots
+        // of small parents" case is visible (Feedback round 4 §3a).
+        let parents = allParents;
+        let filteredNote = '';
         if (min_parent_size != null) {
-          parents = parents.filter(p => p.self_size >= min_parent_size);
+          const filtered = allParents.filter(
+            p => p.self_size >= min_parent_size,
+          );
+          if (filtered.length > 0) {
+            parents = filtered;
+          } else {
+            filteredNote = ` (no parent ≥ ${formatBytes(min_parent_size)}; showing the largest instead)`;
+          }
         }
-        parents.sort((a, b) => b.self_size - a.self_size);
+        parents = [...parents].sort((a, b) => b.self_size - a.self_size);
         const topParents = parents.slice(0, limit);
 
         const lines: string[] = [];
@@ -129,6 +149,11 @@ export function registerSlicedStrings(server: McpServer): void {
         lines.push(
           `**Unique parent strings referenced:** ${formatNumber(parentMap.size)}`,
         );
+        if (allParents.length > 0) {
+          lines.push(
+            `**Total parent bytes pinned by slices:** ${formatBytes(totalPinnedBytes)} across ${formatNumber(allParents.length)} parent string(s) — substrings keep these alive even when each individual parent is small.`,
+          );
+        }
         lines.push('');
 
         if (topParents.length > 0) {
@@ -149,7 +174,9 @@ export function registerSlicedStrings(server: McpServer): void {
             formatNumber(p.sliced_ref_count),
             formatBytes(p.sliced_total_size),
           ]);
-          lines.push('### Top parent strings (keeping slices alive)');
+          lines.push(
+            `### Top parent strings (keeping slices alive)${filteredNote}`,
+          );
           lines.push('');
           lines.push(markdownTable(headers, rows, rightCols));
 
