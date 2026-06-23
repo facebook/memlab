@@ -15,11 +15,11 @@ import {getSnapshot} from '../heap-state.js';
 import {
   isNodeWorthInspecting,
   filterLargestObjects,
+  collapseDominatorSubtrees,
   truncateNodeName,
   formatBytes,
   markdownTable,
   errorResult,
-  textResult,
   toolResult,
 } from '../utils.js';
 
@@ -58,7 +58,7 @@ function getContentPreview(node: IHeapNode): string {
 export function registerLargestObjects(server: McpServer): void {
   server.tool(
     'memlab_largest_objects',
-    'Find the top N objects by retained size in the loaded heap snapshot. Filters out internal/meta objects. Use node_type to filter to a specific type (e.g., "object", "closure") or exclude_types to remove noisy types (e.g., "string"). Shows a content preview for each node.',
+    'Find the top N objects by retained size in the loaded heap snapshot. Filters out internal/meta objects. Use node_type to filter to a specific type (e.g., "object", "closure") or exclude_types to remove noisy types (e.g., "string"). Shows a content preview for each node. By default it collapses multiple views of the SAME dominator subtree (e.g. Client → Request → … → Map all at one retained size on a single in-flight request) into one representative row so the list is not dominated by ~20 duplicate rows; pass collapse_subtrees:false to see every node.',
     {
       limit: z
         .number()
@@ -77,8 +77,15 @@ export function registerLargestObjects(server: McpServer): void {
         .describe(
           'Comma-separated node types to exclude (e.g., "string,concatenated string"). Useful to filter out large strings dominating the list.',
         ),
+      collapse_subtrees: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'Collapse nodes that are different views of the same dominator subtree (same retained size + one dominates the other) into a single representative row, annotated with how many views were folded in (default true). Set false to see every node, including all internal nodes of one big subtree.',
+        ),
     },
-    async ({limit, node_type, exclude_types}) => {
+    async ({limit, node_type, exclude_types, collapse_subtrees}) => {
       try {
         const snapshot = getSnapshot();
 
@@ -86,7 +93,14 @@ export function registerLargestObjects(server: McpServer): void {
           ? new Set(exclude_types.split(',').map(s => s.trim()))
           : null;
 
-        const nodes = filterLargestObjects(
+        // When collapsing, over-fetch candidates so a single big subtree's many
+        // same-retained-size views don't crowd out distinct subtrees before
+        // dedup. Bounded so the retained-size sort stays cheap on huge heaps.
+        const fetchLimit = collapse_subtrees
+          ? Math.min(Math.max(limit * 6, limit + 30), 300)
+          : limit;
+
+        const candidates = filterLargestObjects(
           snapshot,
           (node: IHeapNode) => {
             if (!isNodeWorthInspecting(node)) return false;
@@ -94,8 +108,12 @@ export function registerLargestObjects(server: McpServer): void {
             if (excludeSet && excludeSet.has(node.type)) return false;
             return true;
           },
-          limit,
+          fetchLimit,
         );
+
+        const groups = collapse_subtrees
+          ? collapseDominatorSubtrees(candidates, limit)
+          : candidates.slice(0, limit).map(node => ({node, mergedCount: 0}));
 
         const headers = [
           'ID',
@@ -106,22 +124,33 @@ export function registerLargestObjects(server: McpServer): void {
           'Preview',
         ];
         const rightCols = new Set([3, 4]);
-        const rows = nodes.map(n => [
-          `@${n.id}`,
-          truncateNodeName(n.name, n.type, n.self_size, 60),
-          n.type,
-          formatBytes(n.self_size),
-          formatBytes(n.retainedSize),
-          getContentPreview(n),
-        ]);
+        const rows = groups.map(({node: n, mergedCount}) => {
+          const mergeNote =
+            mergedCount > 0
+              ? `(+${mergedCount} more view${mergedCount > 1 ? 's' : ''} of this subtree) `
+              : '';
+          return [
+            `@${n.id}`,
+            truncateNodeName(n.name, n.type, n.self_size, 60),
+            n.type,
+            formatBytes(n.self_size),
+            formatBytes(n.retainedSize),
+            mergeNote + getContentPreview(n),
+          ];
+        });
 
         const filterParts: string[] = [];
         if (node_type) filterParts.push(`type=${node_type}`);
         if (exclude_types) filterParts.push(`excluding ${exclude_types}`);
         const filterNote =
           filterParts.length > 0 ? ` (${filterParts.join(', ')})` : '';
+        const collapsed = groups.reduce((s, g) => s + g.mergedCount, 0);
+        const collapseNote =
+          collapse_subtrees && collapsed > 0
+            ? `\n_Collapsed ${collapsed} same-subtree view(s) into their representative rows; pass collapse_subtrees:false to see every node._`
+            : '';
         return toolResult(
-          `Top ${rows.length} objects by retained size${filterNote}\n\n${markdownTable(headers, rows, rightCols)}`,
+          `Top ${rows.length} objects by retained size${filterNote}\n\n${markdownTable(headers, rows, rightCols)}${collapseNote}`,
         );
       } catch (err) {
         return errorResult(err);

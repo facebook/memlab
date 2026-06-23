@@ -328,6 +328,60 @@ export function filterLargestObjects(
   return result;
 }
 
+/**
+ * Collapse heap nodes that are merely different VIEWS of the same dominator
+ * subtree (e.g. on a single in-flight request: Client → Request → closure →
+ * Promise → Context → Map all reporting the SAME retained size). Without this,
+ * `largest_objects` returns ~20 rows that are all one subtree — pure noise and
+ * wasted tokens (feedback §A.2).
+ *
+ * Two nodes are treated as the same subtree ONLY when (a) their retained sizes
+ * are within `epsilon` of each other AND (b) one dominates the other within a
+ * bounded dominator walk — so unrelated objects that merely share a byte count
+ * are never collapsed. `candidates` must be pre-sorted by retained size desc;
+ * the highest dominator (ancestor) is kept as the representative, annotated with
+ * `mergedCount` = how many views were folded into it.
+ */
+export function collapseDominatorSubtrees(
+  candidates: IHeapNode[],
+  limit: number,
+  opts: {epsilon?: number; maxWalk?: number} = {},
+): Array<{node: IHeapNode; mergedCount: number}> {
+  const epsilon = opts.epsilon ?? 0.99;
+  const maxWalk = opts.maxWalk ?? 200;
+  const dominates = (ancestor: IHeapNode, n: IHeapNode): boolean => {
+    let cur: IHeapNode | null = n.dominatorNode ?? null;
+    let steps = 0;
+    while (cur && steps++ < maxWalk) {
+      if (cur.id === ancestor.id) return true;
+      cur = cur.dominatorNode ?? null;
+    }
+    return false;
+  };
+  const kept: Array<{node: IHeapNode; mergedCount: number}> = [];
+  for (const c of candidates) {
+    let merged = false;
+    for (const k of kept) {
+      const lo = Math.min(c.retainedSize, k.node.retainedSize);
+      const hi = Math.max(c.retainedSize, k.node.retainedSize);
+      const nearEqual = hi > 0 && lo / hi >= epsilon;
+      if (nearEqual && (dominates(k.node, c) || dominates(c, k.node))) {
+        // Same subtree: prefer the higher (ancestor) node as the representative.
+        if (dominates(c, k.node)) {
+          k.node = c;
+        }
+        k.mergedCount++;
+        merged = true;
+        break;
+      }
+    }
+    if (!merged) {
+      kept.push({node: c, mergedCount: 0});
+    }
+  }
+  return kept.slice(0, limit);
+}
+
 export type OutputMode = 'full' | 'count' | 'ids';
 
 export interface QueryNodesResult {

@@ -242,10 +242,19 @@ export function registerQuickDiagnosis(server: McpServer): void {
             Math.round(v.total_self_size / v.count),
             80,
           );
-          const pct =
-            totalClassRetained > 0
-              ? ((v.rank / totalClassRetained) * 100).toFixed(1) + '%'
-              : '-';
+          const pctNum =
+            totalClassRetained > 0 ? (v.rank / totalClassRetained) * 100 : null;
+          // The exact (dominator-deduped) % can never exceed 100%. The
+          // upper-bound % can, because raw_retained double-counts shared
+          // subtrees — render that as ">100%" instead of a nonsensical figure
+          // like "1253%" (feedback §A.3).
+          const exactPct = pctNum == null ? '-' : `${pctNum.toFixed(1)}%`;
+          const upperPct =
+            pctNum == null
+              ? '-'
+              : pctNum > 100
+                ? '>100%'
+                : `${pctNum.toFixed(1)}%`;
           return [
             name,
             v.type,
@@ -253,7 +262,7 @@ export function registerQuickDiagnosis(server: McpServer): void {
             exact_retained_size
               ? formatBytes(v.exact ?? 0)
               : `≤ ${formatBytes(v.raw_retained)}`,
-            exact_retained_size ? pct : `≤ ${pct}`,
+            exact_retained_size ? exactPct : `≤ ${upperPct}`,
           ];
         });
         lines.push(

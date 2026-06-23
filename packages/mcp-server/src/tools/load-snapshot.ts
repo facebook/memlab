@@ -73,12 +73,46 @@ export function resolveSnapshotPath(filePath: string): {
     os.tmpdir(),
     `memlab-${path.basename(manifoldKey).replace(/[^A-Za-z0-9._-]/g, '_')}`,
   );
+
+  // Reuse an already-downloaded copy. The temp name is derived from the unique
+  // Manifold key, so a non-empty file here IS this object. This makes a RETRY
+  // after a size-limit rejection succeed (the prior attempt fully downloaded
+  // before the size check ran) instead of failing with "Local object exists",
+  // and avoids re-downloading multi-GB snapshots (feedback §A.1).
+  if (fs.existsSync(dest) && fs.statSync(dest).size > 0) {
+    process.stderr.write(`Reusing already-downloaded ${dest}\n`);
+    return {localPath: dest, fetchedFrom: manifoldKey};
+  }
+
   process.stderr.write(`Fetching ${manifoldKey} from Manifold → ${dest}…\n`);
-  execFileSync('manifold', ['get', manifoldKey, dest], {
-    stdio: ['ignore', 'ignore', 'pipe'],
-    timeout: 5 * 60 * 1000,
-    maxBuffer: 64 * 1024 * 1024,
-  });
+  try {
+    // --overwrite_local_path so a stale/empty/partial leftover never blocks the
+    // fetch (the cause of the "Local object exists" retry failure).
+    execFileSync(
+      'manifold',
+      ['get', '--overwrite_local_path', manifoldKey, dest],
+      {
+        stdio: ['ignore', 'ignore', 'pipe'],
+        timeout: 5 * 60 * 1000,
+        maxBuffer: 64 * 1024 * 1024,
+      },
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Friendlier message for a missing object (feedback §E.18) — the raw
+    // StorageException is opaque about WHY a path isn't found.
+    if (/not found|does not map|StorageException/i.test(msg)) {
+      throw new Error(
+        `Snapshot not found in Manifold at "${manifoldKey}". ` +
+          `It may never have been uploaded (OnDemand-host captures often aren't), ` +
+          `or the name/path is wrong. Available mounts: flat/, nodes/, tree/. ` +
+          `List an app's snapshots with: ` +
+          `manifold ls ${DEFAULT_MANIFOLD_BUCKET}/flat | grep <app-name>\n\n` +
+          `Underlying error: ${msg}`,
+      );
+    }
+    throw err;
+  }
   return {localPath: dest, fetchedFrom: manifoldKey};
 }
 
