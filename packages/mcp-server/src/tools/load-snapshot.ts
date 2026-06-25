@@ -36,6 +36,32 @@ import {
 // bare snapshot filename resolves predictably (Feedback §7).
 export const DEFAULT_MANIFOLD_BUCKET = 'nest_server_nodejs_heap_snapshots';
 
+// Size caps for the OOM guard. Server heap snapshots (Nest auto-capture, the
+// Manifold bucket above) routinely run 550–2100 MB, so every one exceeds the
+// conservative local-file default and a sweep previously had to pass
+// max_file_size_mb on EVERY load call. When a snapshot is fetched from Manifold
+// (a server capture, not an arbitrary local file) raise the effective cap to the
+// analyzer's documented safe ceiling — larger than this reliably OOMs the parser
+// — unless the caller set an explicit limit. Local files keep the tighter guard.
+// (Sweep feedback round 6 §2.)
+export const LOCAL_FILE_SIZE_LIMIT_MB = 900;
+export const MANIFOLD_FETCH_SIZE_LIMIT_MB = 2100;
+
+/**
+ * Resolve the effective max-file-size limit (MB). An explicit caller value always
+ * wins; otherwise default by source — Manifold-fetched server snapshots get the
+ * higher ceiling, local files keep the tighter guard.
+ */
+export function resolveMaxFileSizeMB(
+  explicit: number | undefined,
+  fetchedFromManifold: boolean,
+): number {
+  if (explicit != null) return explicit;
+  return fetchedFromManifold
+    ? MANIFOLD_FETCH_SIZE_LIMIT_MB
+    : LOCAL_FILE_SIZE_LIMIT_MB;
+}
+
 /**
  * Resolve a `file_path` that may be a local path, a `manifold://bucket/key`
  * URL, or a bare snapshot filename to a local path, fetching from Manifold
@@ -300,9 +326,8 @@ export function registerLoadSnapshot(server: McpServer): void {
       max_file_size_mb: z
         .number()
         .optional()
-        .default(900)
         .describe(
-          'Maximum file size in MB to attempt loading (default 900). Snapshots larger than this will return an error instead of risking an OOM crash. Increase if your Node.js process has extra memory (--max-old-space-size).',
+          `Maximum file size in MB to attempt loading. Defaults to ${LOCAL_FILE_SIZE_LIMIT_MB} for local files; for snapshots fetched from Manifold (a bare Nest snapshot filename or a manifold:// URL) it defaults to ${MANIFOLD_FETCH_SIZE_LIMIT_MB} — the analyzer's safe ceiling — since server captures routinely exceed ${LOCAL_FILE_SIZE_LIMIT_MB} MB. Pass an explicit value to override either default (e.g. raise it if your Node.js process has extra memory via --max-old-space-size). Snapshots larger than the effective limit return an error instead of risking an OOM crash.`,
         ),
     },
     async ({
@@ -353,10 +378,18 @@ export function registerLoadSnapshot(server: McpServer): void {
         const fileStat = fs.statSync(resolved);
         const fileSizeMB = fileStat.size / (1024 * 1024);
 
-        if (fileSizeMB > max_file_size_mb) {
+        // Manifold-fetched server snapshots get the higher ceiling by default so
+        // the common 550–2100 MB Nest captures load without an explicit override
+        // (sweep feedback round 6 §2); an explicit caller value still wins.
+        const effectiveMaxFileSizeMB = resolveMaxFileSizeMB(
+          max_file_size_mb,
+          fetchedFrom != null,
+        );
+
+        if (fileSizeMB > effectiveMaxFileSizeMB) {
           return errorResult(
             new Error(
-              `Snapshot file is ${formatBytes(fileStat.size)} — exceeds the ${max_file_size_mb} MB safety limit. ` +
+              `Snapshot file is ${formatBytes(fileStat.size)} — exceeds the ${effectiveMaxFileSizeMB} MB safety limit. ` +
                 `Loading snapshots this large often causes the MCP server to crash with an out-of-memory error, ` +
                 `losing all analysis state.\n\n` +
                 `Options:\n` +
