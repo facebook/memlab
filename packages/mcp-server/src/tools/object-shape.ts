@@ -79,6 +79,42 @@ export function registerObjectShape(server: McpServer): void {
           'shortcut',
         ]);
 
+        const NULL_NAMES = new Set(['null', 'undefined', 'false', '']);
+        // A property whose target carries no real payload: null/undefined/false,
+        // the empty string, "0"/"false", Oddballs, or a zero-size hidden node.
+        // Used both to drop rows under non_null_only and to summarize the empty
+        // bulk on wide objects without dropping anything (Feedback round 5 §11).
+        const isEmptyTarget = (target: {
+          id: number;
+          type: string;
+          name: string;
+          self_size: number;
+          isString: boolean;
+          toStringNode: () => {stringValue: string} | null;
+        }): boolean => {
+          if (target.id <= 3) return true;
+          if (target.type === 'hidden' && target.self_size === 0) return true;
+          if (NULL_NAMES.has(target.name) && target.self_size === 0)
+            return true;
+          if (target.name === 'Oddball' || target.name === 'system / Oddball')
+            return true;
+          if (target.isString) {
+            const strNode = target.toStringNode();
+            if (strNode) {
+              const val = strNode.stringValue;
+              if (
+                val === '' ||
+                val === '0' ||
+                val === 'false' ||
+                val === 'null' ||
+                val === 'undefined'
+              )
+                return true;
+            }
+          }
+          return false;
+        };
+
         const sections: string[] = [];
         for (const id of ids) {
           const node = snapshot.getNodeById(id);
@@ -87,42 +123,26 @@ export function registerObjectShape(server: McpServer): void {
             continue;
           }
 
-          const NULL_NAMES = new Set(['null', 'undefined', 'false', '']);
           const filteredEdges = node.references
             .filter(edge => {
               if (!include_internal && !userEdgeTypes.has(edge.type))
                 return false;
-              if (non_null_only) {
-                const target = edge.toNode;
-                if (target.id <= 3) return false;
-                if (target.type === 'hidden' && target.self_size === 0)
-                  return false;
-                if (NULL_NAMES.has(target.name) && target.self_size === 0)
-                  return false;
-                if (
-                  target.name === 'Oddball' ||
-                  target.name === 'system / Oddball'
-                )
-                  return false;
-                if (target.isString) {
-                  const strNode = target.toStringNode();
-                  if (strNode) {
-                    const val = strNode.stringValue;
-                    if (
-                      val === '' ||
-                      val === '0' ||
-                      val === 'false' ||
-                      val === 'null' ||
-                      val === 'undefined'
-                    )
-                      return false;
-                  }
-                }
-              }
+              if (non_null_only && isEmptyTarget(edge.toNode)) return false;
               return true;
             })
             .sort((a, b) => b.toNode.retainedSize - a.toNode.retainedSize)
             .slice(0, limit);
+
+          // Count empty/null/0 fields over all user-visible edges (property +
+          // element/context/shortcut) so the footer's denominator matches the
+          // rows actually shown in the table (Feedback round 5 §11): a wide
+          // inventory object is mostly "" fields.
+          const userProps = node.references.filter(e =>
+            userEdgeTypes.has(e.type),
+          );
+          const emptyProps = userProps.filter(e =>
+            isEmptyTarget(e.toNode),
+          ).length;
 
           const totalEdges = node.references.length;
           const hiddenCount = include_internal
@@ -168,6 +188,12 @@ export function registerObjectShape(server: McpServer): void {
             ];
           });
           lines.push(markdownTable(headers, rows, rightCols));
+          if (emptyProps > 0 && userProps.length >= 8) {
+            lines.push(
+              '',
+              `_${emptyProps} of ${userProps.length} fields are empty/null/0${non_null_only ? ' (hidden by non_null_only)' : ' — pass non_null_only:true to hide them'}._`,
+            );
+          }
           sections.push(lines.join('\n'));
         }
 

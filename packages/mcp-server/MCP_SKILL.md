@@ -87,8 +87,12 @@ of heap.
    per entry).
 2. `memlab_intern_opportunities` — **start here for interning**: groups
    duplicated strings by the property name and parent object shape that holds
-   them, showing total savings per (property × shape) combination. This replaces
-   the manual workflow of duplicated_strings → retainer_summary → codebase grep.
+   them, showing total savings per (property × shape) combination, split into
+   within-load / co-retained / cross-load buckets with a **Dup ×** column
+   (copies ÷ unique). Pass `summary_only: true` for a compact triage view
+   (headline split + one-line verdict + ranked table only) when screening many
+   snapshots. This replaces the manual workflow of duplicated_strings →
+   retainer_summary → codebase grep.
 3. `memlab_string_patterns` — group strings by prefix to find families (API
    responses, IDs, URLs)
 4. `memlab_sliced_strings` — check if small substrings keep massive parent

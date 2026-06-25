@@ -145,6 +145,23 @@ function findLargestObject(snapshot: IHeapSnapshot): LargestObjInfo | null {
   return best;
 }
 
+// Nest auto-capture filenames embed the capture time as an epoch (ms or s).
+// Surfacing it lets the agent check whether a candidate leak was likely already
+// fixed since the snapshot was taken — the dominant outcome when sweeping a
+// backlog of old snapshots (Feedback round 5 §12).
+function extractCaptureTime(fileName: string): Date | null {
+  const msMatch = fileName.match(/(?<!\d)(1\d{12})(?!\d)/);
+  const sMatch = fileName.match(/(?<!\d)(1\d{9})(?!\d)/);
+  let ms: number | null = null;
+  if (msMatch) ms = Number(msMatch[1]);
+  else if (sMatch) ms = Number(sMatch[1]) * 1000;
+  if (ms == null) return null;
+  const d = new Date(ms);
+  const year = d.getUTCFullYear();
+  if (year < 2020 || year > 2035) return null;
+  return d;
+}
+
 function detectEnv(snapshot: IHeapSnapshot): SnapshotEnv {
   let hasWindow = false;
   let hasModule = false;
@@ -427,6 +444,20 @@ export function registerLoadSnapshot(server: McpServer): void {
         lines.push(
           `Loaded ${fileName} (${formatBytes(fileStat.size)} on disk): ${formatNumber(nodeCount)} nodes, ${formatNumber(edgeCount)} edges, ${formatBytes(totalSize)} heap size (${envLabel} snapshot) [handle: ${meta.handle}]`,
         );
+        const captured = extractCaptureTime(fileName);
+        if (captured) {
+          const iso = captured.toISOString().slice(0, 10);
+          // Clamp to 0: a filename whose embedded epoch is slightly ahead of
+          // the host clock (clock skew, or a future-dated name within the
+          // allowed window) must not surface as "(-N day(s) ago)".
+          const ageDays = Math.max(
+            0,
+            Math.floor((Date.now() - captured.getTime()) / 86_400_000),
+          );
+          lines.push(
+            `Captured ${iso} (${ageDays} day(s) ago) — if you find a candidate, verify the fix wasn't already deployed since then before writing one.`,
+          );
+        }
         if (keep_previous) {
           const all = listSnapshots();
           if (all.length > 1) {

@@ -668,6 +668,9 @@ export interface RetainerTreeStep {
   selfSize?: number;
   edgeName?: string;
   collapsedBefore?: number;
+  // Overrides the default "… N internal node(s) …" elision note. Used to label a
+  // collapsed run of repeating async-continuation frames distinctly.
+  collapsedNote?: string;
 }
 
 function formatEdgeLabel(name: string): string {
@@ -702,7 +705,9 @@ function formatRetainerLadder(
       // parent holds this node through — always show the edge when we have it.
       const parts = ['  ↓'];
       if (s.collapsedBefore && s.collapsedBefore > 0) {
-        parts.push(`… ${s.collapsedBefore} internal node(s) …`);
+        parts.push(
+          `… ${s.collapsedNote ?? `${s.collapsedBefore} internal node(s)`} …`,
+        );
       }
       if (s.edgeName != null) {
         parts.push(formatEdgeLabel(s.edgeName));
@@ -752,7 +757,9 @@ export function formatRetainerTree(
     const isRoot = i === 0;
     const pad = isRoot ? '' : ' '.repeat(2 + 3 * (i - 1));
     if (s.collapsedBefore && s.collapsedBefore > 0) {
-      lines.push(`${pad}└─ … ${s.collapsedBefore} internal node(s) …`);
+      lines.push(
+        `${pad}└─ … ${s.collapsedNote ?? `${s.collapsedBefore} internal node(s)`} …`,
+      );
     }
     // Embed the edge the parent holds this node through directly in the
     // connector (`└─ .prop →`, `└─ [2] →`) — it's the most actionable part of

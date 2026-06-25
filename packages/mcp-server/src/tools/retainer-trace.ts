@@ -13,6 +13,7 @@ import type {IHeapNode, IHeapEdge} from '@memlab/core';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
 import {
+  formatBytes,
   formatNodeInline,
   formatRetainerTree,
   isNodeWorthInspecting,
@@ -21,6 +22,25 @@ import {
   toolResult,
 } from '../utils.js';
 import type {RetainerTreeStep} from '../utils.js';
+
+// async/await desugars to a repeating retainer ladder: each suspended `await`
+// frame is a `Promise → system / Context → Generator` triplet, and a deep async
+// stack repeats it dozens of times with identical retained sizes. Folding the
+// run keeps the signal (how much it retains) without the noise (Feedback round 5
+// §10). We only fold runs of 3+ so a lone closure `system / Context` — which is
+// frequently the actual leak owner — stays visible.
+const ASYNC_CONTINUATION_NAMES = new Set([
+  'Promise',
+  'system / Context',
+  'Generator',
+  'AsyncGenerator',
+  'AsyncGeneratorFunction',
+  'AsyncFunction',
+]);
+
+function isAsyncContinuationFrame(node: IHeapNode): boolean {
+  return ASYNC_CONTINUATION_NAMES.has(node.name);
+}
 
 export function registerRetainerTrace(server: McpServer): void {
   server.tool(
@@ -46,7 +66,7 @@ export function registerRetainerTrace(server: McpServer): void {
         .optional()
         .default(false)
         .describe(
-          'Expand the elided middle: show every node on the path instead of collapsing consecutive V8/internal runs. Use when the interesting library/application boundary is hidden inside a "… N internal node(s) …" gap.',
+          'Expand the elided middle: show every node on the path instead of collapsing consecutive V8/internal runs and repeating async-continuation ladders (Promise → Context → Generator). Use when the interesting library/application boundary is hidden inside a "… N internal node(s) …" or "… N async continuation frames …" gap.',
         ),
     },
     async ({node_id, max_depth, show_sizes, expand}) => {
@@ -115,6 +135,7 @@ export function registerRetainerTrace(server: McpServer): void {
           edgeName?: string;
           edgeType?: string;
           collapsedCount?: number;
+          collapsedNote?: string;
         }> = [];
         if (expand) {
           collapsed.push(...reverseItems);
@@ -141,6 +162,56 @@ export function registerRetainerTrace(server: McpServer): void {
             const last = collapsed[collapsed.length - 1];
             last.collapsedCount = (last.collapsedCount ?? 0) + internalRun;
           }
+
+          // Second pass: fold repeating async-continuation ladders that the
+          // internal-node collapse leaves expanded (they're "worth inspecting"
+          // object/closure nodes). Replace a run of 3+ consecutive async frames
+          // with a single elision note on the node that follows it, carrying a
+          // representative retained size (Feedback round 5 §10).
+          const folded: typeof collapsed = [];
+          let i = 0;
+          while (i < collapsed.length) {
+            let j = i;
+            while (
+              j < collapsed.length &&
+              isAsyncContinuationFrame(collapsed[j].node)
+            ) {
+              j++;
+            }
+            const runLen = j - i;
+            if (runLen >= 3 && j < collapsed.length) {
+              // Sum the frames elided within the run (each may already carry its
+              // own internal-collapse count) and attach the note to the next
+              // kept node, whose incoming edge stays valid.
+              const elided = collapsed
+                .slice(i, j)
+                .reduce((n, it) => n + 1 + (it.collapsedCount ?? 0), 0);
+              const retained = collapsed[i].node.retainedSize;
+              const next = collapsed[j];
+              const priorCount = next.collapsedCount ?? 0;
+              const asyncNote = `${elided} async continuation frames, all retaining ~${formatBytes(retained)}`;
+              folded.push({
+                ...next,
+                collapsedCount: priorCount + elided,
+                // Compose with any elision the first-pass internal-node collapse
+                // already attached to `next` so the rendered note describes the
+                // FULL collapsedCount — the renderer shows collapsedNote verbatim
+                // in place of the "N internal node(s)" default, so a bare async
+                // note would silently drop the prior internal-node count.
+                collapsedNote: next.collapsedNote
+                  ? `${asyncNote}; ${next.collapsedNote}`
+                  : priorCount > 0
+                    ? `${asyncNote}; ${priorCount} internal node(s)`
+                    : asyncNote,
+              });
+              i = j + 1;
+            } else {
+              folded.push(collapsed[i]);
+              i++;
+            }
+          }
+          collapsed.length = 0;
+          collapsed.push(...folded);
         }
 
         // Highlight the application/library boundary: the node closest to the
@@ -211,6 +282,7 @@ export function registerRetainerTrace(server: McpServer): void {
             selfSize: item.node.self_size,
             edgeName: i > 0 ? items[i - 1].edgeName : undefined,
             collapsedBefore: item.collapsedCount,
+            collapsedNote: item.collapsedNote,
           }));
           if (truncated && max_depth != null) {
             const target = reverseItems[reverseItems.length - 1].node;

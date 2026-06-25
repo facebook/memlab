@@ -9,8 +9,13 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
+import type {IHeapEdge} from '@memlab/core';
 import {z} from 'zod';
-import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
+import {
+  getSnapshot,
+  getSnapshotMetadata,
+  getSessionConfig,
+} from '../heap-state.js';
 import {
   formatBytes,
   formatNumber,
@@ -18,6 +23,32 @@ import {
   errorResult,
   toolResult,
 } from '../utils.js';
+
+// V8 splits a single logical object's storage across several internal backing
+// structures: a `system / PropertyArray` (named props once the object grows past
+// the inline slot count), `(object properties)` / `(object elements)` arrays, and
+// `(sliced string)` views. A string reached through ANY of these is still held by
+// ONE logical object via ONE assignment site — interning the property at the parse
+// boundary collapses it (Feedback round 5 §1/§2). Only a referrer that is a
+// genuinely INDEPENDENT user structure (a real Array element, or a property on a
+// different logical object) keeps the per-row instance alive after interning and
+// therefore makes the savings non-capturable. This predicate identifies the
+// former so it is NOT mistaken for the latter.
+function isOwnStorageReferrer(ref: IHeapEdge): boolean {
+  // Hidden/internal edges are V8 wiring of the object's own representation
+  // (this covers the "(object properties) (internal)", "(object elements)
+  // (internal)", "(sliced string) (internal)", and "Object (internal)" buckets
+  // the feedback flagged as ambiguous — all of them are own-storage).
+  if (ref.type === 'hidden' || ref.type === 'internal') return true;
+  const fromName = ref.fromNode.name || '';
+  return (
+    fromName === 'system / PropertyArray' ||
+    fromName === 'system / SlicedString' ||
+    fromName.startsWith('(object properties)') ||
+    fromName.startsWith('(object elements)') ||
+    fromName.startsWith('(sliced string)')
+  );
+}
 
 interface InternGroup {
   propertyName: string;
@@ -33,11 +64,14 @@ interface InternGroup {
   // duplicated a consistent ~N×) — its savings are CROSS-load and cannot be
   // captured by a per-load/per-request intern pool (Feedback round 3 §1c).
   crossLoad?: boolean;
-  // True when the duplicated instances are ALSO retained by another structure
-  // (e.g. a raw array / matrix). Interning at this property reclaims ~nothing —
-  // the other referrer keeps every per-row instance alive — so the shared
-  // source must be deduped or dropped instead (Feedback round 4 §1:
-  // retention-aware savings).
+  // True when the duplicated instances are ALSO retained by an INDEPENDENT
+  // structure (e.g. a raw array / matrix held by a different object). Interning
+  // at this property reclaims ~nothing — the other referrer keeps every per-row
+  // instance alive — so the shared source must be deduped or dropped instead
+  // (Feedback round 4 §1: retention-aware savings). A string reached only via
+  // the SAME object's own V8 backing store (PropertyArray / object-elements /
+  // sliced-string) is NOT co-retained — interning still collapses it
+  // (Feedback round 5 §1/§2; see isOwnStorageReferrer).
   coRetained?: boolean;
   coRetainedVia?: string;
 }
@@ -68,8 +102,15 @@ export function registerInternOpportunities(server: McpServer): void {
         .describe(
           'Minimum savings in bytes to include a group (default 100 KB)',
         ),
+      summary_only: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Triage mode: return only the headline savings split (within-load / co-retained / cross-load), a one-line verdict, and the ranked group table — dropping the per-group top-strings, the "How to fix" block, and "Next steps". Ideal for screening many snapshots without flooding context.',
+        ),
     },
-    async ({limit, min_copies, min_savings}) => {
+    async ({limit, min_copies, min_savings, summary_only}) => {
       try {
         const snapshot = getSnapshot();
         const meta = getSnapshotMetadata();
@@ -148,16 +189,23 @@ export function registerInternOpportunities(server: McpServer): void {
             // Gather a bounded set of this instance's referrers once, so we can
             // both (a) pick the primary property/context referrer for grouping
             // and (b) detect co-retention: if the exact same string instance is
-            // also held by another structure (e.g. a raw array/matrix cell),
-            // interning at the property assignment site frees ~nothing because
-            // the other referrer keeps the per-row instance alive. This is the
-            // difference between a fix that reclaims the bytes and one that
-            // reclaims ~0 (Feedback round 4 §1: retention-aware savings).
-            const refs = [];
-            for (const ref of node.referrers) {
+            // also held by an INDEPENDENT structure (e.g. a raw array/matrix
+            // cell on a different object), interning at the property assignment
+            // site frees ~nothing because the other referrer keeps the per-row
+            // instance alive. This is the difference between a fix that reclaims
+            // the bytes and one that reclaims ~0 (Feedback round 4 §1:
+            // retention-aware savings).
+            // Collect up to 8 referrers via the streaming iterator, NOT the
+            // `node.referrers` getter: that getter materializes a JS array of
+            // ALL incoming edges on every access, so a string referenced N times
+            // (common low-cardinality values are referenced 1000s of times) pays
+            // O(N) per sample. forEachReferrer stops after 8 without building the
+            // full array.
+            const refs: IHeapEdge[] = [];
+            node.forEachReferrer(ref => {
               refs.push(ref);
-              if (refs.length >= 8) break;
-            }
+              if (refs.length >= 8) return {stop: true};
+            });
 
             // Primary referrer = first property/context edge (assignment site).
             let primary = null;
@@ -171,10 +219,16 @@ export function registerInternOpportunities(server: McpServer): void {
             const parent = primary.fromNode;
             const propName = String(primary.name_or_index);
 
-            // Co-retained if any referrer comes from a different parent node.
+            // Co-retained ONLY if a referrer comes from a genuinely independent
+            // structure. A referrer that is the same object's own V8 backing
+            // store (PropertyArray / object-elements / sliced-string, or any
+            // hidden/internal edge) still collapses under interning, so it must
+            // NOT be counted as co-retention — counting it was discounting the
+            // biggest real wins by ~2× (Feedback round 5 §1/§2).
             let coRetainedVia: string | undefined;
             for (const ref of refs) {
               if (ref.fromNode.id === parent.id) continue;
+              if (isOwnStorageReferrer(ref)) continue;
               const fromName = ref.fromNode.name || 'Object';
               if (ref.type === 'element') {
                 coRetainedVia =
@@ -189,12 +243,29 @@ export function registerInternOpportunities(server: McpServer): void {
               break;
             }
 
+            // Fingerprint the parent shape from up to 12 property names.
+            // CRITICAL: never touch `parent.references` — that getter
+            // materializes a JS array of ALL outgoing edges on every access, so
+            // on a giant parent (a map/config object, or one with a huge backing
+            // store) it is O(edge_count) PER SAMPLE PER duplicated string and
+            // wedges the tool (observed: avg 185k, max 504k edges, ~390k of
+            // ~978k samples on one real heap). `edge_count` is O(1): skip shape
+            // detection for oversized parents (they are not the row-shaped
+            // objects we intern — grouping them by node name is enough), and for
+            // the rest use the non-materializing `forEachReference` iterator with
+            // an absolute visit cap as a backstop.
             const parentProps: string[] = [];
-            for (const edge of parent.references) {
-              if (edge.type === 'property') {
-                parentProps.push(String(edge.name_or_index));
-                if (parentProps.length >= 12) break;
-              }
+            const PARENT_EDGE_GUARD = 1024;
+            const PARENT_SCAN_CAP = 256;
+            if (parent.edge_count <= PARENT_EDGE_GUARD) {
+              let scanned = 0;
+              parent.forEachReference(edge => {
+                if (++scanned > PARENT_SCAN_CAP) return {stop: true};
+                if (edge.type === 'property') {
+                  parentProps.push(String(edge.name_or_index));
+                  if (parentProps.length >= 12) return {stop: true};
+                }
+              });
             }
             parentProps.sort();
             const shapeKey =
@@ -384,17 +455,28 @@ export function registerInternOpportunities(server: McpServer): void {
             : '';
         const pctOfHeap = pctOf(totalSavings);
 
+        // Duplication factor (copies ÷ unique) per group — the single best
+        // "is this cross-load?" signal: a value held ~N× by N same-shape objects
+        // each from a different call/load won't collapse under a per-request pool
+        // (Feedback round 5 §3). Reported as a column so the agent can eyeball it.
+        const fmtDup = (copies: number, unique: number): string => {
+          if (unique <= 0) return '-';
+          const f = copies / unique;
+          return f >= 10 ? `${Math.round(f)}×` : `${f.toFixed(1)}×`;
+        };
+
         const headers = [
           'Property',
           'Parent Shape',
           'Unique Strings',
           'Total Copies',
+          'Dup ×',
           'Total Size',
           'Savings',
           '% Heap',
           'Example Parent',
         ];
-        const rightCols = new Set([2, 3, 4, 5, 6]);
+        const rightCols = new Set([2, 3, 4, 5, 6, 7]);
         const rows = shown.map(g => {
           const shape =
             g.parentShape.length > 40
@@ -405,10 +487,11 @@ export function registerInternOpportunities(server: McpServer): void {
               ? ((g.savingsIfInterned / totalSize) * 100).toFixed(1) + '%'
               : '-';
           return [
-            `.${g.propertyName}${g.coRetained ? ' ⚠' : ''}`,
+            `.${g.propertyName}${g.coRetained ? ' ⚠' : ''}${g.crossLoad ? ' ⤫' : ''}`,
             shape,
             formatNumber(g.uniqueStrings),
             formatNumber(g.totalCopies),
+            fmtDup(g.totalCopies, g.uniqueStrings),
             formatBytes(g.totalSize),
             formatBytes(g.savingsIfInterned),
             pct,
@@ -416,20 +499,42 @@ export function registerInternOpportunities(server: McpServer): void {
           ];
         });
 
+        // One-line verdict (Feedback round 5 §9): which bucket dominates decides
+        // the fix shape, so lead with it before the detail.
+        let verdict: string;
+        if (
+          coRetainedSavings >= withinLoadSavings &&
+          coRetainedSavings >= crossLoadSavings &&
+          coRetainedSavings > 0
+        ) {
+          verdict = `Verdict: mostly **co-retained** (${formatBytes(coRetainedSavings)}) — interning the property won't help; dedupe at the shared source.`;
+        } else if (
+          crossLoadSavings >= withinLoadSavings &&
+          crossLoadSavings > 0
+        ) {
+          verdict = `Verdict: mostly **cross-load** (${formatBytes(crossLoadSavings)}) — a per-request pool won't collapse it; needs a shared/module-scope pool or a retention fix.`;
+        } else if (withinLoadSavings > 0) {
+          verdict = `Verdict: **${formatBytes(withinLoadSavings)} capturable** by a per-load/per-request intern pool at the parse boundary.`;
+        } else {
+          verdict = 'Verdict: no clearly-capturable interning savings.';
+        }
+
         const headerLines: string[] = [
           `# String Interning Opportunities`,
+          '',
+          verdict,
           '',
           `**Total duplication across top ${shown.length} groups: ${formatBytes(totalSavings)}${pctOfHeap}**`,
           `- **Within-load (capturable by a per-load/per-request intern pool): ${formatBytes(withinLoadSavings)}${pctOf(withinLoadSavings)}**`,
         ];
         if (coRetainedSavings > 0) {
           headerLines.push(
-            `- **⚠ Co-retained (interning the property reclaims ~0 — these instances are ALSO held by another structure, e.g. a raw array/matrix; dedupe at that shared source or drop it): ${formatBytes(coRetainedSavings)}${pctOf(coRetainedSavings)}**`,
+            `- **⚠ Co-retained (interning the property reclaims ~0 — these instances are ALSO held by an independent structure, e.g. a raw array/matrix on another object; dedupe at that shared source or drop it): ${formatBytes(coRetainedSavings)}${pctOf(coRetainedSavings)}**`,
           );
         }
         if (crossLoadSavings > 0) {
           headerLines.push(
-            `- **Cross-load (NOT capturable by a per-request pool — needs a shared/module-scope pool or a retention/concurrency fix): ${formatBytes(crossLoadSavings)}${pctOf(crossLoadSavings)}**`,
+            `- **⤫ Cross-load (NOT capturable by a per-request pool — needs a shared/module-scope pool or a retention/concurrency fix): ${formatBytes(crossLoadSavings)}${pctOf(crossLoadSavings)}**`,
           );
         }
         const coRetainedGroups = shown.filter(g => g.coRetained);
@@ -439,11 +544,33 @@ export function registerInternOpportunities(server: McpServer): void {
           markdownTable(headers, rows, rightCols),
           '',
         ];
-        if (coRetainedGroups.length > 0) {
+        if (coRetainedGroups.length > 0 || crossLoadSavings > 0) {
           lines.push(
-            '⚠ = co-retained: the duplicated values are also held by another structure; see the Co-retained section below.',
+            "⚠ = co-retained (interning won't reclaim); ⤫ = cross-load (high Dup ×, needs shared pool).",
             '',
           );
+        }
+
+        // Triage mode: stop after the headline split + ranked table. Drops the
+        // per-group string lists, partial-interning detail, and the fix recipe
+        // — pure waste when screening many snapshots (Feedback round 5 §9).
+        if (summary_only) {
+          if (coRetainedGroups.length > 0) {
+            lines.push(
+              '## ⚠ Co-retained — interning the property will NOT reclaim these',
+              '',
+            );
+          }
+          for (const g of coRetainedGroups) {
+            const shape =
+              g.parentShape.length > 50
+                ? g.parentShape.slice(0, 47) + '…}'
+                : g.parentShape;
+            lines.push(
+              `- ⚠ \`.${g.propertyName}\` on \`${shape}\` — ${formatBytes(g.savingsIfInterned)} co-retained via **${g.coRetainedVia ?? 'another structure'}**`,
+            );
+          }
+          return toolResult(lines.join('\n'));
         }
 
         // Co-retained groups: interning the property frees ~0 (Feedback round 4 §1).
@@ -494,27 +621,32 @@ export function registerInternOpportunities(server: McpServer): void {
           );
         }
 
-        lines.push(
-          '---',
-          '',
-          '**How to fix:** Add a string interning pool at the JSON.parse / API response boundary:',
-          '```js',
-          'const internPool = new Map();',
-          'function intern(s) { let v = internPool.get(s); if (!v) { internPool.set(s, s); v = s; } return v; }',
-          '// Apply to the property during ingestion:',
-          '// obj.propertyName = intern(obj.propertyName);',
-          '```',
-          '',
-          '**Next steps:**',
-          `- Inspect example parent: \`memlab_object_shape(${shown[0].exampleParentId})\``,
-          `- Find all instances: \`memlab_find_by_shape\` with properties ${JSON.stringify(shown[0].parentShapeProps.slice(0, 5))}`,
-          '- Search codebase for the constructor/factory that creates these objects',
-          ...(coRetainedGroups.length > 0
-            ? [
-                '- For ⚠ co-retained groups: run `memlab_get_referrers` on an example instance to find the shared owner, then dedupe at that source (the property-level pool above will not help).',
-              ]
-            : []),
-        );
+        // The fix recipe + next steps are "suggestions"; honor the session-level
+        // suppress flag so a long sweep doesn't repeat the same boilerplate on
+        // every snapshot (Feedback round 5 §9a).
+        if (!getSessionConfig().suppressSuggestions) {
+          lines.push(
+            '---',
+            '',
+            '**How to fix:** Add a string interning pool at the JSON.parse / API response boundary:',
+            '```js',
+            'const internPool = new Map();',
+            'function intern(s) { let v = internPool.get(s); if (!v) { internPool.set(s, s); v = s; } return v; }',
+            '// Apply to the property during ingestion:',
+            '// obj.propertyName = intern(obj.propertyName);',
+            '```',
+            '',
+            '**Next steps:**',
+            `- Inspect example parent: \`memlab_object_shape(${shown[0].exampleParentId})\``,
+            `- Find all instances: \`memlab_find_by_shape\` with properties ${JSON.stringify(shown[0].parentShapeProps.slice(0, 5))}`,
+            '- Search codebase for the constructor/factory that creates these objects',
+            ...(coRetainedGroups.length > 0
+              ? [
+                  '- For ⚠ co-retained groups: run `memlab_get_referrers` on an example instance to find the shared owner, then dedupe at that source (the property-level pool above will not help).',
+                ]
+              : []),
+          );
+        }
 
         return toolResult(lines.join('\n'));
       } catch (err) {
