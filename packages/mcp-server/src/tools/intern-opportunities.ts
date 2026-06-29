@@ -398,7 +398,7 @@ export function registerInternOpportunities(server: McpServer): void {
 
         if (shown.length === 0) {
           return toolResult(
-            `No significant interning opportunities found (min ${formatNumber(min_copies)} copies, min ${formatBytes(min_savings)} savings). Try lowering thresholds.`,
+            `No significant interning opportunities found (min ${formatNumber(min_copies)} copies, min ${formatBytes(min_savings)} savings). Try lowering thresholds. If the heap is instead dominated by a few large strings/objects (not many small duplicates), interning won't help — use memlab_largest_objects or memlab_sliced_strings to investigate blob retention.`,
           );
         }
 
@@ -540,7 +540,8 @@ export function registerInternOpportunities(server: McpServer): void {
         } else if (withinLoadSavings > 0) {
           verdict = `Verdict: **${formatBytes(withinLoadSavings)} capturable** by a per-load/per-request intern pool at the parse boundary.`;
         } else {
-          verdict = 'Verdict: no clearly-capturable interning savings.';
+          verdict =
+            'Verdict: no clearly-capturable interning savings — if the heap is dominated by a few large strings/objects, use memlab_largest_objects or memlab_sliced_strings to investigate blob retention.';
         }
 
         const headerLines: string[] = [
