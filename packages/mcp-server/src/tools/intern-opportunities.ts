@@ -499,6 +499,28 @@ export function registerInternOpportunities(server: McpServer): void {
           ];
         });
 
+        // Retention/concurrency-bug signature (Feedback round 6 §4): a heap
+        // dominated by CROSS-load groups whose copies ÷ unique ≈ 2.0 is two full
+        // copies of the same dataset resident at once (a stale+fresh
+        // double-buffer / setInterval retention), NOT a value duplicated within a
+        // single parse. A per-request intern pool cannot collapse it — the fix is
+        // to stop the double retention at the source. Detect it purely from the
+        // already-computed group counts (no extra heap traversal) so the verdict
+        // can call it out explicitly instead of leaving the agent to infer it.
+        const isExactlyTwoX = (g: InternGroup): boolean => {
+          if (g.uniqueStrings <= 0) return false;
+          const f = g.totalCopies / g.uniqueStrings;
+          return f >= 1.8 && f <= 2.2;
+        };
+        const twoXCrossLoadSavings = shown
+          .filter(g => g.crossLoad && !g.coRetained && isExactlyTwoX(g))
+          .reduce((sum, g) => sum + g.savingsIfInterned, 0);
+        const retentionBugSuspected =
+          crossLoadSavings > 0 &&
+          crossLoadSavings >= withinLoadSavings &&
+          crossLoadSavings >= coRetainedSavings &&
+          twoXCrossLoadSavings >= crossLoadSavings * 0.5;
+
         // One-line verdict (Feedback round 5 §9): which bucket dominates decides
         // the fix shape, so lead with it before the detail.
         let verdict: string;
@@ -512,7 +534,9 @@ export function registerInternOpportunities(server: McpServer): void {
           crossLoadSavings >= withinLoadSavings &&
           crossLoadSavings > 0
         ) {
-          verdict = `Verdict: mostly **cross-load** (${formatBytes(crossLoadSavings)}) — a per-request pool won't collapse it; needs a shared/module-scope pool or a retention fix.`;
+          verdict = retentionBugSuspected
+            ? `Verdict: ⚠ likely **retention/concurrency bug** (NOT interning) — ${formatBytes(twoXCrossLoadSavings)} of cross-load duplication at ~2.0× (copies ÷ unique), i.e. two copies of the same dataset held at once (stale+fresh double-buffer / setInterval). A per-request intern pool will NOT help; fix the double retention at the source.`
+            : `Verdict: mostly **cross-load** (${formatBytes(crossLoadSavings)}) — a per-request pool won't collapse it; needs a shared/module-scope pool or a retention fix.`;
         } else if (withinLoadSavings > 0) {
           verdict = `Verdict: **${formatBytes(withinLoadSavings)} capturable** by a per-load/per-request intern pool at the parse boundary.`;
         } else {
