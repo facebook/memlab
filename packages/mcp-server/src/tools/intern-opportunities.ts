@@ -397,9 +397,45 @@ export function registerInternOpportunities(server: McpServer): void {
         const shown = groups.slice(0, limit);
 
         if (shown.length === 0) {
-          return toolResult(
-            `No significant interning opportunities found (min ${formatNumber(min_copies)} copies, min ${formatBytes(min_savings)} savings). Try lowering thresholds. If the heap is instead dominated by a few large strings/objects (not many small duplicates), interning won't help — use memlab_largest_objects or memlab_sliced_strings to investigate blob retention.`,
-          );
+          // The property×shape grouping above only sees strings held as named
+          // OBJECT PROPERTIES. Strings held as ARRAY ELEMENTS (columnar /
+          // rows-as-arrays — e.g. a DB driver's string[][] result buffer) never
+          // form a property group, so a heap can show millions of duplicated
+          // cells yet report zero opportunities here. Cross-check the already-
+          // built stringMap (in-memory Map iteration — no extra heap traversal)
+          // and surface the heaviest duplicates so the user isn't dead-ended.
+          const arrayDupes: Array<{
+            value: string;
+            count: number;
+            savings: number;
+          }> = [];
+          for (const [value, s] of stringMap) {
+            if (s.count < min_copies) continue;
+            const savings = (s.totalSize * (s.count - 1)) / s.count;
+            if (savings < min_savings) continue;
+            arrayDupes.push({value, count: s.count, savings});
+          }
+          arrayDupes.sort((a, b) => b.savings - a.savings);
+
+          let msg = `No significant interning opportunities found (min ${formatNumber(min_copies)} copies, min ${formatBytes(min_savings)} savings). Try lowering thresholds. If the heap is instead dominated by a few large strings/objects (not many small duplicates), interning won't help — use memlab_largest_objects or memlab_sliced_strings to investigate blob retention.`;
+          if (arrayDupes.length > 0) {
+            const totalDup = arrayDupes.reduce((a, d) => a + d.savings, 0);
+            const top = arrayDupes
+              .slice(0, 5)
+              .map(
+                d =>
+                  `  • ${JSON.stringify(
+                    d.value.length > 40 ? d.value.slice(0, 40) + '…' : d.value,
+                  )} ×${formatNumber(d.count)} (~${formatBytes(d.savings)})`,
+              )
+              .join('\n');
+            msg += `\n\n⚠ However, ${formatNumber(
+              arrayDupes.length,
+            )} value(s) are heavily duplicated (~${formatBytes(
+              totalDup,
+            )} total) but were NOT surfaced as property groups above. This is expected when they are held as ARRAY ELEMENTS / columnar rows (e.g. a string[][] query-result buffer) rather than object properties — but it can also happen when their property groups fell below the min_copies / min_savings thresholds. If they are array elements, interning at the array-construction (parse) site collapses them; if they are properties, lower the thresholds to surface the group. Top:\n${top}\nUse memlab_search_strings to locate where each is built and confirm how it is held.`;
+          }
+          return toolResult(msg);
         }
 
         // Detect partial interning patterns (Feedback #3) and, while we're here,
