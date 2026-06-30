@@ -74,6 +74,97 @@ interface InternGroup {
   // (Feedback round 5 §1/§2; see isOwnStorageReferrer).
   coRetained?: boolean;
   coRetainedVia?: string;
+  // True when the group is high-cardinality with few repeats (copies ÷ unique
+  // below ~3) AND its strings are long on average (> ~128 bytes): a per-load
+  // intern pool would have to retain a large unique set for a small collapse, so
+  // the reported "savings" overstate the real win and the field should usually
+  // be skipped. Bucketed OUT of the within-load headline (Feedback round 7 §1).
+  lowRoi?: boolean;
+  // True when the holding property/shape is framework- or infra-owned (HTTP
+  // request headers, cookies, auth tokens, Next.js URL/cache context) rather
+  // than application data — out of scope for an app-level parse-boundary intern
+  // pool, so bucketed OUT of the within-load headline (Feedback round 7 §2).
+  frameworkOwned?: boolean;
+}
+
+// --- Headline-accuracy heuristics (Feedback round 7) ----------------------
+// Both operate purely on a group's already-aggregated counts / extracted shape
+// props — no heap traversal — so they are O(groups), not O(nodes).
+
+// Low-ROI: strings barely repeat (copies ÷ unique below the floor) AND are long
+// on average. Interning needs a pool holding the whole unique set for a small
+// collapse — high memory cost, low payoff (e.g. a ~141-char value at 2.2×).
+const LOW_ROI_DUP_FLOOR = 3;
+const LOW_ROI_AVG_BYTES = 128;
+function isLowRoiGroup(
+  uniqueStrings: number,
+  totalCopies: number,
+  totalSize: number,
+): boolean {
+  if (uniqueStrings <= 0 || totalCopies <= 0) return false;
+  const dupFactor = totalCopies / uniqueStrings;
+  const avgBytes = totalSize / totalCopies;
+  return dupFactor < LOW_ROI_DUP_FLOOR && avgBytes > LOW_ROI_AVG_BYTES;
+}
+
+// Report a `(concatenated string)` (rope) buildup — string accumulation, not
+// value duplication, which interning cannot help — once this many such nodes are
+// present. Shared by the empty-results path and the main results header so the
+// two call sites cannot drift out of sync.
+const CONCAT_STRING_BUILDUP_FLOOR = 1_000_000;
+
+// Framework/infra-owned: request headers, cookies, auth tokens, and Next.js
+// URL/cache context. Matched by property name and by tell-tale property names in
+// the parent shape.
+// NOTE: deliberately excludes the generic single-word `via` — though HTTP `Via`
+// is a real header, `via` is a plausible application property name and an exact
+// match would misclassify app data as framework-owned. Real `Via` headers are
+// still caught by the `x-`/`sec-` prefixes and the parent-shape header-bag check.
+// The `.+_oauth_token` / `.+-access-token` alternatives intentionally match any
+// non-empty prefix: a property name ending in those suffixes is auth-token data
+// regardless of prefix. `.+` (not `.*`) keeps bare `_oauth_token` /
+// `-access-token` from matching.
+const FRAMEWORK_PROP_RE =
+  /^(cookie|set-cookie|user-agent|accept-language|accept-encoding|referer|referrer|x-[a-z0-9-]+|sec-[a-z0-9-]+|proxied_to_master|.+_oauth_token|.+-access-token)$/i;
+const FRAMEWORK_SHAPE_NAME_RE = /^(URLContext|IncomingMessage|ServerResponse)$/;
+const FRAMEWORK_SHAPE_PROPS = new Set([
+  'cookie',
+  'user-agent',
+  'accept-language',
+  'x-fb-validated-client-cert',
+  'proxied_to_master',
+  'intern_oauth_token',
+]);
+function isFrameworkOwned(
+  propertyName: string,
+  parentShape: string,
+  parentShapeProps: string[],
+): boolean {
+  if (FRAMEWORK_PROP_RE.test(propertyName)) return true;
+  if (FRAMEWORK_SHAPE_NAME_RE.test(parentShape)) return true;
+  // Next.js incremental-cache / route context shape.
+  if (
+    parentShapeProps.includes('defaultLocale') &&
+    parentShapeProps.includes('incrementalCache')
+  ) {
+    return true;
+  }
+  // A request-header bag: two or more header-ish props in the same shape.
+  // Deliberately heuristic, with two accepted trade-offs (kept conservative
+  // rather than tightened, since tuning needs real heap data):
+  //  • False negative: `parentShapeProps` is the upstream sample, capped at 12
+  //    entries and pre-sorted alphabetically, so an anonymous header bag whose
+  //    12 alphabetically-first props are not header-ish slips through. The
+  //    common named shapes are still caught by FRAMEWORK_SHAPE_NAME_RE above.
+  //  • False positive: an app object that genuinely models ≥2 of these
+  //    HTTP-specific names (e.g. `cookie` + `user-agent`) is misclassified. The
+  //    names are HTTP-specific enough that this is rare; `>= 2` (not `>= 1`)
+  //    guards the most likely single-field collisions.
+  let headerish = 0;
+  for (const p of parentShapeProps) {
+    if (FRAMEWORK_SHAPE_PROPS.has(p)) headerish++;
+  }
+  return headerish >= 2;
 }
 
 export function registerInternOpportunities(server: McpServer): void {
@@ -81,6 +172,7 @@ export function registerInternOpportunities(server: McpServer): void {
     'memlab_intern_opportunities',
     'Identify string interning opportunities by grouping duplicated strings by the property name and parent object shape that holds them. Shows total savings per (property × shape) combination — the key metric for deciding where to add a string interning pool. Replaces the manual workflow of: duplicated_strings → retainer_summary → codebase grep. ' +
       'Retention-aware: flags groups whose duplicated instances are ALSO held by another structure (e.g. a raw array/matrix) as "co-retained" — interning the property there reclaims ~0, so the savings are reported separately and you must dedupe the shared source instead. ' +
+      'The headline "within-load capturable" figure also excludes framework/infra-owned strings (HTTP headers, cookies, auth tokens, Next.js URL/cache context) and low-ROI groups (high-cardinality + long strings, where the intern pool costs more than it saves), reporting each in its own bucket; and it flags concatenated-string (rope) buildup, which is accumulation rather than duplication and cannot be interned. ' +
       '⚠ Full-heap scan (builds string-duplication groups) — slow and memory-heavy on very large heaps (millions of nodes); raise min_copies / min_savings to bound it.',
     {
       limit: z
@@ -122,7 +214,20 @@ export function registerInternOpportunities(server: McpServer): void {
           {count: number; totalSize: number; exampleIds: number[]}
         >();
 
+        // Cheap retention-pattern signal (Feedback round 7 §4): a heap dominated
+        // by `(concatenated string)` (cons/rope) nodes is string ACCUMULATION
+        // (repeated `+=` / join into a long-lived buffer), NOT value duplication
+        // — interning cannot help. Count them by name in the pass we already do
+        // (O(1) per node, no value materialization) so we can flag the pattern
+        // instead of silently reporting tiny interning wins.
+        let concatStringCount = 0;
+        let concatStringSize = 0;
+
         snapshot.nodes.forEach(node => {
+          if (node.name === '(concatenated string)') {
+            concatStringCount++;
+            concatStringSize += node.self_size;
+          }
           if (node.type !== 'string') return;
           if (node.name === 'system / SlicedString') return;
           const strNode = node.toStringNode();
@@ -390,6 +495,12 @@ export function registerInternOpportunities(server: McpServer): void {
             exampleParentId: g.exampleParentId,
             coRetained,
             coRetainedVia: coRetained ? g.coRetainedVia : undefined,
+            lowRoi: isLowRoiGroup(g.strings.size, g.totalCopies, g.totalSize),
+            frameworkOwned: isFrameworkOwned(
+              g.propertyName,
+              g.parentShapeKey,
+              g.parentShapeProps,
+            ),
           });
         }
 
@@ -418,6 +529,9 @@ export function registerInternOpportunities(server: McpServer): void {
           arrayDupes.sort((a, b) => b.savings - a.savings);
 
           let msg = `No significant interning opportunities found (min ${formatNumber(min_copies)} copies, min ${formatBytes(min_savings)} savings). Try lowering thresholds. If the heap is instead dominated by a few large strings/objects (not many small duplicates), interning won't help — use memlab_largest_objects or memlab_sliced_strings to investigate blob retention.`;
+          if (concatStringCount > CONCAT_STRING_BUILDUP_FLOOR) {
+            msg += `\n\n⚠ Concatenated-string buildup: ${formatNumber(concatStringCount)} \`(concatenated string)\` nodes (~${formatBytes(concatStringSize)} self-size). This is string ACCUMULATION (repeated \`+=\` / join into a long-lived buffer), NOT value duplication — interning cannot help. Investigate with memlab_largest_objects / memlab_sliced_strings and trace the retaining structure.`;
+          }
           if (arrayDupes.length > 0) {
             const totalDup = arrayDupes.reduce((a, d) => a + d.savings, 0);
             const top = arrayDupes
@@ -467,24 +581,54 @@ export function registerInternOpportunities(server: McpServer): void {
           );
         }
 
-        // Split savings three ways (Feedback round 4 §1 — retention-aware):
+        // Split savings into mutually-exclusive buckets (Feedback round 4 §1 —
+        // retention-aware — extended in round 7):
         //  • co-retained — the duplicated instances are ALSO held by another
         //    structure, so interning the property reclaims ~0; the shared
         //    source must be deduped/dropped. Reported separately so the figure
         //    is not mistaken for an easy per-property win.
         //  • within-load — capturable by a per-load/per-request intern pool.
         //  • cross-load — needs a shared/module-scope pool (Feedback round 3 §1c).
-        const coRetainedSavings = shown
-          .filter(g => g.coRetained)
-          .reduce((sum, g) => sum + g.savingsIfInterned, 0);
-        const withinLoadSavings = shown
-          .filter(g => !g.crossLoad && !g.coRetained)
-          .reduce((sum, g) => sum + g.savingsIfInterned, 0);
-        const crossLoadSavings = shown
-          .filter(g => g.crossLoad && !g.coRetained)
-          .reduce((sum, g) => sum + g.savingsIfInterned, 0);
+        //  • framework — header/cookie/token/Next.js-context strings; not app
+        //    data, so an app-level intern pool should not target them
+        //    (Feedback round 7 §2).
+        //  • low-ROI — high-cardinality + long strings whose pool cost dwarfs the
+        //    collapse; usually skip (Feedback round 7 §1).
+        // Each group lands in exactly one bucket (precedence below) so the
+        // headline within-load figure reflects only realistic app-data wins.
+        // Framework/infra-owned is checked FIRST: "this is not application data"
+        // is the most fundamental classification and the most actionable label
+        // for the reader (skip it — it isn't yours), so a framework string is
+        // always surfaced as framework even when it is ALSO co-retained or
+        // duplicated across loads — HTTP request headers are duplicated across
+        // requests by nature, so a header would otherwise be miscounted as
+        // cross-load and the framework bucket under-counted. The remaining order
+        // is retention-then-ROI; every non-`within` bucket is excluded from the
+        // within-load headline regardless of which one a group lands in.
+        const bucketOf = (
+          g: InternGroup,
+        ): 'framework' | 'coRetained' | 'crossLoad' | 'lowRoi' | 'within' => {
+          if (g.frameworkOwned) return 'framework';
+          if (g.coRetained) return 'coRetained';
+          if (g.crossLoad) return 'crossLoad';
+          if (g.lowRoi) return 'lowRoi';
+          return 'within';
+        };
+        const sumBucket = (bucket: string): number =>
+          shown
+            .filter(g => bucketOf(g) === bucket)
+            .reduce((sum, g) => sum + g.savingsIfInterned, 0);
+        const coRetainedSavings = sumBucket('coRetained');
+        const crossLoadSavings = sumBucket('crossLoad');
+        const frameworkSavings = sumBucket('framework');
+        const lowRoiSavings = sumBucket('lowRoi');
+        const withinLoadSavings = sumBucket('within');
         const totalSavings =
-          withinLoadSavings + crossLoadSavings + coRetainedSavings;
+          withinLoadSavings +
+          crossLoadSavings +
+          coRetainedSavings +
+          frameworkSavings +
+          lowRoiSavings;
         const pctOf = (n: number): string =>
           totalSize > 0
             ? ` (${((n / totalSize) * 100).toFixed(1)}% of heap)`
@@ -507,12 +651,13 @@ export function registerInternOpportunities(server: McpServer): void {
           'Unique Strings',
           'Total Copies',
           'Dup ×',
+          'Avg len',
           'Total Size',
           'Savings',
           '% Heap',
           'Example Parent',
         ];
-        const rightCols = new Set([2, 3, 4, 5, 6, 7]);
+        const rightCols = new Set([2, 3, 4, 5, 6, 7, 8]);
         const rows = shown.map(g => {
           const shape =
             g.parentShape.length > 40
@@ -522,12 +667,17 @@ export function registerInternOpportunities(server: McpServer): void {
             totalSize > 0
               ? ((g.savingsIfInterned / totalSize) * 100).toFixed(1) + '%'
               : '-';
+          const avgLen =
+            g.totalCopies > 0
+              ? formatBytes(Math.round(g.totalSize / g.totalCopies))
+              : '-';
           return [
-            `.${g.propertyName}${g.coRetained ? ' ⚠' : ''}${g.crossLoad ? ' ⤫' : ''}`,
+            `.${g.propertyName}${g.coRetained ? ' ⚠' : ''}${g.crossLoad ? ' ⤫' : ''}${g.frameworkOwned ? ' ▤' : ''}${g.lowRoi ? ' ▽' : ''}`,
             shape,
             formatNumber(g.uniqueStrings),
             formatNumber(g.totalCopies),
             fmtDup(g.totalCopies, g.uniqueStrings),
+            avgLen,
             formatBytes(g.totalSize),
             formatBytes(g.savingsIfInterned),
             pct,
@@ -548,33 +698,79 @@ export function registerInternOpportunities(server: McpServer): void {
           const f = g.totalCopies / g.uniqueStrings;
           return f >= 1.8 && f <= 2.2;
         };
+        // Measure cross-load duplication from the raw `crossLoad` flag, NOT the
+        // post-precedence bucket. Framework-owned strings are reclassified out of
+        // the `crossLoad` bucket, but a stale+fresh double-buffer of e.g. HTTP
+        // headers is a real retention/concurrency bug regardless of who owns the
+        // data — and the verdict for it is explicitly "NOT interning". Gating on
+        // the bucket sum would let the detector silently stop firing once 2×
+        // framework groups leave the `crossLoad` bucket.
+        const crossLoadDupSavings = shown
+          .filter(g => g.crossLoad && !g.coRetained)
+          .reduce((sum, g) => sum + g.savingsIfInterned, 0);
         const twoXCrossLoadSavings = shown
           .filter(g => g.crossLoad && !g.coRetained && isExactlyTwoX(g))
           .reduce((sum, g) => sum + g.savingsIfInterned, 0);
         const retentionBugSuspected =
-          crossLoadSavings > 0 &&
-          crossLoadSavings >= withinLoadSavings &&
-          crossLoadSavings >= coRetainedSavings &&
-          twoXCrossLoadSavings >= crossLoadSavings * 0.5;
+          crossLoadDupSavings > 0 &&
+          crossLoadDupSavings >= withinLoadSavings &&
+          crossLoadDupSavings >= coRetainedSavings &&
+          twoXCrossLoadSavings >= crossLoadDupSavings * 0.5;
 
         // One-line verdict (Feedback round 5 §9): which bucket dominates decides
-        // the fix shape, so lead with it before the detail.
+        // the fix shape, so lead with it before the detail. A suspected
+        // retention/concurrency bug is checked FIRST — it is a real memory bug
+        // (NOT an interning win) and is framework-independent, so it must surface
+        // even when the 2× duplication is framework-owned and bucketed out of
+        // `crossLoad`.
+        // Every "mostly <bucket>" branch gates on the bucket being ≥ ALL other
+        // buckets (including framework/low-ROI), so the headline always names the
+        // bucket that actually dominates the heap. Without the framework/low-ROI
+        // comparison the cascade is asymmetric: a second-largest co-retained or
+        // cross-load bucket would be reported as the headline even when
+        // framework/low-ROI dominate (e.g. framework=100MB, crossLoad=10MB). The
+        // retention-bug branch is exempt — it is a correctness flag, not a
+        // "biggest bucket" claim, so it leads regardless of magnitude.
         let verdict: string;
-        if (
+        if (retentionBugSuspected) {
+          verdict = `Verdict: ⚠ likely **retention/concurrency bug** (NOT interning) — ${formatBytes(twoXCrossLoadSavings)} of cross-load duplication at ~2.0× (copies ÷ unique), i.e. two copies of the same dataset held at once (stale+fresh double-buffer / setInterval). A per-request intern pool will NOT help; fix the double retention at the source.`;
+        } else if (
           coRetainedSavings >= withinLoadSavings &&
           coRetainedSavings >= crossLoadSavings &&
+          coRetainedSavings >= frameworkSavings &&
+          coRetainedSavings >= lowRoiSavings &&
           coRetainedSavings > 0
         ) {
           verdict = `Verdict: mostly **co-retained** (${formatBytes(coRetainedSavings)}) — interning the property won't help; dedupe at the shared source.`;
         } else if (
           crossLoadSavings >= withinLoadSavings &&
+          crossLoadSavings >= frameworkSavings &&
+          crossLoadSavings >= lowRoiSavings &&
           crossLoadSavings > 0
         ) {
-          verdict = retentionBugSuspected
-            ? `Verdict: ⚠ likely **retention/concurrency bug** (NOT interning) — ${formatBytes(twoXCrossLoadSavings)} of cross-load duplication at ~2.0× (copies ÷ unique), i.e. two copies of the same dataset held at once (stale+fresh double-buffer / setInterval). A per-request intern pool will NOT help; fix the double retention at the source.`
-            : `Verdict: mostly **cross-load** (${formatBytes(crossLoadSavings)}) — a per-request pool won't collapse it; needs a shared/module-scope pool or a retention fix.`;
-        } else if (withinLoadSavings > 0) {
+          verdict = `Verdict: mostly **cross-load** (${formatBytes(crossLoadSavings)}) — a per-request pool won't collapse it; needs a shared/module-scope pool or a retention fix.`;
+        } else if (
+          withinLoadSavings > 0 &&
+          withinLoadSavings >= frameworkSavings &&
+          withinLoadSavings >= lowRoiSavings
+        ) {
           verdict = `Verdict: **${formatBytes(withinLoadSavings)} capturable** by a per-load/per-request intern pool at the parse boundary.`;
+        } else if (frameworkSavings + lowRoiSavings > 0) {
+          // Framework/low-ROI dominate (each ≥ the within-load figure). Lead with
+          // them so a small capturable remainder isn't mistaken for the headline,
+          // but still name that remainder when nonzero so it isn't hidden.
+          const parts: string[] = [];
+          if (frameworkSavings > 0) {
+            parts.push('framework/infra-owned (headers/cookies/tokens)');
+          }
+          if (lowRoiSavings > 0) {
+            parts.push('low-ROI (high-cardinality, long strings)');
+          }
+          const remainder =
+            withinLoadSavings > 0
+              ? ` (only ${formatBytes(withinLoadSavings)} is app-capturable by a per-load pool)`
+              : '';
+          verdict = `Verdict: largely no app-actionable interning${remainder} — the bulk is ${parts.join(' and ')}, which a per-load app intern pool should not target.`;
         } else {
           verdict =
             'Verdict: no clearly-capturable interning savings — if the heap is dominated by a few large strings/objects, use memlab_largest_objects or memlab_sliced_strings to investigate blob retention.';
@@ -598,6 +794,22 @@ export function registerInternOpportunities(server: McpServer): void {
             `- **⤫ Cross-load (NOT capturable by a per-request pool — needs a shared/module-scope pool or a retention/concurrency fix): ${formatBytes(crossLoadSavings)}${pctOf(crossLoadSavings)}**`,
           );
         }
+        if (frameworkSavings > 0) {
+          headerLines.push(
+            `- **▤ Framework/infra-owned (HTTP headers, cookies, auth tokens, Next.js URL/cache context — not app data; out of scope for an app-level intern pool): ${formatBytes(frameworkSavings)}${pctOf(frameworkSavings)}**`,
+          );
+        }
+        if (lowRoiSavings > 0) {
+          headerLines.push(
+            `- **▽ Low-ROI (high-cardinality, few repeats + long strings — a per-load pool retains a large unique set for a small collapse; usually skip): ${formatBytes(lowRoiSavings)}${pctOf(lowRoiSavings)}**`,
+          );
+        }
+        if (concatStringCount > CONCAT_STRING_BUILDUP_FLOOR) {
+          headerLines.push(
+            '',
+            `⚠ **Concatenated-string buildup:** ${formatNumber(concatStringCount)} \`(concatenated string)\` nodes (~${formatBytes(concatStringSize)} self-size) — a rope/accumulation pattern (repeated \`+=\` / join into a long-lived buffer), NOT value duplication. Interning cannot help; investigate with \`memlab_largest_objects\` / \`memlab_sliced_strings\` and trace the retainer.`,
+          );
+        }
         const coRetainedGroups = shown.filter(g => g.coRetained);
         const lines = [
           ...headerLines,
@@ -605,9 +817,14 @@ export function registerInternOpportunities(server: McpServer): void {
           markdownTable(headers, rows, rightCols),
           '',
         ];
-        if (coRetainedGroups.length > 0 || crossLoadSavings > 0) {
+        if (
+          coRetainedGroups.length > 0 ||
+          crossLoadSavings > 0 ||
+          frameworkSavings > 0 ||
+          lowRoiSavings > 0
+        ) {
           lines.push(
-            "⚠ = co-retained (interning won't reclaim); ⤫ = cross-load (high Dup ×, needs shared pool).",
+            "⚠ = co-retained (interning won't reclaim); ⤫ = cross-load (high Dup ×, needs shared pool); ▤ = framework/infra-owned (not app data); ▽ = low-ROI (high-cardinality + long; usually skip).",
             '',
           );
         }

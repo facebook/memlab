@@ -150,16 +150,12 @@ class DOMObserver {
                 if ((0, visual_utils_1.isVisualizerElement)(element)) {
                     return;
                 }
-                if (CAPTURE_ALL_REMOVED_ELEMENTS) {
+                if (true) {
                     const diff = __classPrivateFieldGet(this, _DOMObserver_instances, "m", _DOMObserver_gatherAllElementsInRemovedSubtree).call(this, element);
                     newlyAdded = [...newlyAdded, ...diff];
                 }
-                else if (!__classPrivateFieldGet(this, _DOMObserver_trackedElementSet, "f").has(element)) {
-                    const ref = new WeakRef(element);
-                    __classPrivateFieldGet(this, _DOMObserver_trackedElements, "f").push(ref);
-                    __classPrivateFieldGet(this, _DOMObserver_trackedElementSet, "f").add(element);
-                    newlyAdded.push(ref);
-                }
+                else // removed by dead control flow
+{}
             };
             mutationsList.forEach(mutation => {
                 mutation.addedNodes.forEach(updateCallback);
@@ -1731,17 +1727,17 @@ function debounce(callback, delay) {
 /******/ 	});
 /************************************************************************/
 /******/ 	// The module cache
-/******/ 	var __webpack_module_cache__ = {};
+/******/ 	const __webpack_module_cache__ = {};
 /******/ 	
 /******/ 	// The require function
 /******/ 	function __webpack_require__(moduleId) {
 /******/ 		// Check if module is in cache
-/******/ 		var cachedModule = __webpack_module_cache__[moduleId];
+/******/ 		const cachedModule = __webpack_module_cache__[moduleId];
 /******/ 		if (cachedModule !== undefined) {
 /******/ 			return cachedModule.exports;
 /******/ 		}
 /******/ 		// Create a new module (and put it into the cache)
-/******/ 		var module = __webpack_module_cache__[moduleId] = {
+/******/ 		const module = __webpack_module_cache__[moduleId] = {
 /******/ 			// no module.id needed
 /******/ 			// no module.loaded needed
 /******/ 			exports: {}
@@ -1759,7 +1755,7 @@ function debounce(callback, delay) {
 /******/ 	// startup
 /******/ 	// Load entry module and return exports
 /******/ 	// This entry module is referenced by other modules so it can't be inlined
-/******/ 	var __webpack_exports__ = __webpack_require__(235);
+/******/ 	let __webpack_exports__ = __webpack_require__(235);
 /******/ 	
 /******/ 	return __webpack_exports__;
 /******/ })()
