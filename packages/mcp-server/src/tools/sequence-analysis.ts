@@ -288,6 +288,20 @@ export function registerSequenceAnalysis(server: McpServer): void {
           );
         }
 
+        // "heap number" is V8's node for a captured numeric value. It only
+        // appears when the snapshot was taken with numeric-value capture on
+        // (Chrome's captureNumericValue / the browser MCP's capture_numeric_value
+        // option). In that mode V8 emits one node per distinct number, which
+        // both ~3x inflates the graph and shows up here as a top "↑ every step"
+        // grower — a capture artifact, not a real leak. Flag it so it isn't
+        // mistaken for the leak signal.
+        if (top.some(r => r.key === 'number::heap number')) {
+          lines.push(
+            '',
+            '> ⚠️ `heap number` is growing. This is almost always a **capture artifact** from taking snapshots with numeric-value capture enabled (one graph node per distinct number), not a real leak. Re-capture with numeric values OFF (browser MCP `capture_numeric_value: false`) for a ~3x smaller, faster, cleaner graph, and disregard `heap number` growth here.',
+          );
+        }
+
         lines.push(
           '',
           '_"↑ every step" is the strong unbounded-growth signal; "grew net (noisy)" often reflects GC timing or navigation and warrants a closer look before treating as a leak. Object-identity matching across snapshots is not available (node ids differ per capture) — to localize a specific growing collection, load the last snapshot and use `memlab_cache_analysis` / `memlab_event_listener_leaks` / `memlab_growth_signals`._',
