@@ -22,6 +22,7 @@ import {
   getSnapshotMetadata,
   setSessionConfig,
   listSnapshots,
+  clearAllSnapshots,
 } from '../heap-state.js';
 import type {SnapshotEnv} from '../heap-state.js';
 import {
@@ -46,6 +47,49 @@ export const DEFAULT_MANIFOLD_BUCKET = 'nest_server_nodejs_heap_snapshots';
 // (Sweep feedback round 6 §2.)
 export const LOCAL_FILE_SIZE_LIMIT_MB = 900;
 export const MANIFOLD_FETCH_SIZE_LIMIT_MB = 2100;
+
+// A node/edge-count ceiling complements the file-size cap. The load computes a
+// dominator tree via the Chrome-DevTools iterative fix-point algorithm, whose
+// cost is ~O(passes × edges) and blows up with graph DEPTH and cycle density,
+// not raw disk size — so a structurally deep snapshot only modestly larger on
+// disk can take effectively forever. Worse, the whole load is one synchronous
+// block the cooperative wall-clock guardrail cannot preempt, so there is no
+// timeout to fall back on (P2403258184). We therefore refuse BEFORE starting the
+// pass when the (cheaply peeked) node/edge counts exceed the ceiling, and warn
+// above the soft threshold. File size is a poor proxy for dominator-pass cost,
+// so these are separate from the MB caps. Override with max_nodes/max_edges, or
+// bypass entirely with force:true (expect a long, uninterruptible load).
+export const DEFAULT_MAX_NODES = 12_000_000;
+export const DEFAULT_MAX_EDGES = 24_000_000;
+export const WARN_NODE_COUNT = 2_000_000;
+
+/**
+ * Cheaply read `node_count` / `edge_count` from a .heapsnapshot header without
+ * parsing the whole file. The V8 format begins with
+ * `{"snapshot":{"meta":{…},"node_count":N,"edge_count":M,…},…}`, so both counts
+ * sit within the first few KB. Reads a bounded prefix and regex-extracts them;
+ * returns null when they aren't found in the prefix (caller then skips the count
+ * guard rather than failing the load).
+ */
+export function peekSnapshotCounts(
+  localPath: string,
+): {nodeCount: number; edgeCount: number} | null {
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(localPath, 'r');
+    const buf = Buffer.allocUnsafe(256 * 1024);
+    const bytes = fs.readSync(fd, buf, 0, buf.length, 0);
+    const head = buf.toString('utf8', 0, bytes);
+    const n = head.match(/"node_count"\s*:\s*(\d+)/);
+    const e = head.match(/"edge_count"\s*:\s*(\d+)/);
+    if (!n || !e) return null;
+    return {nodeCount: Number(n[1]), edgeCount: Number(e[1])};
+  } catch {
+    return null;
+  } finally {
+    if (fd != null) fs.closeSync(fd);
+  }
+}
 
 /**
  * Resolve the effective max-file-size limit (MB). An explicit caller value always
@@ -291,7 +335,7 @@ function quickDiagnosis(
 export function registerLoadSnapshot(server: McpServer): void {
   server.tool(
     'memlab_load_snapshot',
-    'Load and parse a .heapsnapshot file. This builds indexes, computes the dominator tree, and calculates retained sizes. Returns a quick diagnosis highlighting potential issues. Accepts a local absolute path, a manifold:// URL, or a bare snapshot filename (resolved against the nest_server_nodejs_heap_snapshots bucket and fetched automatically). Multiple snapshots can be kept resident — pass keep_previous:true to load several for diffing/comparison; switch between them with memlab_snapshots.',
+    'Load and parse a .heapsnapshot file. This builds indexes, computes the dominator tree, and calculates retained sizes. Returns a quick diagnosis highlighting potential issues. Accepts a local absolute path, a manifold:// URL, or a bare snapshot filename (resolved against the nest_server_nodejs_heap_snapshots bucket and fetched automatically). Multiple snapshots can be kept resident — pass keep_previous:true to load several for diffing/comparison; switch between them with memlab_snapshots. Cost note: the load working set is several× the file size and the dominator pass runs uninterruptibly, so large/deep snapshots are memory- and time-heavy — run the server with NODE_OPTIONS="--max-old-space-size=8192", load one snapshot at a time (omit keep_previous) on large heaps, and prefer memlab_sequence_analysis (transient per-snapshot loads) when you only need trend/growth across a ladder. A node/edge-count ceiling (max_nodes/max_edges) refuses pathologically large loads before they wedge the server.',
     {
       file_path: z
         .string()
@@ -329,6 +373,24 @@ export function registerLoadSnapshot(server: McpServer): void {
         .describe(
           `Maximum file size in MB to attempt loading. Defaults to ${LOCAL_FILE_SIZE_LIMIT_MB} for local files; for snapshots fetched from Manifold (a bare Nest snapshot filename or a manifold:// URL) it defaults to ${MANIFOLD_FETCH_SIZE_LIMIT_MB} — the analyzer's safe ceiling — since server captures routinely exceed ${LOCAL_FILE_SIZE_LIMIT_MB} MB. Pass an explicit value to override either default (e.g. raise it if your Node.js process has extra memory via --max-old-space-size). Snapshots larger than the effective limit return an error instead of risking an OOM crash.`,
         ),
+      max_nodes: z
+        .number()
+        .optional()
+        .describe(
+          `Maximum node count to attempt loading (default ${formatNumber(DEFAULT_MAX_NODES)}). The dominator-tree computation done at load is super-linear in graph size AND depth and runs uninterruptibly, so a very large/deep snapshot can wedge the server with no timeout; the count is peeked cheaply from the header and the load is refused before it starts if it exceeds this. File size is a poor proxy for this cost, so this is separate from max_file_size_mb.`,
+        ),
+      max_edges: z
+        .number()
+        .optional()
+        .describe(
+          `Maximum edge count to attempt loading (default ${formatNumber(DEFAULT_MAX_EDGES)}); see max_nodes. Peeked from the header; the load is refused before it starts if it exceeds this.`,
+        ),
+      force: z
+        .boolean()
+        .optional()
+        .describe(
+          'Bypass the node/edge-count ceiling and attempt the load anyway (default false). The load cannot be interrupted once started, so only use this when you accept a potentially very long load or possible OOM.',
+        ),
     },
     async ({
       file_path,
@@ -337,6 +399,9 @@ export function registerLoadSnapshot(server: McpServer): void {
       quiet,
       suppress_suggestions,
       max_file_size_mb,
+      max_nodes,
+      max_edges,
+      force,
     }) => {
       try {
         if (quiet != null || suppress_suggestions != null) {
@@ -400,10 +465,51 @@ export function registerLoadSnapshot(server: McpServer): void {
           );
         }
 
-        if (fileSizeMB > 200) {
-          process.stderr.write(
-            `Loading ${formatBytes(fileStat.size)} snapshot — this may take a while (parsing, computing dominators, building indexes)...\n`,
+        // Node/edge-count ceiling (P2403258184). The load's dominator pass is
+        // super-linear in graph size AND depth and runs as one uninterruptible
+        // synchronous block the wall-clock guardrail cannot preempt, so a very
+        // large/deep snapshot can wedge the server with no timeout. Peek the
+        // counts cheaply from the header and refuse BEFORE starting the pass.
+        const counts = peekSnapshotCounts(resolved);
+        const effectiveMaxNodes = max_nodes ?? DEFAULT_MAX_NODES;
+        const effectiveMaxEdges = max_edges ?? DEFAULT_MAX_EDGES;
+        if (
+          counts &&
+          !force &&
+          (counts.nodeCount > effectiveMaxNodes ||
+            counts.edgeCount > effectiveMaxEdges)
+        ) {
+          return errorResult(
+            new Error(
+              `Snapshot has ${formatNumber(counts.nodeCount)} nodes / ${formatNumber(counts.edgeCount)} edges — exceeds the load ceiling ` +
+                `(${formatNumber(effectiveMaxNodes)} nodes / ${formatNumber(effectiveMaxEdges)} edges).\n\n` +
+                `The load computes a dominator tree whose cost grows super-linearly with graph size and depth, and it runs as one synchronous block that the wall-clock guardrail cannot interrupt — so a snapshot this large/deep can wedge the server with no timeout. Refusing before the pass starts.\n\n` +
+                `Options:\n` +
+                `1. Get trend/growth WITHOUT a full load: memlab_sequence_analysis loads snapshots transiently (one at a time) and is the right tool for a ladder.\n` +
+                `2. Use a smaller/earlier snapshot from the same ladder.\n` +
+                `3. Restart with more memory, then raise the ceiling and accept a long load: NODE_OPTIONS="--max-old-space-size=8192", then memlab_load_snapshot({max_nodes: ${counts.nodeCount + 1_000_000}, force: true}).`,
+            ),
           );
+        }
+
+        const bigBySize = fileSizeMB > 200;
+        const bigByCount = counts != null && counts.nodeCount > WARN_NODE_COUNT;
+        if (bigBySize || bigByCount) {
+          const countStr = counts
+            ? `${formatNumber(counts.nodeCount)} nodes / ${formatNumber(counts.edgeCount)} edges, `
+            : '';
+          process.stderr.write(
+            `Loading ${formatBytes(fileStat.size)} snapshot (${countStr}parsing → dominators → retained sizes). ` +
+              `This runs uninterruptibly and can take minutes on a large/deep heap; if it appears to hang it is the dominator pass, not a crash.\n`,
+          );
+        }
+
+        // Free any resident snapshot BEFORE parsing the next so peak memory is
+        // one heap, not two — the double-residency that tips a large load into
+        // GC thrash (P2403258184 §3). Only in replace mode; keep_previous
+        // callers explicitly opt into holding several resident.
+        if (!keep_previous) {
+          clearAllSnapshots();
         }
 
         let snapshot;

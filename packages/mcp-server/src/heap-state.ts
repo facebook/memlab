@@ -185,6 +185,18 @@ export function listSnapshots(): SnapshotMetadata[] {
   return [...loaded.values()].map(l => l.metadata);
 }
 
+/**
+ * Drop all resident snapshots and reset the current handle. Used to release the
+ * previous snapshot's memory BEFORE parsing a replacement, so peak RSS during a
+ * large load is one heap rather than two (avoids the GC death-spiral described
+ * in P2403258184 §3).
+ */
+export function clearAllSnapshots(): void {
+  loaded.clear();
+  currentHandle = null;
+  headerEmitted = false;
+}
+
 export function getCurrentHandle(): string | null {
   return currentHandle;
 }
