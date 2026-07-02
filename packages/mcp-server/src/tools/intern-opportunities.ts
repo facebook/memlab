@@ -9,7 +9,7 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
-import type {IHeapEdge} from '@memlab/core';
+import type {IHeapEdge, IHeapNode} from '@memlab/core';
 import {z} from 'zod';
 import {
   getSnapshot,
@@ -50,6 +50,53 @@ function isOwnStorageReferrer(ref: IHeapEdge): boolean {
   );
 }
 
+// The canonical parse-boundary intern fix caps at 128 chars (the skill's
+// recommended cap: interning very long, low-cardinality strings costs a large
+// unique-set retention for little collapse). So the "within-load capturable"
+// figure double-counts value that a COMPLIANT fix would skip. Splitting savings
+// at this length lets the headline report cappable (what the 128-char fix
+// reclaims) separately from over-cap (needs an uncapped pool or a different fix)
+// so the reported number matches what the recommended fix actually reclaims
+// (sweep feedback §3).
+const CANONICAL_CAP_CHARS = 128;
+
+/**
+ * Label the array (and, one level up, its owner) that holds a duplicated
+ * array-element string, so columnar / rows-as-arrays duplication groups by a
+ * meaningful owner shape (e.g. `Query._rows[]`, `Array[][] (columnar rows)`)
+ * instead of a bare `Object`. Walks a bounded set of referrers with the
+ * non-materializing iterator (never the O(N) `.referrers` getter).
+ */
+function arrayOwnerLabel(arrayNode: IHeapNode): string {
+  const refs: IHeapEdge[] = [];
+  arrayNode.forEachReferrer(ref => {
+    refs.push(ref);
+    if (refs.length >= 8) return {stop: true};
+  });
+  for (const ref of refs) {
+    const fromName = ref.fromNode.name || '';
+    if (ref.type === 'property' || ref.type === 'context') {
+      const owner = fromName && fromName !== 'Object' ? fromName : 'Object';
+      return `${owner}.${String(ref.name_or_index)}[]`;
+    }
+    if (ref.type === 'element') {
+      // An array held as an element of another array = matrix / columnar rows.
+      const owner = fromName && fromName !== 'Object' ? fromName : 'Array';
+      return `${owner}[][] (columnar rows)`;
+    }
+    if (
+      (ref.type === 'hidden' || ref.type === 'internal') &&
+      fromName &&
+      fromName !== 'Object'
+    ) {
+      return `${fromName}[]`;
+    }
+  }
+  return arrayNode.name && arrayNode.name !== 'Object'
+    ? `${arrayNode.name}[]`
+    : 'Array[]';
+}
+
 interface InternGroup {
   propertyName: string;
   parentShape: string;
@@ -58,8 +105,19 @@ interface InternGroup {
   totalCopies: number;
   totalSize: number;
   savingsIfInterned: number;
+  // savingsIfInterned split by string length at the canonical 128-char cap:
+  // `savingsCappable` is what the recommended ≤128-char intern pool reclaims;
+  // `savingsOverCap` is held in longer strings the cap skips (sweep feedback §3).
+  savingsCappable: number;
+  savingsOverCap: number;
   topStrings: Array<{value: string; count: number; size: number}>;
   exampleParentId: number;
+  // True when the duplicated strings are held as ARRAY ELEMENTS (columnar /
+  // rows-as-arrays — e.g. a mysql2/Drizzle rowsAsArray result buffer) rather than
+  // named object properties. Grouped by column index × array-owner shape and
+  // folded into the within-load headline, since interning at the array-
+  // construction (parse) site collapses them (sweep feedback §2).
+  arrayElement?: boolean;
   // True when the group shows the partial-interning signature (each string
   // duplicated a consistent ~N×) — its savings are CROSS-load and cannot be
   // captured by a per-load/per-request intern pool (Feedback round 3 §1c).
@@ -170,7 +228,7 @@ function isFrameworkOwned(
 export function registerInternOpportunities(server: McpServer): void {
   server.tool(
     'memlab_intern_opportunities',
-    'Identify string interning opportunities by grouping duplicated strings by the property name and parent object shape that holds them. Shows total savings per (property × shape) combination — the key metric for deciding where to add a string interning pool. Replaces the manual workflow of: duplicated_strings → retainer_summary → codebase grep. ' +
+    'Identify string interning opportunities by grouping duplicated strings by the property name and parent object shape that holds them. Shows total savings per (property × shape) combination — the key metric for deciding where to add a string interning pool. Also surfaces ARRAY-ELEMENT / columnar duplication (strings held as elements of a rowsAsArray / string[][] result buffer — a common Nest mysql2/Drizzle shape) as first-class groups keyed by column index and array-owner shape, folded into the within-load headline; these are marked with a filled square and fixed by interning at the array-construction/parse site. The within-load figure is split at the canonical 128-char intern cap into cappable (<=128 chars, what the recommended fix reclaims) vs over-cap (longer strings the cap skips), so the headline matches what a compliant fix actually reclaims. Replaces the manual workflow of: duplicated_strings → retainer_summary → codebase grep. ' +
       'Retention-aware: flags groups whose duplicated instances are ALSO held by another structure (e.g. a raw array/matrix) as "co-retained" — interning the property there reclaims ~0, so the savings are reported separately and you must dedupe the shared source instead. ' +
       'The headline "within-load capturable" figure also excludes framework/infra-owned strings (HTTP headers, cookies, auth tokens, Next.js URL/cache context) and low-ROI groups (high-cardinality + long strings, where the intern pool costs more than it saves), reporting each in its own bucket; and it flags concatenated-string (rope) buildup, which is accumulation rather than duplication and cannot be interned. ' +
       '⚠ Full-heap scan (builds string-duplication groups) — slow and memory-heavy on very large heaps (millions of nodes); raise min_copies / min_savings to bound it.',
@@ -263,6 +321,7 @@ export function registerInternOpportunities(server: McpServer): void {
             groupSamples: number;
             coRetainedSamples: number;
             coRetainedVia?: string;
+            arrayElement: boolean;
           }
         >();
 
@@ -283,6 +342,7 @@ export function registerInternOpportunities(server: McpServer): void {
               // by a structure other than the grouping parent (co-retention).
               coRetainedCount: number;
               coRetainedVia?: string;
+              arrayElement: boolean;
             }
           >();
           let samplesProcessed = 0;
@@ -313,16 +373,37 @@ export function registerInternOpportunities(server: McpServer): void {
             });
 
             // Primary referrer = first property/context edge (assignment site).
-            let primary = null;
+            // If there is none, fall back to an array-element referrer so strings
+            // held as ARRAY ELEMENTS (columnar / rows-as-arrays — a very common
+            // Nest shape: mysql2/Drizzle rowsAsArray SELECT buffers) become a
+            // first-class group instead of being silently dropped. Previously the
+            // biggest single win of a sweep could hide because it was columnar
+            // (sweep feedback §2).
+            let primary: IHeapEdge | null = null;
             for (const ref of refs) {
               if (ref.type === 'property' || ref.type === 'context') {
                 primary = ref;
                 break;
               }
             }
+            let isArrayElement = false;
+            if (!primary) {
+              for (const ref of refs) {
+                if (ref.type === 'element') {
+                  primary = ref;
+                  isArrayElement = true;
+                  break;
+                }
+              }
+            }
             if (!primary) continue;
             const parent = primary.fromNode;
-            const propName = String(primary.name_or_index);
+            // For array elements, key the "property" by the column index so a
+            // fixed column across rows groups together (e.g. `[3]`); named props
+            // key by their name as before.
+            const propName = isArrayElement
+              ? `[${String(primary.name_or_index)}]`
+              : String(primary.name_or_index);
 
             // Co-retained ONLY if a referrer comes from a genuinely independent
             // structure. A referrer that is the same object's own V8 backing
@@ -360,25 +441,32 @@ export function registerInternOpportunities(server: McpServer): void {
             // the rest use the non-materializing `forEachReference` iterator with
             // an absolute visit cap as a backstop.
             const parentProps: string[] = [];
-            const PARENT_EDGE_GUARD = 1024;
-            const PARENT_SCAN_CAP = 256;
-            if (parent.edge_count <= PARENT_EDGE_GUARD) {
-              let scanned = 0;
-              parent.forEachReference(edge => {
-                if (++scanned > PARENT_SCAN_CAP) return {stop: true};
-                if (edge.type === 'property') {
-                  parentProps.push(String(edge.name_or_index));
-                  if (parentProps.length >= 12) return {stop: true};
-                }
-              });
+            let shapeKey: string;
+            if (isArrayElement) {
+              // Arrays carry element edges, not a property shape — label by the
+              // array's owner (one level up) so columnar rows group by owner.
+              shapeKey = arrayOwnerLabel(parent);
+            } else {
+              const PARENT_EDGE_GUARD = 1024;
+              const PARENT_SCAN_CAP = 256;
+              if (parent.edge_count <= PARENT_EDGE_GUARD) {
+                let scanned = 0;
+                parent.forEachReference(edge => {
+                  if (++scanned > PARENT_SCAN_CAP) return {stop: true};
+                  if (edge.type === 'property') {
+                    parentProps.push(String(edge.name_or_index));
+                    if (parentProps.length >= 12) return {stop: true};
+                  }
+                });
+              }
+              parentProps.sort();
+              shapeKey =
+                parent.name !== 'Object'
+                  ? parent.name
+                  : parentProps.length > 0
+                    ? `{${parentProps.join(',')}}`
+                    : 'Object';
             }
-            parentProps.sort();
-            const shapeKey =
-              parent.name !== 'Object'
-                ? parent.name
-                : parentProps.length > 0
-                  ? `{${parentProps.join(',')}}`
-                  : 'Object';
 
             const groupKey = `${propName}::${shapeKey}`;
             const dist = groupDist.get(groupKey);
@@ -399,6 +487,7 @@ export function registerInternOpportunities(server: McpServer): void {
                 sampleRetained: node.retainedSize,
                 coRetainedCount: coRetainedVia ? 1 : 0,
                 coRetainedVia,
+                arrayElement: isArrayElement,
               });
             }
             samplesProcessed++;
@@ -432,6 +521,13 @@ export function registerInternOpportunities(server: McpServer): void {
               if (!existing.coRetainedVia && dist.coRetainedVia) {
                 existing.coRetainedVia = dist.coRetainedVia;
               }
+              // OR the flag across samples rather than trusting the first: if a
+              // key is ever reached from both an element and a non-element
+              // referrer (e.g. a property literally named `[N]`), the group is
+              // still treated as columnar so the label/marker/totals stay
+              // consistent.
+              existing.arrayElement =
+                existing.arrayElement || dist.arrayElement;
             } else {
               groupMap.set(groupKey, {
                 propertyName: dist.propName,
@@ -444,6 +540,7 @@ export function registerInternOpportunities(server: McpServer): void {
                 groupSamples: dist.sampledCount,
                 coRetainedSamples: dist.coRetainedCount,
                 coRetainedVia: dist.coRetainedVia,
+                arrayElement: dist.arrayElement,
               });
             }
           }
@@ -455,6 +552,8 @@ export function registerInternOpportunities(server: McpServer): void {
           if (g.totalCopies < min_copies) continue;
 
           let savingsIfInterned = 0;
+          let savingsCappable = 0;
+          let savingsOverCap = 0;
           const topStrings: Array<{
             value: string;
             count: number;
@@ -464,7 +563,12 @@ export function registerInternOpportunities(server: McpServer): void {
           for (const [value, strStats] of g.strings) {
             if (strStats.count > 1) {
               const perCopy = strStats.size / strStats.count;
-              savingsIfInterned += (strStats.count - 1) * perCopy;
+              const s = (strStats.count - 1) * perCopy;
+              savingsIfInterned += s;
+              // A ≤128-char value is what the canonical intern fix would cap and
+              // reclaim; longer values are skipped by that cap (feedback §3).
+              if (value.length <= CANONICAL_CAP_CHARS) savingsCappable += s;
+              else savingsOverCap += s;
             }
             topStrings.push({
               value,
@@ -491,8 +595,11 @@ export function registerInternOpportunities(server: McpServer): void {
             totalCopies: g.totalCopies,
             totalSize: g.totalSize,
             savingsIfInterned,
+            savingsCappable,
+            savingsOverCap,
             topStrings: topStrings.slice(0, 3),
             exampleParentId: g.exampleParentId,
+            arrayElement: g.arrayElement,
             coRetained,
             coRetainedVia: coRetained ? g.coRetainedVia : undefined,
             lowRoi: isLowRoiGroup(g.strings.size, g.totalCopies, g.totalSize),
@@ -623,6 +730,28 @@ export function registerInternOpportunities(server: McpServer): void {
         const frameworkSavings = sumBucket('framework');
         const lowRoiSavings = sumBucket('lowRoi');
         const withinLoadSavings = sumBucket('within');
+
+        // Within the capturable bucket, split by the canonical 128-char cap so the
+        // headline reports what a COMPLIANT fix reclaims, not the raw total that
+        // includes over-cap strings the fix skips (feedback §3). Also surface how
+        // much of the capturable win is columnar / array-element duplication so it
+        // is no longer buried (feedback §2).
+        const withinGroups = shown.filter(g => bucketOf(g) === 'within');
+        const withinCappable = withinGroups.reduce(
+          (s, g) => s + g.savingsCappable,
+          0,
+        );
+        const withinOverCap = withinGroups.reduce(
+          (s, g) => s + g.savingsOverCap,
+          0,
+        );
+        // Use the cappable portion (not the full savings) so this figure always
+        // fits inside the withinCappable headline — otherwise a columnar group
+        // with long strings could report "includes N of columnar" where N
+        // exceeds the leading cappable number, which reads as a contradiction.
+        const withinArrayElementCappable = withinGroups
+          .filter(g => g.arrayElement)
+          .reduce((s, g) => s + g.savingsCappable, 0);
         const totalSavings =
           withinLoadSavings +
           crossLoadSavings +
@@ -671,8 +800,11 @@ export function registerInternOpportunities(server: McpServer): void {
             g.totalCopies > 0
               ? formatBytes(Math.round(g.totalSize / g.totalCopies))
               : '-';
+          // Array-element groups already read as `[3]`; a leading dot would
+          // produce a malformed label, so only prefix `.` for named properties.
+          const label = g.arrayElement ? g.propertyName : `.${g.propertyName}`;
           return [
-            `.${g.propertyName}${g.coRetained ? ' ⚠' : ''}${g.crossLoad ? ' ⤫' : ''}${g.frameworkOwned ? ' ▤' : ''}${g.lowRoi ? ' ▽' : ''}`,
+            `${label}${g.arrayElement ? ' ▦' : ''}${g.coRetained ? ' ⚠' : ''}${g.crossLoad ? ' ⤫' : ''}${g.frameworkOwned ? ' ▤' : ''}${g.lowRoi ? ' ▽' : ''}`,
             shape,
             formatNumber(g.uniqueStrings),
             formatNumber(g.totalCopies),
@@ -754,7 +886,18 @@ export function registerInternOpportunities(server: McpServer): void {
           withinLoadSavings >= frameworkSavings &&
           withinLoadSavings >= lowRoiSavings
         ) {
-          verdict = `Verdict: **${formatBytes(withinLoadSavings)} capturable** by a per-load/per-request intern pool at the parse boundary.`;
+          // Lead with the ≤128-char cappable figure — the amount the canonical
+          // intern fix actually reclaims — not the raw within-load total that also
+          // counts over-cap strings the fix skips (feedback §3).
+          const capNote =
+            withinOverCap > 0
+              ? ` (+${formatBytes(withinOverCap)} in >${CANONICAL_CAP_CHARS}-char strings the 128-char cap skips — needs an uncapped pool or a different fix)`
+              : '';
+          const columnarNote =
+            withinArrayElementCappable > 0
+              ? ` Includes ${formatBytes(withinArrayElementCappable)} of columnar / array-element (rowsAsArray) duplication — intern at the array-construction/parse site.`
+              : '';
+          verdict = `Verdict: **${formatBytes(withinCappable)} cappable** by the canonical ≤${CANONICAL_CAP_CHARS}-char per-load/per-request intern pool at the parse boundary${capNote}.${columnarNote}`;
         } else if (frameworkSavings + lowRoiSavings > 0) {
           // Framework/low-ROI dominate (each ≥ the within-load figure). Lead with
           // them so a small capturable remainder isn't mistaken for the headline,
@@ -784,6 +927,21 @@ export function registerInternOpportunities(server: McpServer): void {
           `**Total duplication across top ${shown.length} groups: ${formatBytes(totalSavings)}${pctOfHeap}**`,
           `- **Within-load (capturable by a per-load/per-request intern pool): ${formatBytes(withinLoadSavings)}${pctOf(withinLoadSavings)}**`,
         ];
+        // Split the within-load figure at the canonical 128-char cap so the
+        // reported number matches what the recommended fix actually reclaims
+        // (feedback §3). Only shown when there's over-cap value to distinguish —
+        // otherwise the whole within-load figure is already cappable.
+        if (withinOverCap > 0) {
+          headerLines.push(
+            `  - ≤${CANONICAL_CAP_CHARS}-char cappable (what the canonical 128-char intern fix reclaims): ${formatBytes(withinCappable)}`,
+            `  - >${CANONICAL_CAP_CHARS}-char over-cap (skipped by the 128-char cap — needs an uncapped pool or a different fix): ${formatBytes(withinOverCap)}`,
+          );
+        }
+        if (withinArrayElementCappable > 0) {
+          headerLines.push(
+            `  - ▦ of which columnar / array-element (rowsAsArray) duplication (cappable): ${formatBytes(withinArrayElementCappable)} — intern at the array-construction/parse site`,
+          );
+        }
         if (coRetainedSavings > 0) {
           headerLines.push(
             `- **⚠ Co-retained (interning the property reclaims ~0 — these instances are ALSO held by an independent structure, e.g. a raw array/matrix on another object; dedupe at that shared source or drop it): ${formatBytes(coRetainedSavings)}${pctOf(coRetainedSavings)}**`,
@@ -811,6 +969,7 @@ export function registerInternOpportunities(server: McpServer): void {
           );
         }
         const coRetainedGroups = shown.filter(g => g.coRetained);
+        const hasArrayElement = shown.some(g => g.arrayElement);
         const lines = [
           ...headerLines,
           '',
@@ -821,10 +980,11 @@ export function registerInternOpportunities(server: McpServer): void {
           coRetainedGroups.length > 0 ||
           crossLoadSavings > 0 ||
           frameworkSavings > 0 ||
-          lowRoiSavings > 0
+          lowRoiSavings > 0 ||
+          hasArrayElement
         ) {
           lines.push(
-            "⚠ = co-retained (interning won't reclaim); ⤫ = cross-load (high Dup ×, needs shared pool); ▤ = framework/infra-owned (not app data); ▽ = low-ROI (high-cardinality + long; usually skip).",
+            "▦ = array element (columnar / rowsAsArray — intern at the parse site); ⚠ = co-retained (interning won't reclaim); ⤫ = cross-load (high Dup ×, needs shared pool); ▤ = framework/infra-owned (not app data); ▽ = low-ROI (high-cardinality + long; usually skip).",
             '',
           );
         }
@@ -916,8 +1076,22 @@ export function registerInternOpportunities(server: McpServer): void {
             '',
             '**Next steps:**',
             `- Inspect example parent: \`memlab_object_shape(${shown[0].exampleParentId})\``,
-            `- Find all instances: \`memlab_find_by_shape\` with properties ${JSON.stringify(shown[0].parentShapeProps.slice(0, 5))}`,
+            // find_by_shape needs a property-shape fingerprint; array-element
+            // (columnar) top groups have none (parentShapeProps is empty), so the
+            // recipe would render an unactionable `properties []`. Emit it only for
+            // a named-property top group — the columnar case is covered by the
+            // array-element step below.
+            ...(!shown[0].arrayElement && shown[0].parentShapeProps.length > 0
+              ? [
+                  `- Find all instances: \`memlab_find_by_shape\` with properties ${JSON.stringify(shown[0].parentShapeProps.slice(0, 5))}`,
+                ]
+              : []),
             '- Search codebase for the constructor/factory that creates these objects',
+            ...(hasArrayElement
+              ? [
+                  '- For ▦ array-element (columnar / rowsAsArray) groups: the strings are cells of a result buffer, not object properties. Intern each cell where the rows are built (the DB driver’s rowsAsArray mapping or the parse loop) — e.g. `row[col] = intern(row[col])` per duplicated column — not at a property assignment site.',
+                ]
+              : []),
             ...(coRetainedGroups.length > 0
               ? [
                   '- For ⚠ co-retained groups: run `memlab_get_referrers` on an example instance to find the shared owner, then dedupe at that source (the property-level pool above will not help).',
