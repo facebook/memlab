@@ -82,8 +82,7 @@ export class WeakMapNoOp<K extends object | ReadonlyArray<unknown>, V> {
 }
 
 export type WeakMapOrNoOp<TK extends object, TV> =
-  | WeakMap<TK, TV>
-  | WeakMapNoOp<TK, TV>;
+  WeakMap<TK, TV> | WeakMapNoOp<TK, TV>;
 export type WeakSetOrNoOp<T extends object> = WeakSet<T> | WeakSetNoOp<T>;
 export type WeakRefOrNoOp<T extends object> = WeakRef<T> | WeakRefNoOp<T>;
 

@@ -19,9 +19,7 @@ import {
   TraceDecision,
 } from '../BaseTraceFilter.rule';
 
-export class FilterCppRootsToDetachedDOMTraceRule
-  implements ILeakTraceFilterRule
-{
+export class FilterCppRootsToDetachedDOMTraceRule implements ILeakTraceFilterRule {
   filter(
     p: LeakTracePathItem,
     options: LeakTraceFilterOptions = {},

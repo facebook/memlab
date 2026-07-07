@@ -2394,8 +2394,10 @@ export interface IMemoryAnalystSnapshotDiff {
 }
 
 /** @internal */
-export interface IMemoryAnalystHeapNodeLeakSummary
-  extends Pick<IHeapNode, 'name' | 'type' | 'retainedSize'> {
+export interface IMemoryAnalystHeapNodeLeakSummary extends Pick<
+  IHeapNode,
+  'name' | 'type' | 'retainedSize'
+> {
   count: number;
 }
 

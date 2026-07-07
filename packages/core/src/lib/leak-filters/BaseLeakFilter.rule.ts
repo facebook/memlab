@@ -36,9 +36,7 @@ export interface ILeakObjectFilterRule {
   ): LeakDecision;
 }
 
-export abstract class LeakObjectFilterRuleBase
-  implements ILeakObjectFilterRule
-{
+export abstract class LeakObjectFilterRuleBase implements ILeakObjectFilterRule {
   beforeFiltering(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _config: MemLabConfig,
