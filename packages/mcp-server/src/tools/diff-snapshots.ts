@@ -15,13 +15,18 @@ import path from 'path';
 import {z} from 'zod';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
 const {getFullHeapFromFile} = memlabHeapAnalysis;
-import {setSnapshot, getCurrentHandle} from '../heap-state.js';
+import {
+  setSnapshot,
+  getCurrentHandle,
+  getSnapshotByHandle,
+  listSnapshots,
+  setCurrentSnapshot,
+} from '../heap-state.js';
 import {
   formatBytes,
   formatNumber,
   markdownTable,
   errorResult,
-  textResult,
   toolResult,
 } from '../utils.js';
 
@@ -55,22 +60,85 @@ function isValueNamedStringClass(type: string, name: string): boolean {
   return false;
 }
 
+interface ResolvedSnapshot {
+  snapshot: IHeapSnapshot;
+  // The name to show for this side of the diff (resident handle or file base name).
+  label: string;
+  // Non-null when the arg resolved to an already-resident snapshot, so callers
+  // can activate it in place instead of re-parsing / creating a duplicate handle.
+  residentHandle: string | null;
+  // The canonical absolute path a freshly-loaded snapshot was read from (null on
+  // a resident hit). Callers register the snapshot under THIS path — the same
+  // form the resident lookup below canonicalizes to — so the next diff of the
+  // same path reuses it instead of re-parsing.
+  resolvedPath: string | null;
+}
+
+// Resolve a before/after argument to a snapshot, preferring already-resident
+// snapshots so diffing a captured ladder never re-parses a file that is already
+// in memory (each reparse is a full dominator-tree build + a second resident
+// graph). Order: (1) a resident handle, (2) a path matching a resident
+// snapshot's file, (3) load from disk.
+async function resolveDiffSnapshot(arg: string): Promise<ResolvedSnapshot> {
+  const byHandle = getSnapshotByHandle(arg);
+  if (byHandle) {
+    return {
+      snapshot: byHandle,
+      label: arg,
+      residentHandle: arg,
+      resolvedPath: null,
+    };
+  }
+  const resolved = path.resolve(arg);
+  for (const m of listSnapshots()) {
+    // Match against BOTH the canonicalized path and the raw arg: load_snapshot
+    // stores a path.resolve()d filePath, but a snapshot first loaded through a
+    // different entry point may have been registered under its raw arg, so
+    // comparing only one form would miss the resident hit and re-parse.
+    if (m.filePath === resolved || m.filePath === arg) {
+      const s = getSnapshotByHandle(m.handle);
+      if (s) {
+        return {
+          snapshot: s,
+          label: m.handle,
+          residentHandle: m.handle,
+          resolvedPath: null,
+        };
+      }
+    }
+  }
+  if (!fs.existsSync(resolved)) {
+    throw new Error(
+      `"${arg}" is neither a resident snapshot handle nor an existing file. ` +
+        `Use memlab_snapshots (action:"list") to see resident handles, or pass a ` +
+        `valid .heapsnapshot path.`,
+    );
+  }
+  const snapshot = await getFullHeapFromFile(resolved);
+  return {
+    snapshot,
+    label: path.basename(arg),
+    residentHandle: null,
+    resolvedPath: resolved,
+  };
+}
+
 export function registerDiffSnapshots(server: McpServer): void {
   server.tool(
     'memlab_diff_snapshots',
-    'Compare two heap snapshots by class histogram. Shows classes that grew, shrunk, appeared, or disappeared between "before" and "after" snapshots. By default the "after" snapshot becomes the active snapshot (set set_active:false to leave your active snapshot unchanged). For an ordered sequence of 3+ snapshots, use memlab_sequence_analysis instead.',
+    'Compare two heap snapshots by class histogram. Shows classes that grew, shrunk, appeared, or disappeared between "before" and "after" snapshots. Each side accepts either a resident snapshot handle (from memlab_snapshots) or a file path — resident handles are reused in place, so diffing a ladder you already loaded never re-parses a file. By default the "after" snapshot becomes the active snapshot (set set_active:false to leave your active snapshot unchanged). For an ordered sequence of 3+ snapshots, use memlab_sequence_analysis instead.',
     {
       before_path: z
         .string()
         .optional()
         .describe(
-          'Path to the "before" snapshot (local, manifold://, or bare filename). Aliases: before, baseline.',
+          'The "before" snapshot: a resident handle (see memlab_snapshots) or a path (local, manifold://, or bare filename). Aliases: before, baseline.',
         ),
       after_path: z
         .string()
         .optional()
         .describe(
-          'Path to the "after" snapshot (local, manifold://, or bare filename). Aliases: after, target.',
+          'The "after" snapshot: a resident handle (see memlab_snapshots) or a path (local, manifold://, or bare filename). Aliases: after, target.',
         ),
       before: z.string().optional().describe('Alias for before_path.'),
       after: z.string().optional().describe('Alias for after_path.'),
@@ -141,57 +209,64 @@ export function registerDiffSnapshots(server: McpServer): void {
             ),
           );
         }
-        const resolvedBefore = path.resolve(beforeArg);
-        const resolvedAfter = path.resolve(afterArg);
-
-        if (!fs.existsSync(resolvedBefore)) {
-          return errorResult(
-            new Error(`Before file not found: ${resolvedBefore}`),
-          );
-        }
-        if (!fs.existsSync(resolvedAfter)) {
-          return errorResult(
-            new Error(`After file not found: ${resolvedAfter}`),
-          );
-        }
-
-        const [beforeSnapshot, afterSnapshot] = await Promise.all([
-          getFullHeapFromFile(resolvedBefore),
-          getFullHeapFromFile(resolvedAfter),
+        const [beforeResolved, afterResolved] = await Promise.all([
+          resolveDiffSnapshot(beforeArg),
+          resolveDiffSnapshot(afterArg),
         ]);
+        const beforeSnapshot = beforeResolved.snapshot;
+        const afterSnapshot = afterResolved.snapshot;
         const beforeHist = buildHistogram(beforeSnapshot);
         const afterHist = buildHistogram(afterSnapshot);
 
-        // Make "after" the active snapshot
-        let afterNodeCount = 0;
-        let afterEdgeCount = 0;
-        let afterTotalSize = 0;
-        afterSnapshot.nodes.forEach(node => {
-          afterNodeCount++;
-          afterTotalSize += node.self_size;
-        });
-        afterSnapshot.edges.forEach(() => {
-          afterEdgeCount++;
-        });
-        let hasWindow = false;
-        let hasModule = false;
-        afterSnapshot.nodes.forEach(node => {
-          if (hasWindow) return;
-          if (node.name.startsWith('Window ') && node.type === 'object')
-            hasWindow = true;
-          if (node.name === 'Module' && node.type === 'object' && !hasModule)
-            hasModule = true;
-        });
-        const afterEnv = hasWindow ? 'browser' : hasModule ? 'node' : 'unknown';
+        // Make "after" the active snapshot. If it is already resident, switch to
+        // its handle in place; only a freshly-loaded snapshot needs registering
+        // (and the metadata scan that entails).
         let activeHandle: string | null = getCurrentHandle();
         if (set_active) {
-          activeHandle = setSnapshot(afterSnapshot, afterArg, {
-            fileName: path.basename(afterArg),
-            nodeCount: afterNodeCount,
-            edgeCount: afterEdgeCount,
-            totalSize: afterTotalSize,
-            env: afterEnv as 'browser' | 'node' | 'unknown',
-          }).handle;
+          if (afterResolved.residentHandle) {
+            setCurrentSnapshot(afterResolved.residentHandle);
+            activeHandle = afterResolved.residentHandle;
+          } else {
+            let afterNodeCount = 0;
+            let afterEdgeCount = 0;
+            let afterTotalSize = 0;
+            afterSnapshot.nodes.forEach(node => {
+              afterNodeCount++;
+              afterTotalSize += node.self_size;
+            });
+            afterSnapshot.edges.forEach(() => {
+              afterEdgeCount++;
+            });
+            let hasWindow = false;
+            let hasModule = false;
+            afterSnapshot.nodes.forEach(node => {
+              if (hasWindow) return;
+              if (node.name.startsWith('Window ') && node.type === 'object')
+                hasWindow = true;
+              if (
+                node.name === 'Module' &&
+                node.type === 'object' &&
+                !hasModule
+              )
+                hasModule = true;
+            });
+            const afterEnv = hasWindow
+              ? 'browser'
+              : hasModule
+                ? 'node'
+                : 'unknown';
+            activeHandle = setSnapshot(
+              afterSnapshot,
+              afterResolved.resolvedPath ?? afterArg,
+              {
+                fileName: path.basename(afterArg),
+                nodeCount: afterNodeCount,
+                edgeCount: afterEdgeCount,
+                totalSize: afterTotalSize,
+                env: afterEnv as 'browser' | 'node' | 'unknown',
+              },
+            ).handle;
+          }
         }
 
         // Compute deltas
@@ -323,6 +398,12 @@ export function registerDiffSnapshots(server: McpServer): void {
         const sign = (n: number) => (n >= 0 ? '+' : '-');
 
         lines.push('## Snapshot Comparison');
+        lines.push('');
+        const residentTag = (r: ResolvedSnapshot): string =>
+          r.residentHandle ? ' (resident)' : '';
+        lines.push(
+          `before: \`${beforeResolved.label}\`${residentTag(beforeResolved)} → after: \`${afterResolved.label}\`${residentTag(afterResolved)}`,
+        );
         lines.push('');
         lines.push(`| | Before | After | Delta |`);
         lines.push(`|---|---:|---:|---:|`);
