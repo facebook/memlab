@@ -509,6 +509,7 @@ When analyzing large snapshots, use these options to reduce token usage:
 | See a property's value cardinality + top values | `memlab_property_distribution` |
 | Guess what's growing from one snapshot | `memlab_growth_signals` |
 | Load from Manifold / bare filename | `memlab_load_snapshot` with `manifold://…` or a bare snapshot filename |
+| Check if a snapshot will load before loading it | `memlab_snapshot_header` — reads node/edge counts without the dominator pass; when over the ceiling it reports the max-loadable file size for that app so you pick a smaller capture in one step |
 | Keep multiple snapshots / switch between them | `memlab_load_snapshot` with `keep_previous: true`, then `memlab_snapshots` |
 | Decode a numeric property by name | `memlab_get_value` with `node_id` + `property_name` |
 | Expand a truncated retainer trace | `memlab_retainer_trace` with `expand: true` |

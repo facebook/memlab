@@ -20,6 +20,7 @@ import {installAnalysisGuardrail} from './guardrail.js';
 config.errorHandling = ErrorHandling.Throw;
 
 import {registerLoadSnapshot} from './tools/load-snapshot.js';
+import {registerSnapshotHeader} from './tools/snapshot-header.js';
 import {registerSnapshotSummary} from './tools/snapshot-summary.js';
 import {registerLargestObjects} from './tools/largest-objects.js';
 import {registerGetNode} from './tools/get-node.js';
@@ -73,7 +74,7 @@ import {registerEventRegistry} from './tools/event-registry.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.17.0', // keep in sync with package.json
+  version: '2.18.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -82,6 +83,7 @@ const server = new McpServer({
 installAnalysisGuardrail(server);
 
 registerLoadSnapshot(server);
+registerSnapshotHeader(server);
 registerSnapshotSummary(server);
 registerLargestObjects(server);
 registerGetNode(server);

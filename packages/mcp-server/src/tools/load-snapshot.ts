@@ -157,6 +157,32 @@ export function peekSnapshotCounts(
 }
 
 /**
+ * Estimate the largest same-app capture (in MB) that would fit under the load
+ * ceiling, from THIS snapshot's own node/edge density. Server captures of one app
+ * have a roughly stable nodes-per-MB and edges-per-MB, so once a capture is
+ * refused for exceeding the ceiling, `ceiling ÷ density` tells the reader what
+ * file size to look for instead — turning the manual "hit ceiling → compute
+ * density by hand → re-query Scuba for a smaller file" loop into one number
+ * (sweep feedback round 7 §2: the guess-and-retry loop was the dominant friction).
+ * Edge-density usually binds first on edge-dense Nest heaps, so we take the min of
+ * the node-bound and edge-bound estimates. Returns null when it can't be computed.
+ */
+export function estimateMaxLoadableMB(
+  counts: {nodeCount: number; edgeCount: number},
+  fileSizeMB: number,
+  ceilings: {maxNodes: number; maxEdges: number},
+): number | null {
+  if (fileSizeMB <= 0) return null;
+  const nodesPerMB = counts.nodeCount / fileSizeMB;
+  const edgesPerMB = counts.edgeCount / fileSizeMB;
+  const byNodes = nodesPerMB > 0 ? ceilings.maxNodes / nodesPerMB : Infinity;
+  const byEdges = edgesPerMB > 0 ? ceilings.maxEdges / edgesPerMB : Infinity;
+  const mb = Math.min(byNodes, byEdges);
+  if (!Number.isFinite(mb) || mb <= 0) return null;
+  return Math.floor(mb);
+}
+
+/**
  * Resolve the effective max-file-size limit (MB). An explicit caller value always
  * wins; otherwise default by source — Manifold-fetched server snapshots get the
  * higher ceiling, local files keep the tighter guard.
@@ -284,7 +310,7 @@ function findLargestObject(snapshot: IHeapSnapshot): LargestObjInfo | null {
 // Surfacing it lets the agent check whether a candidate leak was likely already
 // fixed since the snapshot was taken — the dominant outcome when sweeping a
 // backlog of old snapshots (Feedback round 5 §12).
-function extractCaptureTime(fileName: string): Date | null {
+export function extractCaptureTime(fileName: string): Date | null {
   const msMatch = fileName.match(/(?<!\d)(1\d{12})(?!\d)/);
   const sMatch = fileName.match(/(?<!\d)(1\d{9})(?!\d)/);
   let ms: number | null = null;
@@ -570,9 +596,21 @@ export function registerLoadSnapshot(server: McpServer): void {
             heapMB > 0
               ? `This server's Node.js heap is ~${formatNumber(heapMB)} MB (--max-old-space-size), so the auto-scaled ceiling is ${formatNumber(effectiveMaxNodes)} nodes / ${formatNumber(effectiveMaxEdges)} edges. `
               : '';
+          // Density-derived hint: from this capture's own nodes/edges per MB,
+          // estimate the largest same-app capture that WOULD fit, so the reader
+          // can pick a smaller snapshot in one query instead of hand-computing
+          // density and guessing (sweep feedback round 7 §2).
+          const estMB = estimateMaxLoadableMB(counts, fileSizeMB, {
+            maxNodes: effectiveMaxNodes,
+            maxEdges: effectiveMaxEdges,
+          });
+          const sizeHint =
+            estMB != null
+              ? `This capture is ${formatBytes(fileStat.size)} at ${formatNumber(Math.round(counts.nodeCount / fileSizeMB))} nodes/MB and ${formatNumber(Math.round(counts.edgeCount / fileSizeMB))} edges/MB, so for this app the ceiling corresponds to roughly a ≤${formatNumber(estMB)} MB capture — pick a smaller snapshot below that size.`
+              : '';
           const options = [
             `1. Get trend/growth WITHOUT a full load: memlab_sequence_analysis loads snapshots transiently (one at a time) and is the right tool for a ladder.`,
-            `2. Use a smaller/earlier snapshot from the same ladder.`,
+            `2. Use a smaller/earlier snapshot from the same ladder.${estMB != null ? ` ${sizeHint}` : ''} Check a candidate's counts first WITHOUT a load via memlab_snapshot_header.`,
             `3. Load it anyway with force:true — it self-sizes from these header counts, so you do NOT also need max_nodes/max_edges: memlab_load_snapshot({file_path: "${file_path}", force: true}). Expect a long, uninterruptible dominator pass.`,
           ];
           // Only suggest more memory when the server is actually under-provisioned.

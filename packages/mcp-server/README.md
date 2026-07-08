@@ -137,6 +137,16 @@ Input:  { file_path: "snap.heapsnapshot" | "/abs/path" | "manifold://bucket/key"
 Output: { status, file_path, node_count, edge_count, total_size, handle }
 ```
 
+### `memlab_snapshot_header`
+
+Peek a `.heapsnapshot`'s header (node/edge counts, capture time, file size) **without** loading it — no dominator pass, so it can never wedge or OOM the server the way a full `memlab_load_snapshot` can. Reports whether the capture fits under the current auto-scaled load ceiling, this app's node/edge density, and — when it doesn't fit — the estimated largest same-app capture that *would* fit, so you can pick a loadable snapshot in one step instead of attempting an oversized load and retrying. `file_path` accepts the same three forms as `memlab_load_snapshot`; a Manifold fetch is reused (cached) by a subsequent load.
+
+```
+Input:  { file_path: "snap.heapsnapshot" | "/abs/path" | "manifold://bucket/key" }
+Output: file size, node/edge counts, capture date, current ceiling, and a
+        loadable ✓ / over-ceiling ✗ verdict with a density-based max-loadable-MB hint
+```
+
 ### `memlab_snapshots`
 
 Manage the multi-snapshot session and session output controls.
