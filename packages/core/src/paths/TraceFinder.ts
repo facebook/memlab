@@ -12,9 +12,7 @@ import type {
   AnyOptions,
   HeapNodeIdSet,
   IHeapEdge,
-  IHeapEdges,
   IHeapNode,
-  IHeapNodes,
   IHeapSnapshot,
   LeakTracePathItem,
   Nullable,
@@ -29,11 +27,6 @@ import NumericSet from '../lib/heap-data/utils/NumericSet';
 
 const ROOT_NODE_INDEX = 0;
 const PAGE_OBJECT_FLAG = 1;
-
-type PostOrderMapping = {
-  postOrderIndex2NodeIndex: Uint32Array;
-  nodeIndex2PostOrderIndex: Uint32Array;
-};
 
 class TraceFinder {
   getRootNodeList(
@@ -160,341 +153,253 @@ class TraceFinder {
     }
   }
 
-  // build post order based on:
-  //  Keith D. Cooper and Timothy J. Harvey and Ken Kennedy
-  //  "A Simple, Fast Dominance Algorithm"
-  private buildPostOrderIndex(
+  // Build the dominator tree and retained sizes using the Lengauer-Tarjan
+  // algorithm:
+  //   Thomas Lengauer and Robert Endre Tarjan. 1979. A fast algorithm for
+  //   finding dominators in a flowgraph. ACM Trans. Program. Lang. Syst. 1, 1
+  //   (July 1979), 121-141. https://doi.org/10.1145/357062.357071
+  //
+  // This is the same near-linear, single-pass algorithm Chrome DevTools uses.
+  // It replaces the previous iterative Cooper-Harvey-Kennedy fix-point, which
+  // had two problems on real browser snapshots:
+  //   1. It could spin forever. The fix-point's two-finger intersect() walk
+  //      assumes every step climbs toward the root, but the post-order that was
+  //      assigned to orphan / weakly-reachable nodes (unreachable from the GC
+  //      root) could violate that, producing a cycle in the provisional
+  //      dominator pointers or a walk onto the out-of-bounds "empty" sentinel.
+  //      The walk then never terminated -- one CPU pinned at 100% with a flat
+  //      heap, stuck at "calculating dominators and retained sizes".
+  //   2. Even when it converged it needed O(graph-depth) sweeps.
+  //
+  // Lengauer-Tarjan avoids both: it assigns every node a valid DFS number,
+  // treats orphan and mutually-retaining "clique" nodes as retained by the
+  // root, and computes dominators in a single pass with no fix-point.
+  //
+  // Vertices are numbered 1..nodeCount (0 is the invalid/empty value the
+  // algorithm relies on); ordinal === vertex - 1 maps a vertex back to its heap
+  // node index.
+  private computeDominatorsAndRetainedSizes(
     snapshot: IHeapSnapshot,
     flags: Uint32Array,
-  ): PostOrderMapping {
-    const nodeCount = snapshot.nodes.length;
-    const rootNodeIndex = ROOT_NODE_INDEX;
-
-    const forwardEdges = snapshot.edges;
-    const firstEdgeIndexes = new Uint32Array(nodeCount + 1);
-    firstEdgeIndexes[nodeCount] = forwardEdges.length;
-    for (let nodeIndex = 0, edgeIndex = 0; nodeIndex < nodeCount; ++nodeIndex) {
-      firstEdgeIndexes[nodeIndex] = edgeIndex;
-      edgeIndex += (snapshot.nodes.get(nodeIndex) as IHeapNode).edge_count;
-    }
-
-    const flag = PAGE_OBJECT_FLAG;
-    const nodeStack = new Uint32Array(nodeCount);
-    const edgeStack = new Uint32Array(nodeCount);
-    const postOrderIndex2NodeIndex = new Uint32Array(nodeCount);
-    const nodeIndex2PostOrderIndex = new Uint32Array(nodeCount);
-    const visited = new Uint8Array(nodeCount);
-    let postOrderIndex = 0;
-
-    // build a DFS stack and put the root node
-    // at the bottom of the stack
-    let stackTopIndex = 0;
-    nodeStack[0] = rootNodeIndex;
-    edgeStack[0] = firstEdgeIndexes[rootNodeIndex];
-    visited[rootNodeIndex] = 1;
-
-    let iteratedOnce = false;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      // use DFS to traverse all nodes via a stack
-      while (stackTopIndex >= 0) {
-        const nodeIndex = nodeStack[stackTopIndex];
-        const edgeIndex = edgeStack[stackTopIndex];
-        const edgesEnd = firstEdgeIndexes[nodeIndex + 1];
-
-        if (edgeIndex < edgesEnd) {
-          edgeStack[stackTopIndex]++;
-          const edgeType = (forwardEdges.get(edgeIndex) as IHeapEdge).type;
-          if (!utils.isEssentialEdge(nodeIndex, edgeType, rootNodeIndex)) {
-            continue;
-          }
-          const childNodeIndex = (forwardEdges.get(edgeIndex) as IHeapEdge)
-            .toNode.nodeIndex;
-          if (visited[childNodeIndex]) {
-            continue;
-          }
-          const nodeFlag = flags[nodeIndex] & flag;
-          const childNodeFlag = flags[childNodeIndex] & flag;
-          // According to Chrome devtools, need to skip the edges from
-          // non-page-owned nodes to page-owned nodes (since debugger may
-          // also have references to heap objects)
-          if (nodeIndex !== rootNodeIndex && childNodeFlag && !nodeFlag) {
-            continue;
-          }
-          ++stackTopIndex;
-          nodeStack[stackTopIndex] = childNodeIndex;
-          edgeStack[stackTopIndex] = firstEdgeIndexes[childNodeIndex];
-          visited[childNodeIndex] = 1;
-        } else {
-          // DFS is done, now build the post order based on the stack
-          nodeIndex2PostOrderIndex[nodeIndex] = postOrderIndex;
-          postOrderIndex2NodeIndex[postOrderIndex++] = nodeIndex;
-          --stackTopIndex;
-        }
-      }
-
-      // If we have tried by build the stack once previously
-      // or we have already built the post order for all nodes
-      if (iteratedOnce || postOrderIndex === nodeCount) {
-        break;
-      }
-
-      // Otherwise there are some nodes unreachable from
-      // the root node
-      if (config.verbose) {
-        info.overwrite(
-          `${nodeCount - postOrderIndex} nodes are unreachable from the root`,
-        );
-      }
-
-      // Now the root node has the last post order index and
-      // the DFS stack is empty; we need to put the root node
-      // back to the bottom of the DFS stack, traverse all the
-      // orphan nodes with weak referrers (nodes unreachable
-      // from the root), and make sure the root node has the
-      // last post order index
-      --postOrderIndex;
-      stackTopIndex = 0;
-      nodeStack[0] = rootNodeIndex;
-      // skip iterating the edges of the root node
-      edgeStack[0] = firstEdgeIndexes[rootNodeIndex + 1];
-      for (let nodeIndex = 0; nodeIndex < nodeCount; ++nodeIndex) {
-        if (
-          visited[nodeIndex] ||
-          !utils.hasOnlyWeakReferrers(
-            snapshot.nodes.get(nodeIndex) as IHeapNode,
-          )
-        ) {
-          continue;
-        }
-
-        // Add all nodes that have only weak referrers
-        // to traverse their subgraphs
-        ++stackTopIndex;
-        nodeStack[stackTopIndex] = nodeIndex;
-        edgeStack[stackTopIndex] = firstEdgeIndexes[nodeIndex];
-        visited[nodeIndex] = nodeIndex;
-      }
-      iteratedOnce = true;
-    }
-
-    // If we already processed all orphan nodes (nodes unreachable from root)
-    // that have only weak referrers and still have some orphans
-    if (postOrderIndex !== nodeCount) {
-      if (config.verbose) {
-        info.lowLevel(
-          nodeCount - postOrderIndex + ' unreachable nodes in heap snapshot',
-        );
-      }
-
-      // Now the root node has the last post order index and
-      // the DFS stack is empty; we need to put the root node
-      // back to the bottom of the DFS stack, traverse all the
-      // remaining orphan nodes (nodes unreachable from the root),
-      // and make sure the root node has the last post order index
-      --postOrderIndex;
-      for (let nodeIndex = 0; nodeIndex < nodeCount; ++nodeIndex) {
-        if (visited[nodeIndex]) {
-          continue;
-        }
-        // give the orphan node a postorder index anyway
-        nodeIndex2PostOrderIndex[nodeIndex] = postOrderIndex;
-        postOrderIndex2NodeIndex[postOrderIndex++] = nodeIndex;
-      }
-      nodeIndex2PostOrderIndex[rootNodeIndex] = postOrderIndex;
-      postOrderIndex2NodeIndex[postOrderIndex++] = rootNodeIndex;
-    }
-
-    return {
-      postOrderIndex2NodeIndex,
-      nodeIndex2PostOrderIndex,
-    };
-  }
-
-  // The dominance algorithm is from:
-  //  Keith D. Cooper and Timothy J. Harvey and Ken Kennedy
-  //  "A Simple, Fast Dominance Algorithm"
-  private calculateDominatorNodesFromPostOrder(
-    nodes: IHeapNodes,
-    edges: IHeapEdges,
-    postOrderInfo: PostOrderMapping,
-    flags: Uint32Array,
-    snapshot: IHeapSnapshot,
-  ): Uint32Array {
-    const {postOrderIndex2NodeIndex, nodeIndex2PostOrderIndex} = postOrderInfo;
+  ): {dominatorOrdinals: Uint32Array; retainedSizes: Float64Array} {
+    const nodes = snapshot.nodes;
+    const edges = snapshot.edges;
     const nodeCount = nodes.length;
-
-    const forwardEdges = edges;
-    const firstEdgeIndexes = new Uint32Array(nodeCount + 1);
-    firstEdgeIndexes[nodeCount] = forwardEdges.length;
-    for (let nodeIndex = 0, edgeIndex = 0; nodeIndex < nodeCount; ++nodeIndex) {
-      firstEdgeIndexes[nodeIndex] = edgeIndex;
-      edgeIndex += (nodes.get(nodeIndex) as IHeapNode).edge_count;
-    }
-
     const flag = PAGE_OBJECT_FLAG;
-    const rootPostOrderedIndex = nodeCount - 1;
-    const emptySlot = nodeCount;
-    const dominators = new Uint32Array(nodeCount);
-    for (let i = 0; i < rootPostOrderedIndex; ++i) {
-      dominators[i] = emptySlot;
-    }
-    dominators[rootPostOrderedIndex] = rootPostOrderedIndex;
 
-    // flag heap objects whose referrers changed and therefore
-    // the dominators of those heap objects needs to be recomputed
-    const nodesWithOutdatedDominatorInfo = new Uint8Array(nodeCount);
-    // start from the direct children of the root node
-    let nodeIndex = ROOT_NODE_INDEX;
-    const endEdgeIndex = firstEdgeIndexes[nodeIndex + 1];
-    for (
-      let edgeIndex = firstEdgeIndexes[nodeIndex];
-      edgeIndex < endEdgeIndex;
-      edgeIndex++
-    ) {
-      const edgeType = (forwardEdges.get(edgeIndex) as IHeapEdge).type;
-      if (!utils.isEssentialEdge(ROOT_NODE_INDEX, edgeType, ROOT_NODE_INDEX)) {
-        continue;
+    // Offset of each node's first outgoing edge in the flat edge list.
+    const firstEdgeIndexes = new Uint32Array(nodeCount + 1);
+    firstEdgeIndexes[nodeCount] = edges.length;
+    for (let ordinal = 0, edgeIndex = 0; ordinal < nodeCount; ++ordinal) {
+      firstEdgeIndexes[ordinal] = edgeIndex;
+      edgeIndex += (nodes.get(ordinal) as IHeapNode).edge_count;
+    }
+
+    // A single essential-edge predicate used for BOTH the forward DFS and the
+    // backward retainer scan, so the two passes agree on exactly which edges
+    // exist. (A disagreement between them -- the forward pass omitting a filter
+    // the backward pass applied -- is what corrupted the old dominator relation
+    // and caused the hang.) Mirrors Chrome DevTools' computeIsEssentialEdge:
+    // skip weak edges, non-root shortcut edges, self edges, and edges from a
+    // non-page-owned node into a page-owned node (otherwise the debugger's own
+    // references would perturb product-object dominators).
+    const isEssential = (
+      fromOrdinal: number,
+      edgeType: string,
+      toOrdinal: number,
+    ): boolean => {
+      if (fromOrdinal === toOrdinal) {
+        return false;
       }
-      const childNodeIndex = (forwardEdges.get(edgeIndex) as IHeapEdge).toNode
-        .nodeIndex;
-      nodesWithOutdatedDominatorInfo[nodeIndex2PostOrderIndex[childNodeIndex]] =
-        1;
-    }
-
-    // now iterate through all nodes in the heap
-    let dominatorInfoChanged = true;
-    // iterate until no dominator info changed
-    while (dominatorInfoChanged) {
-      dominatorInfoChanged = false;
-      for (
-        let postOrderIndex = rootPostOrderedIndex - 1;
-        postOrderIndex >= 0;
-        --postOrderIndex
+      if (!utils.isEssentialEdge(fromOrdinal, edgeType, ROOT_NODE_INDEX)) {
+        return false;
+      }
+      if (
+        fromOrdinal !== ROOT_NODE_INDEX &&
+        flags[toOrdinal] & flag &&
+        !(flags[fromOrdinal] & flag)
       ) {
-        if (nodesWithOutdatedDominatorInfo[postOrderIndex] === 0) {
-          continue;
-        }
-        nodesWithOutdatedDominatorInfo[postOrderIndex] = 0;
-        // If dominator of the heap object has already been set to root node,
-        // then the heap object's dominator can't be changed anymore
-        if (dominators[postOrderIndex] === rootPostOrderedIndex) {
-          continue;
-        }
-        nodeIndex = postOrderIndex2NodeIndex[postOrderIndex];
-        const nodeFlag = flags[nodeIndex] & flag;
-        let newDominatorIndex = emptySlot;
-        let isOrphanNode = true;
-        const node = nodes.get(nodeIndex) as IHeapNode;
-        node.forEachReferrer((edge: IHeapEdge) => {
-          const referrerEdgeType = edge.type;
-          const referrerNodeIndex = edge.fromNode.nodeIndex;
-          if (
-            !utils.isEssentialEdge(
-              referrerNodeIndex,
-              referrerEdgeType,
-              ROOT_NODE_INDEX,
-            )
-          ) {
-            return;
-          }
-          isOrphanNode = false;
-          const referrerNodeFlag = flags[referrerNodeIndex] & flag;
-          // According to Chrome devtools, need to skip the edges from
-          // non-page-owned nodes to page-owned nodes (since debugger may
-          // also have references to heap objects)
-          if (
-            referrerNodeIndex !== ROOT_NODE_INDEX &&
-            nodeFlag &&
-            !referrerNodeFlag
-          ) {
-            return;
-          }
-          if (!this.shouldTraverseEdge(edge, snapshot)) {
-            return;
-          }
-          let referrerPostOrderIndex =
-            nodeIndex2PostOrderIndex[referrerNodeIndex];
-          if (dominators[referrerPostOrderIndex] !== emptySlot) {
-            if (newDominatorIndex === emptySlot) {
-              newDominatorIndex = referrerPostOrderIndex;
-            } else {
-              while (referrerPostOrderIndex !== newDominatorIndex) {
-                while (referrerPostOrderIndex < newDominatorIndex) {
-                  referrerPostOrderIndex = dominators[referrerPostOrderIndex];
-                }
-                while (newDominatorIndex < referrerPostOrderIndex) {
-                  newDominatorIndex = dominators[newDominatorIndex];
-                }
-              }
-            }
-            // no need to check any further if reaching the root node
-            if (newDominatorIndex === rootPostOrderedIndex) {
-              return {stop: true};
-            }
-          }
-        });
+        return false;
+      }
+      return true;
+    };
 
-        // set root node as the dominator of orphan nodes
-        if (isOrphanNode) {
-          newDominatorIndex = rootPostOrderedIndex;
+    // Lengauer-Tarjan working arrays, 1-indexed (index 0 == invalid).
+    const arrayLength = nodeCount + 1;
+    const parent = new Uint32Array(arrayLength);
+    const ancestor = new Uint32Array(arrayLength);
+    const vertex = new Uint32Array(arrayLength);
+    const label = new Uint32Array(arrayLength);
+    const semi = new Uint32Array(arrayLength);
+    const dom = new Uint32Array(arrayLength);
+    const bucket = new Array<Set<number>>(arrayLength);
+    // Resumable per-node edge cursor for the iterative DFS.
+    const nextEdgeIndex = new Uint32Array(arrayLength);
+    let n = 0;
+
+    // Iterative DFS (a recursive version overflows the stack on large heaps).
+    const dfs = (root: number): void => {
+      const rootOrdinal = root - 1;
+      nextEdgeIndex[rootOrdinal] = firstEdgeIndexes[rootOrdinal];
+      let v = root;
+      while (v !== 0) {
+        // Number v the first time it is reached.
+        if (semi[v] === 0) {
+          semi[v] = ++n;
+          vertex[n] = label[v] = v;
         }
-        if (
-          newDominatorIndex !== emptySlot &&
-          dominators[postOrderIndex] !== newDominatorIndex
-        ) {
-          dominators[postOrderIndex] = newDominatorIndex;
-          dominatorInfoChanged = true;
-          nodeIndex = postOrderIndex2NodeIndex[postOrderIndex];
-          const node = nodes.get(nodeIndex) as IHeapNode;
-          for (const edge of node.references) {
-            nodesWithOutdatedDominatorInfo[
-              nodeIndex2PostOrderIndex[edge.toNode.nodeIndex]
-            ] = 1;
+        // The next node to visit is v's first unprocessed essential successor,
+        // else v's parent (backtrack).
+        let vNext = parent[v];
+        const vOrdinal = v - 1;
+        const edgesEnd = firstEdgeIndexes[vOrdinal + 1];
+        for (; nextEdgeIndex[vOrdinal] < edgesEnd; ++nextEdgeIndex[vOrdinal]) {
+          const edge = edges.get(nextEdgeIndex[vOrdinal]) as IHeapEdge;
+          const wOrdinal = edge.toNode.nodeIndex;
+          if (!isEssential(vOrdinal, edge.type, wOrdinal)) {
+            continue;
           }
+          const w = wOrdinal + 1;
+          if (semi[w] === 0) {
+            parent[w] = v;
+            nextEdgeIndex[wOrdinal] = firstEdgeIndexes[wOrdinal];
+            vNext = w;
+            break;
+          }
+        }
+        v = vNext;
+      }
+    };
+
+    // eval/link with path compression, iterative to avoid deep recursion.
+    const compressionStack = new Uint32Array(arrayLength);
+    const compress = (node: number): void => {
+      let v = node;
+      let stackPointer = 0;
+      while (ancestor[ancestor[v]] !== 0) {
+        compressionStack[++stackPointer] = v;
+        v = ancestor[v];
+      }
+      while (stackPointer > 0) {
+        const w = compressionStack[stackPointer--];
+        if (semi[label[ancestor[w]]] < semi[label[w]]) {
+          label[w] = label[ancestor[w]];
+        }
+        ancestor[w] = ancestor[ancestor[w]];
+      }
+    };
+    const evaluate = (v: number): number => {
+      if (ancestor[v] === 0) {
+        return v;
+      }
+      compress(v);
+      return label[v];
+    };
+    const link = (v: number, w: number): void => {
+      ancestor[w] = v;
+    };
+
+    const r = ROOT_NODE_INDEX + 1;
+
+    // Step 1: DFS from the root.
+    dfs(r);
+
+    // Step 2: nodes may remain unreachable from the root. First bring in
+    // orphans that have only weak retainers, DFS-ing from each.
+    if (n < nodeCount) {
+      for (let v = 1; v <= nodeCount; ++v) {
+        if (
+          semi[v] === 0 &&
+          utils.hasOnlyWeakReferrers(nodes.get(v - 1) as IHeapNode)
+        ) {
+          parent[v] = r;
+          dfs(v);
         }
       }
     }
 
-    const dominatorInfo = new Uint32Array(nodeCount);
-    for (
-      let postOrderIndex = 0, l = dominators.length;
-      postOrderIndex < l;
-      ++postOrderIndex
-    ) {
-      nodeIndex = postOrderIndex2NodeIndex[postOrderIndex];
-      dominatorInfo[nodeIndex] =
-        postOrderIndex2NodeIndex[dominators[postOrderIndex]];
+    // Step 3: whatever is still unreachable is a clique of nodes retained only
+    // by one another. Attach each directly under the root and give it a DFS
+    // number so the algorithm is well-defined for every node.
+    if (n < nodeCount) {
+      for (let v = 1; v <= nodeCount; ++v) {
+        if (semi[v] === 0) {
+          parent[v] = r;
+          semi[v] = ++n;
+          vertex[n] = label[v] = v;
+        }
+      }
     }
-    return dominatorInfo;
-  }
 
-  private calculateRetainedSizesFromDominatorNodes(
-    nodes: IHeapNodes,
-    dominatorInfo: Uint32Array,
-    postOrderInfo: PostOrderMapping,
-  ): Float64Array {
-    const {postOrderIndex2NodeIndex} = postOrderInfo;
-    const nodeCount = nodes.length;
+    // Step 4: main loop, processing vertices in decreasing DFS number.
+    for (let i = n; i >= 2; --i) {
+      const w = vertex[i];
+      const wOrdinal = w - 1;
+      // Compute semidominator of w from its (essential) predecessors.
+      let isOrphanNode = true;
+      (nodes.get(wOrdinal) as IHeapNode).forEachReferrer((edge: IHeapEdge) => {
+        const vOrdinal = edge.fromNode.nodeIndex;
+        if (!isEssential(vOrdinal, edge.type, wOrdinal)) {
+          return;
+        }
+        isOrphanNode = false;
+        const u = evaluate(vOrdinal + 1);
+        if (semi[u] < semi[w]) {
+          semi[w] = semi[u];
+        }
+      });
+      // Treat an orphan as retained by the root; semi[r] is <= any other semi.
+      if (isOrphanNode) {
+        semi[w] = semi[r];
+      }
+
+      const semidominator = vertex[semi[w]];
+      if (bucket[semidominator] === undefined) {
+        bucket[semidominator] = new Set<number>();
+      }
+      bucket[semidominator].add(w);
+      link(parent[w], w);
+
+      // Process the vertices in bucket(parent(w)).
+      const parentBucket = bucket[parent[w]];
+      if (parentBucket !== undefined) {
+        for (const v of parentBucket) {
+          const u = evaluate(v);
+          dom[v] = semi[u] < semi[v] ? u : parent[w];
+        }
+        parentBucket.clear();
+      }
+    }
+
+    // Step 5: fill in the immediate dominators not computed explicitly above.
+    // The root is treated as its own dominator, which also propagates the root
+    // as the dominator of any unreachable node.
+    dom[0] = dom[r] = r;
+    for (let i = 2; i <= n; ++i) {
+      const w = vertex[i];
+      if (dom[w] !== vertex[semi[w]]) {
+        dom[w] = dom[dom[w]];
+      }
+    }
+
+    // Convert to ordinal-indexed dominators and seed retained sizes with self
+    // sizes.
+    const dominatorOrdinals = new Uint32Array(nodeCount);
     const retainedSizes = new Float64Array(nodeCount);
-
-    for (let nodeIndex = 0; nodeIndex < nodeCount; ++nodeIndex) {
-      retainedSizes[nodeIndex] = (nodes.get(nodeIndex) as IHeapNode).self_size;
+    for (let ordinal = 0; ordinal < nodeCount; ++ordinal) {
+      dominatorOrdinals[ordinal] = dom[ordinal + 1] - 1;
+      retainedSizes[ordinal] = (nodes.get(ordinal) as IHeapNode).self_size;
     }
 
-    // add each heap object size to its dominator
-    // based on the post order
-    for (
-      let postOrderIndex = 0;
-      postOrderIndex < nodeCount - 1;
-      ++postOrderIndex
-    ) {
-      const nodeIndex = postOrderIndex2NodeIndex[postOrderIndex];
-      const dominatorIndex = dominatorInfo[nodeIndex];
-      retainedSizes[dominatorIndex] += retainedSizes[nodeIndex];
+    // Propagate retained sizes up the dominator tree in reverse DFS order, so
+    // each node is accumulated into its dominator before the dominator itself.
+    // vertex[1] is the root, so stop at i > 1.
+    for (let i = n; i > 1; --i) {
+      const ordinal = vertex[i] - 1;
+      retainedSizes[dominatorOrdinals[ordinal]] += retainedSizes[ordinal];
     }
 
-    return retainedSizes;
+    return {dominatorOrdinals, retainedSizes};
   }
 
   shouldIgnoreEdgeInTraceFinding(edge: IHeapEdge): boolean {
@@ -609,34 +514,20 @@ class TraceFinder {
 
   calculateAllNodesRetainedSizes(snapshot: IHeapSnapshot): void {
     info.overwrite('calculating dominators and retained sizes .');
-    // step 1: build post order index
-    const flags = new Uint32Array(snapshot.nodes.length);
-    info.overwrite('calculating dominators and retained sizes ..');
+    const nodes = snapshot.nodes;
+    // Flag nodes owned by the page (reachable from the window) so the dominator
+    // pass can ignore edges the debugger adds into page-owned objects.
+    const flags = new Uint32Array(nodes.length);
     this.flagReachableNodesFromWindow(snapshot, flags, PAGE_OBJECT_FLAG);
-    info.overwrite('calculating dominators and retained sizes ...');
-    const postOrderInfo = this.buildPostOrderIndex(snapshot, flags);
-    // step 2: build dominator relations
-    info.overwrite('calculating dominators and retained sizes .');
-    const dominatorInfo = this.calculateDominatorNodesFromPostOrder(
-      snapshot.nodes,
-      snapshot.edges,
-      postOrderInfo,
-      flags,
-      snapshot,
-    );
-    // step 3: calculate retained sizes
     info.overwrite('calculating dominators and retained sizes ..');
-    const retainedSizes = this.calculateRetainedSizesFromDominatorNodes(
-      snapshot.nodes,
-      dominatorInfo,
-      postOrderInfo,
-    );
-    // step 4: assign retained sizes and dominators to nodes
+    const {dominatorOrdinals, retainedSizes} =
+      this.computeDominatorsAndRetainedSizes(snapshot, flags);
+    // assign retained sizes and dominators to nodes
     info.overwrite('calculating dominators and retained sizes ...');
-    for (let i = 0; i < retainedSizes.length; i++) {
-      const node = snapshot.nodes.get(i) as IHeapNode;
-      node.retainedSize = retainedSizes[i];
-      node.dominatorNode = snapshot.nodes.get(dominatorInfo[i]);
+    for (let ordinal = 0; ordinal < retainedSizes.length; ++ordinal) {
+      const node = nodes.get(ordinal) as IHeapNode;
+      node.retainedSize = retainedSizes[ordinal];
+      node.dominatorNode = nodes.get(dominatorOrdinals[ordinal]);
     }
   }
 
