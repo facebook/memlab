@@ -14,7 +14,12 @@ import fs from 'fs';
 import {z} from 'zod';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
 const {getFullHeapFromFile} = memlabHeapAnalysis;
-import {resolveSnapshotPath} from './load-snapshot.js';
+import {
+  LOCAL_FILE_SIZE_LIMIT_MB,
+  MANIFOLD_FETCH_SIZE_LIMIT_MB,
+  resolveMaxFileSizeMB,
+  resolveSnapshotPath,
+} from './load-snapshot.js';
 import {
   formatBytes,
   formatNumber,
@@ -111,8 +116,9 @@ export function registerSequenceAnalysis(server: McpServer): void {
       max_file_size_mb: z
         .number()
         .optional()
-        .default(900)
-        .describe('Per-file size ceiling (default 900) to avoid OOM.'),
+        .describe(
+          `Per-file size ceiling in MB to avoid OOM. Matches memlab_load_snapshot's by-source defaults — ${LOCAL_FILE_SIZE_LIMIT_MB} for local files and ${MANIFOLD_FETCH_SIZE_LIMIT_MB} for snapshots fetched from Manifold (server captures routinely exceed the local limit); pass an explicit value to override. Snapshots are loaded one at a time and dropped before the next, so a ladder of large files is safe as long as each single file is under the ceiling.`,
+        ),
     },
     async ({
       paths,
@@ -147,10 +153,16 @@ export function registerSequenceAnalysis(server: McpServer): void {
             return errorResult(new Error(`File not found: ${local}`));
           }
           const sizeMB = fs.statSync(local).size / (1024 * 1024);
-          if (sizeMB > max_file_size_mb) {
+          const effectiveMaxFileSizeMB = resolveMaxFileSizeMB(
+            max_file_size_mb,
+            fetchedFrom != null,
+          );
+          if (sizeMB > effectiveMaxFileSizeMB) {
             return errorResult(
               new Error(
-                `${p} is ${sizeMB.toFixed(0)} MB — exceeds max_file_size_mb (${max_file_size_mb}).`,
+                `${p} is ${sizeMB.toFixed(0)} MB — exceeds the ${effectiveMaxFileSizeMB} MB per-file safety limit. ` +
+                  `Raise it with memlab_sequence_analysis({max_file_size_mb: ${Math.ceil(sizeMB + 100)}}), ` +
+                  `or restart the MCP server with more memory (NODE_OPTIONS="--max-old-space-size=8192") if it isn't already provisioned.`,
               ),
             );
           }

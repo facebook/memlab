@@ -74,7 +74,7 @@ import {registerEventRegistry} from './tools/event-registry.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.18.3', // keep in sync with package.json
+  version: '2.19.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
