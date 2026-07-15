@@ -71,7 +71,7 @@ export function registerForEach(server: McpServer): void {
         .string()
         .optional()
         .describe(
-          'JSON string for the reduce initial accumulator value. ' +
+          'JSON string for the reduce initial accumulator value; parsed with JSON.parse (must be valid JSON, not arbitrary code). ' +
             'Default: "[]" when reduce_code is present, ignored otherwise. ' +
             'Example: "0" or "{}"',
         ),
@@ -142,6 +142,7 @@ export function registerForEach(server: McpServer): void {
           __map: null as unknown,
           __reduce: null as unknown,
           __result: undefined as unknown,
+          __initAcc: undefined as unknown,
         };
 
         const context = vm.createContext(sandbox);
@@ -179,13 +180,28 @@ export function registerForEach(server: McpServer): void {
 
         // Build and run the iteration logic
         const isReducing = reduce_code != null;
-        const initVal = initial_value ?? (isReducing ? '[]' : undefined);
+
+        // Parse initial_value as JSON and pass it as a sandbox value rather than
+        // splicing it into the script source — interpolating it verbatim would
+        // let a caller inject executable code into the reduce path.
+        if (isReducing) {
+          try {
+            sandbox.__initAcc =
+              initial_value != null ? JSON.parse(initial_value) : [];
+          } catch {
+            return errorResult(
+              new Error(
+                `initial_value must be a valid JSON string (e.g. "0", "{}", "[]"). Received: ${initial_value}`,
+              ),
+            );
+          }
+        }
 
         let iterationCode: string;
         if (isReducing) {
           iterationCode = `
             (function() {
-              var acc = ${initVal};
+              var acc = __initAcc;
               snapshot.nodes.forEach(function(node) {
                 if (__filter(node)) {
                   var item = __map(node);

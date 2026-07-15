@@ -76,21 +76,12 @@ Then configure (`~/.claude.json` for Claude Code, or `.mcp.json` for Cursor/Wind
 
 ## Auto-Approving Tool Permissions
 
-By default, Claude Code prompts you to approve each MCP tool call. To auto-approve all MemLab tools, add this to your `~/.claude/settings.json` (user-level) or `.claude/settings.json` (project-level):
+By default, Claude Code prompts you to approve each MCP tool call. Every MemLab tool except `memlab_eval` and `memlab_for_each` is strictly read-only heap analysis and safe to auto-approve.
 
-```json
-{
-  "permissions": {
-    "allow": [
-      "mcp__memlab__*"
-    ]
-  }
-}
-```
+> [!CAUTION]
+> **Do not auto-approve `memlab_eval` or `memlab_for_each`.** They execute arbitrary JavaScript with the full privileges of the MCP server process (see the warning under [`memlab_eval`](#memlab_eval)). Leave them on manual approval so each invocation is reviewed. Avoid the `mcp__memlab__*` wildcard, which would auto-approve them too.
 
-The naming convention is `mcp__<server-name>__*` where `memlab` matches the key you used in your MCP server config. The `*` wildcard auto-approves all tools from that server.
-
-You can also allowlist individual tools for granular control, add this to your `~/.claude/settings.json` (user-level) or `.claude/settings.json` (project-level):
+To auto-approve the read-only tools while keeping the two code-execution tools on manual approval, allowlist the read-only tools explicitly in your `~/.claude/settings.json` (user-level) or `.claude/settings.json` (project-level):
 
 ```json
 {
@@ -371,7 +362,10 @@ Input:  { report: "list"|"full_analysis"|"detached_dom"|"duplicated_strings"|...
 
 ### `memlab_eval`
 
-Execute arbitrary JavaScript against the loaded heap snapshot in a sandboxed VM. Has access to `snapshot`, `utils`, and `helpers` but no filesystem/network access.
+Execute arbitrary JavaScript against the loaded heap snapshot. Has access to `snapshot`, `utils`, and `helpers`.
+
+> [!WARNING]
+> **This tool runs arbitrary code with the full privileges of the MCP server process.** It uses `node:vm` to scope the globals it injects, but [`node:vm` is not a security sandbox](https://nodejs.org/api/vm.html) — code can reach the host realm (e.g. `Object.constructor('return process')()`) and from there touch the filesystem, network, and shell. Treat calling `memlab_eval` as equivalent to running code on your machine. The same applies to `memlab_for_each`, whose `filter`/`map`/`reduce` code strings are executed the same way. Do not auto-approve these two tools, and be aware that heap snapshot contents are attacker-influenceable input — a prompt-injection could steer the model into running hostile code here.
 
 ```
 Input:  { code: "...", timeout_ms?: 30000 }
