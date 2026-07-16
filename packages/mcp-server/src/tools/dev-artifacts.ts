@@ -37,6 +37,14 @@ const DEV_GLOBAL_EDGE_NAMES = new Set([
 
 const DEV_NODE_NAME_RE = /__REACT_DEVTOOLS|DEVTOOLS_GLOBAL_HOOK|ReactDevTools/;
 
+// Blink accessibility caches. Under CDP-driven automation the a11y tree is
+// materialized (and browser_take_snapshot inflates it further), so this native
+// cache balloons and co-retains detached DOM — automation-inflated retention
+// that is not present at that scale in a normal user session, so it should not
+// be counted toward a production leak total (Feedback: WA Web hunts §A).
+const AX_NODE_NAME_RE =
+  /AXObjectCache|AXNodeObject|AXDirtyObject|AXComputedObject|blink::AX/;
+
 export interface DevRoots {
   // dev-root node id -> the global name it is installed under
   byId: Map<number, string>;
@@ -65,6 +73,9 @@ export function collectDevRoots(snapshot: IHeapSnapshot): DevRoots {
     }
     if (DEV_NODE_NAME_RE.test(node.name)) {
       byId.set(node.id, node.name);
+    }
+    if (AX_NODE_NAME_RE.test(node.name)) {
+      byId.set(node.id, `${node.name} (a11y/CDP automation cache)`);
     }
   });
   return {byId};
@@ -98,7 +109,7 @@ export function classifyDevOnly(
 export function registerDevArtifacts(server: McpServer): void {
   server.tool(
     'memlab_dev_artifacts',
-    'Classify large retainers as production-relevant vs. dev-only (browser snapshots). Flags any object retained ONLY through a dev/extension global (__REACT_DEVTOOLS_GLOBAL_HOOK__, __REDUX_DEVTOOLS_EXTENSION__, window.Debug, …) — these are profiling artifacts that would be garbage-collected in production and should not be counted as leaks. Reports total bytes attributable to dev artifacts so "241 MB leak!" headlines that are really DevTools retention get caught.',
+    'Classify large retainers as production-relevant vs. dev/automation-only (browser snapshots). Flags any object retained ONLY through a dev/extension global (__REACT_DEVTOOLS_GLOBAL_HOOK__, __REDUX_DEVTOOLS_EXTENSION__, window.Debug, …) OR through a Blink accessibility cache (AXObjectCacheImpl/AXNodeObject/AXDirtyObject) — the latter is inflated by CDP-driven automation building the a11y tree (and by taking a11y/browser_take_snapshot snapshots mid-hunt) and even co-retains detached DOM. Both are measurement artifacts that should not be counted as production leaks. Reports total bytes attributable to them so "241 MB leak!" headlines that are really DevTools / a11y-cache retention get caught.',
     {
       limit: z
         .number()
@@ -129,8 +140,8 @@ export function registerDevArtifacts(server: McpServer): void {
 
         if (devRoots.byId.size === 0) {
           return toolResult(
-            'No dev/extension globals (__REACT_DEVTOOLS_GLOBAL_HOOK__, __REDUX_DEVTOOLS_EXTENSION__, window.Debug, …) found in this snapshot. ' +
-              'Either this is a production/clean capture, or none were installed — large retainers here are NOT dev artifacts.',
+            'No dev/extension globals (__REACT_DEVTOOLS_GLOBAL_HOOK__, __REDUX_DEVTOOLS_EXTENSION__, window.Debug, …) or accessibility caches (AXObjectCacheImpl, …) found in this snapshot. ' +
+              'Either this is a production/clean capture, or none were installed — large retainers here are NOT dev/automation artifacts.',
           );
         }
 
@@ -167,8 +178,8 @@ export function registerDevArtifacts(server: McpServer): void {
         const lines: string[] = [
           '## Dev-only artifact classification',
           '',
-          `Dev/extension globals present: ${[...new Set(devRoots.byId.values())].join(', ')}`,
-          `Total retained held ONLY via dev artifacts: **${formatBytes(devOnlyBytes)}**` +
+          `Dev/automation roots present: ${[...new Set(devRoots.byId.values())].join(', ')}`,
+          `Total retained held ONLY via dev/automation artifacts: **${formatBytes(devOnlyBytes)}**` +
             (totalSize > 0
               ? ` (${Math.min(100, (devOnlyBytes / totalSize) * 100).toFixed(1)}% of heap — exclude from production leak totals)`
               : ''),
@@ -191,7 +202,7 @@ export function registerDevArtifacts(server: McpServer): void {
         }
         lines.push(
           '',
-          '_"dev-only" = the object\'s dominator chain passes through a dev/extension global, so every retainer path goes through it and it would be GC\'d in production. Verify with `memlab_retainer_trace`._',
+          '_"dev-only" = the object\'s dominator chain passes through a dev/extension global or a Blink a11y cache, so every retainer path goes through it. Dev-global-retained objects would be GC\'d in production; a11y-cache retention is automation-inflated (the a11y tree is materialized by CDP) and not present at that scale in a normal user session. Either way, discount from production leak totals. Verify with `memlab_retainer_trace`._',
         );
         return toolResult(lines.join('\n'));
       } catch (err) {

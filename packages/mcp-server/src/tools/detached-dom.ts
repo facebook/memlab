@@ -120,7 +120,7 @@ export function registerDetachedDom(server: McpServer): void {
         .optional()
         .default(true)
         .describe(
-          "Report how much detached DOM is retained ONLY via dev/extension globals (__REACT_DEVTOOLS_GLOBAL_HOOK__, window.Debug, …) and would be GC'd in production (default true). Use memlab_dev_artifacts for the full breakdown.",
+          'Report how much detached DOM is retained ONLY via dev/automation artifacts — dev/extension globals (__REACT_DEVTOOLS_GLOBAL_HOOK__, window.Debug, …) or the Blink a11y/CDP cache (AXObjectCacheImpl, which co-retains detached DOM under automation) — and so should be excluded from production leak totals (default true). Use memlab_dev_artifacts for the full breakdown.',
         ),
     },
     async ({output_mode, group_by, offset, limit, classify_dev_only}) => {
@@ -235,7 +235,7 @@ export function registerDetachedDom(server: McpServer): void {
                 : '0';
             lines.push(
               '',
-              `⚠ **${formatBytes(devOnlyRetained)} (${pct}%) of this detached DOM is retained ONLY via dev/extension globals** (${[...new Set(devRoots.byId.values())].join(', ')}) — it would be garbage-collected in production. Exclude it from leak totals; run \`memlab_dev_artifacts\` for the breakdown.`,
+              `⚠ **${formatBytes(devOnlyRetained)} (${pct}%) of this detached DOM is retained ONLY via dev/automation artifacts** (${[...new Set(devRoots.byId.values())].join(', ')}) — dev-global retention would be GC'd in production, and a11y/CDP-cache retention is automation-inflated (not present at that scale in a normal session). Exclude it from leak totals; run \`memlab_dev_artifacts\` for the breakdown.`,
             );
           }
 
