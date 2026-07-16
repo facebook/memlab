@@ -58,6 +58,7 @@ import {registerReferrerSummary} from './tools/referrer-summary.js';
 import {registerEventListenerLeaks} from './tools/event-listener-leaks.js';
 import {registerFindByShape} from './tools/find-by-shape.js';
 import {registerWeakMapEntries} from './tools/weakmap-entries.js';
+import {registerMapEntries} from './tools/map-entries.js';
 import {registerGetValue} from './tools/get-value.js';
 import {registerGetString} from './tools/get-string.js';
 import {registerSearchStrings} from './tools/search-strings.js';
@@ -74,7 +75,7 @@ import {registerEventRegistry} from './tools/event-registry.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.19.0', // keep in sync with package.json
+  version: '2.20.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -119,6 +120,7 @@ registerReferrerSummary(server);
 registerEventListenerLeaks(server);
 registerFindByShape(server);
 registerWeakMapEntries(server);
+registerMapEntries(server);
 registerGetValue(server);
 registerGetString(server);
 registerSearchStrings(server);

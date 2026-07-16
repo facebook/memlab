@@ -75,9 +75,15 @@ export function registerWeakMapEntries(server: McpServer): void {
           if (eName !== 'table' && eName !== 'backing_store') continue;
 
           const table = edge.toNode;
+          // The key/value slots are element edges — typed `element` in Node
+          // snapshots but `internal` in browser V8 snapshots, so we must NOT
+          // skip `internal`. Skip only `hidden` and the table's `map`
+          // hidden-class pointer.
           const tableRefs: IHeapNode[] = [];
           for (const te of table.references) {
-            if (te.type === 'internal' || te.type === 'hidden') continue;
+            if (te.type === 'hidden' || String(te.name_or_index) === 'map') {
+              continue;
+            }
             tableRefs.push(te.toNode);
           }
 
