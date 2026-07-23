@@ -30,6 +30,31 @@ function isDetachedDOMNode(node: IHeapNode): boolean {
   return node.name.startsWith('Detached ');
 }
 
+// A detached node is only an actual leak if it is still reachable from a GC
+// root — i.e. it has a shortest-path retainer edge. Detached nodes with NO
+// retainer path found are typically GC-eligible (about to be collected) or
+// retained only through weak references, and should not be counted toward a
+// leak total. This distinguishes the "which half is real" problem where a
+// snapshot's detached-node list mixes genuinely-pinned nodes with transient
+// ones. `hasPathEdge` is the same reachability signal used to walk retainers.
+function isPinned(node: IHeapNode): boolean {
+  return Boolean(node.hasPathEdge);
+}
+
+interface ReachabilitySplit {
+  pinnedCount: number;
+  pinnedRetained: number;
+  noPathCount: number;
+  noPathRetained: number;
+}
+
+function formatReachabilitySplit(split: ReachabilitySplit): string[] {
+  return [
+    `- Pinned (retainer path to a GC root — actionable leak): ${formatNumber(split.pinnedCount)} nodes, ${formatBytes(split.pinnedRetained)}`,
+    `- No retainer path found (likely GC-eligible / weak-only — exclude from leak totals): ${formatNumber(split.noPathCount)} nodes, ${formatBytes(split.noPathRetained)}`,
+  ];
+}
+
 function extractElementTag(name: string): string {
   // V8 names detached DOM as "Detached <div>" or "Detached <div class="...">"
   const match = name.match(/^(?:Detached\s+)?<(\w+)/);
@@ -88,6 +113,7 @@ export function registerDetachedDom(server: McpServer): void {
   server.tool(
     'memlab_detached_dom',
     'Find detached DOM elements still retained in memory. These are common sources of memory leaks — DOM nodes removed from the document but kept alive by JavaScript references. Supports count-only and ids-only modes for large result sets. Use group_by to aggregate by element tag, retainer pattern, or data-testid. ' +
+      'Reports a pinned-vs-GC-eligible split: detached nodes with a retainer path to a GC root are actual leaks, while nodes with no retainer path found are typically GC-eligible (transient / weak-only) and should be excluded from leak totals — set only_with_retainer_path to list/aggregate just the pinned ones. ' +
       '⚠ Full-heap scan — slow on very large heaps (millions of nodes); use count-only / ids-only modes and group_by to bound output.',
     {
       output_mode: z
@@ -122,8 +148,22 @@ export function registerDetachedDom(server: McpServer): void {
         .describe(
           'Report how much detached DOM is retained ONLY via dev/automation artifacts — dev/extension globals (__REACT_DEVTOOLS_GLOBAL_HOOK__, window.Debug, …) or the Blink a11y/CDP cache (AXObjectCacheImpl, which co-retains detached DOM under automation) — and so should be excluded from production leak totals (default true). Use memlab_dev_artifacts for the full breakdown.',
         ),
+      only_with_retainer_path: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Only include detached nodes that have a retainer path to a GC root (i.e. actually pinned / leaked). When false (default) all detached nodes are included, but the summary always reports the pinned-vs-GC-eligible split so transient / weak-only detached DOM is not mistaken for a leak.',
+        ),
     },
-    async ({output_mode, group_by, offset, limit, classify_dev_only}) => {
+    async ({
+      output_mode,
+      group_by,
+      offset,
+      limit,
+      classify_dev_only,
+      only_with_retainer_path,
+    }) => {
       try {
         const env = getSnapshotEnv();
         if (env === 'node') {
@@ -144,14 +184,32 @@ export function registerDetachedDom(server: McpServer): void {
           let totalDetached = 0;
           let totalRetainedAll = 0;
           let devOnlyRetained = 0;
+          const split: ReachabilitySplit = {
+            pinnedCount: 0,
+            pinnedRetained: 0,
+            noPathCount: 0,
+            noPathRetained: 0,
+          };
 
           snapshot.nodes.forEach(node => {
             if (!isDetachedDOMNode(node)) return;
             totalDetached++;
             totalRetainedAll += node.retainedSize;
+            const pinned = isPinned(node);
+            if (pinned) {
+              split.pinnedCount++;
+              split.pinnedRetained += node.retainedSize;
+            } else {
+              split.noPathCount++;
+              split.noPathRetained += node.retainedSize;
+            }
             if (devRoots && classifyDevOnly(node, devRoots).devOnly) {
               devOnlyRetained += node.retainedSize;
             }
+
+            // With only_with_retainer_path, exclude GC-eligible (no-path) nodes
+            // from the group aggregation — they are still counted in the split.
+            if (only_with_retainer_path && !pinned) return;
 
             let key: string;
             switch (group_by) {
@@ -185,6 +243,17 @@ export function registerDetachedDom(server: McpServer): void {
           });
 
           if (groups.size === 0) {
+            if (totalDetached > 0) {
+              return toolResult(
+                [
+                  `Detached DOM grouped by ${group_by}: ${formatNumber(totalDetached)} total nodes, ${formatBytes(totalRetainedAll)} total retained`,
+                  ...formatReachabilitySplit(split),
+                  only_with_retainer_path
+                    ? '_No pinned (retainer-path) detached nodes — all detached DOM is GC-eligible / weak-only, not a leak._'
+                    : '',
+                ].join('\n'),
+              );
+            }
             return toolResult('No detached DOM nodes found.');
           }
 
@@ -224,9 +293,12 @@ export function registerDetachedDom(server: McpServer): void {
 
           const lines = [
             `Detached DOM grouped by ${group_by}: ${formatNumber(totalDetached)} total nodes, ${formatBytes(totalRetainedAll)} total retained`,
-            '',
-            markdownTable(headers, rows, rightCols),
+            ...formatReachabilitySplit(split),
           ];
+          if (only_with_retainer_path) {
+            lines.push('_(groups below show pinned nodes only)_');
+          }
+          lines.push('', markdownTable(headers, rows, rightCols));
 
           if (devRoots && devRoots.byId.size > 0 && devOnlyRetained > 0) {
             const pct =
@@ -249,20 +321,49 @@ export function registerDetachedDom(server: McpServer): void {
           return toolResult(lines.join('\n'));
         }
 
+        const split: ReachabilitySplit = {
+          pinnedCount: 0,
+          pinnedRetained: 0,
+          noPathCount: 0,
+          noPathRetained: 0,
+        };
+        snapshot.nodes.forEach(node => {
+          if (!isDetachedDOMNode(node)) return;
+          if (isPinned(node)) {
+            split.pinnedCount++;
+            split.pinnedRetained += node.retainedSize;
+          } else {
+            split.noPathCount++;
+            split.noPathRetained += node.retainedSize;
+          }
+        });
+
+        const predicate = only_with_retainer_path
+          ? (n: IHeapNode): boolean => isDetachedDOMNode(n) && isPinned(n)
+          : isDetachedDOMNode;
+
         const effectiveLimit =
           output_mode === 'ids' ? Math.min(limit, 10000) : Math.min(limit, 500);
 
-        const result = queryNodes(snapshot, isDetachedDOMNode, {
+        const result = queryNodes(snapshot, predicate, {
           limit: effectiveLimit,
           offset,
           outputMode: output_mode as OutputMode,
         });
 
-        const output = formatQueryNodesResult(result, offset);
+        const splitBlock =
+          output_mode === 'ids'
+            ? ''
+            : formatReachabilitySplit(split).join('\n') + '\n\n';
+        const output = splitBlock + formatQueryNodesResult(result, offset);
         if (result.total_count > 0 && output_mode === 'full') {
           const devNote =
             devRoots && devRoots.byId.size > 0
               ? ` Dev/extension globals (${[...new Set(devRoots.byId.values())].join(', ')}) are present — run \`memlab_dev_artifacts\` to exclude DevTools-only retention from leak totals.`
+              : '';
+          const pinnedNote =
+            split.noPathCount > 0
+              ? ` ${formatNumber(split.noPathCount)} detached node(s) have no retainer path (likely GC-eligible / weak-only) — pass only_with_retainer_path to focus on the ${formatNumber(split.pinnedCount)} pinned one(s).`
               : '';
           return toolResult(
             output +
@@ -271,6 +372,7 @@ export function registerDetachedDom(server: McpServer): void {
               'React component cleanup in `useEffect` return, or refs not cleared on unmount. ' +
               'Use `memlab_retainer_trace` on top entries to find the retention path. ' +
               'Use `group_by: "retainer"` to see which components are retaining the most detached DOM.' +
+              pinnedNote +
               devNote,
           );
         }
