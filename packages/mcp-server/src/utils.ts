@@ -515,6 +515,177 @@ export function boundedDominatorRetainedSize(
 }
 
 /**
+ * One backing-store slot of a Map/Set/WeakMap: its true FixedArray index
+ * (`name_or_index`) and the heap node it points at.
+ */
+export interface BackingSlot {
+  idx: number;
+  node: IHeapNode;
+}
+
+/**
+ * One enumerated Map/WeakMap entry. `value` is null when the value slot held an
+ * inline SMI (no heap edge) — see `enumerateMapEntries`.
+ */
+export interface CollectionEntry {
+  key: IHeapNode;
+  value: IHeapNode | null;
+}
+
+/**
+ * Collect the object-valued slots of a Map/Set/WeakMap backing store, sorted by
+ * their true FixedArray slot index.
+ *
+ * V8 stores entries in an OrderedHashMap/OrderedHashSet reachable via the
+ * `table` (or `backing_store`) edge. Browser (Chromium) snapshots type the
+ * key/value slot edges as `internal` with a numeric name (the array index);
+ * Node snapshots type them `element`. The header counts and hash-chain links are
+ * inline SMIs, which emit NO edge at all — so the slot indices are NOT
+ * contiguous, and the GAPS are meaningful (they mark SMI-valued or deleted
+ * slots). Returning the slots WITH their indices lets callers pair by index
+ * instead of by position, which is what makes the pairing correct when some
+ * values are SMIs (see `enumerateMapEntries`).
+ */
+export function collectBackingSlots(node: IHeapNode): BackingSlot[] {
+  const out: BackingSlot[] = [];
+  for (const edge of node.references) {
+    const eName = String(edge.name_or_index);
+    if (eName !== 'table' && eName !== 'backing_store') continue;
+    const backing = edge.toNode;
+    for (const te of backing.references) {
+      // Skip the backing store's hidden-class pointer and any hidden edges; the
+      // remaining element/internal edges are the real key/value slots.
+      if (te.type === 'hidden' || String(te.name_or_index) === 'map') continue;
+      const idx = Number(te.name_or_index);
+      if (!Number.isFinite(idx)) continue;
+      const target = te.toNode;
+      // `the_hole` marks a deleted/empty backing-store slot; oddball roots
+      // (id<=3) are not real entries. Do NOT skip `undefined`: an explicit
+      // `undefined` value/element is a real entry, and dropping it would make it
+      // indistinguishable from an inline-primitive gap (mis-reported as absent).
+      if (target.id <= 3 || target.name === 'the_hole') {
+        continue;
+      }
+      out.push({idx, node: target});
+    }
+    break;
+  }
+  out.sort((a, b) => a.idx - b.idx);
+  return out;
+}
+
+/**
+ * Enumerate a Map/WeakMap's (key, value) entries.
+ *
+ * V8 lays each entry out as consecutive slots `[key, value, chain]` (the chain
+ * link is an inline SMI, so it emits no edge). We therefore pair a key with the
+ * value in the immediately-following slot INDEX (`key.idx + 1`). When no slot
+ * exists at `key.idx + 1`, the value was an inline SMI/primitive and we emit
+ * `value: null` — instead of mispairing the key with the NEXT entry's key, which
+ * is what naive "consecutive object edges = key,value" pairing does whenever a
+ * Map has SMI values (a real correctness bug on browser heaps).
+ */
+export function enumerateMapEntries(node: IHeapNode): CollectionEntry[] {
+  const slots = collectBackingSlots(node);
+  const entries: CollectionEntry[] = [];
+  let i = 0;
+  while (i < slots.length) {
+    const key = slots[i];
+    const next = slots[i + 1];
+    if (next && next.idx === key.idx + 1) {
+      entries.push({key: key.node, value: next.node});
+      i += 2;
+    } else {
+      // Value slot absent at key.idx+1 → the value was an inline SMI/primitive.
+      entries.push({key: key.node, value: null});
+      i += 1;
+    }
+  }
+  return entries;
+}
+
+/** Enumerate a Set's elements (every occupied backing-store slot). */
+export function enumerateSetElements(node: IHeapNode): IHeapNode[] {
+  return collectBackingSlots(node).map(s => s.node);
+}
+
+/**
+ * Property names that identify an individual record rather than describe its
+ * content — always unique per instance, so INCLUDING them in a content
+ * signature defeats duplicate detection (every record looks distinct). Excluded
+ * by default from `objectContentSignature`. `id`/`__id`/`__ref` are Relay/GraphQL
+ * data-id fields; `key`/`clientMutationId` are common per-instance keys.
+ */
+export const IDENTITY_PROPS: ReadonlySet<string> = new Set([
+  'id',
+  '__id',
+  '__ref',
+  'key',
+  'clientMutationId',
+]);
+
+/**
+ * A stable, shallow content signature for an object: the sorted set of property
+ * names, each annotated with its scalar value (strings capped) or a marker for
+ * object/array-valued properties. Two objects with the same signature are
+ * structurally identical at one level — the basis for duplicate-record
+ * detection (`memlab_duplicate_objects`) and ad-hoc dedup checks in eval.
+ *
+ * By default per-instance identity fields (`IDENTITY_PROPS`: id/__id/__ref/…) are
+ * EXCLUDED so records that differ only by their data-id still collapse together
+ * — pass `ignoreProps` to override the set (e.g. `new Set()` to include them).
+ *
+ * String, boolean, null and object-valued properties are captured (objects
+ * generically as `o`, so nested content is not compared).
+ *
+ * Caveat — numeric values are NOT captured: the V8 heap-snapshot format does not
+ * store the actual value of a number field (SMI nodes are `smi number`,
+ * heap-numbers are `heap number` — the IEEE-754/int value is not accessible; see
+ * `tools/get-value.ts`). A numeric property therefore contributes only a generic
+ * `<name>=n` marker, so two objects differing ONLY in a numeric field hash to the
+ * same signature and are reported as duplicates. Treat numeric-heavy records
+ * accordingly (or compare their values via another tool).
+ */
+export function objectContentSignature(
+  node: IHeapNode,
+  opts: {maxStringLen?: number; ignoreProps?: ReadonlySet<string>} = {},
+): string {
+  const maxLen = opts.maxStringLen ?? 40;
+  const ignore = opts.ignoreProps ?? IDENTITY_PROPS;
+  const parts: string[] = [];
+  for (const edge of node.references) {
+    // Hidden-class ("map") and other internal edges are already excluded by the
+    // `edge.type !== 'property'` guard above, so no explicit `map` name skip is
+    // needed (it would only hide a legitimate user property literally named "map").
+    if (edge.type !== 'property') continue;
+    const name = String(edge.name_or_index);
+    if (name === '__proto__') continue;
+    if (ignore.has(name)) continue;
+    const t = edge.toNode;
+    if (t.isString) {
+      const v = t.toStringNode()?.stringValue ?? '';
+      parts.push(`${name}=s:${v.length > maxLen ? v.slice(0, maxLen) : v}`);
+    } else if (t.type === 'number' || t.name === 'heap number') {
+      // Numeric values are NOT recoverable from the snapshot format (SMI /
+      // heap-number nodes carry no value — see get-value.ts), so we can only
+      // record that the property is a number, not distinguish by value.
+      parts.push(`${name}=n`);
+    } else if (
+      t.name === 'true' ||
+      t.name === 'false' ||
+      t.name === 'null' ||
+      t.name === 'undefined'
+    ) {
+      parts.push(`${name}=${t.name}`);
+    } else {
+      parts.push(`${name}=o`);
+    }
+  }
+  parts.sort();
+  return parts.join('|');
+}
+
+/**
  * Best-effort detection of which app a Node snapshot came from, by tallying the
  * `/app(s)/<name>/` segment in bundle paths embedded throughout the heap (string
  * node values, function/script names). Returns the most common segment, or null

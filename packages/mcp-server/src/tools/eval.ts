@@ -9,11 +9,12 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
+import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
 import vm from 'node:vm';
 import memlabCore from '@memlab/core';
-const {utils} = memlabCore;
-import {getSnapshot} from '../heap-state.js';
+const {utils, NumericSet} = memlabCore;
+import {getSnapshot, getEvalScratch} from '../heap-state.js';
 import {
   errorResult,
   toolResult,
@@ -25,6 +26,10 @@ import {
   isNodeWorthInspecting,
   filterLargestObjects,
   queryNodes,
+  enumerateMapEntries,
+  enumerateSetElements,
+  objectContentSignature,
+  boundedDominatorRetainedSize,
 } from '../utils.js';
 
 const MAX_OUTPUT_SIZE = 50 * 1024; // 50KB
@@ -143,13 +148,16 @@ export function registerEval(server: McpServer): void {
       '**Get node by ID:** `snapshot.getNodeById(id)` returns IHeapNode or null.\n' +
       '**String values:** `node.toStringNode()?.stringValue` for string nodes.\n' +
       '**Caveat — retained_size is unreliable here:** inside eval, `node.retained_size`/`.retainedSize` can read back ~0 for every node on some loads. Node counts, property/edge walks, and string values ARE trustworthy. For authoritative retained sizes call `helpers.retainedSize(id)` (number) / `helpers.retainedSizes([ids])` (a `Record<id, bytes>` object, NOT an array) — they re-resolve the node on the real snapshot — or use the dedicated tools (`memlab_largest_objects`, `memlab_class_histogram`, `memlab_pinch_points`, `memlab_object_shape`).\n\n' +
-      '**Example — inspect Map entries:**\n' +
-      '```\nconst map = snapshot.getNodeById(12345);\nconst entries = [];\n' +
-      'for (const edge of map.references) {\n' +
-      '  if (edge.name_or_index === "table") {\n' +
-      '    for (const te of edge.toNode.references) {\n' +
-      '      entries.push({name: te.toNode.name, type: te.toNode.type});\n' +
-      '    }\n  }\n}\nresult = entries.slice(0, 10);\n```',
+      '**Example — inspect Map entries (use the helper; do NOT hand-roll the ' +
+      'backing-store walk — browser slots are `internal`-typed and SMI values ' +
+      'leave index gaps):**\n' +
+      '```\nresult = helpers.mapEntries(12345, 10);  // [{key, value}] briefs\n' +
+      '// Set: helpers.setElements(setId, 10)\n```\n' +
+      '**Example — dedup / composition of a Relay record type:**\n' +
+      '```\nconst ids = helpers.byTypename("AdCreativeFeatureSpecAttachment");\n' +
+      'const sigs = {};\n' +
+      'for (const id of ids) { const s = helpers.shapeSignature(id); sigs[s] = (sigs[s]||0)+1; }\n' +
+      'result = {count: ids.length, distinct: Object.keys(sigs).length};\n```',
     {
       mode: z
         .enum(['eval', 'describe_env'])
@@ -169,7 +177,11 @@ export function registerEval(server: McpServer): void {
             'markdownTable, isNodeWorthInspecting, filterLargestObjects, queryNodes, ' +
             'groupReferrersByEdge(nodeId), groupArrayElementsByProperty(arrayNodeId, propName), ' +
             'isOrphaned(nodeId, ownershipEdgeNames[]), countUniqueTargets(arrayNodeId, propName), ' +
-            'retainedSize(id)->number, retainedSizes(ids[])->Record<id,bytes> (an OBJECT keyed by id, NOT an array — index it as sizes[id] or Object.values(sizes)) }), ' +
+            'retainedSize(id)->number, retainedSizes(ids[])->Record<id,bytes> (an OBJECT keyed by id, NOT an array — index it as sizes[id] or Object.values(sizes)), ' +
+            'mapEntries(mapId, limit?)->[{key,value}] & setElements(setId, limit?)->[brief] (correct Map/Set/WeakMap enumeration — handles browser internal-typed slots AND SMI-value gaps, so you never re-derive it wrong), ' +
+            'props(nodeOrId)->{prop: scalar | {ref,name,type}} & getProp(nodeOrId, name) & shapeSignature(nodeOrId, {maxStringLen?}) (content signature for dedup checks), ' +
+            'byClass(name)->ids[] & byTypename(name)->ids[] & withProp(name)->ids[] (INDEXED lookups — built once per snapshot then memoized in a session scratch, so repeated questions are index-speed not full-scan), ' +
+            'aggregateRetained(ids[])->{retained,exact} (dominator-deduped retained for a SET of ids, no double-counting) }), ' +
             'and standard JS built-ins. ' +
             'Node traversal: use node.references (outgoing) and node.referrers (incoming) with for-of. ' +
             'Edge properties: .name_or_index, .type, .toNode, .fromNode.',
@@ -312,6 +324,176 @@ export function registerEval(server: McpServer): void {
           return {uniqueCount: uniqueIds.size, totalElements: total};
         };
 
+        // Compact, ready-to-use view of a node (no proxy, values inlined) so
+        // custom scripts get data they can JSON-return directly instead of
+        // re-deriving `.toStringNode()?.stringValue` etc. `retained_size` is
+        // resolved via the trusted `retainedSize(id)` re-lookup (NOT the raw
+        // `.retainedSize`, which can read back ~0 inside eval on some loads — the
+        // foot-gun this whole tool's description warns about).
+        const nodeBrief = (n: IHeapNode | null | undefined) =>
+          n == null
+            ? null
+            : {
+                id: n.id,
+                name: n.name,
+                type: n.type,
+                self_size: n.self_size,
+                retained_size: retainedSize(n.id),
+                string: n.isString
+                  ? (n.toStringNode()?.stringValue ?? null)
+                  : null,
+              };
+
+        const resolveNode = (
+          nodeOrId: number | {id: number} | null | undefined,
+        ): IHeapNode | null => {
+          if (nodeOrId == null) return null;
+          const id = typeof nodeOrId === 'number' ? nodeOrId : nodeOrId.id;
+          return snapshot.getNodeById(id);
+        };
+
+        // Correctly enumerate Map/WeakMap entries and Set elements via the shared
+        // index-aware backing-store walk (handles browser `internal`-typed slots
+        // AND SMI-value gaps). Removes the #1 eval foot-gun: hand-rolling this
+        // and silently getting 0 results by filtering on `type === 'element'`.
+        const mapEntries = (id: number, limit = 1000) => {
+          const node = snapshot.getNodeById(id);
+          if (!node) throw new Error(`mapEntries: node @${id} not found`);
+          // Guard the node type — enumerateMapEntries assumes key/value slots, so
+          // running it on a Set (element/chain layout) would emit each element as
+          // a lone key with value:null, which is silently misleading.
+          if (node.name !== 'Map' && node.name !== 'WeakMap') {
+            throw new Error(
+              `mapEntries: @${id} is a ${node.name} (${node.type}), not a Map/WeakMap. ` +
+                `For a Set use helpers.setElements(${id}); otherwise inspect with helpers.props()/get_references.`,
+            );
+          }
+          return enumerateMapEntries(node)
+            .slice(0, limit)
+            .map(e => ({key: nodeBrief(e.key), value: nodeBrief(e.value)}));
+        };
+        const setElements = (id: number, limit = 1000) => {
+          const node = snapshot.getNodeById(id);
+          if (!node) throw new Error(`setElements: node @${id} not found`);
+          if (node.name !== 'Set' && node.name !== 'WeakSet') {
+            throw new Error(
+              `setElements: @${id} is a ${node.name} (${node.type}), not a Set/WeakSet. ` +
+                `For a Map use helpers.mapEntries(${id}).`,
+            );
+          }
+          return enumerateSetElements(node).slice(0, limit).map(nodeBrief);
+        };
+
+        // Read an object's own properties as a plain object: scalars inlined,
+        // object-valued props as `{ref, name, type}`. Saves the repetitive
+        // `for (const e of n.references) if (e.name_or_index === X)` boilerplate.
+        const props = (
+          nodeOrId: number | {id: number},
+        ): Record<string, unknown> => {
+          const node = resolveNode(nodeOrId);
+          if (!node) return {};
+          const out: Record<string, unknown> = {};
+          for (const e of node.references) {
+            if (e.type !== 'property') continue;
+            const name = String(e.name_or_index);
+            if (name === '__proto__') continue;
+            const t = e.toNode;
+            if (t.isString) out[name] = t.toStringNode()?.stringValue ?? '';
+            else if (t.name === 'true') out[name] = true;
+            else if (t.name === 'false') out[name] = false;
+            else if (t.name === 'null') out[name] = null;
+            else if (t.name === 'undefined') out[name] = undefined;
+            else out[name] = {ref: t.id, name: t.name, type: t.type};
+          }
+          return out;
+        };
+        const getProp = (nodeOrId: number | {id: number}, name: string) =>
+          props(nodeOrId)[name];
+
+        const shapeSignature = (
+          nodeOrId: number | {id: number},
+          opts?: {maxStringLen?: number; ignoreProps?: ReadonlySet<string>},
+        ): string => {
+          const node = resolveNode(nodeOrId);
+          return node ? objectContentSignature(node, opts ?? {}) : '';
+        };
+
+        // Index helpers — build once per snapshot, memoized in the eval scratch
+        // so a follow-up call is index-speed, not a fresh 12M-node scan. Ids are
+        // only valid for the active snapshot (the scratch is keyed to it).
+        const scratch = getEvalScratch();
+        interface ClassTypeIndex {
+          byClass: Map<string, number[]>;
+          byTypename: Map<string, number[]>;
+        }
+        const buildClassTypeIndex = (): ClassTypeIndex => {
+          const cached = scratch.__classTypeIndex as ClassTypeIndex | undefined;
+          if (cached) return cached;
+          const byClass = new Map<string, number[]>();
+          const byTypename = new Map<string, number[]>();
+          snapshot.nodes.forEach((node: IHeapNode) => {
+            if (node.type !== 'object') return;
+            if (node.id <= 3) return; // skip oddball/root nodes, matching the histogram/duplicate-objects tools for count parity
+            let a = byClass.get(node.name);
+            if (!a) {
+              a = [];
+              byClass.set(node.name, a);
+            }
+            a.push(node.id);
+            for (const e of node.references) {
+              if (
+                e.type === 'property' &&
+                String(e.name_or_index) === '__typename'
+              ) {
+                const t = e.toNode;
+                const tn = t.isString ? t.toStringNode()?.stringValue : null;
+                if (tn) {
+                  let b = byTypename.get(tn);
+                  if (!b) {
+                    b = [];
+                    byTypename.set(tn, b);
+                  }
+                  b.push(node.id);
+                }
+                break;
+              }
+            }
+          });
+          const idx: ClassTypeIndex = {byClass, byTypename};
+          scratch.__classTypeIndex = idx;
+          return idx;
+        };
+        const byClass = (name: string): number[] =>
+          buildClassTypeIndex().byClass.get(name) ?? [];
+        const byTypename = (name: string): number[] =>
+          buildClassTypeIndex().byTypename.get(name) ?? [];
+        const withProp = (name: string): number[] => {
+          const key = `__withProp:${name}`;
+          const cached = scratch[key] as number[] | undefined;
+          if (cached) return cached;
+          const ids: number[] = [];
+          snapshot.nodes.forEach((node: IHeapNode) => {
+            if (node.type !== 'object') return;
+            if (node.id <= 3) return; // skip oddball/root nodes for parity with other tools
+            for (const e of node.references) {
+              if (e.type === 'property' && String(e.name_or_index) === name) {
+                ids.push(node.id);
+                break;
+              }
+            }
+          });
+          scratch[key] = ids;
+          return ids;
+        };
+
+        // Dominator-deduped retained size for a SET of ids (bounded walk). Unlike
+        // summing helpers.retainedSize over the ids, this does not double-count
+        // bytes when one id dominates another in the set.
+        const aggregateRetained = (
+          ids: number[],
+        ): {retained: number; exact: boolean} =>
+          boundedDominatorRetainedSize(new NumericSet(ids), snapshot);
+
         const helpers = {
           serializeNodeSummary,
           serializeNodeDetail,
@@ -327,6 +509,16 @@ export function registerEval(server: McpServer): void {
           countUniqueTargets,
           retainedSize,
           retainedSizes,
+          nodeBrief,
+          mapEntries,
+          setElements,
+          props,
+          getProp,
+          shapeSignature,
+          byClass,
+          byTypename,
+          withProp,
+          aggregateRetained,
         };
 
         const sandbox = {
@@ -439,6 +631,13 @@ function describeEnv(): string {
     '- `utils` — @memlab/core utils (e.g. `aggregateDominatorMetrics`, `isFiberNode`, `isDetachedDOMNode`).',
     '- `helpers` — `serializeNodeSummary`, `serializeNodeDetail`, `formatBytes`, `formatNumber`, `markdownTable`, `isNodeWorthInspecting`, `filterLargestObjects`, `queryNodes`, `groupReferrersByEdge(nodeId)`, `groupArrayElementsByProperty(arrayNodeId, prop)`, `isOrphaned(nodeId, ownerEdges[])`, `countUniqueTargets(arrayNodeId, prop)`, `retainedSize(id) -> number`, `retainedSizes(ids[]) -> Record<id, bytes>` (an OBJECT keyed by id, NOT an array — use `sizes[id]` or `Object.values(sizes)`, not `.reduce`/`.map` directly).',
     '- Standard JS built-ins (Array, Object, Map, Set, JSON, Math, RegExp, …). No require/process/fs/network.',
+    '',
+    '## Collection / shape / index helpers (prefer these over hand-rolling)',
+    '- `helpers.mapEntries(mapId, limit=1000) -> [{key, value}]` and `helpers.setElements(setId, limit=1000) -> [brief]` — CORRECT Map/Set/WeakMap enumeration. Handles browser `internal`-typed backing slots and SMI-value gaps (naive `type === "element"` filtering or positional `[i],[i+1]` pairing silently returns 0 / mispairs). Each brief is `{id, name, type, self_size, retained_size, string}`.',
+    "- `helpers.props(nodeOrId) -> {prop: scalar | {ref, name, type}}` and `helpers.getProp(nodeOrId, name)` — read an object's own properties without the `for (const e of n.references) …` boilerplate. Number-valued props surface as a ref to a `smi number`/`heap number` node; their actual numeric value is not in the snapshot format.",
+    '- `helpers.shapeSignature(nodeOrId, {maxStringLen?}) -> string` — stable shallow content signature (sorted prop names + scalar values) for duplicate-record detection. Numeric values are NOT captured (see `memlab_duplicate_objects`), so records differing only in a number field hash the same.',
+    '- `helpers.byClass(name) -> ids[]`, `helpers.byTypename(name) -> ids[]`, `helpers.withProp(name) -> ids[]` — INDEXED id lookups. The class/typename index is built once per snapshot and memoized in a session scratch, so a follow-up call is index-speed, not another full `snapshot.nodes` scan. (See also the `memlab_duplicate_objects` tool for a ready-made dedup report.)',
+    '- `helpers.aggregateRetained(ids[]) -> {retained, exact}` — dominator-deduped retained size for a SET of ids (does not double-count when one id dominates another); `exact:false` means the bounded walk was truncated (upper bound).',
     '',
     '## IHeapNode API',
     '`.id`, `.name`, `.type`, `.self_size`, `.retainedSize` (alias `.retained_size`), `.edge_count`, `.is_detached`, `.numOfReferrers` (alias `.referrer_count`), `.isString`, `.toStringNode()?.stringValue`, `.hasPathEdge`, `.pathEdge`, `.dominatorNode`, `.location` (`script_id`/`line`/`column`).',

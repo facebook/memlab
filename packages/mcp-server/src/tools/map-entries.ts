@@ -19,6 +19,8 @@ import {
   truncateNodeName,
   errorResult,
   toolResult,
+  enumerateMapEntries,
+  enumerateSetElements,
 } from '../utils.js';
 
 // Render a node as a short label, inlining the string value for string nodes so
@@ -81,58 +83,22 @@ export function registerMapEntries(server: McpServer): void {
           keyRetained: number;
           valueRetained: number;
         }
-        const entries: MapEntry[] = [];
 
-        // V8 stores Map/Set entries in an OrderedHashMap / OrderedHashSet backing
-        // store reachable via the "table" internal edge. Header slots and hash
-        // chain links are SMIs (inline, not object edges), so the object element
-        // edges are exactly the keys (Set) or interleaved key/value pairs (Map).
-        // Same traversal as memlab_weakmap_entries.
-        for (const edge of node.references) {
-          const eName = String(edge.name_or_index);
-          if (eName !== 'table' && eName !== 'backing_store') continue;
-
-          const backing = edge.toNode;
-          // The real key/value slots are element edges — typed `element` in
-          // Node snapshots but `internal` (numeric names) in browser V8
-          // snapshots, so we must NOT skip `internal`. Skip only `hidden` and
-          // the backing store's `map` hidden-class pointer.
-          const slots: IHeapNode[] = [];
-          for (const te of backing.references) {
-            if (te.type === 'hidden' || String(te.name_or_index) === 'map') {
-              continue;
-            }
-            slots.push(te.toNode);
-          }
-
-          const skip = (n: IHeapNode): boolean =>
-            n.id <= 3 || n.name === 'undefined' || n.name === 'the_hole';
-
-          if (isSet) {
-            for (const v of slots) {
-              if (skip(v)) continue;
-              entries.push({
-                key: v,
-                value: null,
-                keyRetained: v.retainedSize,
-                valueRetained: 0,
-              });
-            }
-          } else {
-            for (let i = 0; i < slots.length - 1; i += 2) {
-              const key = slots[i];
-              const value = slots[i + 1];
-              if (skip(key)) continue;
-              entries.push({
-                key,
-                value,
-                keyRetained: key.retainedSize,
-                valueRetained: value.retainedSize,
-              });
-            }
-          }
-          break;
-        }
+        // Enumerate via the shared, index-aware backing-store walk
+        // (`src/utils.ts`). It pairs each key with the value in the immediately
+        // following FixedArray slot INDEX, so a Map with SMI values (whose value
+        // slots emit no edge) reports value:null instead of mispairing the key
+        // with the next entry's key. Set elements come back one-per-slot.
+        const entries: MapEntry[] = (
+          isSet
+            ? enumerateSetElements(node).map(k => ({key: k, value: null}))
+            : enumerateMapEntries(node)
+        ).map(e => ({
+          key: e.key,
+          value: e.value,
+          keyRetained: e.key.retainedSize,
+          valueRetained: e.value ? e.value.retainedSize : 0,
+        }));
 
         if (entries.length === 0) {
           return toolResult(
@@ -205,10 +171,10 @@ export function registerMapEntries(server: McpServer): void {
         if (isMap) {
           lines.push(
             '',
-            '_Keys are paired with the next backing-store slot as their value; ' +
-              'entries whose value is a primitive (SMI/number/bool) are stored ' +
-              'inline and may not pair correctly — verify with ' +
-              '`memlab_get_references` if rows look misaligned._',
+            '_Keys are paired with the value in the immediately-following backing-' +
+              'store slot INDEX. Entries whose value is an inline SMI (small int) ' +
+              'emit no heap edge, so their value shows as "—" (primitive, not ' +
+              'captured) rather than being mispaired with the next entry._',
           );
         }
         return toolResult(lines.join('\n'));

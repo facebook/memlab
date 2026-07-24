@@ -69,6 +69,37 @@ interface LoadedSnapshot {
 const loaded = new Map<string, LoadedSnapshot>();
 let currentHandle: string | null = null;
 
+// Per-snapshot scratch space for memlab_eval sessions: lets a custom script
+// build an index once (e.g. class/typename → ids) and reuse it across
+// subsequent eval calls instead of re-scanning millions of nodes every time.
+// Keyed by handle so switching snapshots never crosses the streams; dropped
+// when the snapshot is replaced/unloaded so a stale index can't outlive its
+// snapshot.
+const evalScratch = new Map<string, Record<string, unknown>>();
+
+/**
+ * Returns the mutable scratch object for the current snapshot, creating it on
+ * first use. Node ids and any derived index are only valid for the snapshot they
+ * were built from, so the scratch is keyed to the active handle.
+ */
+export function getEvalScratch(): Record<string, unknown> {
+  const key = currentHandle ?? '__none__';
+  let s = evalScratch.get(key);
+  if (!s) {
+    s = {};
+    evalScratch.set(key, s);
+  }
+  return s;
+}
+
+function dropEvalScratch(handle: string | null): void {
+  if (handle == null) {
+    evalScratch.clear();
+    return;
+  }
+  evalScratch.delete(handle);
+}
+
 /**
  * Session-level output controls to trim repeated boilerplate tokens.
  * - `quietHeader`: when true, the per-call snapshot header is printed only
@@ -172,6 +203,7 @@ export function setSnapshot(
   const replace = opts.replace ?? true;
   if (replace) {
     loaded.clear();
+    dropEvalScratch(null);
   }
   const handle = uniqueHandle(opts.alias || metadata.fileName);
   const full: SnapshotMetadata = {handle, filePath, ...metadata};
@@ -193,6 +225,7 @@ export function listSnapshots(): SnapshotMetadata[] {
  */
 export function clearAllSnapshots(): void {
   loaded.clear();
+  dropEvalScratch(null);
   currentHandle = null;
   headerEmitted = false;
 }
@@ -218,6 +251,7 @@ export function setCurrentSnapshot(handle: string): boolean {
 
 export function removeSnapshot(handle: string): boolean {
   const existed = loaded.delete(handle);
+  if (existed) dropEvalScratch(handle);
   if (existed && currentHandle === handle) {
     currentHandle = loaded.size > 0 ? [...loaded.keys()][0] : null;
     headerEmitted = false;
