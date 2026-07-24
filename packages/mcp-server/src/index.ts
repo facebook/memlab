@@ -76,7 +76,7 @@ import {registerDominatorChain} from './tools/dominator-chain.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.23.0', // keep in sync with package.json
+  version: '2.23.1', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
