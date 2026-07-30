@@ -22,7 +22,11 @@ import {
   toolResult,
 } from '../utils.js';
 import type {OutputMode} from '../utils.js';
-import {collectDevRoots, classifyDevOnly} from './dev-artifacts.js';
+import {
+  collectDevRoots,
+  classifyDevOnly,
+  computeReachableWithoutDevRoots,
+} from './dev-artifacts.js';
 
 function isDetachedDOMNode(node: IHeapNode): boolean {
   if (node.id <= 3) return false;
@@ -178,6 +182,13 @@ export function registerDetachedDom(server: McpServer): void {
         }
         const snapshot = getSnapshot();
         const devRoots = classify_dev_only ? collectDevRoots(snapshot) : null;
+        // Reachability pass (dev roots as sinks) so co-retention via multiple
+        // dev roots — e.g. detached DOM held by BOTH the DevTools console and
+        // the a11y cache — is correctly counted as a dev/automation artifact.
+        const reached =
+          devRoots && devRoots.byId.size > 0
+            ? computeReachableWithoutDevRoots(snapshot, devRoots)
+            : undefined;
 
         if (group_by) {
           const groups = new Map<string, GroupStats>();
@@ -203,7 +214,7 @@ export function registerDetachedDom(server: McpServer): void {
               split.noPathCount++;
               split.noPathRetained += node.retainedSize;
             }
-            if (devRoots && classifyDevOnly(node, devRoots).devOnly) {
+            if (devRoots && classifyDevOnly(node, devRoots, reached).devOnly) {
               devOnlyRetained += node.retainedSize;
             }
 
