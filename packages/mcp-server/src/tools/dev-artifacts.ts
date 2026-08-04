@@ -10,10 +10,14 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapEdge, IHeapNode, IHeapSnapshot} from '@memlab/core';
+import memlabCore from '@memlab/core';
+const {utils, NumericSet} = memlabCore;
 import {z} from 'zod';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {
+  describeSkipped,
   formatBytes,
+  formatNumber,
   markdownTable,
   truncateNodeName,
   errorResult,
@@ -62,7 +66,18 @@ const CONSOLE_HANDLE_EDGE_RE = /DevTools console/i;
 export interface DevRoots {
   // dev-root node id -> the global name it is installed under
   byId: Map<number, string>;
+  // dev-root node id -> which family of artifact it belongs to, for the
+  // per-source breakdown in the summary.
+  categoryById: Map<number, DevRootCategory>;
 }
+
+export type DevRootCategory = 'console' | 'a11y' | 'devGlobal';
+
+const CATEGORY_LABEL: Record<DevRootCategory, string> = {
+  console: 'DevTools console (CDP inspector)',
+  a11y: 'a11y / CDP automation cache',
+  devGlobal: 'dev/extension global',
+};
 
 /**
  * Find the dev/extension "root" objects: the targets of dev-global edges on
@@ -71,6 +86,7 @@ export interface DevRoots {
  */
 export function collectDevRoots(snapshot: IHeapSnapshot): DevRoots {
   const byId = new Map<number, string>();
+  const categoryById = new Map<number, DevRootCategory>();
   snapshot.nodes.forEach(node => {
     if (node.id <= 3) return;
     const isGlobal =
@@ -82,6 +98,7 @@ export function collectDevRoots(snapshot: IHeapSnapshot): DevRoots {
         const eName = String(edge.name_or_index);
         if (DEV_GLOBAL_EDGE_NAMES.has(eName) && edge.toNode.id > 3) {
           byId.set(edge.toNode.id, eName);
+          categoryById.set(edge.toNode.id, 'devGlobal');
         }
       }
     }
@@ -99,17 +116,20 @@ export function collectDevRoots(snapshot: IHeapSnapshot): DevRoots {
             edge.toNode.id,
             'DevTools console (CDP inspector-retained; GC-eligible with DevTools closed)',
           );
+          categoryById.set(edge.toNode.id, 'console');
         }
       }
     }
     if (DEV_NODE_NAME_RE.test(node.name)) {
       byId.set(node.id, node.name);
+      categoryById.set(node.id, 'devGlobal');
     }
     if (AX_NODE_NAME_RE.test(node.name)) {
       byId.set(node.id, `${node.name} (a11y/CDP automation cache)`);
+      categoryById.set(node.id, 'a11y');
     }
   });
-  return {byId};
+  return {byId, categoryById};
 }
 
 /**
@@ -154,6 +174,105 @@ export function computeReachableWithoutDevRoots(
     });
   }
   return reached;
+}
+
+export interface DevOnlyTotals {
+  nodes: number;
+  retained: number;
+  byCategory: Map<DevRootCategory, {nodes: number; selfBytes: number}>;
+}
+
+const CATEGORY_BIT: Record<DevRootCategory, number> = {
+  console: 1,
+  a11y: 2,
+  devGlobal: 4,
+};
+
+/**
+ * Whole-heap total of everything retained ONLY via dev/automation roots, plus a
+ * per-source breakdown.
+ *
+ * This is deliberately independent of any display threshold. The previous
+ * implementation accumulated the total inside the same loop that filtered
+ * candidates by `min_retained_size`, so the headline number only counted
+ * objects above the cutoff. With the 512 KB default that made a heap holding
+ * thousands of small console-retained objects report **0 B dev-only** — read by
+ * a caller as "this is production-real". Whole classes of artifact (per-event
+ * log strings, one logged object per interaction) are individually tiny and
+ * collectively large, which is exactly the case that matters.
+ *
+ * Attribution is a single BFS over the dev-only subgraph, seeded from each dev
+ * root's dev-only successors and OR-ing a category bit as it goes, so a subtree
+ * co-retained by several artifact families is counted under each.
+ */
+export function summarizeDevOnly(
+  snapshot: IHeapSnapshot,
+  devRoots: DevRoots,
+  reached: Uint8Array,
+): DevOnlyTotals {
+  const {byId, categoryById} = devRoots;
+  const mask = new Uint8Array(snapshot.nodes.length);
+  const stack: IHeapNode[] = [];
+  const devOnlyIds = new NumericSet();
+  let nodes = 0;
+
+  // Seed: dev-only successors of each dev root, tagged with that root's family.
+  snapshot.nodes.forEach(node => {
+    const cat = categoryById.get(node.id);
+    if (cat == null || !byId.has(node.id)) return;
+    const bit = CATEGORY_BIT[cat];
+    node.forEachReference((edge: IHeapEdge) => {
+      const to = edge.toNode;
+      if (reached[to.nodeIndex]) return; // production-reachable, not an artifact
+      if ((mask[to.nodeIndex] & bit) !== 0) return;
+      mask[to.nodeIndex] |= bit;
+      stack.push(to);
+    });
+  });
+
+  while (stack.length > 0) {
+    const node = stack.pop() as IHeapNode;
+    const bits = mask[node.nodeIndex];
+    node.forEachReference((edge: IHeapEdge) => {
+      const to = edge.toNode;
+      if (reached[to.nodeIndex]) return;
+      if ((mask[to.nodeIndex] & bits) === bits) return; // nothing new to add
+      mask[to.nodeIndex] |= bits;
+      stack.push(to);
+    });
+  }
+
+  const byCategory = new Map<
+    DevRootCategory,
+    {nodes: number; selfBytes: number}
+  >();
+  snapshot.nodes.forEach(node => {
+    if (node.id <= 3) return;
+    if (reached[node.nodeIndex]) return;
+    nodes++;
+    devOnlyIds.add(node.id);
+    const bits = mask[node.nodeIndex];
+    for (const cat of Object.keys(CATEGORY_BIT) as DevRootCategory[]) {
+      if ((bits & CATEGORY_BIT[cat]) === 0) continue;
+      const cur = byCategory.get(cat) ?? {nodes: 0, selfBytes: 0};
+      cur.nodes++;
+      cur.selfBytes += node.self_size;
+      byCategory.set(cat, cur);
+    }
+  });
+
+  // Dominator-deduplicated so nested artifacts are not double-counted.
+  const retained =
+    nodes === 0
+      ? 0
+      : utils.aggregateDominatorMetrics(
+          devOnlyIds,
+          snapshot,
+          () => true,
+          (node: IHeapNode) => node.retainedSize,
+        );
+
+  return {nodes, retained, byCategory};
 }
 
 /**
@@ -264,18 +383,26 @@ export function registerDevArtifacts(server: McpServer): void {
           via: string | null;
         }
         const cands: Cand[] = [];
-        let devOnlyBytes = 0;
+        // Whole-heap total, independent of `min_retained_size` (see
+        // summarizeDevOnly): the headline number must never be filtered by the
+        // display threshold.
+        const totals = summarizeDevOnly(snapshot, devRoots, reached);
+        let examined = 0;
+        let skippedBySize = 0;
         snapshot.nodes.forEach(node => {
           if (node.id <= 3) return;
-          if (node.retainedSize < min_retained_size) return;
           if (
             node.type !== 'object' &&
             node.type !== 'closure' &&
             node.type !== 'array'
           )
             return;
+          examined++;
+          if (node.retainedSize < min_retained_size) {
+            skippedBySize++;
+            return;
+          }
           const {devOnly, via} = classifyDevOnly(node, devRoots, reached);
-          if (devOnly) devOnlyBytes += node.retainedSize;
           if (only_dev && !devOnly) return;
           // keep top-N by retained size
           const size = node.retainedSize;
@@ -287,16 +414,29 @@ export function registerDevArtifacts(server: McpServer): void {
           if (cands.length > limit) cands.length = limit;
         });
 
+        const breakdown = [...totals.byCategory.entries()]
+          .sort((a, b) => b[1].selfBytes - a[1].selfBytes)
+          .map(
+            ([cat, v]) =>
+              `${CATEGORY_LABEL[cat]} ${formatBytes(v.selfBytes)} self across ${formatNumber(v.nodes)} objects`,
+          );
+
         const lines: string[] = [
           '## Dev-only artifact classification',
           '',
           `Dev/automation roots present: ${[...new Set(devRoots.byId.values())].join(', ')}`,
-          `Total retained held ONLY via dev/automation artifacts: **${formatBytes(devOnlyBytes)}**` +
+          `Total retained held ONLY via dev/automation artifacts: **${formatBytes(totals.retained)}** across **${formatNumber(totals.nodes)} objects**` +
             (totalSize > 0
-              ? ` (${Math.min(100, (devOnlyBytes / totalSize) * 100).toFixed(1)}% of heap — exclude from production leak totals)`
+              ? ` (${Math.min(100, (totals.retained / totalSize) * 100).toFixed(1)}% of heap — exclude from production leak totals)`
               : ''),
-          '',
         ];
+        if (breakdown.length > 0) {
+          lines.push(`By source: ${breakdown.join(' · ')}`);
+        }
+        lines.push(
+          '_This total covers the whole heap and is NOT limited by `min_retained_size` — high-count/low-size artifacts (per-event log strings, one logged object per interaction) are included._',
+          '',
+        );
 
         if (cands.length > 0) {
           const headers = ['ID', 'Name', 'Type', 'Retained', 'Classification'];
@@ -312,6 +452,14 @@ export function registerDevArtifacts(server: McpServer): void {
         } else {
           lines.push('No objects matched the size threshold.');
         }
+        lines.push(
+          '',
+          describeSkipped(
+            examined,
+            skippedBySize,
+            `min_retained_size (${formatBytes(min_retained_size)})`,
+          ),
+        );
         lines.push(
           '',
           '_"dev-only" = the object\'s dominator chain passes through a dev/extension global, a Blink a11y cache, or an inspector "DevTools console" global handle, so every retainer path goes through it. Dev-global-retained objects would be GC\'d in production; a11y-cache and DevTools-console retention are automation/inspector-inflated (the a11y tree is materialized by CDP; console-logged objects are held by the attached inspector) and not present in a normal user session with DevTools closed. Either way, discount from production leak totals. Verify with `memlab_retainer_trace`._',

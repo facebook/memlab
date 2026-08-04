@@ -378,17 +378,27 @@ export function registerSequenceAnalysis(server: McpServer): void {
           );
         }
 
-        // "heap number" is V8's node for a captured numeric value. It only
-        // appears when the snapshot was taken with numeric-value capture on
-        // (Chrome's captureNumericValue / the browser MCP's capture_numeric_value
-        // option). In that mode V8 emits one node per distinct number, which
-        // both ~3x inflates the graph and shows up here as a top "↑ every step"
-        // grower — a capture artifact, not a real leak. Flag it so it isn't
-        // mistaken for the leak signal.
+        // `heap number` growth is a capture artifact when the snapshot was
+        // taken with numeric-value capture on (Chrome's captureNumericValue /
+        // the browser MCP's capture_numeric_value): that mode emits one graph
+        // node per distinct number and ~3x inflates the graph. With it off,
+        // these are ordinary boxed doubles that V8 allocates anyway, and growth
+        // can be a REAL signal.
+        //
+        // We deliberately do NOT try to auto-detect which mode produced the
+        // snapshot. The obvious signal — value-named nodes of type `number` —
+        // does not separate the two: a snapshot captured with
+        // capture_numeric_value:false was measured with 47,874 `heap number`
+        // nodes AND 165,193 value-named numeric nodes, so any threshold on that
+        // count mislabels it. Stating a conditional the caller can resolve from
+        // their own capture settings beats asserting a mode we cannot verify;
+        // the previous copy declared this "almost always a capture artifact"
+        // unconditionally, which trains readers to dismiss a grower that may be
+        // real.
         if (top.some(r => r.key === 'number::heap number')) {
           lines.push(
             '',
-            '> ⚠️ `heap number` is growing. This is almost always a **capture artifact** from taking snapshots with numeric-value capture enabled (one graph node per distinct number), not a real leak. Re-capture with numeric values OFF (browser MCP `capture_numeric_value: false`) for a ~3x smaller, faster, cleaner graph, and disregard `heap number` growth here.',
+            '> ⚠️ `heap number` is growing. **This is only a capture artifact if you captured with numeric values ON** (`capture_numeric_value: true`), which emits one node per distinct number. If you captured with it **OFF** (the default), these are ordinary boxed doubles and the growth may be real — investigate with `memlab_retainer_summary` on `heap number` rather than dismissing it. Check which setting your capture used before deciding.',
           );
         }
 

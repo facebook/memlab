@@ -842,6 +842,95 @@ export interface RetainerTreeStep {
   // Overrides the default "… N internal node(s) …" elision note. Used to label a
   // collapsed run of repeating async-continuation frames distinctly.
   collapsedNote?: string;
+  // Set by `collapseRepeatedRuns`: this step stands in for N consecutive hops
+  // through the same class (a linked list / intrusive chain), rendered as "×N".
+  repeatCount?: number;
+}
+
+/**
+ * Collapse runs of consecutive same-class hops in a retainer path into a single
+ * step tagged with `repeatCount`.
+ *
+ * Linked structures (a React hook update queue's `pending → .next → .next → …`,
+ * intrusive lists, promise chains) produce paths that are hundreds of identical
+ * `Object → Object → Object` hops long. Rendering every hop costs thousands of
+ * tokens and tells the reader nothing the count doesn't: the interesting part is
+ * the chain's head, its length, and where it attaches. This keeps the first hop
+ * of each run (so the edge into the run is preserved) and folds the rest.
+ *
+ * Only runs of at least `minRun` are collapsed, so ordinary short paths render
+ * exactly as before.
+ */
+export function collapseRepeatedRuns(
+  steps: RetainerTreeStep[],
+  minRun = 3,
+): RetainerTreeStep[] {
+  if (steps.length < minRun) return steps;
+  const key = (s: RetainerTreeStep) => `${s.type}::${s.name}`;
+  const out: RetainerTreeStep[] = [];
+  // The final step is the node the caller asked about. Never fold it into a
+  // run, or the trace stops showing the object under investigation and the
+  // "← retained object" marker lands on a summarised run instead.
+  const foldLimit = steps.length - 1;
+  let i = 0;
+  while (i < foldLimit) {
+    let j = i + 1;
+    while (j < foldLimit && key(steps[j]) === key(steps[i])) j++;
+    const run = j - i;
+    if (run >= minRun) {
+      // Keep the first hop (carries the edge into the run) and the last hop's
+      // identity is the same class, so one step with a count is lossless enough.
+      out.push({...steps[i], repeatCount: run});
+    } else {
+      for (let k = i; k < j; k++) out.push(steps[k]);
+    }
+    i = j;
+  }
+  out.push(steps[foldLimit]);
+  return out;
+}
+
+/**
+ * Collapse runs of an identical rendered label, for formatters that have already
+ * reduced each hop to a string. Mirrors `collapseRepeatedRuns` for chain-style
+ * (`A → B → C`) renderers.
+ */
+export function collapseRepeatedLabels(labels: string[], minRun = 3): string[] {
+  if (labels.length < minRun) return labels;
+  const out: string[] = [];
+  // Mirror collapseRepeatedRuns: the last label is the target, keep it intact.
+  const foldLimit = labels.length - 1;
+  let i = 0;
+  while (i < foldLimit) {
+    let j = i + 1;
+    while (j < foldLimit && labels[j] === labels[i]) j++;
+    const run = j - i;
+    out.push(run >= minRun ? `${labels[i]} ×${run}` : labels[i]);
+    for (let k = i + 1; k < j && run < minRun; k++) out.push(labels[k]);
+    i = j;
+  }
+  out.push(labels[foldLimit]);
+  return out;
+}
+
+/**
+ * One-line note describing what a tool's thresholds excluded from its own
+ * output. Printing this everywhere a default threshold exists prevents the
+ * failure mode where a tool reports "0" or "none found" and the reader takes it
+ * as "there is nothing there", when in fact everything interesting was below the
+ * cutoff. (A `dev_artifacts` run reporting `0 B` dev-only — because every
+ * console-retained string was under the 512 KB default — nearly landed a
+ * measurement artifact in a diff as a production leak.)
+ */
+export function describeSkipped(
+  examined: number,
+  skipped: number,
+  thresholdLabel: string,
+): string {
+  if (skipped <= 0) {
+    return `_Examined all ${formatNumber(examined)} candidates; no ${thresholdLabel} filter excluded anything._`;
+  }
+  return `_Examined ${formatNumber(examined)} candidates; **${formatNumber(skipped)} were skipped by ${thresholdLabel}** and are NOT reflected in the rows above. Lower it if you expect something smaller._`;
 }
 
 function formatEdgeLabel(name: string): string {
@@ -890,7 +979,11 @@ function formatRetainerLadder(
         ? `  — ${formatBytes(s.retainedSize)}`
         : '';
     const nodeStr = formatNodeInline(s.id, s.name, s.type, s.selfSize);
-    lines.push(`${nodeStr}${size}${retainerMarker(i, steps.length)}`);
+    const repeat =
+      s.repeatCount && s.repeatCount > 1
+        ? `  ×${s.repeatCount} (chain of identical hops)`
+        : '';
+    lines.push(`${nodeStr}${repeat}${size}${retainerMarker(i, steps.length)}`);
   }
   return lines.join('\n');
 }
@@ -945,8 +1038,12 @@ export function formatRetainerTree(
         ? `  — ${formatBytes(s.retainedSize)}`
         : '';
     const nodeStr = formatNodeInline(s.id, s.name, s.type, s.selfSize);
+    const repeat =
+      s.repeatCount && s.repeatCount > 1
+        ? `  ×${s.repeatCount} (chain of identical hops)`
+        : '';
     lines.push(
-      `${pad}${connector}${nodeStr}${size}${retainerMarker(i, steps.length)}`,
+      `${pad}${connector}${nodeStr}${repeat}${size}${retainerMarker(i, steps.length)}`,
     );
   }
   return lines.join('\n');

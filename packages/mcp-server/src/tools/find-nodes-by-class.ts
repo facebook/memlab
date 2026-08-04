@@ -27,11 +27,17 @@ import {
 export function registerFindNodesByClass(server: McpServer): void {
   server.tool(
     'memlab_find_nodes_by_class',
-    'Find heap objects by constructor/class name. Returns matching objects sorted by retained size. Follow up with memlab_retainer_trace on a result node to see why it is retained, memlab_get_references to inspect its properties, or memlab_retainer_summary to find common retainer patterns across all instances.',
+    'Find heap nodes by constructor/class name. Matches ANY node type by default (object, closure, array, string, native, …) — pass node_type to narrow. Returns matches sorted by retained size. If the exact name matches nothing, reports near-miss names and the types they exist under instead of a bare "not found". Follow up with memlab_retainer_trace on a result node to see why it is retained, memlab_get_references to inspect its properties, or memlab_retainer_summary to find common retainer patterns across all instances.',
     {
       class_name: z
         .string()
         .describe('The constructor or class name to search for'),
+      node_type: z
+        .string()
+        .optional()
+        .describe(
+          'Restrict to a single heap node type (e.g. "object", "closure", "array", "string", "native"). Omit to match every type — which is the default because class names surfaced by other tools (memlab_sequence_analysis reports "type::name") are frequently closures or arrays, not objects.',
+        ),
       output_mode: z
         .enum(['full', 'count', 'ids'])
         .optional()
@@ -45,11 +51,53 @@ export function registerFindNodesByClass(server: McpServer): void {
         .default(20)
         .describe('Maximum number of results (default 20)'),
     },
-    async ({class_name, output_mode, limit}) => {
+    async ({class_name, node_type, output_mode, limit}) => {
       try {
         const snapshot = getSnapshot();
+        // Historically this hard-filtered `type === 'object'`, so closures,
+        // arrays, strings and natives were invisible: a class reported as a top
+        // grower by memlab_sequence_analysis (which groups by `type::name`)
+        // could return "No objects found" here, e.g. the closure `setValues_$0`.
+        // Default to every type and let the caller narrow explicitly.
         const classFilter = (node: IHeapNode) =>
-          node.name === class_name && node.type === 'object';
+          node.name === class_name &&
+          (node_type == null || node.type === node_type);
+
+        // Zero exact matches is usually a type filter or a near-miss name, not
+        // an empty heap — say which, so the caller does not conclude the class
+        // is absent.
+        const notFound = (): string => {
+          const byType = new Map<string, number>();
+          const similar = new Map<string, number>();
+          const needle = class_name.toLowerCase();
+          snapshot.nodes.forEach(node => {
+            if (node.name === class_name) {
+              byType.set(node.type, (byType.get(node.type) ?? 0) + 1);
+            } else if (
+              node.name.length < 120 &&
+              node.name.toLowerCase().includes(needle)
+            ) {
+              const k = `${node.name} (${node.type})`;
+              similar.set(k, (similar.get(k) ?? 0) + 1);
+            }
+          });
+          if (byType.size > 0) {
+            const got = [...byType.entries()]
+              .sort((a, b) => b[1] - a[1])
+              .map(([t, n]) => `${t} (${formatNumber(n)})`)
+              .join(', ');
+            return `No nodes named "${class_name}" with node_type="${node_type ?? 'any'}". It DOES exist under: ${got}. Re-run without node_type, or with the matching one.`;
+          }
+          if (similar.size > 0) {
+            const top = [...similar.entries()]
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 8)
+              .map(([k, n]) => `${k} ×${formatNumber(n)}`)
+              .join(', ');
+            return `No nodes named exactly "${class_name}". Similar names present: ${top}`;
+          }
+          return `No nodes found with class "${class_name}" (no similar names either — check the snapshot is the one you expect).`;
+        };
 
         if (output_mode === 'count') {
           let totalCount = 0;
@@ -62,7 +110,7 @@ export function registerFindNodesByClass(server: McpServer): void {
             nodeIds.add(node.id);
           });
           if (totalCount === 0) {
-            return toolResult(`No objects found with class "${class_name}"`);
+            return toolResult(notFound());
           }
           // Dominator-aware aggregate: instances of a class often nest on the
           // dominator tree (e.g. a Foo retaining another Foo), so a raw sum of
@@ -90,7 +138,7 @@ export function registerFindNodesByClass(server: McpServer): void {
         }
 
         if (nodes.length === 0) {
-          return toolResult(`No objects found with class "${class_name}"`);
+          return toolResult(notFound());
         }
 
         if (output_mode === 'ids') {

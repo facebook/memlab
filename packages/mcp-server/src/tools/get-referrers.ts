@@ -112,6 +112,27 @@ export function registerGetReferrers(server: McpServer): void {
         ]);
         lines.push(markdownTable(headers, rows, rightCols));
 
+        // A widely-referenced node often has a long tail of byte-identical
+        // referrers (e.g. hundreds of `(sliced string) / parent` edges into one
+        // big string). Listing them row by row is pure token cost, so summarise
+        // the shape of the whole matched set — including the rows past `limit`.
+        const groups = new Map<string, number>();
+        for (const e of matched) {
+          const k = `${e.fromNode.name} (${e.fromNode.type}) / ${String(e.name_or_index)} / ${e.type}`;
+          groups.set(k, (groups.get(k) ?? 0) + 1);
+        }
+        if (groups.size > 0 && groups.size < matched.length) {
+          const summary = [...groups.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 6)
+            .map(([k, n]) => `${formatNumber(n)}× ${k}`)
+            .join(' · ');
+          lines.push(
+            '',
+            `_Referrer shapes (all ${formatNumber(matched.length)} matched, not just the rows above): ${summary}${groups.size > 6 ? `, +${formatNumber(groups.size - 6)} more shapes` : ''}._`,
+          );
+        }
+
         const shownEnd = safeOffset + edges.length;
         if (shownEnd < matched.length) {
           lines.push(

@@ -15,6 +15,7 @@ import {getSnapshot} from '../heap-state.js';
 import {
   formatBytes,
   formatNodeInline,
+  collapseRepeatedRuns,
   formatRetainerTree,
   isNodeWorthInspecting,
   instrumentationRetainerNote,
@@ -301,7 +302,14 @@ export function registerRetainerTrace(server: McpServer): void {
               collapsedBefore: fullLength - max_depth,
             });
           }
-          lines.push(formatRetainerTree(treeSteps, {showSizes: true}));
+          // Fold runs of identical hops (linked lists / intrusive chains)
+          // unless the caller explicitly asked to see every node.
+          lines.push(
+            formatRetainerTree(
+              expand ? treeSteps : collapseRepeatedRuns(treeSteps),
+              {showSizes: true},
+            ),
+          );
         } else {
           // Compact inline chain format
           const parts: string[] = [];

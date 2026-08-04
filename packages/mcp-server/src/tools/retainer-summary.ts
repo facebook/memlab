@@ -13,6 +13,7 @@ import type {IHeapNode, IHeapEdge} from '@memlab/core';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
 import {
+  collapseRepeatedLabels,
   filterLargestObjects,
   formatBytes,
   truncateDomToTag,
@@ -113,15 +114,17 @@ function shortenPath(name: string): string {
 }
 
 function formatTraceChain(steps: TraceStep[]): string {
-  const parts: string[] = [];
+  // Fold runs of identical `Name (type) --edge-->` hops. A linked structure
+  // (e.g. a React update queue's `.next` chain) otherwise renders hundreds of
+  // byte-identical hops, which is pure token cost.
+  const hops: string[] = [];
   for (let i = 0; i < steps.length; i++) {
     const s = steps[i];
-    parts.push(`${s.name} (${s.type})`);
-    if (s.edgeName != null && i < steps.length - 1) {
-      parts.push(` --${s.edgeName}--> `);
-    }
+    const edge =
+      s.edgeName != null && i < steps.length - 1 ? ` --${s.edgeName}--> ` : '';
+    hops.push(`${s.name} (${s.type})${edge}`);
   }
-  return parts.join('');
+  return collapseRepeatedLabels(hops).join('');
 }
 
 function formatTraceChainCompact(
@@ -144,7 +147,7 @@ function formatTraceChainCompact(
       parts.push(name);
     }
   }
-  return parts.join(' → ');
+  return collapseRepeatedLabels(parts).join(' → ');
 }
 
 export function registerRetainerSummary(server: McpServer): void {
