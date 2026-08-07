@@ -129,6 +129,12 @@ export function registerSequenceAnalysis(server: McpServer): void {
         .describe(
           'Report only classes that grew at EVERY step (default false: include grew-net too, flagged).',
         ),
+      cycles: z
+        .number()
+        .optional()
+        .describe(
+          'Number of interaction cycles driven between the FIRST and LAST snapshot. When provided, a "Δ/cycle" column is reported. A per-cycle rate — not a total — is what tells you whether growth scales with interaction, and it is the number a leak hunt actually reasons about.',
+        ),
       include_artifacts: z
         .boolean()
         .optional()
@@ -148,6 +154,7 @@ export function registerSequenceAnalysis(server: McpServer): void {
       limit,
       min_growth_count,
       monotonic_only,
+      cycles,
       include_artifacts,
       max_file_size_mb,
     }) => {
@@ -285,6 +292,20 @@ export function registerSequenceAnalysis(server: McpServer): void {
           '',
         );
 
+        // With exactly two rungs "grew at every step" is the same statement as
+        // "grew overall", so the monotonic verdict carries no extra information
+        // and cannot distinguish a trend from a GC-band sample. Measured case: a
+        // 2-rung ladder read as a confident +154 KB/cycle retained leak, and a
+        // third and fourth rung showed the heap falling back below where it
+        // started — the band was ~25 MB wide, easily enough to fake a linear
+        // slope. Say so rather than letting the label imply a trend.
+        if (n === 2) {
+          lines.push(
+            '> ⚠️ **Only 2 snapshots: "↑ every step" is monotonic by construction** and cannot separate a real trend from a single GC-band sample. Capture at least a third rung (and prefer a targeted-retainer count over aggregate heap) before treating anything here as a leak.',
+            '',
+          );
+        }
+
         if (top.length === 0) {
           lines.push(
             `No classes grew by >= ${formatNumber(min_growth_count)} instances across the sequence. Heap looks flat-to-shrinking — no unbounded-growth signal.`,
@@ -293,11 +314,13 @@ export function registerSequenceAnalysis(server: McpServer): void {
         }
 
         lines.push('### Growing classes', '');
+        const perCycle = cycles != null && cycles > 0;
         const headers = [
           'Class',
           'Type',
           ...steps.map((_, i) => `#${i + 1}`),
           'Δ count',
+          ...(perCycle ? ['Δ/cycle'] : []),
           'Δ size',
           'Verdict',
         ];
@@ -318,6 +341,7 @@ export function registerSequenceAnalysis(server: McpServer): void {
             type,
             ...r.counts.map(c => formatNumber(c)),
             `+${formatNumber(r.netCount)}`,
+            ...(perCycle ? [(r.netCount / (cycles as number)).toFixed(2)] : []),
             `${r.netSize >= 0 ? '+' : ''}${formatBytes(r.netSize)}`,
             verdict,
           ];

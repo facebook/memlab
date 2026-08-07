@@ -83,6 +83,19 @@ function normalizeEdgeName(name: string): string {
   return /^\d+$/.test(name) ? '*' : name;
 }
 
+// V8 suffixes per-instance node ids onto some internal names (e.g.
+// "system / Context / scope @2548323"). Those ids differ per instance, so two
+// traces through the SAME structural path produce different keys and are
+// reported as separate "distinct retainer patterns" whose rendered paths are
+// byte-for-byte identical — observed as "6 distinct retainer patterns found"
+// followed by six indistinguishable blocks. Normalize the id out of the
+// grouping key so structurally identical paths collapse into one row with a
+// real N/M count. Display still uses the concrete name from a representative
+// instance, so nothing is lost.
+function normalizeStepName(name: string): string {
+  return name.replace(/ @\d+\b/g, ' @…');
+}
+
 function traceToKey(steps: TraceStep[], frameworkFilter: boolean): string {
   const filtered = frameworkFilter
     ? steps.filter(
@@ -93,7 +106,7 @@ function traceToKey(steps: TraceStep[], frameworkFilter: boolean): string {
     .map(s => {
       const edge =
         s.edgeName != null ? `--${normalizeEdgeName(s.edgeName)}-->` : '';
-      return `${s.name}(${s.type})${edge}`;
+      return `${normalizeStepName(s.name)}(${s.type})${edge}`;
     })
     .join(' ');
 }
@@ -366,6 +379,7 @@ export function registerRetainerSummary(server: McpServer): void {
         }
 
         const sorted = [...patterns.values()].sort((a, b) => b.count - a.count);
+        let patternHeaderIndex = -1;
         const totalSampled = sorted.reduce((s, p) => s + p.count, 0) + noTrace;
 
         const modifiers: string[] = [];
@@ -389,10 +403,10 @@ export function registerRetainerSummary(server: McpServer): void {
             '',
           );
         } else {
-          lines.push(
-            `**${sorted.length} distinct retainer patterns found:**`,
-            '',
-          );
+          // Filled in after the render-dedup pass below, so the count reflects
+          // what is actually printed rather than the raw trace-key count.
+          patternHeaderIndex = lines.length;
+          lines.push('', '');
         }
 
         const filterSteps = (steps: TraceStep[]): TraceStep[] =>
@@ -442,22 +456,68 @@ export function registerRetainerSummary(server: McpServer): void {
           lines.push('');
         }
 
+        // Second dedup pass, on the RENDERED path. Grouping by trace key is not
+        // sufficient: the display elides a common prefix, so two patterns whose
+        // keys differ only upstream of that prefix render byte-identically and
+        // were printed as separate "distinct patterns" — measured as 10 patterns
+        // with 1 distinct body. Merge on what the caller actually sees.
+        const rendered = sorted.map(p => {
+          const displaySteps =
+            commonPrefixLen >= 2
+              ? getDisplaySteps(p).slice(commonPrefixLen)
+              : p.steps;
+          return commonPrefixLen >= 2
+            ? `… → ${formatFn(displaySteps)}`
+            : formatFn(displaySteps);
+        });
+        const merged: Array<{
+          body: string;
+          count: number;
+          total_retained: number;
+          example_ids: number[];
+        }> = [];
+        const mergedByBody = new Map<string, (typeof merged)[number]>();
         for (let i = 0; i < sorted.length; i++) {
-          const p = sorted[i];
+          const body = rendered[i];
+          const existing = mergedByBody.get(body);
+          if (existing) {
+            existing.count += sorted[i].count;
+            existing.total_retained += sorted[i].total_retained;
+            for (const id of sorted[i].example_ids) {
+              if (existing.example_ids.length < 3)
+                existing.example_ids.push(id);
+            }
+          } else {
+            const entry = {
+              body,
+              count: sorted[i].count,
+              total_retained: sorted[i].total_retained,
+              example_ids: [...sorted[i].example_ids],
+            };
+            mergedByBody.set(body, entry);
+            merged.push(entry);
+          }
+        }
+        merged.sort((a, b) => b.count - a.count);
+        if (patternHeaderIndex >= 0) {
+          const collapsedNote =
+            merged.length < sorted.length
+              ? ` _(${sorted.length} trace keys collapsed to ${merged.length}: they differ only above the common prefix and are identical as shown.)_`
+              : '';
+          lines[patternHeaderIndex] =
+            merged.length === 1
+              ? `**All ${totalSampled} sampled instances share ONE retainer path** — a single root cause:${collapsedNote}`
+              : `**${merged.length} distinct retainer patterns found**${collapsedNote}`;
+        }
+
+        for (let i = 0; i < merged.length; i++) {
+          const p = merged[i];
           const pct = ((p.count / totalSampled) * 100).toFixed(0);
           lines.push(
             `### Pattern ${i + 1}: ${p.count}/${totalSampled} instances (${pct}%), ${formatBytes(p.total_retained)} retained`,
           );
           lines.push('');
-          const displaySteps =
-            commonPrefixLen >= 2
-              ? getDisplaySteps(p).slice(commonPrefixLen)
-              : p.steps;
-          lines.push(
-            commonPrefixLen >= 2
-              ? `… → ${formatFn(displaySteps)}`
-              : formatFn(displaySteps),
-          );
+          lines.push(p.body);
           lines.push('');
           lines.push(
             `Example nodes: ${p.example_ids.map(id => `@${id}`).join(', ')}`,
