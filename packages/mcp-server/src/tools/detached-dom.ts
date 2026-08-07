@@ -111,6 +111,8 @@ interface GroupStats {
   totalRetained: number;
   exampleId: number;
   maxRetainedSize: number;
+  // How many nodes in this group are retained ONLY via dev/automation roots.
+  devOnlyCount: number;
 }
 
 export function registerDetachedDom(server: McpServer): void {
@@ -214,7 +216,10 @@ export function registerDetachedDom(server: McpServer): void {
               split.noPathCount++;
               split.noPathRetained += node.retainedSize;
             }
-            if (devRoots && classifyDevOnly(node, devRoots, reached).devOnly) {
+            const nodeIsDevOnly = devRoots
+              ? classifyDevOnly(node, devRoots, reached).devOnly
+              : false;
+            if (nodeIsDevOnly) {
               devOnlyRetained += node.retainedSize;
             }
 
@@ -239,6 +244,7 @@ export function registerDetachedDom(server: McpServer): void {
             if (existing) {
               existing.count++;
               existing.totalRetained += node.retainedSize;
+              if (nodeIsDevOnly) existing.devOnlyCount++;
               if (node.retainedSize > existing.maxRetainedSize) {
                 existing.exampleId = node.id;
                 existing.maxRetainedSize = node.retainedSize;
@@ -249,6 +255,7 @@ export function registerDetachedDom(server: McpServer): void {
                 totalRetained: node.retainedSize,
                 exampleId: node.id,
                 maxRetainedSize: node.retainedSize,
+                devOnlyCount: nodeIsDevOnly ? 1 : 0,
               });
             }
           });
@@ -279,14 +286,22 @@ export function registerDetachedDom(server: McpServer): void {
                 ? 'Retainer'
                 : 'data-testid';
 
+          // Per-group dev-only share. Without this the caller has to run
+          // dev_artifacts separately and mentally join the two outputs, which is
+          // exactly the step that gets skipped before a group is reported as a
+          // production leak.
+          const showDevOnly =
+            devRoots != null &&
+            sorted.some(([, stats]) => stats.devOnlyCount > 0);
           const headers = [
             groupLabel,
             'Count',
+            ...(showDevOnly ? ['Dev-only'] : []),
             'Total Retained',
             '% of Detached',
             'Example ID',
           ];
-          const rightCols = new Set([1, 2, 3]);
+          const rightCols = new Set(showDevOnly ? [1, 2, 3, 4] : [1, 2, 3]);
           const rows = sorted.map(([key, stats]) => {
             const pct =
               totalRetainedAll > 0
@@ -296,6 +311,15 @@ export function registerDetachedDom(server: McpServer): void {
             return [
               key.length > 60 ? key.slice(0, 57) + '...' : key,
               formatNumber(stats.count),
+              ...(showDevOnly
+                ? [
+                    stats.devOnlyCount === 0
+                      ? '—'
+                      : stats.devOnlyCount === stats.count
+                        ? 'ALL'
+                        : `${formatNumber(stats.devOnlyCount)}/${formatNumber(stats.count)}`,
+                  ]
+                : []),
               formatBytes(stats.totalRetained),
               pct,
               `@${stats.exampleId}`,

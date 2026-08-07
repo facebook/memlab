@@ -223,11 +223,24 @@ const NODE_NAME_BLOCK_LIST = new Set([
   '(Builtins)',
 ]);
 
-export function isNodeWorthInspecting(node: IHeapNode): boolean {
+/**
+ * Whether a node is worth showing in a default "interesting objects" listing.
+ *
+ * `NODE_TYPE_BLOCK_LIST` exists to keep noise out of the DEFAULT view — it is not
+ * meant to make those types unreachable. When a caller explicitly asks for one
+ * of them (e.g. `largest_objects({node_type: 'array'})`), honour the request:
+ * otherwise the filter silently returns zero rows for `array`, `native`, `code`,
+ * `synthetic` and `hidden`, which reads as "there are none" on a heap that
+ * plainly contains 100k+ of them.
+ */
+export function isNodeWorthInspecting(
+  node: IHeapNode,
+  opts?: {allowBlockedTypes?: boolean},
+): boolean {
   if (node.id <= 3) {
     return false;
   }
-  if (NODE_TYPE_BLOCK_LIST.has(node.type)) {
+  if (!opts?.allowBlockedTypes && NODE_TYPE_BLOCK_LIST.has(node.type)) {
     return false;
   }
   if (NODE_NAME_BLOCK_LIST.has(node.name)) {

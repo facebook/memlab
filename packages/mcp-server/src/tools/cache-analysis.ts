@@ -33,7 +33,7 @@ interface CacheEntry {
   ownerEdge: string;
   hasWeakRefs: boolean;
   framework: string;
-  classification: 'cache-like' | 'collection';
+  classification: 'cache-like' | 'collection' | 'ring-buffer';
 }
 
 const CACHE_EDGE_RE =
@@ -45,11 +45,61 @@ const CACHE_EDGE_RE =
  * set. Avoids over-labeling every big Map/Array as an "unbounded cache"
  * (Feedback §2c).
  */
+/**
+ * Sibling property names that mark a fixed-capacity ring buffer: a write cursor
+ * and/or an explicit capacity control living next to the backing array on the
+ * same owner.
+ */
+const RING_CURSOR_PROPS = new Set([
+  'localCursor',
+  'cursor',
+  'writeFrom',
+  'writeIndex',
+  'writeCursor',
+  'writePos',
+  'readIndex',
+  'readCursor',
+  'head',
+  'tail',
+  'nextIndex',
+  'nextSlot',
+]);
+const RING_CAPACITY_PROP_RE =
+  /capacity|maxSize|max_size|bufferSize|logCapacity/i;
+
+/**
+ * A fixed-capacity ring buffer looks exactly like an unbounded cache to a
+ * size-based heuristic: a large backing array full of entries, strongly held,
+ * with no eviction call in sight. It is the opposite — it can never grow.
+ *
+ * Observed false positive: a logger's 150,000-slot ring was reported as
+ * "cache-like, missing eviction is a likely leak" because the tool counted the
+ * ~11k non-null slots. Detect the shape from the owner's sibling properties (a
+ * write cursor and/or a capacity control) so it is labelled bounded instead.
+ */
+function looksLikeRingBuffer(owner: IHeapNode | null): boolean {
+  if (!owner) return false;
+  let hasCursor = false;
+  let hasCapacity = false;
+  for (const edge of owner.references) {
+    const name = String(edge.name_or_index);
+    if (RING_CURSOR_PROPS.has(name)) hasCursor = true;
+    if (RING_CAPACITY_PROP_RE.test(name)) hasCapacity = true;
+    if (hasCursor && hasCapacity) return true;
+  }
+  // A write cursor alone is enough: a plain cache has no reason to track one.
+  return hasCursor;
+}
+
 function classifyCollection(
   collectionType: string,
   ownerEdge: string,
   framework: string,
-): 'cache-like' | 'collection' {
+  owner?: IHeapNode | null,
+): 'cache-like' | 'collection' | 'ring-buffer' {
+  // Checked first: a bounded structure is not a leak candidate however it is
+  // named, and ring buffers are frequently named like caches/logs.
+  if (looksLikeRingBuffer(owner ?? null)) return 'ring-buffer';
   if (framework) return 'cache-like';
   if (/cache/i.test(collectionType)) return 'cache-like';
   if (CACHE_EDGE_RE.test(ownerEdge)) return 'cache-like';
@@ -97,7 +147,11 @@ function identifyCacheFramework(node: IHeapNode, ownerEdge: string): string {
   return '';
 }
 
-function getOwnerInfo(node: IHeapNode): {name: string; edge: string} {
+function getOwnerInfo(node: IHeapNode): {
+  name: string;
+  edge: string;
+  node?: IHeapNode;
+} {
   if (!node.hasPathEdge) return {name: '(root)', edge: ''};
   const pathEdge: IHeapEdge | null = node.pathEdge;
   if (!pathEdge) return {name: '(unknown)', edge: ''};
@@ -109,6 +163,7 @@ function getOwnerInfo(node: IHeapNode): {name: string; edge: string} {
     return {
       name: truncateNodeName(from.name, from.type, from.self_size, 40),
       edge: edgeName,
+      node: from,
     };
   }
 
@@ -120,12 +175,13 @@ function getOwnerInfo(node: IHeapNode): {name: string; edge: string} {
         return {
           name: truncateNodeName(outer.name, outer.type, outer.self_size, 40),
           edge: `${String(outerEdge.name_or_index)}.${edgeName}`,
+          node: outer,
         };
       }
     }
   }
 
-  return {name: from.name, edge: edgeName};
+  return {name: from.name, edge: edgeName, node: from};
 }
 
 function countEntries(node: IHeapNode): {entries: number; tableSlots: number} {
@@ -371,6 +427,7 @@ export function registerCacheAnalysis(server: McpServer): void {
               node.name,
               owner.edge,
               framework,
+              owner.node,
             ),
           };
 
@@ -617,6 +674,7 @@ export function registerCacheAnalysis(server: McpServer): void {
           '**Kind:**',
           '- **cache-like** — named like a cache, owned by a cache class, or carrying TTL/maxSize config. Missing eviction here is a likely leak.',
           '- **collection** — a plain large Map/Set/Array or per-request working set. Large is not the same as leaking; confirm it is actually retained across requests before treating it as a leak.',
+          '- **ring-buffer** — fixed-capacity buffer (the owner carries a write cursor and/or a capacity control). It looks like an unbounded cache to a size heuristic but cannot grow: **not a leak candidate**. Check the declared capacity before spending time on it.',
           '',
           '**Risk indicators:**',
           '- **Weak? = No** means entries are strongly held and will never be evicted by GC',

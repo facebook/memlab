@@ -69,7 +69,7 @@ export function registerLargestObjects(server: McpServer): void {
         .string()
         .optional()
         .describe(
-          'Only include this node type (e.g., "object", "closure", "string", "regexp").',
+          'Only include this node type (e.g., "object", "closure", "string", "array", "native", "code"). Types that are filtered out of the default view (array/native/code/synthetic/hidden) ARE returned when requested explicitly.',
         ),
       exclude_types: z
         .string()
@@ -103,7 +103,14 @@ export function registerLargestObjects(server: McpServer): void {
         const candidates = filterLargestObjects(
           snapshot,
           (node: IHeapNode) => {
-            if (!isNodeWorthInspecting(node)) return false;
+            // An explicit node_type request overrides the default-view type
+            // filter, so normally-suppressed types are still reachable.
+            if (
+              !isNodeWorthInspecting(node, {
+                allowBlockedTypes: node_type != null,
+              })
+            )
+              return false;
             if (node_type && node.type !== node_type) return false;
             if (excludeSet && excludeSet.has(node.type)) return false;
             return true;
