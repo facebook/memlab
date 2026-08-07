@@ -77,7 +77,7 @@ import {registerDuplicateObjects} from './tools/duplicate-objects.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.26.1', // keep in sync with package.json
+  version: '2.27.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call

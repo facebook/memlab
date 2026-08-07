@@ -23,6 +23,10 @@ import {
   errorResult,
   toolResult,
 } from '../utils.js';
+import {
+  collectDevRoots,
+  computeReachableWithoutDevRoots,
+} from './dev-artifacts.js';
 
 // V8 splits a single logical object's storage across several internal backing
 // structures: a `system / PropertyArray` (named props once the object grows past
@@ -143,6 +147,13 @@ interface InternGroup {
   // than application data — out of scope for an app-level parse-boundary intern
   // pool, so bucketed OUT of the within-load headline (Feedback round 7 §2).
   frameworkOwned?: boolean;
+  // True when the group's strings are retained ONLY via dev/automation
+  // roots — most often the attached inspector's console holding dev-build
+  // log records. Interning those reclaims nothing in a real session, so
+  // they are bucketed OUT of the within-load headline. Without this, a
+  // measured run reported 16.4 MB "capturable" that was entirely
+  // console-retained log strings; the real figure was 65.6 KB.
+  devOnly?: boolean;
 }
 
 // --- Headline-accuracy heuristics (Feedback round 7) ----------------------
@@ -269,7 +280,12 @@ export function registerInternOpportunities(server: McpServer): void {
         // Step 1: Build frequency map of duplicated strings
         const stringMap = new Map<
           string,
-          {count: number; totalSize: number; exampleIds: number[]}
+          {
+            count: number;
+            totalSize: number;
+            exampleIds: number[];
+            devOnlyCount: number;
+          }
         >();
 
         // Cheap retention-pattern signal (Feedback round 7 §4): a heap dominated
@@ -280,6 +296,20 @@ export function registerInternOpportunities(server: McpServer): void {
         // instead of silently reporting tiny interning wins.
         let concatStringCount = 0;
         let concatStringSize = 0;
+
+        // Strings retained ONLY through a dev/automation root (overwhelmingly
+        // the attached inspector's console holding dev-build log records) cannot
+        // be reclaimed by an intern pool in production. Compute reachability
+        // once and tag each string node so those groups can be bucketed out of
+        // the headline instead of inflating it.
+        const devRoots = collectDevRoots(snapshot);
+        const productionReachable =
+          devRoots.byId.size > 0
+            ? computeReachableWithoutDevRoots(snapshot, devRoots)
+            : null;
+        const isDevOnlyNode = (node: IHeapNode): boolean =>
+          productionReachable != null &&
+          productionReachable[node.nodeIndex] === 0;
 
         snapshot.nodes.forEach(node => {
           if (node.name === '(concatenated string)') {
@@ -292,9 +322,11 @@ export function registerInternOpportunities(server: McpServer): void {
           if (!strNode) return;
           const value = strNode.stringValue;
           const entry = stringMap.get(value);
+          const devOnly = isDevOnlyNode(node);
           if (entry) {
             entry.count++;
             entry.totalSize += node.retainedSize;
+            if (devOnly) entry.devOnlyCount++;
             if (entry.exampleIds.length < 20) {
               entry.exampleIds.push(node.id);
             }
@@ -303,6 +335,7 @@ export function registerInternOpportunities(server: McpServer): void {
               count: 1,
               totalSize: node.retainedSize,
               exampleIds: [node.id],
+              devOnlyCount: devOnly ? 1 : 0,
             });
           }
         });
@@ -317,6 +350,9 @@ export function registerInternOpportunities(server: McpServer): void {
             strings: Map<string, {count: number; size: number}>;
             totalCopies: number;
             totalSize: number;
+            // Copies whose string nodes are retained only via dev/automation
+            // roots, extrapolated from the same sample as totalCopies.
+            devOnlyCopies: number;
             exampleParentId: number;
             groupSamples: number;
             coRetainedSamples: number;
@@ -501,6 +537,9 @@ export function registerInternOpportunities(server: McpServer): void {
             const trueCount = Math.round(dist.sampledCount * scaleFactor);
             const trueSize =
               stats.totalSize * (dist.sampledCount / samplesProcessed);
+            const devOnlyShare =
+              stats.count > 0 ? stats.devOnlyCount / stats.count : 0;
+            const trueDevOnly = trueCount * devOnlyShare;
 
             const existing = groupMap.get(groupKey);
             if (existing) {
@@ -516,6 +555,7 @@ export function registerInternOpportunities(server: McpServer): void {
               }
               existing.totalCopies += trueCount;
               existing.totalSize += trueSize;
+              existing.devOnlyCopies += trueDevOnly;
               existing.groupSamples += dist.sampledCount;
               existing.coRetainedSamples += dist.coRetainedCount;
               if (!existing.coRetainedVia && dist.coRetainedVia) {
@@ -536,6 +576,7 @@ export function registerInternOpportunities(server: McpServer): void {
                 strings: new Map([[value, {count: trueCount, size: trueSize}]]),
                 totalCopies: trueCount,
                 totalSize: trueSize,
+                devOnlyCopies: trueDevOnly,
                 exampleParentId: dist.parentId,
                 groupSamples: dist.sampledCount,
                 coRetainedSamples: dist.coRetainedCount,
@@ -608,6 +649,11 @@ export function registerInternOpportunities(server: McpServer): void {
               g.parentShapeKey,
               g.parentShapeProps,
             ),
+            // Majority-dev-only rather than any-dev-only: a group can legitimately
+            // mix a few console-held copies with real app data, and only a group
+            // that is essentially all inspector-held should leave the headline.
+            devOnly:
+              g.totalCopies > 0 && g.devOnlyCopies / g.totalCopies >= 0.8,
           });
         }
 
@@ -714,7 +760,16 @@ export function registerInternOpportunities(server: McpServer): void {
         // within-load headline regardless of which one a group lands in.
         const bucketOf = (
           g: InternGroup,
-        ): 'framework' | 'coRetained' | 'crossLoad' | 'lowRoi' | 'within' => {
+        ):
+          | 'devOnly'
+          | 'framework'
+          | 'coRetained'
+          | 'crossLoad'
+          | 'lowRoi'
+          | 'within' => {
+          // Checked first: retention through a dev root means interning reclaims
+          // nothing in production, whatever the property is named.
+          if (g.devOnly) return 'devOnly';
           if (g.frameworkOwned) return 'framework';
           if (g.coRetained) return 'coRetained';
           if (g.crossLoad) return 'crossLoad';
@@ -728,6 +783,7 @@ export function registerInternOpportunities(server: McpServer): void {
         const coRetainedSavings = sumBucket('coRetained');
         const crossLoadSavings = sumBucket('crossLoad');
         const frameworkSavings = sumBucket('framework');
+        const devOnlySavings = sumBucket('devOnly');
         const lowRoiSavings = sumBucket('lowRoi');
         const withinLoadSavings = sumBucket('within');
 
@@ -757,6 +813,7 @@ export function registerInternOpportunities(server: McpServer): void {
           crossLoadSavings +
           coRetainedSavings +
           frameworkSavings +
+          devOnlySavings +
           lowRoiSavings;
         const pctOf = (n: number): string =>
           totalSize > 0
@@ -804,7 +861,7 @@ export function registerInternOpportunities(server: McpServer): void {
           // produce a malformed label, so only prefix `.` for named properties.
           const label = g.arrayElement ? g.propertyName : `.${g.propertyName}`;
           return [
-            `${label}${g.arrayElement ? ' ▦' : ''}${g.coRetained ? ' ⚠' : ''}${g.crossLoad ? ' ⤫' : ''}${g.frameworkOwned ? ' ▤' : ''}${g.lowRoi ? ' ▽' : ''}`,
+            `${label}${g.arrayElement ? ' ▦' : ''}${g.coRetained ? ' ⚠' : ''}${g.crossLoad ? ' ⤫' : ''}${g.devOnly ? ' 🛠' : ''}${g.frameworkOwned ? ' ▤' : ''}${g.lowRoi ? ' ▽' : ''}`,
             shape,
             formatNumber(g.uniqueStrings),
             formatNumber(g.totalCopies),
@@ -957,6 +1014,11 @@ export function registerInternOpportunities(server: McpServer): void {
             `- **▤ Framework/infra-owned (HTTP headers, cookies, auth tokens, Next.js URL/cache context — not app data; out of scope for an app-level intern pool): ${formatBytes(frameworkSavings)}${pctOf(frameworkSavings)}**`,
           );
         }
+        if (devOnlySavings > 0) {
+          headerLines.push(
+            `- **🛠 Dev/automation-retained (held only via the attached inspector's console or another dev root — reclaims NOTHING in production; do not chase): ${formatBytes(devOnlySavings)}${pctOf(devOnlySavings)}**`,
+          );
+        }
         if (lowRoiSavings > 0) {
           headerLines.push(
             `- **▽ Low-ROI (high-cardinality, few repeats + long strings — a per-load pool retains a large unique set for a small collapse; usually skip): ${formatBytes(lowRoiSavings)}${pctOf(lowRoiSavings)}**`,
@@ -980,11 +1042,12 @@ export function registerInternOpportunities(server: McpServer): void {
           coRetainedGroups.length > 0 ||
           crossLoadSavings > 0 ||
           frameworkSavings > 0 ||
+          devOnlySavings > 0 ||
           lowRoiSavings > 0 ||
           hasArrayElement
         ) {
           lines.push(
-            "▦ = array element (columnar / rowsAsArray — intern at the parse site); ⚠ = co-retained (interning won't reclaim); ⤫ = cross-load (high Dup ×, needs shared pool); ▤ = framework/infra-owned (not app data); ▽ = low-ROI (high-cardinality + long; usually skip).",
+            "▦ = array element (columnar / rowsAsArray — intern at the parse site); ⚠ = co-retained (interning won't reclaim); ⤫ = cross-load (high Dup ×, needs shared pool); ▤ = framework/infra-owned (not app data); 🛠 = dev/automation-retained (inspector console — reclaims nothing in production); ▽ = low-ROI (high-cardinality + long; usually skip).",
             '',
           );
         }

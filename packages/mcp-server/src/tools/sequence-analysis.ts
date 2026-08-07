@@ -27,6 +27,12 @@ import {
   errorResult,
   toolResult,
 } from '../utils.js';
+import {
+  artifactLabel,
+  artifactNote,
+  classifyArtifact,
+  type ArtifactKind,
+} from '../artifact-classes.js';
 
 interface ClassStats {
   count: number;
@@ -43,40 +49,6 @@ function isNoiseClass(type: string, name: string): boolean {
   return false;
 }
 
-// V8 internal structures emitted while JIT-compiling and warming up code paths.
-// Exercising NEW interactions during a hunt compiles new functions, so this
-// whole family climbs "every step" without being an app leak. Matched on the
-// class name (the snapshot type label varies: code / hidden / system). Same
-// spirit as the `heap number` capture-artifact flag below.
-const WARMUP_CLASS_NAMES = new Set<string>([
-  'InstructionStream',
-  'Code',
-  'CodeDataContainer',
-  'CodeWrapper',
-  'BytecodeArray',
-  'BytecodeWrapper',
-  'FeedbackVector',
-  'FeedbackMetadata',
-  'FeedbackCell',
-  'ClosureFeedbackCellArray',
-  'ScopeInfo',
-  'SharedFunctionInfo',
-  'TrustedByteArray',
-  'ProtectedFixedArray',
-  'LoadHandler',
-  'StoreHandler',
-  'AllocationSite',
-  'ConstantPool',
-  'ObjectBoilerplateDescription',
-]);
-
-// Blink accessibility caches. Under CDP-driven automation the a11y tree is
-// materialized (and taking an a11y / browser_take_snapshot snapshot mid-hunt
-// inflates it further), so these grow every step and even co-retain detached
-// DOM — an automation artifact, not a production app leak.
-const AX_NAME_RE =
-  /AXObjectCache|AXNodeObject|AXDirtyObject|AXComputedObject|blink::AX/;
-
 // V8 names per-instance Context/scope objects with a trailing " @<node-id>"
 // (e.g. "system / Context / scope @706909"). Those ids differ per capture, so
 // without normalization every scope is a distinct "class" that appears "new
@@ -85,17 +57,6 @@ const AX_NAME_RE =
 // comparable class across the sequence.
 function normalizeClassName(name: string): string {
   return name.replace(/ @\d+$/, ' @…');
-}
-
-type Artifact = 'warmup' | 'ax' | null;
-
-// Classify a class NAME as a known measurement artifact (automation/JIT), so it
-// can be down-ranked and annotated rather than reported as a leak.
-function classifyArtifact(name: string): Artifact {
-  const bare = name.replace(/^system \/ /, '');
-  if (WARMUP_CLASS_NAMES.has(bare)) return 'warmup';
-  if (AX_NAME_RE.test(name)) return 'ax';
-  return null;
 }
 
 function buildHistogram(snapshot: IHeapSnapshot): {
@@ -168,6 +129,13 @@ export function registerSequenceAnalysis(server: McpServer): void {
         .describe(
           'Report only classes that grew at EVERY step (default false: include grew-net too, flagged).',
         ),
+      include_artifacts: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Include classes that are known measurement artifacts (CDP inspector network/performance/console retention, V8 JIT warmup, Blink a11y caches, captured Error stacks). Default false: they are collapsed into a one-line summary instead of filling the table, because in practice they dominate the top of the list and none of them is an app leak.',
+        ),
       max_file_size_mb: z
         .number()
         .optional()
@@ -180,6 +148,7 @@ export function registerSequenceAnalysis(server: McpServer): void {
       limit,
       min_growth_count,
       monotonic_only,
+      include_artifacts,
       max_file_size_mb,
     }) => {
       try {
@@ -254,7 +223,7 @@ export function registerSequenceAnalysis(server: McpServer): void {
           netCount: number;
           netSize: number;
           trend: Trend;
-          artifact: Artifact;
+          artifact: ArtifactKind | null;
         }
         const rows: Row[] = [];
         for (const k of keys) {
@@ -285,7 +254,15 @@ export function registerSequenceAnalysis(server: McpServer): void {
           if (a.trend !== b.trend) return a.trend === 'monotonic-up' ? -1 : 1;
           return b.netSize - a.netSize;
         });
-        const top = rows.slice(0, limit);
+        // Known artifacts dominate the top of this table in practice and none
+        // of them is an app leak, so by default they are summarized rather than
+        // listed. They are still counted, and `include_artifacts` brings them
+        // back — suppression must never be silent.
+        const artifactRows = rows.filter(r => r.artifact != null);
+        const candidateRows = include_artifacts
+          ? rows
+          : rows.filter(r => r.artifact == null);
+        const top = candidateRows.slice(0, limit);
 
         const lines: string[] = [
           `## Sequence / Trend Analysis (${n} snapshots)`,
@@ -330,17 +307,12 @@ export function registerSequenceAnalysis(server: McpServer): void {
           const sep = r.key.indexOf('::');
           const type = r.key.slice(0, sep);
           const name = r.key.slice(sep + 2);
-          let verdict: string;
-          if (r.artifact === 'warmup') {
-            verdict = '⚙ JIT/compile warmup (not a leak)';
-          } else if (r.artifact === 'ax') {
-            verdict = '♿ a11y/CDP cache (automation artifact)';
-          } else {
-            verdict =
-              r.trend === 'monotonic-up'
-                ? '↑ every step (LEAK signal)'
+          const verdict =
+            r.artifact != null
+              ? artifactLabel(r.artifact)
+              : r.trend === 'monotonic-up'
+                ? '↑ every step (LEAK candidate)'
                 : 'grew net (noisy)';
-          }
           return [
             name.length > 36 ? name.slice(0, 33) + '…' : name,
             type,
@@ -402,25 +374,39 @@ export function registerSequenceAnalysis(server: McpServer): void {
           );
         }
 
-        // V8 compilation warmup and Blink a11y/CDP caches climb every step under
-        // an instrumented hunt but are not app leaks. Flag them (and they are
-        // sorted after genuine growers) so they don't read as the leak signal.
-        if (top.some(r => r.artifact === 'warmup')) {
-          lines.push(
-            '',
-            '> ⚙️ V8 **compilation-warmup** structures (`Code`, `BytecodeArray`, `FeedbackVector`, `ScopeInfo`, `InstructionStream`, …) are growing. Exercising new code paths during a hunt JIT-compiles them, so they climb every step without being an app leak. Treat this whole family as warmup, not a leak.',
-          );
+        // Known-artifact families: either annotate the rows that were shown,
+        // or account for the ones that were collapsed. Either way the caller is
+        // told what was set aside and why.
+        const shownKinds = new Set<ArtifactKind>();
+        for (const r of top) if (r.artifact != null) shownKinds.add(r.artifact);
+        const suppressedByKind = new Map<ArtifactKind, number>();
+        if (!include_artifacts) {
+          for (const r of artifactRows) {
+            suppressedByKind.set(
+              r.artifact as ArtifactKind,
+              (suppressedByKind.get(r.artifact as ArtifactKind) ?? 0) + 1,
+            );
+          }
         }
-        if (top.some(r => r.artifact === 'ax')) {
+        if (suppressedByKind.size > 0) {
+          const parts = [...suppressedByKind.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .map(([kind, count]) => `${kind} ${count}`);
           lines.push(
             '',
-            '> ♿ Blink **accessibility caches** (`AXObjectCacheImpl` / `AXNodeObject` / `AXDirtyObject`) are growing. These are inflated by CDP-driven automation building the a11y tree — and taking an a11y / `browser_take_snapshot` snapshot mid-hunt inflates them further. They even co-retain detached DOM, so retainer traces can route through `AXObjectCacheImpl` and mislead. Discount from leak totals; confirm on a non-automated session if in doubt.',
+            `> 🧹 **${artifactRows.length} growing class(es) suppressed as known measurement artifacts** (${parts.join(', ')}). None of these families is an application leak; pass \`include_artifacts: true\` to see them.`,
           );
+          for (const kind of suppressedByKind.keys()) {
+            lines.push('', `> ${artifactNote(kind)}`);
+          }
+        }
+        for (const kind of shownKinds) {
+          lines.push('', `> ${artifactNote(kind)}`);
         }
 
         lines.push(
           '',
-          '_"↑ every step" is the strong unbounded-growth signal; "grew net (noisy)" often reflects GC timing or navigation and warrants a closer look before treating as a leak. Object-identity matching across snapshots is not available (node ids differ per capture) — to localize a specific growing collection, load the last snapshot and use `memlab_cache_analysis` / `memlab_event_listener_leaks` / `memlab_growth_signals`._',
+          '_"↑ every step (LEAK candidate)" is the strong unbounded-growth signal — it is a candidate, not a verdict: confirm with `memlab_dev_artifacts` and a `memlab_retainer_trace` before calling it a leak; "grew net (noisy)" often reflects GC timing or navigation and warrants a closer look before treating as a leak. Object-identity matching across snapshots is not available (node ids differ per capture) — to localize a specific growing collection, load the last snapshot and use `memlab_cache_analysis` / `memlab_event_listener_leaks` / `memlab_growth_signals`._',
         );
 
         return toolResult(lines.join('\n'));

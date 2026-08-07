@@ -63,6 +63,26 @@ const AX_NODE_NAME_RE =
 const GLOBAL_HANDLES_NODE_NAME = '(Global handles)';
 const CONSOLE_HANDLE_EDGE_RE = /DevTools console/i;
 
+// React DEV-build owner stacks. In a development build React attaches
+// `_debugStack` (a captured `Error`) to fibers. That Error's `ErrorStackData`
+// holds the captured stack-frame array, which holds whatever closures were on
+// the stack — commonly the `batchedUpdates` closure whose scope still refers to
+// the handler's `nativeEvent`, which in turn pins the DOM subtree that was being
+// unmounted. The result is a detached subtree retained entirely by DEV-only
+// bookkeeping.
+//
+// This family is invisible to the checks above because the chain is rooted at a
+// LIVE DOM element's fiber, not at a dev global or the inspector — so it was
+// classified `production` and read as a genuine unmount leak. It is production-
+// safe (`_debugStack` does not exist in a production React build) and, because
+// it hangs off whatever handler was running, it fires on ANY synthetic-click
+// hammer that unmounts a subtree.
+//
+// Marking the Error itself as a dev root is enough: the existing dev-only
+// reachability pass then attributes the whole ErrorStackData -> frames ->
+// closure -> nativeEvent -> detached-subtree chain to it.
+const REACT_DEBUG_STACK_EDGE_NAMES = new Set(['_debugStack', '_debugTask']);
+
 export interface DevRoots {
   // dev-root node id -> the global name it is installed under
   byId: Map<number, string>;
@@ -71,12 +91,14 @@ export interface DevRoots {
   categoryById: Map<number, DevRootCategory>;
 }
 
-export type DevRootCategory = 'console' | 'a11y' | 'devGlobal';
+export type DevRootCategory =
+  'console' | 'a11y' | 'devGlobal' | 'reactDebugStack';
 
 const CATEGORY_LABEL: Record<DevRootCategory, string> = {
   console: 'DevTools console (CDP inspector)',
   a11y: 'a11y / CDP automation cache',
   devGlobal: 'dev/extension global',
+  reactDebugStack: 'React DEV owner stack (_debugStack)',
 };
 
 /**
@@ -118,6 +140,20 @@ export function collectDevRoots(snapshot: IHeapSnapshot): DevRoots {
           );
           categoryById.set(edge.toNode.id, 'console');
         }
+      }
+    }
+    // React DEV owner stacks hang off fibers, which are reachable from LIVE
+    // DOM nodes — so they are found by scanning edges, not global roots.
+    for (const edge of node.references) {
+      if (
+        REACT_DEBUG_STACK_EDGE_NAMES.has(String(edge.name_or_index)) &&
+        edge.toNode.id > 3
+      ) {
+        byId.set(
+          edge.toNode.id,
+          'React DEV owner stack (_debugStack; absent in production builds)',
+        );
+        categoryById.set(edge.toNode.id, 'reactDebugStack');
       }
     }
     if (DEV_NODE_NAME_RE.test(node.name)) {
@@ -186,6 +222,7 @@ const CATEGORY_BIT: Record<DevRootCategory, number> = {
   console: 1,
   a11y: 2,
   devGlobal: 4,
+  reactDebugStack: 8,
 };
 
 /**
