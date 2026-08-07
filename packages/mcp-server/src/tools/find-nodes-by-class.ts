@@ -32,6 +32,13 @@ export function registerFindNodesByClass(server: McpServer): void {
       class_name: z
         .string()
         .describe('The constructor or class name to search for'),
+      order: z
+        .enum(['retained_size', 'newest'])
+        .optional()
+        .default('retained_size')
+        .describe(
+          'How to pick which instances to show. "retained_size" (default) shows the biggest. "newest" shows the highest node ids — V8 assigns ids in allocation order, so within one snapshot this approximates the most recently allocated instances. When a class has grown from N to 10N across a ladder, the accumulating tail is what you want to inspect, and the biggest instances are usually the oldest — not the ones that are piling up. Approximate: ids are an allocation-order proxy, not a timestamp.',
+        ),
       node_type: z
         .string()
         .optional()
@@ -51,7 +58,7 @@ export function registerFindNodesByClass(server: McpServer): void {
         .default(20)
         .describe('Maximum number of results (default 20)'),
     },
-    async ({class_name, node_type, output_mode, limit}) => {
+    async ({class_name, node_type, output_mode, limit, order}) => {
       try {
         const snapshot = getSnapshot();
         // Historically this hard-filtered `type === 'object'`, so closures,
@@ -126,7 +133,32 @@ export function registerFindNodesByClass(server: McpServer): void {
           );
         }
 
-        const nodes = filterLargestObjects(snapshot, classFilter, limit);
+        let nodes: IHeapNode[];
+        if (order === 'newest') {
+          // Highest node ids = latest allocated within this snapshot. Keep a
+          // bounded top-N rather than collecting every match and sorting, so a
+          // class with a million instances does not materialize a huge array.
+          const newest: IHeapNode[] = [];
+          let minKept = -1;
+          snapshot.nodes.forEach(node => {
+            if (!classFilter(node)) return;
+            if (newest.length < limit) {
+              newest.push(node);
+              if (newest.length === limit) {
+                newest.sort((a, b) => a.id - b.id);
+                minKept = newest[0].id;
+              }
+              return;
+            }
+            if (node.id <= minKept) return;
+            newest[0] = node;
+            newest.sort((a, b) => a.id - b.id);
+            minKept = newest[0].id;
+          });
+          nodes = newest.sort((a, b) => b.id - a.id);
+        } else {
+          nodes = filterLargestObjects(snapshot, classFilter, limit);
+        }
 
         let totalCount = 0;
         if (nodes.length === limit) {
@@ -143,14 +175,14 @@ export function registerFindNodesByClass(server: McpServer): void {
 
         if (output_mode === 'ids') {
           return toolResult(
-            `"${class_name}": ${formatNumber(totalCount)} total instances (showing ${nodes.length} IDs by retained size)\n\nIDs: ${nodes.map(n => n.id).join(', ')}`,
+            `"${class_name}": ${formatNumber(totalCount)} total instances (showing ${nodes.length} IDs by ${order === 'newest' ? 'node id — newest first' : 'retained size'})\n\nIDs: ${nodes.map(n => n.id).join(', ')}`,
           );
         }
 
         const summaries = nodes.map(serializeNodeSummary);
         const countNote =
           totalCount > nodes.length
-            ? ` (${formatNumber(totalCount)} total, showing top ${nodes.length})`
+            ? ` (${formatNumber(totalCount)} total, showing ${order === 'newest' ? `the ${nodes.length} newest by node id` : `top ${nodes.length} by retained size`})`
             : '';
         return toolResult(
           `Found ${formatNumber(totalCount)} "${class_name}" objects${countNote}\n\n${formatNodeSummaryTable(summaries)}`,
