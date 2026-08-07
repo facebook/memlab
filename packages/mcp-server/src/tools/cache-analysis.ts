@@ -40,32 +40,41 @@ const CACHE_EDGE_RE =
   /cache|memo|store|registry|lru|dedup|pool|index|lookup|byId|byKey/i;
 
 /**
- * Distinguish a genuine cache (named like one, owned by a cache class, or
- * carrying cache config) from a plain large collection / per-request working
- * set. Avoids over-labeling every big Map/Array as an "unbounded cache"
- * (Feedback §2c).
+ * Sibling property names specific enough to mark a ring buffer on their own: a
+ * plain cache has no reason to track where the next slot to overwrite is.
  */
-/**
- * Sibling property names that mark a fixed-capacity ring buffer: a write cursor
- * and/or an explicit capacity control living next to the backing array on the
- * same owner.
- */
-const RING_CURSOR_PROPS = new Set([
+const RING_WRITE_CURSOR_PROPS = new Set([
   'localCursor',
-  'cursor',
   'writeFrom',
   'writeIndex',
   'writeCursor',
   'writePos',
-  'readIndex',
-  'readCursor',
+  'nextSlot',
+]);
+
+/**
+ * Cursor-ish names that are also carried by linked lists, queues, iterators,
+ * tree-traversal state and cursor-paginated result sets. Alone they are not
+ * evidence of a ring — a genuine unbounded cache whose owner happens to expose
+ * `head` would be dropped as bounded — so they only count when paired with a
+ * capacity control.
+ */
+const RING_AMBIGUOUS_CURSOR_PROPS = new Set([
+  'cursor',
   'head',
   'tail',
   'nextIndex',
-  'nextSlot',
+  'readIndex',
+  'readCursor',
 ]);
+
+/**
+ * Anchored on purpose: an unanchored pattern matches any name merely
+ * *containing* the token, so predicates and unrelated config (`hasCapacity`,
+ * `overCapacity`, `defaultMaxSize`) would read as capacity controls.
+ */
 const RING_CAPACITY_PROP_RE =
-  /capacity|maxSize|max_size|bufferSize|logCapacity/i;
+  /^_?(?:capacity|log_?capacity|max_?size|buffer_?size|ring_?size)$/i;
 
 /**
  * A fixed-capacity ring buffer looks exactly like an unbounded cache to a
@@ -76,21 +85,30 @@ const RING_CAPACITY_PROP_RE =
  * "cache-like, missing eviction is a likely leak" because the tool counted the
  * ~11k non-null slots. Detect the shape from the owner's sibling properties (a
  * write cursor and/or a capacity control) so it is labelled bounded instead.
+ *
+ * Biased towards under-detection: a missed ring is a false leak candidate the
+ * caller can dismiss, while a wrongly-detected one drops a real leak silently.
  */
 function looksLikeRingBuffer(owner: IHeapNode | null): boolean {
   if (!owner) return false;
-  let hasCursor = false;
+  let hasAmbiguousCursor = false;
   let hasCapacity = false;
   for (const edge of owner.references) {
     const name = String(edge.name_or_index);
-    if (RING_CURSOR_PROPS.has(name)) hasCursor = true;
+    if (RING_WRITE_CURSOR_PROPS.has(name)) return true;
+    if (RING_AMBIGUOUS_CURSOR_PROPS.has(name)) hasAmbiguousCursor = true;
     if (RING_CAPACITY_PROP_RE.test(name)) hasCapacity = true;
-    if (hasCursor && hasCapacity) return true;
+    if (hasAmbiguousCursor && hasCapacity) return true;
   }
-  // A write cursor alone is enough: a plain cache has no reason to track one.
-  return hasCursor;
+  return false;
 }
 
+/**
+ * Distinguish a genuine cache (named like one, owned by a cache class, or
+ * carrying cache config) from a plain large collection / per-request working
+ * set. Avoids over-labeling every big Map/Array as an "unbounded cache"
+ * (Feedback §2c).
+ */
 function classifyCollection(
   collectionType: string,
   ownerEdge: string,

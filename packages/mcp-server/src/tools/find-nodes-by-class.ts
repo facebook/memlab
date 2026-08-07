@@ -27,7 +27,7 @@ import {
 export function registerFindNodesByClass(server: McpServer): void {
   server.tool(
     'memlab_find_nodes_by_class',
-    'Find heap nodes by constructor/class name. Matches ANY node type by default (object, closure, array, string, native, …) — pass node_type to narrow. Returns matches sorted by retained size. If the exact name matches nothing, reports near-miss names and the types they exist under instead of a bare "not found". Follow up with memlab_retainer_trace on a result node to see why it is retained, memlab_get_references to inspect its properties, or memlab_retainer_summary to find common retainer patterns across all instances.',
+    'Find heap nodes by constructor/class name. Matches ANY node type by default (object, closure, array, string, native, …) — pass node_type to narrow. Ordering is controlled by order: the biggest by retained size (default), or the newest by node id. If the exact name matches nothing, reports near-miss names and the types they exist under instead of a bare "not found". Follow up with memlab_retainer_trace on a result node to see why it is retained, memlab_get_references to inspect its properties, or memlab_retainer_summary to find common retainer patterns across all instances.',
     {
       class_name: z
         .string()
@@ -50,10 +50,12 @@ export function registerFindNodesByClass(server: McpServer): void {
         .optional()
         .default('full')
         .describe(
-          'Output verbosity: "full" returns node summaries sorted by retained size (default), "count" returns only total count and aggregate retained size, "ids" returns only node IDs sorted by retained size',
+          'Output verbosity: "full" returns node summaries (default), "count" returns only total count and aggregate retained size, "ids" returns only node IDs. "full" and "ids" are both ordered by the "order" parameter, not always by retained size.',
         ),
       limit: z
         .number()
+        .int()
+        .min(1)
         .optional()
         .default(20)
         .describe('Maximum number of results (default 20)'),
@@ -138,6 +140,9 @@ export function registerFindNodesByClass(server: McpServer): void {
           // Highest node ids = latest allocated within this snapshot. Keep a
           // bounded top-N rather than collecting every match and sorting, so a
           // class with a million instances does not materialize a huge array.
+          // Relies on the schema's integer `limit >= 1`: a fractional limit
+          // never satisfies `length === limit`, and `limit <= 0` would fall
+          // through to the eviction branch and keep one node anyway.
           const newest: IHeapNode[] = [];
           let minKept = -1;
           snapshot.nodes.forEach(node => {
