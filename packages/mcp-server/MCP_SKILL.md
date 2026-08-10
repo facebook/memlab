@@ -374,6 +374,10 @@ detailed investigation:
 - `memlab_object_shape` — see all properties of an object (supports batch via
   `node_ids`)
 - `memlab_retainer_trace` — shortest path from GC root (why is this alive?)
+- `memlab_retainer_layers` — the counterfactual: every INDEPENDENT retaining edge,
+  so you know whether cutting one actually frees the object or leaves it held by
+  the others. Run it before writing a fix — `retainer_trace` shows one path, which
+  is why stacked retainers look like a single one
 - `memlab_dominator_subtree` — what would be freed if this node were collected
 - `memlab_closure_inspection` — captured variables in a closure, OR (for a
   suspended generator/async frame) the `parameters_and_registers` slots with

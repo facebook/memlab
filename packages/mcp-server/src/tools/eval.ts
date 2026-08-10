@@ -34,9 +34,33 @@ import {
 
 const MAX_OUTPUT_SIZE = 50 * 1024; // 50KB
 
+// Prefix for user-named result sets inside the per-snapshot eval scratch, so
+// they cannot collide with the internal `__classTypeIndex` / `__withProp:` keys.
+const SAVED_PREFIX = '__saved:';
+
 function truncate(str: string, max: number): string {
   if (str.length <= max) return str;
   return str.slice(0, max) + '\n... [truncated, output exceeded 50KB]';
+}
+
+/**
+ * Node-visit budget for a single eval call. `snapshot.nodes.forEach` increments
+ * it; exceeding `max` aborts the walk by throwing `BudgetExceeded`, which the
+ * handler catches so a partial `result` is still returned with a truncation
+ * note. Without this a broad exploratory scan either completes or dies at the
+ * wall-clock timeout with nothing to show, which pushes callers to pre-narrow.
+ */
+interface VisitBudget {
+  visited: number;
+  max: number;
+  exceeded: boolean;
+}
+
+class BudgetExceeded extends Error {
+  constructor(max: number) {
+    super(`max_nodes budget of ${max} exhausted`);
+    this.name = 'BudgetExceeded';
+  }
 }
 
 const NODE_PROPERTY_ALIASES: Record<string, string> = {
@@ -98,7 +122,7 @@ function wrapEdgeIterable(iterable: unknown): unknown {
   };
 }
 
-function wrapSnapshot(snapshot: unknown): unknown {
+function wrapSnapshot(snapshot: unknown, budget: VisitBudget): unknown {
   return new Proxy(snapshot as object, {
     get(target, prop, receiver) {
       if (prop === 'getNodeById') {
@@ -115,8 +139,16 @@ function wrapSnapshot(snapshot: unknown): unknown {
               const origForEach = (
                 nodesTarget as Record<string, (...args: unknown[]) => unknown>
               ).forEach.bind(nodesTarget);
-              return (cb: (node: unknown) => void) => {
-                origForEach((node: unknown) => cb(wrapNode(node)));
+              return (cb: (node: unknown) => unknown) => {
+                origForEach((node: unknown) => {
+                  if (++budget.visited > budget.max) {
+                    budget.exceeded = true;
+                    throw new BudgetExceeded(budget.max);
+                  }
+                  // Returning `false` from the callback breaks the walk, so the
+                  // callback's return value has to be passed through.
+                  return cb(wrapNode(node));
+                });
               };
             }
             return Reflect.get(nodesTarget, nodesProp, nodesReceiver);
@@ -157,14 +189,16 @@ export function registerEval(server: McpServer): void {
       '```\nconst ids = helpers.byTypename("AdCreativeFeatureSpecAttachment");\n' +
       'const sigs = {};\n' +
       'for (const id of ids) { const s = helpers.shapeSignature(id); sigs[s] = (sigs[s]||0)+1; }\n' +
-      'result = {count: ids.length, distinct: Object.keys(sigs).length};\n```',
+      'result = {count: ids.length, distinct: Object.keys(sigs).length};\n```\n' +
+      '**Multi-step exploration:** pass `save_as` to keep a result set server-side and `helpers.load(name)` to read it back in a later call, so intermediate id lists never have to be printed to the transcript. `mode:"list_saved"` lists them. ' +
+      'Pass `max_nodes` to bound a full-heap walk — on overrun the partial `result` is returned with a warning instead of failing, so a broad scan is safe to attempt. Every call reports `nodes_visited`.',
     {
       mode: z
-        .enum(['eval', 'describe_env'])
+        .enum(['eval', 'describe_env', 'list_saved'])
         .optional()
         .default('eval')
         .describe(
-          '"eval" (default) runs `code`. "describe_env" ignores `code` and returns the in-scope globals, the IHeapNode/IHeapEdge API, and the required calling conventions (`result =`, `.forEach`) so you can self-correct before running.',
+          '"eval" (default) runs `code`. "describe_env" ignores `code` and returns the in-scope globals, the IHeapNode/IHeapEdge API, and the required calling conventions (`result =`, `.forEach`) so you can self-correct before running. "list_saved" ignores `code` and lists the named result sets saved so far for this snapshot.',
         ),
       code: z
         .string()
@@ -193,11 +227,31 @@ export function registerEval(server: McpServer): void {
         .describe(
           'Execution timeout in milliseconds (default 60000). Full-snapshot scans on large heaps may need 120000+.',
         ),
+      save_as: z
+        .string()
+        .regex(/^[A-Za-z_][A-Za-z0-9_]*$/)
+        .optional()
+        .describe(
+          'Save this call\'s `result` under a name, reusable in later calls via `helpers.load("<name>")`. Lets a multi-step investigation keep intermediate sets (candidate ids, per-id measurements) SERVER-SIDE instead of round-tripping them through the transcript. Save plain data (ids, counts, strings) — not node objects. Scoped to the current snapshot and dropped when it is unloaded.',
+        ),
+      max_nodes: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .default(20000000)
+        .describe(
+          'Abort a `snapshot.nodes.forEach` walk after this many node visits (default 20000000, i.e. effectively unlimited). On abort the partial `result` is returned with a note instead of failing, so a broad exploratory scan can be attempted safely. Reported back as `nodes_visited` on every call.',
+        ),
     },
-    async ({mode, code, timeout_ms}) => {
+    async ({mode, code, timeout_ms, save_as, max_nodes}) => {
+      const budget: VisitBudget = {visited: 0, max: max_nodes, exceeded: false};
       try {
         if (mode === 'describe_env') {
           return toolResult(describeEnv());
+        }
+        if (mode === 'list_saved') {
+          return toolResult(describeSaved());
         }
         if (code == null || code.trim() === '') {
           return errorResult(
@@ -494,6 +548,26 @@ export function registerEval(server: McpServer): void {
         ): {retained: number; exact: boolean} =>
           boundedDominatorRetainedSize(new NumericSet(ids), snapshot);
 
+        // Named result sets live in the same per-snapshot scratch as the
+        // class/typename index, so they share its lifecycle: they are dropped
+        // when the snapshot is unloaded, and a saved id list can never be read
+        // back against a snapshot it was not built from.
+        const save = <T>(name: string, value: T): T => {
+          scratch[SAVED_PREFIX + name] = value;
+          return value;
+        };
+        const load = (name: string): unknown => {
+          const key = SAVED_PREFIX + name;
+          if (!(key in scratch)) {
+            throw new Error(
+              `No saved result named "${name}". Saved names: ${savedNames().join(', ') || '(none)'}. ` +
+                'Save one with the save_as parameter or helpers.save(name, value).',
+            );
+          }
+          return scratch[key];
+        };
+        const listSaved = (): string[] => savedNames();
+
         const helpers = {
           serializeNodeSummary,
           serializeNodeDetail,
@@ -519,10 +593,13 @@ export function registerEval(server: McpServer): void {
           byTypename,
           withProp,
           aggregateRetained,
+          save,
+          load,
+          listSaved,
         };
 
         const sandbox = {
-          snapshot: wrapSnapshot(snapshot),
+          snapshot: wrapSnapshot(snapshot, budget),
           utils,
           helpers,
           console: capturedConsole,
@@ -556,18 +633,40 @@ export function registerEval(server: McpServer): void {
 
         const context = vm.createContext(sandbox);
         const script = new vm.Script(code, {filename: 'memlab_eval'});
-        script.runInContext(context, {timeout: timeout_ms});
+        // A budget abort is a controlled stop, not a failure: whatever the code
+        // had already assigned to `result` is still returned, annotated below.
+        try {
+          script.runInContext(context, {timeout: timeout_ms});
+        } catch (err) {
+          // Keyed on the error itself, never on `budget.exceeded`: code that
+          // catches the abort and then throws for an unrelated reason must
+          // still surface that error.
+          if (!(err instanceof BudgetExceeded)) throw err;
+        }
 
         // Actionable hint when nothing was assigned to `result` (the #1 user
         // error — code that `return`s a value or runs a value-returning IIFE
         // never populates `result`, so output is silently "undefined").
-        if (sandbox.result === undefined && consoleOutput.length === 0) {
+        if (
+          sandbox.result === undefined &&
+          consoleOutput.length === 0 &&
+          !budget.exceeded
+        ) {
           return toolResult(
             'Your code ran without error but never assigned to `result`, so there is nothing to return.\n' +
               'Assign the value you want back to `result` (do NOT use `return` at the top level), e.g.:\n' +
               '  `result = someValue;`\n' +
               'Use mode:"describe_env" to see the full calling convention.',
           );
+        }
+
+        // `undefined` is never worth persisting: on reload it is
+        // indistinguishable from a name that was never saved, and the usual
+        // cause is the "never assigned to `result`" mistake — which the hint
+        // above only catches when the run produced no console output.
+        const nothingToSave = sandbox.result === undefined;
+        if (save_as != null && !budget.exceeded && !nothingToSave) {
+          scratch[SAVED_PREFIX + save_as] = sandbox.result;
         }
 
         let output: string;
@@ -585,6 +684,31 @@ export function registerEval(server: McpServer): void {
             MAX_OUTPUT_SIZE - output.length > 1024 ? 4096 : 1024,
           );
           output += '\n\n--- console output ---\n' + consolePart;
+        }
+
+        const footer: string[] = [];
+        if (budget.exceeded) {
+          footer.push(
+            `⚠️ Walk aborted after ${formatNumber(budget.max)} node visits (max_nodes). The value above is PARTIAL. ` +
+              'Raise max_nodes, or narrow the scan with an indexed helper (`helpers.byClass` / `byTypename` / `withProp`) instead of a full `snapshot.nodes` walk.',
+          );
+          if (save_as != null) {
+            footer.push(
+              `Not saved as "${save_as}" — a partial result would be indistinguishable from a complete one on reload.`,
+            );
+          }
+        } else if (budget.visited > 0) {
+          footer.push(`nodes_visited: ${formatNumber(budget.visited)}`);
+        }
+        if (save_as != null && !budget.exceeded) {
+          footer.push(
+            nothingToSave
+              ? `Not saved as "${save_as}" — \`result\` was undefined, and a saved \`undefined\` is indistinguishable from a name that was never saved. Assign the value you want to keep to \`result\` (do NOT \`return\` at the top level) and re-run.`
+              : `Saved as "${save_as}" — read it back in a later call with \`helpers.load("${save_as}")\`.`,
+          );
+        }
+        if (footer.length > 0) {
+          output += '\n\n--- ' + footer.join('\n');
         }
 
         return toolResult(output);
@@ -617,6 +741,77 @@ function actionableEvalError(err: unknown, code: string | undefined): string {
   return msg;
 }
 
+function savedNames(): string[] {
+  return Object.keys(getEvalScratch())
+    .filter(k => k.startsWith(SAVED_PREFIX))
+    .map(k => k.slice(SAVED_PREFIX.length))
+    .sort();
+}
+
+/** One-line shape description so `list_saved` is useful without re-dumping the data. */
+function describeSavedValue(value: unknown): string {
+  if (value === null) return 'null';
+  if (Array.isArray(value))
+    return `array (${formatNumber(value.length)} items)`;
+  if (typeof value === 'string') {
+    return `string (${formatNumber(value.length)} chars)`;
+  }
+  if (typeof value === 'object') {
+    // The sandbox is seeded with the host realm's Map/Set/Date/typed arrays, so
+    // `instanceof` holds for values built inside eval. Without these cases every
+    // one of them reports `object (0 keys)` — a container holding millions of
+    // entries would look empty here.
+    if (value instanceof Map) {
+      return `Map (${formatNumber(value.size)} entries)`;
+    }
+    if (value instanceof Set) {
+      return `Set (${formatNumber(value.size)} items)`;
+    }
+    if (value instanceof Date) {
+      return `Date (${value.toISOString()})`;
+    }
+    if (ArrayBuffer.isView(value)) {
+      const ctor = value.constructor?.name ?? 'TypedArray';
+      const len = (value as unknown as {length?: number}).length;
+      return typeof len === 'number'
+        ? `${ctor} (${formatNumber(len)} items)`
+        : `${ctor} (${formatNumber(value.byteLength)} bytes)`;
+    }
+    const keys = formatNumber(Object.keys(value as object).length);
+    // A named constructor (WeakMap, a class instance, …) is reported by name so
+    // a `0 keys` line is attributable rather than just puzzling.
+    const ctor = (value as {constructor?: {name?: string}}).constructor?.name;
+    return ctor == null || ctor === 'Object'
+      ? `object (${keys} keys)`
+      : `${ctor} (${keys} own keys)`;
+  }
+  return typeof value;
+}
+
+function describeSaved(): string {
+  const scratch = getEvalScratch();
+  const names = savedNames();
+  if (names.length === 0) {
+    return [
+      '# Saved result sets: (none)',
+      '',
+      'Save one by passing `save_as: "<name>"` on a memlab_eval call, or calling `helpers.save("<name>", value)` inside your code.',
+      'Read it back in a later call with `helpers.load("<name>")`.',
+      'Saved sets are scoped to the current snapshot and dropped when it is unloaded.',
+    ].join('\n');
+  }
+  return [
+    `# Saved result sets (${names.length}) for the current snapshot`,
+    '',
+    markdownTable(
+      ['name', 'shape'],
+      names.map(n => [n, describeSavedValue(scratch[SAVED_PREFIX + n])]),
+    ),
+    '',
+    'Read one back with `helpers.load("<name>")`.',
+  ].join('\n');
+}
+
 function describeEnv(): string {
   return [
     '# memlab_eval environment',
@@ -638,6 +833,18 @@ function describeEnv(): string {
     '- `helpers.shapeSignature(nodeOrId, {maxStringLen?}) -> string` — stable shallow content signature (sorted prop names + scalar values) for duplicate-record detection. Numeric values are NOT captured (see `memlab_duplicate_objects`), so records differing only in a number field hash the same.',
     '- `helpers.byClass(name) -> ids[]`, `helpers.byTypename(name) -> ids[]`, `helpers.withProp(name) -> ids[]` — INDEXED id lookups. The class/typename index is built once per snapshot and memoized in a session scratch, so a follow-up call is index-speed, not another full `snapshot.nodes` scan. (See also the `memlab_duplicate_objects` tool for a ready-made dedup report.)',
     '- `helpers.aggregateRetained(ids[]) -> {retained, exact}` — dominator-deduped retained size for a SET of ids (does not double-count when one id dominates another); `exact:false` means the bounded walk was truncated (upper bound).',
+    '',
+    '## Named result sets (multi-step exploration)',
+    'Keep intermediate sets SERVER-SIDE instead of round-tripping them through the transcript — the ids never have to be printed, so a long investigation costs a fraction of the tokens.',
+    '- `save_as: "<name>"` (tool parameter) — saves this call\'s `result` under that name after it completes. An `undefined` `result` is NOT saved (it would be indistinguishable from an unsaved name); the response says so.',
+    '- `helpers.save(name, value) -> value` — save mid-script (returns the value, so it composes inline).',
+    '- `helpers.load(name) -> value` — read a saved set back in a later call. Throws with the list of known names if it does not exist.',
+    '- `helpers.listSaved() -> names[]`, or call the tool with `mode:"list_saved"` for names + shapes.',
+    'Save plain data (ids, counts, strings) — NOT node objects or proxies. Sets are scoped to the current snapshot and dropped when it is unloaded, so a saved id list can never be read against the wrong snapshot.',
+    'Typical shape: call 1 `save_as:"candidates"` builds the id list; call 2 does `const ids = helpers.load("candidates");` and measures them; call 3 traces only the survivors.',
+    '',
+    '## Traversal budget',
+    'Every call reports `nodes_visited`. Pass `max_nodes` to bound a `snapshot.nodes.forEach` walk: on overrun the walk aborts and the PARTIAL `result` is returned with a warning rather than failing, so a broad exploratory scan is safe to attempt. A partial result is never saved by `save_as`.',
     '',
     '## IHeapNode API',
     '`.id`, `.name`, `.type`, `.self_size`, `.retainedSize` (alias `.retained_size`), `.edge_count`, `.is_detached`, `.numOfReferrers` (alias `.referrer_count`), `.isString`, `.toStringNode()?.stringValue`, `.hasPathEdge`, `.pathEdge`, `.dominatorNode`, `.location` (`script_id`/`line`/`column`).',

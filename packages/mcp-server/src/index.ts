@@ -74,10 +74,11 @@ import {registerSequenceAnalysis} from './tools/sequence-analysis.js';
 import {registerEventRegistry} from './tools/event-registry.js';
 import {registerDominatorChain} from './tools/dominator-chain.js';
 import {registerDuplicateObjects} from './tools/duplicate-objects.js';
+import {registerRetainerLayers} from './tools/retainer-layers.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.30.1', // keep in sync with package.json
+  version: '2.31.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -140,6 +141,7 @@ registerSequenceAnalysis(server);
 registerEventRegistry(server);
 registerDominatorChain(server);
 registerDuplicateObjects(server);
+registerRetainerLayers(server);
 
 async function main() {
   const transport = new StdioServerTransport();
