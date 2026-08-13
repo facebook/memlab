@@ -80,8 +80,17 @@ function loadIndex(): FindingIndex {
       }
     }
   } catch {
-    // A corrupt index must not block a hunt; it is a memory aid, not a source of
-    // truth about the heap.
+    // A corrupt index must not block a hunt — but it must not be silently
+    // erased either: returning empty here means the next `record` overwrites
+    // the file wholesale and every prior fingerprint is gone, which defeats the
+    // one thing this tool exists to do. Preserve it for recovery first.
+    try {
+      if (fs.existsSync(INDEX_PATH)) {
+        fs.renameSync(INDEX_PATH, `${INDEX_PATH}.corrupt`);
+      }
+    } catch {
+      // Best effort; a failed rename must not block the hunt either.
+    }
   }
   return {version: 1, findings: {}, combos_driven: {}};
 }
@@ -104,7 +113,10 @@ export function normalizeRetainerPath(raw: string): string {
     raw
       .replace(/@\d+/g, '@')
       .replace(/\[\d+\]/g, '[i]')
-      .replace(/\.\d+(?=\s|$|\.)/g, '.i')
+      // Broad lookahead: retainer paths carry trailing `)`, `]`, `>` and the
+      // separator inserted below, so a `\\s|$|\\.`-only lookahead leaves `.47)` /
+      // `.47>` unnormalized and feeds per-capture noise into the fingerprint.
+      .replace(/\.\d+(?=[^\w]|$)/g, '.i')
       .replace(/\b\d{4,}\b/g, 'N')
       .replace(/\s*(-->|--|→|->)\s*/g, ' > ')
       // `-->` would otherwise match `--` and `->` in turn, doubling the separator.

@@ -32,6 +32,20 @@ import {
  * under-seeded or under-fired run is still worth reporting, but only if it says
  * so.
  */
+/**
+ * A number field read from an untrusted manifest.
+ *
+ * `run.json` is JSON.parse of a file this tool does not own: it may come from an
+ * older manifest_version, or from a run the lease killed mid-rung. Calling
+ * `.toFixed()` on a missing field throws — crashing report generation for
+ * precisely the aborted run the tool exists to salvage.
+ */
+function num(value: unknown, digits: number, suffix = ''): string {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? `${value.toFixed(digits)}${suffix}`
+    : '—';
+}
+
 interface RunManifest {
   manifest_version?: number;
   run_id?: string;
@@ -56,6 +70,7 @@ interface RunManifest {
 function comboTable(log: Array<{combo: string; ok: boolean}>): string {
   const per = new Map<string, {ok: number; fail: number}>();
   for (const entry of log) {
+    if (entry == null || typeof entry.combo !== 'string') continue;
     const e = per.get(entry.combo) ?? {ok: 0, fail: 0};
     if (entry.ok) e.ok++;
     else e.fail++;
@@ -154,21 +169,34 @@ export function registerHuntReport(server: McpServer): void {
             markdownTable(
               ['#', 'Cycles', 'Post-GC heap', 'Elapsed', 'Trigger', 'Snapshot'],
               rungs.map(r => [
-                String(r.index),
-                formatNumber(r.cycles),
-                `${r.post_gc_heap_mb.toFixed(1)} MB`,
-                `${(r.elapsed_s / 60).toFixed(1)} min`,
-                r.reason,
-                r.path.split('/').pop() ?? r.path,
+                String(r.index ?? '—'),
+                typeof r.cycles === 'number' ? formatNumber(r.cycles) : '—',
+                num(r.post_gc_heap_mb, 1, ' MB'),
+                num(
+                  typeof r.elapsed_s === 'number'
+                    ? r.elapsed_s / 60
+                    : undefined,
+                  1,
+                  ' min',
+                ),
+                r.reason ?? '—',
+                (r.path ?? '').split('/').pop() || '—',
               ]),
               new Set([1, 2, 3]),
             ),
             '',
           );
-          const deltaMb = last.post_gc_heap_mb - first.post_gc_heap_mb;
-          const deltaCycles = last.cycles - first.cycles;
+          const haveHeap =
+            typeof first.post_gc_heap_mb === 'number' &&
+            typeof last.post_gc_heap_mb === 'number';
+          const deltaMb = haveHeap
+            ? last.post_gc_heap_mb - first.post_gc_heap_mb
+            : 0;
+          const deltaCycles = (last.cycles ?? 0) - (first.cycles ?? 0);
           lines.push(
-            `Post-GC heap moved **${deltaMb >= 0 ? '+' : ''}${deltaMb.toFixed(1)} MB** across ` +
+            (haveHeap
+              ? `Post-GC heap moved **${deltaMb >= 0 ? '+' : ''}${deltaMb.toFixed(1)} MB** across `
+              : 'Post-GC heap is not recorded in this manifest; cycles measured across ') +
               `${formatNumber(deltaCycles)} cycles` +
               (deltaCycles > 0
                 ? ` (${((deltaMb * 1024) / deltaCycles).toFixed(1)} KB/cycle)`
@@ -188,10 +216,12 @@ export function registerHuntReport(server: McpServer): void {
           const offHeapRows = rungs
             .filter(r => r.off_heap && Object.keys(r.off_heap).length > 0)
             .map(r => [
-              String(r.index),
+              String(r.index ?? '—'),
               String(r.off_heap?.storage_usage_mb ?? '—'),
               String(r.off_heap?.js_heap_mb ?? '—'),
               String(r.off_heap?.longtasks ?? '—'),
+              // every cell must be a string: markdownTable pads them, so a
+              // single undefined from a partial manifest throws
             ]);
           if (offHeapRows.length > 0) {
             lines.push(
