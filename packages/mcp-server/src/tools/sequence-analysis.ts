@@ -55,7 +55,7 @@ function isNoiseClass(type: string, name: string): boolean {
 // since baseline" and floods the report (observed: ~9,900 such keys, ~133k
 // nodes, in a single Ads snapshot). Collapse the id so they aggregate into one
 // comparable class across the sequence.
-function normalizeClassName(name: string): string {
+export function normalizeClassName(name: string): string {
   return name.replace(/ @\d+$/, ' @…');
 }
 
@@ -97,6 +97,152 @@ function classifyTrend(counts: number[]): Trend {
   if (down && net < 0) return 'monotonic-down';
   if (net > 0) return 'grew-net';
   return 'flat-or-mixed';
+}
+
+export interface SequenceStep {
+  label: string;
+  // Resolved local path, so a caller that needs the heap itself (not just the
+  // histogram) can re-open a rung without re-resolving manifold:// URLs.
+  localPath: string;
+  hist: Map<string, ClassStats>;
+  nodeCount: number;
+  totalSize: number;
+}
+
+export interface SequenceRow {
+  key: string;
+  type: string;
+  name: string;
+  counts: number[];
+  netCount: number;
+  netSize: number;
+  trend: Trend;
+  artifact: ArtifactKind | null;
+}
+
+export interface SequenceTrends {
+  steps: SequenceStep[];
+  // Growing classes, filtered and sorted. Known artifacts are INCLUDED and
+  // flagged via `artifact`; dropping them is a presentation choice each caller
+  // makes for itself.
+  rows: SequenceRow[];
+  // Union of non-noise class keys across all steps (for new-since-baseline).
+  keys: Set<string>;
+}
+
+/**
+ * Load an ordered ladder of snapshots and compute per-class growth trends.
+ *
+ * Extracted from the `memlab_sequence_analysis` handler so it can be composed
+ * (see `memlab_leak_report`) instead of re-implemented: the loop that loads each
+ * rung, histograms it, and drops the graph before the next is both the expensive
+ * part and the part that is easy to get subtly wrong (resolution, size guard,
+ * one-graph-resident-at-a-time).
+ *
+ * Failures THROW rather than returning an MCP error envelope — the callers are
+ * tool handlers that already wrap their body in try/catch, and a composed caller
+ * needs a failure it cannot accidentally treat as a result.
+ */
+export async function computeSequenceTrends(
+  paths: string[],
+  opts: {
+    minGrowthCount: number;
+    monotonicOnly?: boolean;
+    maxFileSizeMB?: number;
+    // Named in the size-limit error so the remedy it prints is callable.
+    toolName?: string;
+  },
+): Promise<SequenceTrends> {
+  const toolName = opts.toolName ?? 'memlab_sequence_analysis';
+  const steps: SequenceStep[] = [];
+
+  for (const p of paths) {
+    let local: string;
+    let fetchedFrom: string | null = null;
+    try {
+      const r = resolveSnapshotPath(p);
+      local = r.localPath;
+      fetchedFrom = r.fetchedFrom;
+    } catch (e) {
+      throw new Error(
+        `Failed to resolve "${p}": ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+    if (!fs.existsSync(local)) {
+      throw new Error(`File not found: ${local}`);
+    }
+    const sizeMB = fs.statSync(local).size / (1024 * 1024);
+    const effectiveMaxFileSizeMB = resolveMaxFileSizeMB(
+      opts.maxFileSizeMB,
+      fetchedFrom != null,
+    );
+    if (sizeMB > effectiveMaxFileSizeMB) {
+      throw new Error(
+        `${p} is ${sizeMB.toFixed(0)} MB — exceeds the ${effectiveMaxFileSizeMB} MB per-file safety limit. ` +
+          `Raise it with ${toolName}({max_file_size_mb: ${Math.ceil(sizeMB + 100)}}), ` +
+          `or restart the MCP server with more memory (NODE_OPTIONS="--max-old-space-size=8192") if it isn't already provisioned.`,
+      );
+    }
+    // Load sequentially and drop the graph before the next one so only
+    // one full graph is resident at a time (memory-safe for big heaps).
+    const snapshot = await getFullHeapFromFile(local);
+    const {hist, nodeCount, totalSize} = buildHistogram(snapshot);
+    steps.push({
+      label: fetchedFrom ?? p.replace(/^.*\//, ''),
+      localPath: local,
+      hist,
+      nodeCount,
+      totalSize,
+    });
+  }
+
+  const n = steps.length;
+
+  // Union of non-noise class keys.
+  const keys = new Set<string>();
+  for (const s of steps) {
+    for (const k of s.hist.keys()) {
+      const sep = k.indexOf('::');
+      const type = k.slice(0, sep);
+      const name = k.slice(sep + 2);
+      if (!isNoiseClass(type, name)) keys.add(k);
+    }
+  }
+
+  const rows: SequenceRow[] = [];
+  for (const k of keys) {
+    const counts = steps.map(s => s.hist.get(k)?.count ?? 0);
+    const sizes = steps.map(s => s.hist.get(k)?.selfSize ?? 0);
+    const netCount = counts[n - 1] - counts[0];
+    const netSize = sizes[n - 1] - sizes[0];
+    if (netCount < opts.minGrowthCount) continue;
+    const trend = classifyTrend(counts);
+    if (opts.monotonicOnly && trend !== 'monotonic-up') continue;
+    if (trend !== 'monotonic-up' && trend !== 'grew-net') continue;
+    const sep = k.indexOf('::');
+    const name = k.slice(sep + 2);
+    rows.push({
+      key: k,
+      type: k.slice(0, sep),
+      name,
+      counts,
+      netCount,
+      netSize,
+      trend,
+      artifact: classifyArtifact(name),
+    });
+  }
+  // Real growers first: genuine classes ahead of known artifacts, then
+  // monotonic ahead of noisy, then by net size delta.
+  rows.sort((a, b) => {
+    const aArt = a.artifact != null;
+    const bArt = b.artifact != null;
+    if (aArt !== bArt) return aArt ? 1 : -1;
+    if (a.trend !== b.trend) return a.trend === 'monotonic-up' ? -1 : 1;
+    return b.netSize - a.netSize;
+  });
+
+  return {steps, rows, keys};
 }
 
 export function registerSequenceAnalysis(server: McpServer): void {
@@ -159,108 +305,16 @@ export function registerSequenceAnalysis(server: McpServer): void {
       max_file_size_mb,
     }) => {
       try {
-        const steps: Array<{
-          label: string;
-          hist: Map<string, ClassStats>;
-          nodeCount: number;
-          totalSize: number;
-        }> = [];
-
-        for (const p of paths) {
-          let local: string;
-          let fetchedFrom: string | null = null;
-          try {
-            const r = resolveSnapshotPath(p);
-            local = r.localPath;
-            fetchedFrom = r.fetchedFrom;
-          } catch (e) {
-            return errorResult(
-              new Error(
-                `Failed to resolve "${p}": ${e instanceof Error ? e.message : String(e)}`,
-              ),
-            );
-          }
-          if (!fs.existsSync(local)) {
-            return errorResult(new Error(`File not found: ${local}`));
-          }
-          const sizeMB = fs.statSync(local).size / (1024 * 1024);
-          const effectiveMaxFileSizeMB = resolveMaxFileSizeMB(
-            max_file_size_mb,
-            fetchedFrom != null,
-          );
-          if (sizeMB > effectiveMaxFileSizeMB) {
-            return errorResult(
-              new Error(
-                `${p} is ${sizeMB.toFixed(0)} MB — exceeds the ${effectiveMaxFileSizeMB} MB per-file safety limit. ` +
-                  `Raise it with memlab_sequence_analysis({max_file_size_mb: ${Math.ceil(sizeMB + 100)}}), ` +
-                  `or restart the MCP server with more memory (NODE_OPTIONS="--max-old-space-size=8192") if it isn't already provisioned.`,
-              ),
-            );
-          }
-          // Load sequentially and drop the graph before the next one so only
-          // one full graph is resident at a time (memory-safe for big heaps).
-          const snapshot = await getFullHeapFromFile(local);
-          const {hist, nodeCount, totalSize} = buildHistogram(snapshot);
-          steps.push({
-            label: fetchedFrom ?? p.replace(/^.*\//, ''),
-            hist,
-            nodeCount,
-            totalSize,
-          });
-        }
+        const {steps, rows, keys} = await computeSequenceTrends(paths, {
+          minGrowthCount: min_growth_count,
+          monotonicOnly: monotonic_only,
+          maxFileSizeMB: max_file_size_mb,
+        });
 
         const n = steps.length;
         const first = steps[0].hist;
         const last = steps[n - 1].hist;
 
-        // Union of non-noise class keys.
-        const keys = new Set<string>();
-        for (const s of steps) {
-          for (const k of s.hist.keys()) {
-            const sep = k.indexOf('::');
-            const type = k.slice(0, sep);
-            const name = k.slice(sep + 2);
-            if (!isNoiseClass(type, name)) keys.add(k);
-          }
-        }
-
-        interface Row {
-          key: string;
-          counts: number[];
-          netCount: number;
-          netSize: number;
-          trend: Trend;
-          artifact: ArtifactKind | null;
-        }
-        const rows: Row[] = [];
-        for (const k of keys) {
-          const counts = steps.map(s => s.hist.get(k)?.count ?? 0);
-          const sizes = steps.map(s => s.hist.get(k)?.selfSize ?? 0);
-          const netCount = counts[n - 1] - counts[0];
-          const netSize = sizes[n - 1] - sizes[0];
-          if (netCount < min_growth_count) continue;
-          const trend = classifyTrend(counts);
-          if (monotonic_only && trend !== 'monotonic-up') continue;
-          if (trend !== 'monotonic-up' && trend !== 'grew-net') continue;
-          const name = k.slice(k.indexOf('::') + 2);
-          rows.push({
-            key: k,
-            counts,
-            netCount,
-            netSize,
-            trend,
-            artifact: classifyArtifact(name),
-          });
-        }
-        // Real growers first: genuine classes ahead of known artifacts, then
-        // monotonic ahead of noisy, then by net size delta.
-        rows.sort((a, b) => {
-          const aArt = a.artifact != null;
-          const bArt = b.artifact != null;
-          if (aArt !== bArt) return aArt ? 1 : -1;
-          if (a.trend !== b.trend) return a.trend === 'monotonic-up' ? -1 : 1;
-          return b.netSize - a.netSize;
-        });
         // Known artifacts dominate the top of this table in practice and none
         // of them is an app leak, so by default they are summarized rather than
         // listed. They are still counted, and `include_artifacts` brings them
@@ -327,9 +381,7 @@ export function registerSequenceAnalysis(server: McpServer): void {
         const rightCols = new Set<number>();
         for (let i = 2; i < headers.length - 1; i++) rightCols.add(i);
         const tableRows = top.map(r => {
-          const sep = r.key.indexOf('::');
-          const type = r.key.slice(0, sep);
-          const name = r.key.slice(sep + 2);
+          const {type, name} = r;
           const verdict =
             r.artifact != null
               ? artifactLabel(r.artifact)

@@ -71,6 +71,7 @@ import {registerGrowthSignals} from './tools/growth-signals.js';
 import {registerServerStatus} from './tools/server-status.js';
 import {registerDevArtifacts} from './tools/dev-artifacts.js';
 import {registerSequenceAnalysis} from './tools/sequence-analysis.js';
+import {registerLeakReport} from './tools/leak-report.js';
 import {registerEventRegistry} from './tools/event-registry.js';
 import {registerDominatorChain} from './tools/dominator-chain.js';
 import {registerDuplicateObjects} from './tools/duplicate-objects.js';
@@ -79,7 +80,7 @@ import {registerBatch} from './tools/batch.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.34.0', // keep in sync with package.json
+  version: '2.35.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -139,6 +140,7 @@ registerGrowthSignals(server);
 registerServerStatus(server);
 registerDevArtifacts(server);
 registerSequenceAnalysis(server);
+registerLeakReport(server);
 registerEventRegistry(server);
 registerDominatorChain(server);
 registerDuplicateObjects(server);

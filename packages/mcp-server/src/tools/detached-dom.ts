@@ -74,7 +74,7 @@ function extractTestId(node: IHeapNode): string {
   return '(no testid)';
 }
 
-function getFirstNonFrameworkRetainer(node: IHeapNode): string {
+export function getFirstNonFrameworkRetainer(node: IHeapNode): string {
   const frameworkNames = new Set([
     'system / Context',
     '(GC roots)',
@@ -101,7 +101,10 @@ function getFirstNonFrameworkRetainer(node: IHeapNode): string {
       from.type !== 'native'
     ) {
       const edgeName = String(edge.name_or_index);
-      return `${from.name} (${from.type}) .${edgeName}`;
+      // V8 leaves anonymous functions/objects unnamed; printing the empty
+      // string renders as a leading blank that reads like a formatting bug.
+      const fromName = from.name.length > 0 ? from.name : '(anonymous)';
+      return `${fromName} (${from.type}) .${edgeName}`;
     }
     cur = from;
   }
