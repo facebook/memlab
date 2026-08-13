@@ -77,6 +77,8 @@ import {registerExplainDelta} from './tools/explain-delta.js';
 import {registerHypothesis} from './tools/hypothesis.js';
 import {registerLadder} from './tools/ladder.js';
 import {registerFindingIndex} from './tools/finding-index.js';
+import {registerAppHeap} from './tools/app-heap.js';
+import {registerHuntReport} from './tools/hunt-report.js';
 import {registerEventRegistry} from './tools/event-registry.js';
 import {registerDominatorChain} from './tools/dominator-chain.js';
 import {registerDuplicateObjects} from './tools/duplicate-objects.js';
@@ -85,7 +87,7 @@ import {registerBatch} from './tools/batch.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.42.0', // keep in sync with package.json
+  version: '2.43.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -151,6 +153,8 @@ registerExplainDelta(server);
 registerHypothesis(server);
 registerLadder(server);
 registerFindingIndex(server);
+registerAppHeap(server);
+registerHuntReport(server);
 registerEventRegistry(server);
 registerDominatorChain(server);
 registerDuplicateObjects(server);
