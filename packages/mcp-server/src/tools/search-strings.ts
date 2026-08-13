@@ -26,6 +26,8 @@ export function registerSearchStrings(server: McpServer): void {
       'Unlike memlab_search_nodes which searches by node name/class, this searches the ' +
       'actual text content of strings. Essential for finding string constants (error messages, ' +
       'event names, config keys, URLs) and tracing them back to their origin. ' +
+      'Scope, because the two are easy to confuse: this sees ONLY the values of heap string nodes. ' +
+      "Class and constructor names (what memlab_class_histogram and memlab_search_nodes report) live in the snapshot name table and are NOT string nodes, so a class name will not be found here no matter how many instances exist — the result says so and points at the right tool when the pattern matches node names. Sliced strings are also skipped, since they share a parent string's storage. " +
       'Supports exact substring match and regex patterns. ' +
       "⚠ Full-heap scan over every string's content — slow on very large heaps (millions of nodes); use a specific pattern and a small limit.",
     {
@@ -91,9 +93,42 @@ export function registerSearchStrings(server: McpServer): void {
         let scannedCount = 0;
         let totalStringNodes = 0;
 
+        // Nodes whose NAME matches the pattern. A class/constructor name (e.g.
+        // `ChatstateCollection`) lives in the snapshot's name table, not as a
+        // heap string node, so it is invisible to a string-VALUE search: a real
+        // investigation saw 226 nodes named `*chatstate*` next to 5 matching
+        // string values and read the gap as a parser bug. Counted in the same
+        // pass so the cross-check costs nothing, and reported so the caller is
+        // pointed at memlab_search_nodes instead of concluding the data is
+        // missing.
+        let nameMatchCount = 0;
+        const nameMatchExamples: Array<{
+          id: number;
+          name: string;
+          type: string;
+        }> = [];
+        const matchesText = (v: string): boolean =>
+          regex
+            ? regex.test(v)
+            : substring != null
+              ? v.includes(substring)
+              : false;
+
         snapshot.nodes.forEach(node => {
           if (node.id <= 3) return;
-          if (!node.isString) return;
+          if (!node.isString) {
+            if (matchesText(node.name)) {
+              nameMatchCount++;
+              if (nameMatchExamples.length < 3) {
+                nameMatchExamples.push({
+                  id: node.id,
+                  name: node.name,
+                  type: node.type,
+                });
+              }
+            }
+            return;
+          }
           totalStringNodes++;
 
           const strNode = node.toStringNode();
@@ -145,6 +180,17 @@ export function registerSearchStrings(server: McpServer): void {
         });
 
         const patternDesc = regex ? `regex ${pattern}` : `"${pattern}"`;
+        const nameMatchNote =
+          nameMatchCount > 0
+            ? `\n\n> \u2139\ufe0f **${formatNumber(nameMatchCount)} non-string node(s) also match ${patternDesc} in their NAME** (e.g. ${nameMatchExamples
+                .map(
+                  e =>
+                    `@${e.id} \`${e.name.length > 40 ? e.name.slice(0, 37) + '\u2026' : e.name}\` (${e.type})`,
+                )
+                .join(
+                  ', ',
+                )}). This tool searches string VALUES only; class and constructor names live in the snapshot's name table, not in heap string nodes, so they never appear above. Search those with \`memlab_search_nodes({name_pattern: ...})\` or \`memlab_class_histogram\`.`
+            : '';
 
         if (matches.length === 0) {
           return toolResult(
@@ -156,7 +202,8 @@ export function registerSearchStrings(server: McpServer): void {
               '- Use a shorter or less specific pattern\n' +
               '- Use regex for flexible matching: `/partial.*match/i`\n' +
               '- Remove min_length/max_length filters\n' +
-              '- Use `memlab_duplicated_strings` if looking for repeated strings',
+              '- Use `memlab_duplicated_strings` if looking for repeated strings' +
+              nameMatchNote,
           );
         }
 
@@ -216,6 +263,8 @@ export function registerSearchStrings(server: McpServer): void {
             }
           }
         }
+
+        if (nameMatchNote) lines.push(nameMatchNote);
 
         lines.push('');
         lines.push('**Suggested next steps:**');

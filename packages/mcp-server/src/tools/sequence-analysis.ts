@@ -33,6 +33,7 @@ import {
   classifyArtifact,
   type ArtifactKind,
 } from '../artifact-classes.js';
+import {classifyNumericCapture, SMI_NUMBER_CLASS_KEY} from '../capture-mode.js';
 
 interface ClassStats {
   count: number;
@@ -444,9 +445,34 @@ export function registerSequenceAnalysis(server: McpServer): void {
         // unconditionally, which trains readers to dismiss a grower that may be
         // real.
         if (top.some(r => r.key === 'number::heap number')) {
+          // State the answer instead of asking the caller for it. The runtime
+          // and the numeric-capture mode are both derivable from the histograms
+          // already built above, at no extra cost: `smi number` is the marker
+          // node type, and a `Window …` class means a browser capture. See
+          // capture-mode.ts for the matched-pair measurements behind this.
+          const last = steps[n - 1].hist;
+          const isBrowser = [...last.keys()].some(k =>
+            k.startsWith('object::Window '),
+          );
+          const isNode =
+            !isBrowser && [...last.keys()].some(k => k === 'object::Module');
+          const verdict = classifyNumericCapture(
+            isBrowser ? 'browser' : isNode ? 'node' : 'unknown',
+            last.has(SMI_NUMBER_CLASS_KEY),
+          );
+          lines.push('', `> ⚠️ \`heap number\` is growing. ${verdict.note}`);
+        }
+        // `smi number` growth in a Node capture is pure capture overhead — those
+        // nodes do not exist unless the flag asked for them.
+        if (
+          top.some(r => r.key === SMI_NUMBER_CLASS_KEY) &&
+          ![...steps[n - 1].hist.keys()].some(k =>
+            k.startsWith('object::Window '),
+          )
+        ) {
           lines.push(
             '',
-            '> ⚠️ `heap number` is growing. **This is only a capture artifact if you captured with numeric values ON** (`capture_numeric_value: true`), which emits one node per distinct number. If you captured with it **OFF** (the default), these are ordinary boxed doubles and the growth may be real — investigate with `memlab_retainer_summary` on `heap number` rather than dismissing it. Check which setting your capture used before deciding.',
+            '> ⚠️ `smi number` is growing in a Node.js capture. Those nodes only exist because the snapshot was taken with numeric-value capture ON; they are capture overhead, not application memory. Re-capture without it to remove them from the trend.',
           );
         }
 

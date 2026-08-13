@@ -490,6 +490,16 @@ export function registerDevArtifacts(server: McpServer): void {
         const totals = summarizeDevOnly(snapshot, devRoots, reached);
         let examined = 0;
         let skippedBySize = 0;
+        // Dev-only objects that fall UNDER the display threshold, aggregated by
+        // class. The headline total already counts them, but the table did not
+        // show them at any size, so the common shape of an automation artifact —
+        // thousands of ~10 KB console-retained records, none individually near
+        // the 512 KB default — was invisible: a reader saw "N MB is dev-only",
+        // scanned an empty-looking table, and concluded there was nothing to
+        // discount. Grouping restores them without lowering the threshold.
+        const belowByClass = new Map<string, {count: number; bytes: number}>();
+        let belowDevOnlyCount = 0;
+        let belowDevOnlyBytes = 0;
         snapshot.nodes.forEach(node => {
           if (node.id <= 3) return;
           if (
@@ -501,6 +511,28 @@ export function registerDevArtifacts(server: McpServer): void {
           examined++;
           if (node.retainedSize < min_retained_size) {
             skippedBySize++;
+            // Test reachability directly rather than via classifyDevOnly: the
+            // latter also resolves the "via" label by walking retainers, which
+            // is far too expensive to pay per node on the below-threshold tail.
+            if (reached[node.nodeIndex] === 0) {
+              belowDevOnlyCount++;
+              // SELF size, not retained: retained sizes overlap wherever these
+              // objects nest, so summing them across a class reports more than
+              // exists. Self size is additive, and matches the units the
+              // "By source" breakdown above already uses.
+              belowDevOnlyBytes += node.self_size;
+              const key =
+                node.name.length > 0
+                  ? truncateNodeName(node.name, node.type, node.self_size, 40)
+                  : `(unnamed ${node.type})`;
+              const e = belowByClass.get(key);
+              if (e) {
+                e.count++;
+                e.bytes += node.self_size;
+              } else {
+                belowByClass.set(key, {count: 1, bytes: node.self_size});
+              }
+            }
             return;
           }
           const {devOnly, via} = classifyDevOnly(node, devRoots, reached);
@@ -561,6 +593,37 @@ export function registerDevArtifacts(server: McpServer): void {
             `min_retained_size (${formatBytes(min_retained_size)})`,
           ),
         );
+
+        // Below-threshold dev-only artifacts, grouped so a large aggregate made
+        // of small objects is visible in the table rather than only in the
+        // headline total.
+        if (belowDevOnlyCount > 0) {
+          const top = [...belowByClass.entries()]
+            .sort((a, b) => b[1].bytes - a[1].bytes)
+            .slice(0, 8);
+          lines.push(
+            '',
+            `### Below \`min_retained_size\` — dev-only, aggregated by class`,
+            '',
+            `**${formatNumber(belowDevOnlyCount)} dev-only object(s) totalling ${formatBytes(belowDevOnlyBytes)} of self size** are individually under the ${formatBytes(min_retained_size)} threshold, so none appears above. This is the usual shape of an automation artifact: many small records, no single large one.`,
+            '',
+            markdownTable(
+              ['Class', 'Count', 'Self (sum)'],
+              top.map(([name, v]) => [
+                name,
+                formatNumber(v.count),
+                formatBytes(v.bytes),
+              ]),
+              new Set([1, 2]),
+            ),
+          );
+          if (belowByClass.size > top.length) {
+            lines.push(
+              '',
+              `_… +${formatNumber(belowByClass.size - top.length)} more class(es). Lower \`min_retained_size\` to list individual objects._`,
+            );
+          }
+        }
         lines.push(
           '',
           '_"dev-only" = the object\'s dominator chain passes through a dev/extension global, a Blink a11y cache, or an inspector "DevTools console" global handle, so every retainer path goes through it. Dev-global-retained objects would be GC\'d in production; a11y-cache and DevTools-console retention are automation/inspector-inflated (the a11y tree is materialized by CDP; console-logged objects are held by the attached inspector) and not present in a normal user session with DevTools closed. Either way, discount from production leak totals. Verify with `memlab_retainer_trace`._',
