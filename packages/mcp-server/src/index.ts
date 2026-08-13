@@ -75,10 +75,11 @@ import {registerEventRegistry} from './tools/event-registry.js';
 import {registerDominatorChain} from './tools/dominator-chain.js';
 import {registerDuplicateObjects} from './tools/duplicate-objects.js';
 import {registerRetainerLayers} from './tools/retainer-layers.js';
+import {registerBatch} from './tools/batch.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.31.0', // keep in sync with package.json
+  version: '2.32.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -142,6 +143,7 @@ registerEventRegistry(server);
 registerDominatorChain(server);
 registerDuplicateObjects(server);
 registerRetainerLayers(server);
+registerBatch(server);
 
 async function main() {
   const transport = new StdioServerTransport();

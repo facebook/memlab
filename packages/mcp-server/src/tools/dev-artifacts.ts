@@ -39,6 +39,44 @@ const DEV_GLOBAL_EDGE_NAMES = new Set([
   'Debug', // window.Debug — common debugging handle (e.g. WhatsApp Web)
 ]);
 
+// React Fast Refresh (react-refresh) bookkeeping, installed on the global by the
+// DEV-only runtime. `$RefreshSig$` / `$RefreshReg$` close over the refresh
+// runtime's module-scope registries — `allFamiliesByID`, `allSignaturesByType`,
+// and the family/signature maps behind them — which hold every component type
+// and hook signature the page has ever compiled, plus the fibers and DOM those
+// types transitively reach.
+//
+// Neither the globals nor the registries exist in a production build, but the
+// chain roots at the real Window (not at a devtools hook or the inspector), so
+// every earlier check classified the whole family `production`. Measured cost of
+// getting this wrong: on one WA Web round ~93 MB of a 137.7 MB "detached DOM
+// leak" was Fast Refresh retention, and a later round reported a 16,375-entry /
+// 1.2 MB `allFamiliesByID` Map as a production cache-like collection. Both were
+// dev-build-only.
+const REACT_REFRESH_GLOBAL_EDGE_NAMES = new Set([
+  '$RefreshSig$',
+  '$RefreshReg$',
+]);
+
+// The automation/devtools *bridge* injected into the page by a CDP-driven
+// harness (the browser MCP plugin, a browser-tools extension, Puppeteer helper
+// bundles). This is the harness observing the app, not the app.
+//
+// Two independent signatures, both observed on real hunts:
+//   - `TOOL_DEFINITIONS`: the bridge's tool manifest, reached through its
+//     listener closure's scope chain. On one run it held 64 `.description`
+//     strings that `intern_opportunities` then reported as the single largest
+//     interning opportunity in the heap.
+//   - bridge entry points by name (`getDevToolBridge`,
+//     `BrowserToolsSuspenseInterop`), which show up as multi-MB `production`
+//     retainers in `dev_artifacts`' own table.
+//
+// Like `_debugStack` this is found by scanning edges rather than global roots,
+// because the bridge is reached from ordinary app-side listeners.
+const HARNESS_EDGE_NAMES = new Set(['TOOL_DEFINITIONS']);
+const HARNESS_NODE_NAME_RE =
+  /getDevToolBridge|BrowserToolsSuspenseInterop|__BROWSER_TOOLS_|__PUPPETEER_/;
+
 const DEV_NODE_NAME_RE = /__REACT_DEVTOOLS|DEVTOOLS_GLOBAL_HOOK|ReactDevTools/;
 
 // Blink accessibility caches. Under CDP-driven automation the a11y tree is
@@ -92,13 +130,20 @@ export interface DevRoots {
 }
 
 export type DevRootCategory =
-  'console' | 'a11y' | 'devGlobal' | 'reactDebugStack';
+  | 'console'
+  | 'a11y'
+  | 'devGlobal'
+  | 'reactDebugStack'
+  | 'reactFastRefresh'
+  | 'harness';
 
 const CATEGORY_LABEL: Record<DevRootCategory, string> = {
   console: 'DevTools console (CDP inspector)',
   a11y: 'a11y / CDP automation cache',
   devGlobal: 'dev/extension global',
   reactDebugStack: 'React DEV owner stack (_debugStack)',
+  reactFastRefresh: 'React Fast Refresh registry ($RefreshSig$)',
+  harness: 'automation/devtools bridge (test harness)',
 };
 
 /**
@@ -122,6 +167,13 @@ export function collectDevRoots(snapshot: IHeapSnapshot): DevRoots {
           byId.set(edge.toNode.id, eName);
           categoryById.set(edge.toNode.id, 'devGlobal');
         }
+        if (REACT_REFRESH_GLOBAL_EDGE_NAMES.has(eName) && edge.toNode.id > 3) {
+          byId.set(
+            edge.toNode.id,
+            `${eName} (React Fast Refresh; absent in production builds)`,
+          );
+          categoryById.set(edge.toNode.id, 'reactFastRefresh');
+        }
       }
     }
     // Objects held only by the attached inspector's console (CDP global
@@ -143,17 +195,23 @@ export function collectDevRoots(snapshot: IHeapSnapshot): DevRoots {
       }
     }
     // React DEV owner stacks hang off fibers, which are reachable from LIVE
-    // DOM nodes — so they are found by scanning edges, not global roots.
+    // DOM nodes — so they are found by scanning edges, not global roots. The
+    // automation bridge is reached the same way, from app-side listeners.
     for (const edge of node.references) {
-      if (
-        REACT_DEBUG_STACK_EDGE_NAMES.has(String(edge.name_or_index)) &&
-        edge.toNode.id > 3
-      ) {
+      const eName = String(edge.name_or_index);
+      if (REACT_DEBUG_STACK_EDGE_NAMES.has(eName) && edge.toNode.id > 3) {
         byId.set(
           edge.toNode.id,
           'React DEV owner stack (_debugStack; absent in production builds)',
         );
         categoryById.set(edge.toNode.id, 'reactDebugStack');
+      }
+      if (HARNESS_EDGE_NAMES.has(eName) && edge.toNode.id > 3) {
+        byId.set(
+          edge.toNode.id,
+          `${eName} (automation/devtools bridge injected by the harness)`,
+        );
+        categoryById.set(edge.toNode.id, 'harness');
       }
     }
     if (DEV_NODE_NAME_RE.test(node.name)) {
@@ -163,6 +221,10 @@ export function collectDevRoots(snapshot: IHeapSnapshot): DevRoots {
     if (AX_NODE_NAME_RE.test(node.name)) {
       byId.set(node.id, `${node.name} (a11y/CDP automation cache)`);
       categoryById.set(node.id, 'a11y');
+    }
+    if (HARNESS_NODE_NAME_RE.test(node.name)) {
+      byId.set(node.id, `${node.name} (automation/devtools bridge)`);
+      categoryById.set(node.id, 'harness');
     }
   });
   return {byId, categoryById};
@@ -223,6 +285,8 @@ const CATEGORY_BIT: Record<DevRootCategory, number> = {
   a11y: 2,
   devGlobal: 4,
   reactDebugStack: 8,
+  reactFastRefresh: 16,
+  harness: 32,
 };
 
 /**

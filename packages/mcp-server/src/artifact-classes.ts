@@ -146,6 +146,72 @@ export function artifactNote(kind: ArtifactKind): string {
 }
 
 /**
+ * Content signatures of strings that belong to the MEASUREMENT HARNESS rather
+ * than to the application: the CDP-driven bridge the agent injects to observe
+ * the page (browser MCP plugin, browser-tools extension, Puppeteer helpers).
+ *
+ * Why this needs its own classifier, separate from `classifyArtifact`: these are
+ * matched on string CONTENT, not on a class name, and they are not reachable
+ * from a dev *global*, so neither the class-name registry above nor
+ * `dev_artifacts`' root scan sees them.
+ *
+ * Why it matters: on a measured WA Web round the injected bridge bundle appeared
+ * as 64 copies of one 235.6 KB string — 14.7 MB total, the single largest entry
+ * in `duplicated_strings` and the single largest "opportunity" in
+ * `intern_opportunities`. Interning it would save the application nothing,
+ * because none of it ships. Reporting it as a win is worse than not reporting it
+ * at all: it sends a fix author after the test rig.
+ */
+const HARNESS_STRING_SIGNATURES: ReadonlyArray<{
+  re: RegExp;
+  what: string;
+}> = [
+  {
+    // The UMD/CommonJS prologue every bundled bridge is wrapped in. Anchored at
+    // the start and required to reach `commonjsGlobal` within the prologue, so
+    // ordinary application source strings do not match.
+    re: /^\(function\s*\(exports\)\s*\{[\s\S]{0,400}commonjsGlobal/,
+    what: 'injected CommonJS bundle (automation/devtools bridge)',
+  },
+  {
+    re: /^\s*at (?:Object\.)?__PUPPETEER|puppeteer_evaluation_script/,
+    what: 'Puppeteer evaluation frame',
+  },
+];
+
+/**
+ * Classify a string VALUE as harness-injected, or null when it is app content.
+ * Returns a short human description of what it is, for the row annotation.
+ */
+export function classifyHarnessString(value: string): string | null {
+  for (const {re, what} of HARNESS_STRING_SIGNATURES) {
+    if (re.test(value)) return what;
+  }
+  return null;
+}
+
+/**
+ * Recognize the parent object SHAPE of an MCP/devtools tool manifest entry.
+ *
+ * The bridge's tool definitions carry long `.description` strings — one per tool
+ * — and a per-load intern pool would happily "save" them. The shape is
+ * distinctive enough to match directly, and matching the shape (rather than the
+ * description text) keeps app strings that merely have a `description` property
+ * out of it.
+ */
+export function isHarnessToolManifestShape(
+  propNames: ReadonlyArray<string>,
+): boolean {
+  const props = new Set(propNames);
+  return (
+    props.has('description') &&
+    props.has('inputSchema') &&
+    (props.has('call') || props.has('handler')) &&
+    props.has('name')
+  );
+}
+
+/**
  * Classify a class NAME as a known measurement artifact, or null when it is a
  * genuine leak candidate.
  */

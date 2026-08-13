@@ -17,6 +17,7 @@ import {
   toolResult,
   looksLikeFailurePayload,
 } from '../utils.js';
+import {classifyHarnessString} from '../artifact-classes.js';
 
 export function registerDuplicatedStrings(server: McpServer): void {
   server.tool(
@@ -97,6 +98,7 @@ export function registerDuplicatedStrings(server: McpServer): void {
               example_node_ids: stats.example_node_ids,
               field_context: null as string | null,
               actionability: null as string | null,
+              harness_what: null as string | null,
             };
           });
 
@@ -158,7 +160,14 @@ export function registerDuplicatedStrings(server: McpServer): void {
               }
             }
           }
-          if (appCount > 0 && frameworkCount > 0) {
+          // Harness-injected content outranks the app/framework split: it is
+          // not the application's memory at all, so it must never be counted
+          // toward an interning win (see classifyHarnessString).
+          const harness = classifyHarnessString(d.value);
+          if (harness != null) {
+            d.actionability = 'harness';
+            d.harness_what = harness;
+          } else if (appCount > 0 && frameworkCount > 0) {
             d.actionability = 'mixed';
           } else if (frameworkCount > 0) {
             d.actionability = 'framework';
@@ -170,6 +179,13 @@ export function registerDuplicatedStrings(server: McpServer): void {
         const appActionableCount = duplicated.filter(
           d => d.actionability === 'app' || d.actionability === 'mixed',
         ).length;
+        const harnessEntries = duplicated.filter(
+          d => d.actionability === 'harness',
+        );
+        const harnessBytes = harnessEntries.reduce(
+          (sum, d) => sum + d.potential_savings,
+          0,
+        );
 
         const lines = duplicated.map((d, i) => {
           const val =
@@ -180,7 +196,12 @@ export function registerDuplicatedStrings(server: McpServer): void {
           const context = d.field_context
             ? `\n   commonly held as: ${d.field_context}`
             : '';
-          const actionLabel = d.actionability ? ` [${d.actionability}]` : '';
+          const actionLabel =
+            d.actionability === 'harness'
+              ? ` [harness — ${d.harness_what ?? 'measurement harness'}; not app memory]`
+              : d.actionability
+                ? ` [${d.actionability}]`
+                : '';
           const savingsLabel =
             d.potential_savings > 0
               ? `, savings: ${formatBytes(d.potential_savings)}`
@@ -221,8 +242,11 @@ export function registerDuplicatedStrings(server: McpServer): void {
           );
         }
 
+        // Harness content is excluded from the headline: the number a caller
+        // acts on must be reclaimable from the application.
         const totalSavings = duplicated.reduce(
-          (sum, d) => sum + d.potential_savings,
+          (sum, d) =>
+            d.actionability === 'harness' ? sum : sum + d.potential_savings,
           0,
         );
 
@@ -231,7 +255,12 @@ export function registerDuplicatedStrings(server: McpServer): void {
             ? `${appActionableCount} of ${duplicated.length} entries are app-actionable`
             : `${duplicated.length} entries (all framework-held)`;
 
-        const body = `Duplicated strings (${summaryLine}):\n\n${lines.join('\n')}\n\n**Total interning savings: ${formatBytes(totalSavings)}** (if each string were stored only once)`;
+        const harnessNote =
+          harnessEntries.length > 0
+            ? `\n\n⚠️ **${harnessEntries.length} entr${harnessEntries.length === 1 ? 'y' : 'ies'} (${formatBytes(harnessBytes)}) excluded from the total as measurement-harness content** — the CDP/devtools bridge injected into the page to drive this session, not application memory. Interning it reclaims nothing in production.`
+            : '';
+
+        const body = `Duplicated strings (${summaryLine}):\n\n${lines.join('\n')}\n\n**Total interning savings: ${formatBytes(totalSavings)}** (if each string were stored only once, harness content excluded)${harnessNote}`;
         return toolResult(
           suggestions.length > 0
             ? `${body}\n\n---\n\n${suggestions.join('\n')}`

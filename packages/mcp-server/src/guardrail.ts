@@ -17,6 +17,7 @@ import {
   ScanTimeoutError,
 } from './analysis-budget.js';
 import {toolResult} from './utils.js';
+import {recordToolHandler} from './tool-registry.js';
 
 type AnyFn = (...a: unknown[]) => unknown;
 
@@ -40,6 +41,19 @@ export function installAnalysisGuardrail(server: McpServer): void {
     const handler = toolArgs[lastIdx];
     if (typeof handler === 'function') {
       const inner = handler as AnyFn;
+      // Index the raw handler plus its zod shape so tools can dispatch to each
+      // other in-process without re-entering the budget, and without losing the
+      // schema defaults the SDK would normally apply (see tool-registry.ts).
+      // Registration is tool(name, description?, shape?, handler): the shape is
+      // whatever plain object sits immediately before the handler.
+      const maybeShape = lastIdx > 0 ? toolArgs[lastIdx - 1] : undefined;
+      const shape =
+        maybeShape != null &&
+        typeof maybeShape === 'object' &&
+        !Array.isArray(maybeShape)
+          ? (maybeShape as Record<string, unknown>)
+          : null;
+      recordToolHandler(name, inner, shape);
       toolArgs[lastIdx] = async (...hArgs: unknown[]) => {
         // The SDK calls handler(args, extra) for schema tools, handler(extra)
         // otherwise. Read an optional per-call timeout_ms off the params.
