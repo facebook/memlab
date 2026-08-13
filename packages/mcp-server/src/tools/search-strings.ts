@@ -10,7 +10,7 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
-import {getSnapshot} from '../heap-state.js';
+import {getSnapshot, isLightSnapshot} from '../heap-state.js';
 import {
   formatBytes,
   formatNumber,
@@ -63,7 +63,8 @@ export function registerSearchStrings(server: McpServer): void {
     },
     async ({pattern, limit, min_length, max_length, show_referrers}) => {
       try {
-        const snapshot = getSnapshot();
+        const snapshot = getSnapshot({allowLight: true});
+        const light = isLightSnapshot();
 
         let regex: RegExp | null = null;
         let substring: string | null = null;
@@ -112,7 +113,10 @@ export function registerSearchStrings(server: McpServer): void {
 
           if (!isMatch) return;
 
-          const size = node.retainedSize;
+          // A light load has no retained sizes, so ranking by them would sort
+          // every match to a tie and silently return scan order instead of the
+          // heaviest strings. Fall back to self size, which is always present.
+          const size = light ? node.self_size : node.retainedSize;
           let inserted = false;
           for (let i = 0; i < matches.length; i++) {
             if (size > matches[i].retainedSize) {
@@ -162,7 +166,13 @@ export function registerSearchStrings(server: McpServer): void {
           '',
         ];
 
-        const headers = ['ID', 'Preview', 'Length', 'Self Size', 'Retained'];
+        const headers = [
+          'ID',
+          'Preview',
+          'Length',
+          'Self Size',
+          light ? 'Retained (n/a)' : 'Retained',
+        ];
         const rightCols = new Set([2, 3, 4]);
         const rows = matches.map(m => {
           const preview =
@@ -174,7 +184,7 @@ export function registerSearchStrings(server: McpServer): void {
             `"${preview.replace(/\n/g, '\\n').replace(/\|/g, '\\|')}"`,
             formatNumber(m.stringValue.length),
             formatBytes(m.selfSize),
-            formatBytes(m.retainedSize),
+            light ? 'n/a (light)' : formatBytes(m.retainedSize),
           ];
         });
         lines.push(markdownTable(headers, rows, rightCols));

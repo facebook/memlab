@@ -88,7 +88,11 @@ export function registerSearchNodes(server: McpServer): void {
       timeout_ms,
     }) => {
       try {
-        const snapshot = getSnapshot();
+        // A retained-size FILTER needs the dominator pass; without it the scan
+        // is name/type/self-size only, which a light load fully supports.
+        const snapshot = getSnapshot({
+          allowLight: min_retained_size == null,
+        });
         const nameRegex = name_pattern ? new RegExp(name_pattern, 'i') : null;
         const effectiveLimit =
           output_mode === 'ids' ? Math.min(limit, 10000) : Math.min(limit, 500);

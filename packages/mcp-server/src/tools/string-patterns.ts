@@ -10,7 +10,7 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
-import {getSnapshot} from '../heap-state.js';
+import {getSnapshot, isLightSnapshot} from '../heap-state.js';
 import {
   formatBytes,
   formatNumber,
@@ -56,7 +56,8 @@ export function registerStringPatterns(server: McpServer): void {
     },
     async ({prefix_length, min_count, min_total_size, limit}) => {
       try {
-        const snapshot = getSnapshot();
+        const snapshot = getSnapshot({allowLight: true});
+        const light = isLightSnapshot();
 
         const groups = new Map<
           string,
@@ -122,7 +123,7 @@ export function registerStringPatterns(server: McpServer): void {
           'Prefix',
           'Count',
           'Total Size',
-          'Retained',
+          light ? 'Retained (n/a)' : 'Retained',
           'Len Range',
           'Examples',
         ];
@@ -138,7 +139,7 @@ export function registerStringPatterns(server: McpServer): void {
             displayPrefix,
             formatNumber(g.count),
             formatBytes(g.total_self_size),
-            formatBytes(g.total_retained_size),
+            light ? 'n/a (light)' : formatBytes(g.total_retained_size),
             lenRange,
             g.example_ids.map(id => `@${id}`).join(', '),
           ];

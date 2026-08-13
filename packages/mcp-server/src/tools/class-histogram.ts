@@ -101,7 +101,9 @@ export function registerClassHistogram(server: McpServer): void {
       suppress_suggestions,
     }) => {
       try {
-        const snapshot = getSnapshot();
+        // Light-safe only without retained sizes: the retained path walks the
+        // dominator tree, which a light load never built.
+        const snapshot = getSnapshot({allowLight: !include_retained_size});
         const meta = getSnapshotMetadata();
 
         // Flat strings and numbers are leaf nodes: they dominate nothing but

@@ -16,15 +16,22 @@ import path from 'path';
 import v8 from 'v8';
 import {execFileSync} from 'child_process';
 import {z} from 'zod';
+import memlabCore from '@memlab/core';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
 const {getFullHeapFromFile} = memlabHeapAnalysis;
+// `getFullHeapFromFile` = parse + `analysis.preparePathFinder`. Light mode calls
+// only the parse half, so the two pieces are reached directly here. Measured on
+// a 380 MB / 4.19M-node browser snapshot: parse 7.9s, preparePathFinder 9.9s.
+const {utils: memlabUtils} = memlabCore;
 import {
   setSnapshot,
   getSnapshotMetadata,
   setSessionConfig,
   listSnapshots,
   clearAllSnapshots,
+  evictLeastRecentlyUsed,
 } from '../heap-state.js';
+import {makeProgressReporter} from '../progress.js';
 import type {SnapshotEnv} from '../heap-state.js';
 import {
   formatBytes,
@@ -83,6 +90,54 @@ export const WARN_NODE_COUNT = 2_000_000;
 // 45–49M-edge band, still rejects the 89M-edge / 2 GB band).
 export const NODES_PER_HEAP_MB = 1700;
 export const EDGES_PER_HEAP_MB = 6800;
+
+// Per-node / per-edge working-set estimate for a full load, fitted to a
+// measured browser capture: 4,185,734 nodes + 18,755,739 edges peaked at
+// ~1,500 MB RSS (200 B/node + 40 B/edge predicts ~1,588 MB). Deliberately a
+// slight OVER-estimate — the failure this guards against is an OOM that kills
+// every resident snapshot, so erring toward "not enough headroom" is the cheap
+// direction to be wrong in. File size is not used: it correlates poorly with
+// graph cost, which is why the node/edge ceilings exist at all.
+export const LOAD_BYTES_PER_NODE = 200;
+export const LOAD_BYTES_PER_EDGE = 40;
+
+// Fraction of remaining old-space a single load may be projected to consume
+// before the guard fires. Well below 1.0 because the estimate is approximate,
+// the parse allocates in bursts the GC cannot always keep up with, and analysis
+// after the load needs room of its own.
+export const HEADROOM_SAFETY_FRACTION = 0.8;
+
+/**
+ * Projected additional heap (MB) a full load of this graph will occupy.
+ * Light loads skip the dominator/retained-size arrays; the parsed graph still
+ * dominates, so the discount is modest and intentionally conservative.
+ */
+export function estimateLoadHeapMB(
+  counts: {nodeCount: number; edgeCount: number},
+  light: boolean,
+): number {
+  const bytes =
+    counts.nodeCount * LOAD_BYTES_PER_NODE +
+    counts.edgeCount * LOAD_BYTES_PER_EDGE;
+  return Math.round((bytes / (1024 * 1024)) * (light ? 0.85 : 1));
+}
+
+/**
+ * Old-space headroom (MB) left for a new load: the configured limit minus what
+ * is already committed. Returns null when the limit can't be read, in which case
+ * the caller skips the guard rather than guessing.
+ */
+export function getHeapHeadroomMB(): number | null {
+  try {
+    const s = v8.getHeapStatistics();
+    const limit = s.heap_size_limit / (1024 * 1024);
+    const used = s.used_heap_size / (1024 * 1024);
+    if (!Number.isFinite(limit) || limit <= 0) return null;
+    return Math.max(0, Math.round(limit - used));
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Configured V8 old-space limit in MB (reflects --max-old-space-size). Returns 0
@@ -348,6 +403,7 @@ function detectEnv(snapshot: IHeapSnapshot): SnapshotEnv {
 function quickDiagnosis(
   snapshot: IHeapSnapshot,
   totalSelfSize: number,
+  light = false,
 ): string[] {
   const warnings: string[] = [];
 
@@ -395,7 +451,10 @@ function quickDiagnosis(
     warnings.push(`⚠ "${display}" duplicated ${formatNumber(count)} times`);
   }
 
-  const largest = findLargestObject(snapshot);
+  // Skipped on a light load: `findLargestObject` ranks by retainedSize, which
+  // is uncomputed there — every candidate would read 0 and the "retains N% of
+  // heap" line would be fiction.
+  const largest = light ? null : findLargestObject(snapshot);
   if (largest && totalSelfSize > 0) {
     const pct = ((largest.size / totalSelfSize) * 100).toFixed(0);
     if (largest.size >= totalSelfSize * 0.3) {
@@ -480,20 +539,36 @@ export function registerLoadSnapshot(server: McpServer): void {
         .boolean()
         .optional()
         .describe(
-          'Bypass the node/edge-count ceiling and attempt the load anyway (default false). force:true is self-sizing — it uses the header-peeked counts, so you do NOT also need to pass max_nodes/max_edges. The load cannot be interrupted once started, so only use this when you accept a potentially very long load or possible OOM.',
+          'Bypass the node/edge-count ceiling AND the memory-headroom guard, and attempt the load anyway (default false). force:true is self-sizing — it uses the header-peeked counts, so you do NOT also need to pass max_nodes/max_edges. The load cannot be interrupted once started, so only use this when you accept a potentially very long load or possible OOM.',
+        ),
+      light: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Count-only load: parse the graph but SKIP the dominator / retained-size / shortest-path pass (default false). Roughly halves load time (measured on a 380 MB / 4.19M-node capture: 18s → 8s) for questions that only need counts, names, types, self sizes or string values. The saving is time, not memory — the parsed graph is the bulk of the working set. A light snapshot REFUSES any tool that needs retained sizes, dominators or retainer paths (memlab_retainer_trace, memlab_detached_dom, memlab_largest_objects, memlab_dominator_*, …) instead of silently reporting zeros; reload without light to run those. Light-safe: memlab_class_histogram (include_retained_size:false), memlab_search_nodes, memlab_search_strings, memlab_string_patterns, memlab_snapshot_summary, memlab_snapshot_header, memlab_snapshots.',
         ),
     },
-    async ({
-      file_path,
-      alias,
-      keep_previous,
-      quiet,
-      suppress_suggestions,
-      max_file_size_mb,
-      max_nodes,
-      max_edges,
-      force,
-    }) => {
+    async (
+      {
+        file_path,
+        alias,
+        keep_previous,
+        quiet,
+        suppress_suggestions,
+        max_file_size_mb,
+        max_nodes,
+        max_edges,
+        force,
+        light,
+      },
+      extra: unknown,
+    ) => {
+      // 6 phases: resolve → guards → parse → (dominators | skipped) → index →
+      // diagnose. Reported at boundaries only; see progress.ts for why there is
+      // nothing finer-grained available.
+      const progress = makeProgressReporter(extra, 'load_snapshot');
+      const PHASES = 6;
       try {
         if (quiet != null || suppress_suggestions != null) {
           setSessionConfig({
@@ -504,6 +579,11 @@ export function registerLoadSnapshot(server: McpServer): void {
           });
         }
         const previousMeta = getSnapshotMetadata();
+        progress.phase(
+          1,
+          PHASES,
+          `resolving ${file_path} (a manifold:// or bare filename is fetched here)`,
+        );
         let resolved: string;
         let fetchedFrom: string | null = null;
         try {
@@ -637,8 +717,8 @@ export function registerLoadSnapshot(server: McpServer): void {
             ? `${formatNumber(counts.nodeCount)} nodes / ${formatNumber(counts.edgeCount)} edges, `
             : '';
           process.stderr.write(
-            `Loading ${formatBytes(fileStat.size)} snapshot (${countStr}parsing → dominators → retained sizes). ` +
-              `This runs uninterruptibly and can take minutes on a large/deep heap; if it appears to hang it is the dominator pass, not a crash.\n`,
+            `Loading ${formatBytes(fileStat.size)} snapshot (${countStr}parsing${light ? '' : ' → dominators → retained sizes'}). ` +
+              `This runs uninterruptibly and can take minutes on a large/deep heap; if it appears to hang it is the ${light ? 'parse' : 'dominator pass'}, not a crash.\n`,
           );
         }
 
@@ -650,9 +730,85 @@ export function registerLoadSnapshot(server: McpServer): void {
           clearAllSnapshots();
         }
 
+        // Memory-headroom guard. The count ceiling above bounds the graph in the
+        // ABSTRACT; this bounds it against what this process actually has left,
+        // which is a different question once other snapshots are resident. When
+        // the projection does not fit, evict cold snapshots (never the current
+        // one) before refusing — an OOM here kills every resident snapshot and
+        // the whole session's state, so shedding the coldest is strictly better.
+        const evicted: string[] = [];
+        let headroomMB = getHeapHeadroomMB();
+        let estimateMB: number | null = null;
+        if (counts != null && headroomMB != null) {
+          estimateMB = estimateLoadHeapMB(counts, light);
+          while (
+            estimateMB > (headroomMB ?? 0) * HEADROOM_SAFETY_FRACTION &&
+            !force
+          ) {
+            const victim = evictLeastRecentlyUsed();
+            if (victim == null) break;
+            evicted.push(victim.handle);
+            headroomMB = getHeapHeadroomMB();
+          }
+          if (
+            !force &&
+            estimateMB > (headroomMB ?? 0) * HEADROOM_SAFETY_FRACTION
+          ) {
+            const heapMB = getOldSpaceLimitMB();
+            return errorResult(
+              new Error(
+                `Not enough memory headroom to load this snapshot: it projects to ~${formatNumber(estimateMB)} MB ` +
+                  `(${formatNumber(counts.nodeCount)} nodes × ${LOAD_BYTES_PER_NODE} B + ${formatNumber(counts.edgeCount)} edges × ${LOAD_BYTES_PER_EDGE} B), ` +
+                  `over the ~${formatNumber(Math.round((headroomMB ?? 0) * HEADROOM_SAFETY_FRACTION))} MB budget for one load ` +
+                  `(${Math.round(HEADROOM_SAFETY_FRACTION * 100)}% of the ~${formatNumber(headroomMB ?? 0)} MB free of this server's ~${formatNumber(heapMB)} MB old-space limit; the rest is reserved because the estimate is approximate and the parse allocates in bursts)` +
+                  (evicted.length > 0
+                    ? ` (after unloading ${evicted.length} cold snapshot(s): ${evicted.join(', ')})`
+                    : '') +
+                  `.\n\nAn out-of-memory crash here would take every resident snapshot and all session state with it, so the load is refused instead.\n\nOptions:\n` +
+                  `1. Unload snapshots you no longer need: memlab_snapshots({action: "unload", handle: "…"}).\n` +
+                  `2. Load light — skips the dominator/retained-size pass: memlab_load_snapshot({file_path: "${file_path}", light: true}).\n` +
+                  `3. Use a smaller/earlier snapshot, or memlab_sequence_analysis for trend questions (it holds one graph at a time).\n` +
+                  `4. Restart the server with more memory: NODE_OPTIONS="--max-old-space-size=8192".\n` +
+                  `5. Override this projection with force:true (accepts the OOM risk).`,
+              ),
+            );
+          }
+        }
+
+        progress.phase(
+          2,
+          PHASES,
+          `guards passed${estimateMB != null ? ` (projected ~${formatNumber(estimateMB)} MB, ~${formatNumber(headroomMB ?? 0)} MB free)` : ''}${evicted.length > 0 ? `, evicted ${evicted.join(', ')}` : ''}`,
+        );
+        progress.phase(
+          3,
+          PHASES,
+          `parsing ${formatBytes(fileStat.size)} — this phase is synchronous and emits no further updates until it completes`,
+        );
+
         let snapshot;
         try {
-          snapshot = await getFullHeapFromFile(resolved);
+          if (light) {
+            // Parse only. `preparePathFinder` (shortest paths + dominators +
+            // retained sizes + Fiber marking) is the half being skipped, and it
+            // is the expensive half.
+            snapshot = await memlabUtils.getSnapshotFromFile(resolved, {
+              buildNodeIdIndex: true,
+              verbose: false,
+            });
+            progress.phase(
+              4,
+              PHASES,
+              'parsed; dominator/retained-size pass SKIPPED (light mode)',
+            );
+          } else {
+            snapshot = await getFullHeapFromFile(resolved);
+            progress.phase(
+              4,
+              PHASES,
+              'parsed; dominator tree and retained sizes computed',
+            );
+          }
         } catch (loadErr: unknown) {
           const msg =
             loadErr instanceof Error ? loadErr.message : String(loadErr);
@@ -681,6 +837,8 @@ export function registerLoadSnapshot(server: McpServer): void {
           throw loadErr;
         }
 
+        progress.phase(5, PHASES, 'indexing nodes and edges');
+
         let nodeCount = 0;
         let edgeCount = 0;
         let totalSize = 0;
@@ -705,6 +863,7 @@ export function registerLoadSnapshot(server: McpServer): void {
             edgeCount,
             totalSize,
             env,
+            light,
           },
           {alias, replace: !keep_previous},
         );
@@ -724,9 +883,29 @@ export function registerLoadSnapshot(server: McpServer): void {
         if (fetchedFrom) {
           lines.push(`Fetched from Manifold: ${fetchedFrom}`);
         }
+        if (evicted.length > 0) {
+          lines.push(
+            `⚠ Unloaded ${evicted.length} cold snapshot(s) to make room: ${evicted.join(', ')}`,
+          );
+        }
         lines.push(
           `Loaded ${fileName} (${formatBytes(fileStat.size)} on disk): ${formatNumber(nodeCount)} nodes, ${formatNumber(edgeCount)} edges, ${formatBytes(totalSize)} heap size (${envLabel} snapshot) [handle: ${meta.handle}]`,
         );
+        if (light) {
+          lines.push(
+            '⚡ **LIGHT mode** — dominator tree, retained sizes and retainer paths were NOT computed. Counts, names, types, self sizes and string values are available; tools needing retention data will refuse rather than report zeros. Reload without `light` for those.',
+          );
+        }
+        // Report headroom on every load, not just when the guard fires: the
+        // number a caller needs in order to decide whether to keep_previous the
+        // NEXT one is what is left after this load, and nothing else surfaces it.
+        const headroomAfterMB = getHeapHeadroomMB();
+        if (headroomAfterMB != null) {
+          const limitMB = getOldSpaceLimitMB();
+          lines.push(
+            `Memory: ~${formatNumber(headroomAfterMB)} MB of the ~${formatNumber(limitMB)} MB old-space limit still free after this load.`,
+          );
+        }
         const captured = extractCaptureTime(fileName);
         if (captured) {
           const iso = captured.toISOString().slice(0, 10);
@@ -755,7 +934,8 @@ export function registerLoadSnapshot(server: McpServer): void {
           }
         }
 
-        const warnings = quickDiagnosis(snapshot, totalSize);
+        progress.phase(6, PHASES, 'running quick diagnosis');
+        const warnings = quickDiagnosis(snapshot, totalSize, light);
         if (warnings.length > 0) {
           lines.push('', ...warnings);
         }

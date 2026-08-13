@@ -17,6 +17,7 @@ import type {
 import {
   getSnapshotMetadata,
   getSessionConfig,
+  isLightSnapshot,
   shouldEmitHeader,
 } from './heap-state.js';
 // ScanTimeoutError / makeScanBudget moved to analysis-budget.ts (shared, no
@@ -1063,6 +1064,10 @@ export function formatRetainerTree(
 }
 
 export function formatNodeSummaryTable(nodes: NodeSummary[]): string {
+  // On a light load there is no dominator pass, so every `retainedSize` reads
+  // 0. Printing "0 B" in a Retained Size column is a wrong answer wearing the
+  // costume of a right one; say the number does not exist instead.
+  const light = isLightSnapshot();
   const headers = ['ID', 'Name', 'Type', 'Self Size', 'Retained Size'];
   const rightCols = new Set([3, 4]);
   const rows = nodes.map(n => [
@@ -1070,7 +1075,7 @@ export function formatNodeSummaryTable(nodes: NodeSummary[]): string {
     n.name,
     n.type,
     formatBytes(n.self_size),
-    formatBytes(n.retained_size),
+    light ? 'n/a (light)' : formatBytes(n.retained_size),
   ]);
   return markdownTable(headers, rows, rightCols);
 }

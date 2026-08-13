@@ -56,6 +56,13 @@ export interface SnapshotMetadata {
   edgeCount: number;
   totalSize: number;
   env: SnapshotEnv;
+  /**
+   * True when the snapshot was parsed WITHOUT memlab's path/dominator pass
+   * (`memlab_load_snapshot({light: true})`). Roughly halves load time, at the
+   * cost of `retainedSize`, `dominatorNode` and `pathEdge` being absent — see
+   * {@link getSnapshot}.
+   */
+  light: boolean;
 }
 
 interface LoadedSnapshot {
@@ -68,6 +75,44 @@ interface LoadedSnapshot {
 // don't take an explicit snapshot argument.
 const loaded = new Map<string, LoadedSnapshot>();
 let currentHandle: string | null = null;
+
+// Monotonic access stamp per handle, for LRU eviction under memory pressure.
+// A counter rather than a clock: two snapshots can be touched inside the same
+// millisecond, and only the ORDER matters here.
+const lastUsed = new Map<string, number>();
+let useCounter = 0;
+
+function touch(handle: string | null): void {
+  if (handle != null) lastUsed.set(handle, ++useCounter);
+}
+
+/**
+ * Drop the least-recently-used resident snapshot, never the current one.
+ * Returns its metadata, or null when there is nothing else to evict.
+ *
+ * Used by the loader's memory-headroom guard: with `keep_previous`, several
+ * full graphs stay resident, and the load that tips the process over is the one
+ * that dies — taking every resident snapshot with it. Evicting the coldest one
+ * first turns an OOM crash into a slower session.
+ */
+export function evictLeastRecentlyUsed(): SnapshotMetadata | null {
+  let victim: string | null = null;
+  let victimStamp = Infinity;
+  for (const handle of loaded.keys()) {
+    if (handle === currentHandle) continue;
+    const stamp = lastUsed.get(handle) ?? 0;
+    if (stamp < victimStamp) {
+      victimStamp = stamp;
+      victim = handle;
+    }
+  }
+  if (victim == null) return null;
+  const meta = loaded.get(victim)?.metadata ?? null;
+  loaded.delete(victim);
+  lastUsed.delete(victim);
+  dropEvalScratch(victim);
+  return meta;
+}
 
 // Per-snapshot scratch space for memlab_eval sessions: lets a custom script
 // build an index once (e.g. class/typename → ids) and reuse it across
@@ -159,13 +204,43 @@ function uniqueHandle(base: string): string {
   return `${slug}#${i}`;
 }
 
-export function getSnapshot(): IHeapSnapshot {
+/**
+ * The current snapshot.
+ *
+ * A LIGHT snapshot (loaded with `light: true`) has no dominator tree, no
+ * retained sizes and no shortest-path edges. On such a snapshot `retainedSize`
+ * reads 0 and `dominatorNode` / `pathEdge` are absent — which does not throw, it
+ * silently produces zeros and empty traces. A tool that reported those as
+ * results would be confidently wrong, which is worse than refusing.
+ *
+ * So light access is DENY-BY-DEFAULT and must be opted into per call site with
+ * `{allowLight: true}`, by tools that read only counts, names, types, self
+ * sizes, string values or edges. Enforcing it here rather than in the tool
+ * wrapper is deliberate: this is the one funnel every tool goes through,
+ * including tools dispatched in-process by `memlab_batch`, which bypass the
+ * guardrail wrapper entirely.
+ */
+export function getSnapshot(opts?: {allowLight?: boolean}): IHeapSnapshot {
   const entry = currentHandle ? loaded.get(currentHandle) : undefined;
   if (!entry) {
     throw new Error('No heap snapshot loaded. Use memlab_load_snapshot first.');
   }
+  if (entry.metadata.light && !opts?.allowLight) {
+    throw new Error(
+      `Snapshot "${entry.metadata.handle}" was loaded in LIGHT mode, which skips the dominator/retained-size pass — this analysis needs it. ` +
+        'Light mode supports count / name / type / self-size / string queries only: memlab_class_histogram (with include_retained_size:false), memlab_search_nodes (without min_retained_size), memlab_search_strings, memlab_string_patterns, plus memlab_snapshot_header and memlab_snapshots, which do not read the graph. ' +
+        `Reload for full analysis: memlab_load_snapshot({file_path: "${entry.metadata.filePath}"}).`,
+    );
+  }
+  touch(currentHandle);
   instrumentSnapshot(entry.snapshot);
   return entry.snapshot;
+}
+
+/** True when the current snapshot was loaded without the dominator pass. */
+export function isLightSnapshot(): boolean {
+  if (!currentHandle) return false;
+  return loaded.get(currentHandle)?.metadata.light === true;
 }
 
 export function getFilePath(): string | null {
@@ -197,7 +272,9 @@ export function getSnapshotMetadata(): SnapshotMetadata | null {
 export function setSnapshot(
   snapshot: IHeapSnapshot,
   filePath: string,
-  metadata: Omit<SnapshotMetadata, 'filePath' | 'handle'>,
+  metadata: Omit<SnapshotMetadata, 'filePath' | 'handle' | 'light'> & {
+    light?: boolean;
+  },
   opts: {alias?: string; replace?: boolean} = {},
 ): SnapshotMetadata {
   const replace = opts.replace ?? true;
@@ -206,9 +283,15 @@ export function setSnapshot(
     dropEvalScratch(null);
   }
   const handle = uniqueHandle(opts.alias || metadata.fileName);
-  const full: SnapshotMetadata = {handle, filePath, ...metadata};
+  const full: SnapshotMetadata = {
+    handle,
+    filePath,
+    ...metadata,
+    light: metadata.light === true,
+  };
   loaded.set(handle, {snapshot, metadata: full});
   currentHandle = handle;
+  touch(handle);
   headerEmitted = false;
   return full;
 }
@@ -225,6 +308,7 @@ export function listSnapshots(): SnapshotMetadata[] {
  */
 export function clearAllSnapshots(): void {
   loaded.clear();
+  lastUsed.clear();
   dropEvalScratch(null);
   currentHandle = null;
   headerEmitted = false;
@@ -245,13 +329,17 @@ export function getMetadataByHandle(handle: string): SnapshotMetadata | null {
 export function setCurrentSnapshot(handle: string): boolean {
   if (!loaded.has(handle)) return false;
   currentHandle = handle;
+  touch(handle);
   headerEmitted = false;
   return true;
 }
 
 export function removeSnapshot(handle: string): boolean {
   const existed = loaded.delete(handle);
-  if (existed) dropEvalScratch(handle);
+  if (existed) {
+    lastUsed.delete(handle);
+    dropEvalScratch(handle);
+  }
   if (existed && currentHandle === handle) {
     currentHandle = loaded.size > 0 ? [...loaded.keys()][0] : null;
     headerEmitted = false;
