@@ -314,6 +314,41 @@ export function clearAllSnapshots(): void {
   headerEmitted = false;
 }
 
+/**
+ * A resident snapshot loaded from this exact path, if any.
+ *
+ * The point of a snapshot cache is to not re-parse a file this process already
+ * has in memory; that check has to key on the resolved path, since the handle is
+ * derived from the file name and may have been disambiguated.
+ */
+export function findResidentByPath(filePath: string): SnapshotMetadata | null {
+  for (const {metadata} of loaded.values()) {
+    if (metadata.filePath === filePath) return metadata;
+  }
+  return null;
+}
+
+/**
+ * Drop every resident snapshot except `handle`, which becomes current.
+ *
+ * Used by the load cache-hit path so a hit is indistinguishable from a real load
+ * apart from speed: a replace-mode load unloads the others, and a hit must do
+ * the same or the two paths leave different state behind.
+ */
+export function retainOnlySnapshot(handle: string): boolean {
+  if (!loaded.has(handle)) return false;
+  for (const h of [...loaded.keys()]) {
+    if (h === handle) continue;
+    loaded.delete(h);
+    lastUsed.delete(h);
+    dropEvalScratch(h);
+  }
+  currentHandle = handle;
+  touch(handle);
+  headerEmitted = false;
+  return true;
+}
+
 export function getCurrentHandle(): string | null {
   return currentHandle;
 }

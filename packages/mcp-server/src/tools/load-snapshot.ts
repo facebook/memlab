@@ -30,6 +30,9 @@ import {
   listSnapshots,
   clearAllSnapshots,
   evictLeastRecentlyUsed,
+  findResidentByPath,
+  retainOnlySnapshot,
+  setCurrentSnapshot,
 } from '../heap-state.js';
 import {makeProgressReporter} from '../progress.js';
 import type {SnapshotEnv} from '../heap-state.js';
@@ -541,6 +544,13 @@ export function registerLoadSnapshot(server: McpServer): void {
         .describe(
           'Bypass the node/edge-count ceiling AND the memory-headroom guard, and attempt the load anyway (default false). force:true is self-sizing — it uses the header-peeked counts, so you do NOT also need to pass max_nodes/max_edges. The load cannot be interrupted once started, so only use this when you accept a potentially very long load or possible OOM.',
         ),
+      force_reload: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Re-parse even if this exact file is already resident in this server process (default false: an already-loaded file is switched to instead, reported as `cache: hit`). Only needed if the file changed on disk since it was loaded.',
+        ),
       light: z
         .boolean()
         .optional()
@@ -560,6 +570,7 @@ export function registerLoadSnapshot(server: McpServer): void {
         max_nodes,
         max_edges,
         force,
+        force_reload,
         light,
       },
       extra: unknown,
@@ -569,6 +580,7 @@ export function registerLoadSnapshot(server: McpServer): void {
       // nothing finer-grained available.
       const progress = makeProgressReporter(extra, 'load_snapshot');
       const PHASES = 6;
+      const startedAt = Date.now();
       try {
         if (quiet != null || suppress_suggestions != null) {
           setSessionConfig({
@@ -601,6 +613,45 @@ export function registerLoadSnapshot(server: McpServer): void {
             ),
           );
         }
+        // In-process snapshot cache. Re-parsing a file this process already
+        // holds is the single most expensive avoidable thing the server does —
+        // a measured 18.8s for a 380 MB capture — and a long investigation
+        // re-loads the same file repeatedly. A hit switches to the resident
+        // graph instead. It must be indistinguishable from a real load apart
+        // from speed, so replace-mode (`keep_previous:false`) still unloads the
+        // others, exactly as a re-parse would have.
+        //
+        // A resident LIGHT snapshot does NOT satisfy a full request: it has no
+        // dominator tree, so serving it would silently answer a retention
+        // question with zeros. The reverse is fine — a full graph satisfies a
+        // light request.
+        if (!force_reload) {
+          const resident = findResidentByPath(resolved);
+          if (resident != null && (!resident.light || light)) {
+            if (keep_previous) {
+              setCurrentSnapshot(resident.handle);
+            } else {
+              retainOnlySnapshot(resident.handle);
+            }
+            const headroomHitMB = getHeapHeadroomMB();
+            return textResult(
+              [
+                `cache: **hit** — ${resident.fileName} was already parsed in this server process; switched to it in ${Date.now() - startedAt} ms instead of re-parsing [handle: ${resident.handle}]`,
+                `${formatNumber(resident.nodeCount)} nodes, ${formatNumber(resident.edgeCount)} edges, ${formatBytes(resident.totalSize)} heap size` +
+                  (resident.light
+                    ? ' (LIGHT — no dominator tree / retained sizes)'
+                    : ''),
+                headroomHitMB != null
+                  ? `Memory: ~${formatNumber(headroomHitMB)} MB of the ~${formatNumber(getOldSpaceLimitMB())} MB old-space limit free (unchanged — nothing was parsed).`
+                  : '',
+                '_Pass `force_reload: true` if the file changed on disk since it was loaded._',
+              ]
+                .filter(Boolean)
+                .join('\n'),
+            );
+          }
+        }
+
         if (!fs.existsSync(resolved)) {
           return errorResult(
             new Error(
