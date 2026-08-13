@@ -28,6 +28,7 @@ import {
   collectDevRoots,
   classifyDevOnly,
   computeReachableWithoutDevRoots,
+  summarizeDevRoots,
 } from './dev-artifacts.js';
 
 function isDetachedDOMNode(node: IHeapNode): boolean {
@@ -514,7 +515,7 @@ export function registerDetachedDom(server: McpServer): void {
                 : '0';
             lines.push(
               '',
-              `⚠ **${formatBytes(devOnlyRetained)} (${pct}%) of this detached DOM is retained ONLY via dev/automation artifacts** (${[...new Set(devRoots.byId.values())].join(', ')}) — dev-global retention would be GC'd in production, and a11y/CDP-cache retention is automation-inflated (not present at that scale in a normal session). Exclude it from leak totals; run \`memlab_dev_artifacts\` for the breakdown.`,
+              `⚠ **${formatBytes(devOnlyRetained)} (${pct}%) of this detached DOM is retained ONLY via dev/automation artifacts** (${summarizeDevRoots(devRoots)}) — dev-global retention would be GC'd in production, and a11y/CDP-cache retention is automation-inflated (not present at that scale in a normal session). Exclude it from leak totals; run \`memlab_dev_artifacts\` for the breakdown.`,
             );
           }
 
@@ -576,7 +577,7 @@ export function registerDetachedDom(server: McpServer): void {
         if (result.total_count > 0 && output_mode === 'full') {
           const devNote =
             devRoots && devRoots.byId.size > 0
-              ? ` Dev/extension globals (${[...new Set(devRoots.byId.values())].join(', ')}) are present — run \`memlab_dev_artifacts\` to exclude DevTools-only retention from leak totals.`
+              ? ` Dev/extension globals (${summarizeDevRoots(devRoots)}) are present — run \`memlab_dev_artifacts\` to exclude DevTools-only retention from leak totals.`
               : '';
           const pinnedNote =
             split.noPathCount > 0

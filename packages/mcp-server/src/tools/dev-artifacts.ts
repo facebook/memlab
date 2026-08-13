@@ -147,6 +147,40 @@ const CATEGORY_LABEL: Record<DevRootCategory, string> = {
 };
 
 /**
+ * One-line summary of the dev/automation roots present, as counts per family.
+ *
+ * The full list was printed on every call and is unbounded: each Blink a11y
+ * object and each bridge export is its own root, so a measured WhatsApp Web run
+ * spent ~1,500 tokens per call on a single comma-separated line of names, and an
+ * Ads Manager run repeated an entire multi-sentence React warning inside it.
+ * Nothing downstream keyed on the individual names — the reader needs to know
+ * WHICH FAMILIES are present, which is what the categories already encode.
+ * `show_roots: true` restores the full list for the rare case of chasing one
+ * specific root.
+ */
+export function summarizeDevRoots(devRoots: DevRoots, showAll = false): string {
+  if (devRoots.byId.size === 0) return 'none';
+  if (showAll) {
+    return [...new Set(devRoots.byId.values())].join(', ');
+  }
+  const byCat = new Map<DevRootCategory, number>();
+  let uncategorized = 0;
+  for (const id of devRoots.byId.keys()) {
+    const cat = devRoots.categoryById.get(id);
+    if (cat == null) {
+      uncategorized++;
+      continue;
+    }
+    byCat.set(cat, (byCat.get(cat) ?? 0) + 1);
+  }
+  const parts = [...byCat.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([cat, n]) => `${CATEGORY_LABEL[cat]} ×${n}`);
+  if (uncategorized > 0) parts.push(`other ×${uncategorized}`);
+  return `${devRoots.byId.size} root(s) — ${parts.join(', ')}`;
+}
+
+/**
  * Find the dev/extension "root" objects: the targets of dev-global edges on
  * the Window/global object, plus any node whose own name marks it as a
  * devtools hook.
@@ -457,8 +491,15 @@ export function registerDevArtifacts(server: McpServer): void {
         .describe(
           'Show only the dev-only artifacts (default false: show both, dev-only flagged).',
         ),
+      show_roots: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'List every dev/automation root by name instead of summarizing them as counts per family (default false). The full list is unbounded — one root per a11y object and per bridge export — and cost ~1,500 tokens per call on a measured run. Use it only when chasing one specific root.',
+        ),
     },
-    async ({limit, min_retained_size, only_dev}) => {
+    async ({limit, min_retained_size, only_dev, show_roots}) => {
       try {
         const snapshot = getSnapshot();
         const meta = getSnapshotMetadata();
@@ -557,7 +598,7 @@ export function registerDevArtifacts(server: McpServer): void {
         const lines: string[] = [
           '## Dev-only artifact classification',
           '',
-          `Dev/automation roots present: ${[...new Set(devRoots.byId.values())].join(', ')}`,
+          `Dev/automation roots present: ${summarizeDevRoots(devRoots, show_roots)}`,
           `Total retained held ONLY via dev/automation artifacts: **${formatBytes(totals.retained)}** across **${formatNumber(totals.nodes)} objects**` +
             (totalSize > 0
               ? ` (${Math.min(100, (totals.retained / totalSize) * 100).toFixed(1)}% of heap — exclude from production leak totals)`

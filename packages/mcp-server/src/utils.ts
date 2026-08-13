@@ -113,6 +113,36 @@ export function truncateDomToTag(name: string): string {
   return `${detached}<${tag}>`;
 }
 
+// Marker left in place of elided C++ template arguments. Distinctive enough to
+// detect when rendering a legend, and short enough to be worth the swap.
+export const BLINK_TEMPLATE_ELISION = '<…>';
+
+// A Blink/cppgc type name carries its whole template instantiation, and one hop
+// of a retainer trace can be 400+ tokens of
+// `blink::HeapHashTableBacking<blink::HashTable<cppgc::internal::BasicMember<…>>>`.
+// The information a reader acts on is the OUTER type; the arguments are noise
+// that crowds out the rest of the trace. Collapse everything from the first `<`
+// to the matching final `>` into one marker, keeping any suffix after it.
+//
+// Deliberately conservative: only applied to `::`-qualified C++ names (so a JS
+// class that happens to contain `<` is untouched), and only when the name is
+// long enough for the elision to be worth it — abbreviating
+// `blink::Foo<Bar>` into something barely shorter just costs information.
+const CPP_TEMPLATE_MIN_LEN = 48;
+
+export function abbreviateBlinkTypeName(name: string): string {
+  if (name.length < CPP_TEMPLATE_MIN_LEN) return name;
+  if (!name.includes('::') || !name.includes('<')) return name;
+  const open = name.indexOf('<');
+  const close = name.lastIndexOf('>');
+  if (close <= open) return name;
+  const head = name.slice(0, open);
+  const tail = name.slice(close + 1);
+  const abbreviated = `${head}${BLINK_TEMPLATE_ELISION}${tail}`;
+  // Never let the "abbreviation" be longer than what it replaced.
+  return abbreviated.length < name.length ? abbreviated : name;
+}
+
 export function truncateNodeName(
   name: string,
   type: string,
@@ -145,8 +175,9 @@ export function truncateNodeName(
     return name;
   }
 
-  if (name.length <= maxLen) return name;
-  return `${name.slice(0, maxLen)}…`;
+  const abbreviated = abbreviateBlinkTypeName(name);
+  if (abbreviated.length <= maxLen) return abbreviated;
+  return `${abbreviated.slice(0, maxLen)}…`;
 }
 
 export function serializeNodeSummary(node: IHeapNode): NodeSummary {
@@ -1077,7 +1108,21 @@ export function formatNodeSummaryTable(nodes: NodeSummary[]): string {
     formatBytes(n.self_size),
     light ? 'n/a (light)' : formatBytes(n.retained_size),
   ]);
-  return markdownTable(headers, rows, rightCols);
+  return markdownTable(headers, rows, rightCols) + blinkLegend(rows.flat());
+}
+
+/**
+ * Legend for elided C++ template arguments, emitted only when something in the
+ * rendered output actually carries the marker — an unconditional legend is the
+ * same token tax the abbreviation exists to remove.
+ */
+export function blinkLegend(rendered: Iterable<string>): string {
+  for (const cell of rendered) {
+    if (typeof cell === 'string' && cell.includes(BLINK_TEMPLATE_ELISION)) {
+      return `\n\n_\`${BLINK_TEMPLATE_ELISION}\` = C++ template arguments elided; the outer type is what identifies the object. Use \`memlab_get_node\` for the full instantiated name._`;
+    }
+  }
+  return '';
 }
 
 export function formatQueryNodesResult(

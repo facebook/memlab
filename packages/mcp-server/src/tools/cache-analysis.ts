@@ -202,6 +202,37 @@ function getOwnerInfo(node: IHeapNode): {
   return {name: from.name, edge: edgeName, node: from};
 }
 
+/**
+ * O(1)-ish upper bound on a collection's entry count, used to decide whether a
+ * collection is worth counting properly.
+ *
+ * Why it exists: `cache_analysis` gated every collection on `min_retained_size`
+ * first, so a collection that is LONG but cheap — many entries of small or
+ * shared values — was invisible. A positive-control Map planted for a leak hunt
+ * sat under the 512 KB default and never appeared, which is the one case the
+ * tool most needs to catch. Length and bytes are different questions.
+ *
+ * The full `countEntries` walk is O(entries), so running it on every Map/Set/
+ * Array in a multi-million-node heap is not affordable. Reading the backing
+ * table's `edge_count` is a single lookup and bounds the expensive walk to
+ * collections that are plausibly long.
+ */
+function approxEntryCount(node: IHeapNode): number {
+  if (node.name === 'Map' || node.name === 'Set') {
+    for (const edge of node.references) {
+      const eName = String(edge.name_or_index);
+      if (
+        (eName === 'table' || eName === 'backing_store') &&
+        (edge.toNode.type === 'array' || edge.toNode.type === 'hidden')
+      ) {
+        const slots = edge.toNode.edge_count;
+        return node.name === 'Map' ? Math.floor(slots / 2) : slots;
+      }
+    }
+  }
+  return node.edge_count;
+}
+
 function countEntries(node: IHeapNode): {entries: number; tableSlots: number} {
   if (node.name === 'Map' || node.name === 'Set') {
     for (const edge of node.references) {
@@ -418,15 +449,38 @@ export function registerCacheAnalysis(server: McpServer): void {
 
         const typeSet = new Set(collection_types);
         const caches: CacheEntry[] = [];
+        // Collections that clear `min_entries` but not `min_retained_size`.
+        const longButSmall: Array<{
+          nodeId: number;
+          collectionType: string;
+          entryCount: number;
+          retainedSize: number;
+          ownerName: string;
+        }> = [];
 
         snapshot.nodes.forEach(node => {
           if (node.id <= 3) return;
           if (!typeSet.has(node.name)) return;
           if (node.type !== 'object') return;
-          if (node.retainedSize < min_retained_size) return;
+          // Size-independent path: a collection that is long enough to matter is
+          // examined even when it is small in bytes (see approxEntryCount).
+          const bigEnough = node.retainedSize >= min_retained_size;
+          if (!bigEnough && approxEntryCount(node) < min_entries) return;
 
           const {entries: entryCount, tableSlots} = countEntries(node);
           if (entryCount < min_entries) return;
+          if (!bigEnough) {
+            // Long but cheap. Reported in its own section rather than mixed into
+            // the ranked table, whose ordering and thresholds callers rely on.
+            longButSmall.push({
+              nodeId: node.id,
+              collectionType: node.name,
+              entryCount,
+              retainedSize: node.retainedSize,
+              ownerName: getOwnerInfo(node).name,
+            });
+            return;
+          }
 
           const owner = getOwnerInfo(node);
           const framework = identifyCacheFramework(node, owner.edge);
@@ -630,9 +684,47 @@ export function registerCacheAnalysis(server: McpServer): void {
           });
         }
 
+        // Long-but-cheap collections. Rendered as its own section so the size
+        // threshold can no longer hide a growing collection outright — the
+        // failure that made a planted positive-control Map invisible.
+        const longButSmallSection = (): string[] => {
+          if (longButSmall.length === 0) return [];
+          longButSmall.sort((a, b) => b.entryCount - a.entryCount);
+          const top = longButSmall.slice(0, 10);
+          return [
+            '',
+            `### Long but small — ${formatNumber(longButSmall.length)} collection(s) with >= ${formatNumber(min_entries)} entries but under ${formatBytes(min_retained_size)} retained`,
+            '',
+            'These are excluded from the ranked table above by `min_retained_size`, but entry COUNT is the signal for unbounded growth — a collection that grows without bound is a leak whether or not its entries are large. Track these across a ladder.',
+            '',
+            markdownTable(
+              ['Collection', 'Entries', 'Retained', 'Owner', 'ID'],
+              top.map(c => [
+                c.collectionType,
+                formatNumber(c.entryCount),
+                formatBytes(c.retainedSize),
+                c.ownerName.length > 40
+                  ? c.ownerName.slice(0, 37) + '…'
+                  : c.ownerName,
+                `@${c.nodeId}`,
+              ]),
+              new Set([1, 2]),
+            ),
+            ...(longButSmall.length > top.length
+              ? [
+                  '',
+                  `_… +${formatNumber(longButSmall.length - top.length)} more. Lower \`min_retained_size\` to rank them with the rest._`,
+                ]
+              : []),
+          ];
+        };
+
         if (caches.length === 0) {
           return toolResult(
-            `No unbounded caches found with >= ${min_entries} entries and >= ${formatBytes(min_retained_size)} retained. Try lowering the thresholds.`,
+            [
+              `No unbounded caches found with >= ${min_entries} entries and >= ${formatBytes(min_retained_size)} retained. Try lowering the thresholds.`,
+              ...longButSmallSection(),
+            ].join('\n'),
           );
         }
 
@@ -983,6 +1075,7 @@ export function registerCacheAnalysis(server: McpServer): void {
           }
         }
 
+        lines.push(...longButSmallSection());
         return toolResult(lines.join('\n'));
       } catch (err) {
         return errorResult(err);
