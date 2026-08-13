@@ -27,6 +27,10 @@ import {
   collectDevRoots,
   computeReachableWithoutDevRoots,
 } from './dev-artifacts.js';
+import {
+  classifyHarnessString,
+  isHarnessToolManifestShape,
+} from '../artifact-classes.js';
 
 // V8 splits a single logical object's storage across several internal backing
 // structures: a `system / PropertyArray` (named props once the object grows past
@@ -154,6 +158,16 @@ interface InternGroup {
   // measured run reported 16.4 MB "capturable" that was entirely
   // console-retained log strings; the real figure was 65.6 KB.
   devOnly?: boolean;
+  // True when the duplicated content belongs to the MEASUREMENT HARNESS — the
+  // CDP/devtools bridge injected into the page to drive the session — rather
+  // than to the application. Detected either from the string content
+  // (classifyHarnessString) or from the parent shape being the bridge's tool
+  // manifest (isHarnessToolManifestShape). None of it ships, so interning it
+  // reclaims nothing in production: bucketed OUT of the within-load headline.
+  // On a measured WA Web round the injected bundle was the single largest
+  // "opportunity" here at 14.7 MB.
+  harness?: boolean;
+  harnessWhat?: string;
 }
 
 // --- Headline-accuracy heuristics (Feedback round 7) ----------------------
@@ -241,7 +255,7 @@ export function registerInternOpportunities(server: McpServer): void {
     'memlab_intern_opportunities',
     'Identify string interning opportunities by grouping duplicated strings by the property name and parent object shape that holds them. Shows total savings per (property × shape) combination — the key metric for deciding where to add a string interning pool. Also surfaces ARRAY-ELEMENT / columnar duplication (strings held as elements of a rowsAsArray / string[][] result buffer — a common Nest mysql2/Drizzle shape) as first-class groups keyed by column index and array-owner shape, folded into the within-load headline; these are marked with a filled square and fixed by interning at the array-construction/parse site. The within-load figure is split at the canonical 128-char intern cap into cappable (<=128 chars, what the recommended fix reclaims) vs over-cap (longer strings the cap skips), so the headline matches what a compliant fix actually reclaims. Replaces the manual workflow of: duplicated_strings → retainer_summary → codebase grep. ' +
       'Retention-aware: flags groups whose duplicated instances are ALSO held by another structure (e.g. a raw array/matrix) as "co-retained" — interning the property there reclaims ~0, so the savings are reported separately and you must dedupe the shared source instead. ' +
-      'The headline "within-load capturable" figure also excludes framework/infra-owned strings (HTTP headers, cookies, auth tokens, Next.js URL/cache context) and low-ROI groups (high-cardinality + long strings, where the intern pool costs more than it saves), reporting each in its own bucket; and it flags concatenated-string (rope) buildup, which is accumulation rather than duplication and cannot be interned. ' +
+      'The headline "within-load capturable" figure also excludes framework/infra-owned strings (HTTP headers, cookies, auth tokens, Next.js URL/cache context), measurement-harness content (the CDP/devtools bridge injected to drive the session — an injected bundle can be the single largest "opportunity" in a driven snapshot while reclaiming nothing in production), and low-ROI groups (high-cardinality + long strings, where the intern pool costs more than it saves), reporting each in its own bucket; and it flags concatenated-string (rope) buildup, which is accumulation rather than duplication and cannot be interned. ' +
       '⚠ Full-heap scan (builds string-duplication groups) — slow and memory-heavy on very large heaps (millions of nodes); raise min_copies / min_savings to bound it.',
     {
       limit: z
@@ -595,6 +609,12 @@ export function registerInternOpportunities(server: McpServer): void {
           let savingsIfInterned = 0;
           let savingsCappable = 0;
           let savingsOverCap = 0;
+          // Savings attributable to harness-injected string CONTENT. Compared
+          // against savingsIfInterned below rather than tripping on the first
+          // match, so one stray bridge string in an otherwise-app group does
+          // not relabel the whole group.
+          let savingsHarness = 0;
+          let harnessWhat: string | undefined;
           const topStrings: Array<{
             value: string;
             count: number;
@@ -610,6 +630,11 @@ export function registerInternOpportunities(server: McpServer): void {
               // reclaim; longer values are skipped by that cap (feedback §3).
               if (value.length <= CANONICAL_CAP_CHARS) savingsCappable += s;
               else savingsOverCap += s;
+              const what = classifyHarnessString(value);
+              if (what != null) {
+                savingsHarness += s;
+                if (!harnessWhat) harnessWhat = what;
+              }
             }
             topStrings.push({
               value,
@@ -627,6 +652,18 @@ export function registerInternOpportunities(server: McpServer): void {
           const coRetained =
             g.coRetainedSamples > 0 &&
             g.coRetainedSamples >= g.groupSamples * 0.5;
+
+          // Harness by CONTENT (majority of the group's savings sits in
+          // bridge-injected strings) or by SHAPE (the parent is one of the
+          // bridge's tool-manifest entries, whose long `.description` strings a
+          // per-load pool would happily "save"). The shape test is what catches
+          // the manifest — its descriptions are ordinary English and no content
+          // signature can distinguish them from app copy.
+          const harnessShape = isHarnessToolManifestShape(g.parentShapeProps);
+          const harness =
+            harnessShape ||
+            (savingsIfInterned > 0 &&
+              savingsHarness >= savingsIfInterned * 0.5);
 
           groups.push({
             propertyName: g.propertyName,
@@ -654,6 +691,11 @@ export function registerInternOpportunities(server: McpServer): void {
             // that is essentially all inspector-held should leave the headline.
             devOnly:
               g.totalCopies > 0 && g.devOnlyCopies / g.totalCopies >= 0.8,
+            harness,
+            harnessWhat: harness
+              ? (harnessWhat ??
+                'automation/devtools bridge tool manifest (.description strings)')
+              : undefined,
           });
         }
 
@@ -761,14 +803,19 @@ export function registerInternOpportunities(server: McpServer): void {
         const bucketOf = (
           g: InternGroup,
         ):
+          | 'harness'
           | 'devOnly'
           | 'framework'
           | 'coRetained'
           | 'crossLoad'
           | 'lowRoi'
           | 'within' => {
-          // Checked first: retention through a dev root means interning reclaims
-          // nothing in production, whatever the property is named.
+          // Checked before everything else: harness content is not the
+          // application's memory at all — it is the rig injected to observe it —
+          // so no other classification of it is meaningful.
+          if (g.harness) return 'harness';
+          // Retention through a dev root means interning reclaims nothing in
+          // production, whatever the property is named.
           if (g.devOnly) return 'devOnly';
           if (g.frameworkOwned) return 'framework';
           if (g.coRetained) return 'coRetained';
@@ -785,6 +832,7 @@ export function registerInternOpportunities(server: McpServer): void {
         const frameworkSavings = sumBucket('framework');
         const devOnlySavings = sumBucket('devOnly');
         const lowRoiSavings = sumBucket('lowRoi');
+        const harnessSavings = sumBucket('harness');
         const withinLoadSavings = sumBucket('within');
 
         // Within the capturable bucket, split by the canonical 128-char cap so the
@@ -814,7 +862,8 @@ export function registerInternOpportunities(server: McpServer): void {
           coRetainedSavings +
           frameworkSavings +
           devOnlySavings +
-          lowRoiSavings;
+          lowRoiSavings +
+          harnessSavings;
         const pctOf = (n: number): string =>
           totalSize > 0
             ? ` (${((n / totalSize) * 100).toFixed(1)}% of heap)`
@@ -861,7 +910,7 @@ export function registerInternOpportunities(server: McpServer): void {
           // produce a malformed label, so only prefix `.` for named properties.
           const label = g.arrayElement ? g.propertyName : `.${g.propertyName}`;
           return [
-            `${label}${g.arrayElement ? ' ▦' : ''}${g.coRetained ? ' ⚠' : ''}${g.crossLoad ? ' ⤫' : ''}${g.devOnly ? ' 🛠' : ''}${g.frameworkOwned ? ' ▤' : ''}${g.lowRoi ? ' ▽' : ''}`,
+            `${label}${g.arrayElement ? ' ▦' : ''}${g.coRetained ? ' ⚠' : ''}${g.crossLoad ? ' ⤫' : ''}${g.devOnly ? ' 🛠' : ''}${g.harness ? ' 🧪' : ''}${g.frameworkOwned ? ' ▤' : ''}${g.lowRoi ? ' ▽' : ''}`,
             shape,
             formatNumber(g.uniqueStrings),
             formatNumber(g.totalCopies),
@@ -928,6 +977,7 @@ export function registerInternOpportunities(server: McpServer): void {
           coRetainedSavings >= crossLoadSavings &&
           coRetainedSavings >= frameworkSavings &&
           coRetainedSavings >= lowRoiSavings &&
+          coRetainedSavings >= harnessSavings &&
           coRetainedSavings > 0
         ) {
           verdict = `Verdict: mostly **co-retained** (${formatBytes(coRetainedSavings)}) — interning the property won't help; dedupe at the shared source.`;
@@ -935,13 +985,15 @@ export function registerInternOpportunities(server: McpServer): void {
           crossLoadSavings >= withinLoadSavings &&
           crossLoadSavings >= frameworkSavings &&
           crossLoadSavings >= lowRoiSavings &&
+          crossLoadSavings >= harnessSavings &&
           crossLoadSavings > 0
         ) {
           verdict = `Verdict: mostly **cross-load** (${formatBytes(crossLoadSavings)}) — a per-request pool won't collapse it; needs a shared/module-scope pool or a retention fix.`;
         } else if (
           withinLoadSavings > 0 &&
           withinLoadSavings >= frameworkSavings &&
-          withinLoadSavings >= lowRoiSavings
+          withinLoadSavings >= lowRoiSavings &&
+          withinLoadSavings >= harnessSavings
         ) {
           // Lead with the ≤128-char cappable figure — the amount the canonical
           // intern fix actually reclaims — not the raw within-load total that also
@@ -955,11 +1007,17 @@ export function registerInternOpportunities(server: McpServer): void {
               ? ` Includes ${formatBytes(withinArrayElementCappable)} of columnar / array-element (rowsAsArray) duplication — intern at the array-construction/parse site.`
               : '';
           verdict = `Verdict: **${formatBytes(withinCappable)} cappable** by the canonical ≤${CANONICAL_CAP_CHARS}-char per-load/per-request intern pool at the parse boundary${capNote}.${columnarNote}`;
-        } else if (frameworkSavings + lowRoiSavings > 0) {
-          // Framework/low-ROI dominate (each ≥ the within-load figure). Lead with
-          // them so a small capturable remainder isn't mistaken for the headline,
-          // but still name that remainder when nonzero so it isn't hidden.
+        } else if (frameworkSavings + lowRoiSavings + harnessSavings > 0) {
+          // Framework/low-ROI/harness dominate (each ≥ the within-load figure).
+          // Lead with them so a small capturable remainder isn't mistaken for the
+          // headline, but still name that remainder when nonzero so it isn't
+          // hidden.
           const parts: string[] = [];
+          if (harnessSavings > 0) {
+            parts.push(
+              'measurement-harness content (the injected automation/devtools bridge — not application memory)',
+            );
+          }
           if (frameworkSavings > 0) {
             parts.push('framework/infra-owned (headers/cookies/tokens)');
           }
@@ -1019,6 +1077,18 @@ export function registerInternOpportunities(server: McpServer): void {
             `- **🛠 Dev/automation-retained (held only via the attached inspector's console or another dev root — reclaims NOTHING in production; do not chase): ${formatBytes(devOnlySavings)}${pctOf(devOnlySavings)}**`,
           );
         }
+        if (harnessSavings > 0) {
+          const whats = [
+            ...new Set(
+              shown
+                .filter(g => g.harness && g.harnessWhat)
+                .map(g => g.harnessWhat as string),
+            ),
+          ];
+          headerLines.push(
+            `- **🧪 Measurement-harness content (${whats.join('; ')}) — the CDP/devtools bridge injected into the page to drive this session, NOT application memory; interning it reclaims nothing in production: ${formatBytes(harnessSavings)}${pctOf(harnessSavings)}**`,
+          );
+        }
         if (lowRoiSavings > 0) {
           headerLines.push(
             `- **▽ Low-ROI (high-cardinality, few repeats + long strings — a per-load pool retains a large unique set for a small collapse; usually skip): ${formatBytes(lowRoiSavings)}${pctOf(lowRoiSavings)}**`,
@@ -1043,11 +1113,12 @@ export function registerInternOpportunities(server: McpServer): void {
           crossLoadSavings > 0 ||
           frameworkSavings > 0 ||
           devOnlySavings > 0 ||
+          harnessSavings > 0 ||
           lowRoiSavings > 0 ||
           hasArrayElement
         ) {
           lines.push(
-            "▦ = array element (columnar / rowsAsArray — intern at the parse site); ⚠ = co-retained (interning won't reclaim); ⤫ = cross-load (high Dup ×, needs shared pool); ▤ = framework/infra-owned (not app data); 🛠 = dev/automation-retained (inspector console — reclaims nothing in production); ▽ = low-ROI (high-cardinality + long; usually skip).",
+            "▦ = array element (columnar / rowsAsArray — intern at the parse site); ⚠ = co-retained (interning won't reclaim); ⤫ = cross-load (high Dup ×, needs shared pool); ▤ = framework/infra-owned (not app data); 🛠 = dev/automation-retained (inspector console — reclaims nothing in production); 🧪 = measurement-harness content (injected automation/devtools bridge — not app memory); ▽ = low-ROI (high-cardinality + long; usually skip).",
             '',
           );
         }

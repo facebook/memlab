@@ -17,7 +17,9 @@ import {
   formatQueryNodesResult,
   formatBytes,
   formatNumber,
+  isNodeWorthInspecting,
   markdownTable,
+  truncateNodeName,
   errorResult,
   toolResult,
 } from '../utils.js';
@@ -106,6 +108,86 @@ function getFirstNonFrameworkRetainer(node: IHeapNode): string {
   return '(unknown)';
 }
 
+// Climbing more than this many dominator hops means the detached subtree is
+// pathologically deep; give up rather than pay for it on every node.
+const MAX_DOMINATOR_HOPS = 64;
+
+// Distinct owners tracked per group before the count is reported as "N+".
+// Bounds memory when a group spans one owner per node (100k+ detached nodes).
+const MAX_TRACKED_OWNERS = 1000;
+
+/**
+ * Resolve the node that is ACCOUNTABLE for a detached node: the nearest
+ * dominator above it that is not itself detached DOM and is worth naming.
+ *
+ * Why this is not the same as `getFirstNonFrameworkRetainer`: that walks the
+ * shortest RETAINER path, which is only one of possibly many references and need
+ * not dominate the node at all. Grouping by it and then saying "fixing this
+ * frees X" is wrong whenever the group's nodes are also held elsewhere — the
+ * whole point of the dominator tree is that freeing a dominator DOES free
+ * everything below it.
+ *
+ * Returns a resolver closure rather than a bare function so the walk can be
+ * memoized: sibling detached nodes share ancestors, and every chain member's
+ * answer is the same node. Cached entries are per-load only (the closure lives
+ * for one tool call).
+ */
+function makeDominatorResolver(): (node: IHeapNode) => IHeapNode | null {
+  const cache = new Map<number, IHeapNode | null>();
+  return function resolve(node: IHeapNode): IHeapNode | null {
+    const chain: number[] = [];
+    const seen = new Set<number>([node.id]);
+    let cur: IHeapNode | null = node.dominatorNode ?? null;
+    let owner: IHeapNode | null = null;
+    let hops = 0;
+    // Whether the walk ended for a reason intrinsic to the graph (found an
+    // owner, or ran out of dominators) rather than because THIS walk ran out of
+    // budget. Only an intrinsic result may be memoized — see below.
+    let conclusive = false;
+
+    while (cur && hops < MAX_DOMINATOR_HOPS) {
+      const cached = cache.get(cur.id);
+      if (cached !== undefined) {
+        owner = cached;
+        conclusive = true;
+        break;
+      }
+      if (seen.has(cur.id)) break;
+      seen.add(cur.id);
+      chain.push(cur.id);
+      if (
+        !isDetachedDOMNode(cur) &&
+        cur.name !== '(GC roots)' &&
+        isNodeWorthInspecting(cur)
+      ) {
+        owner = cur;
+        conclusive = true;
+        break;
+      }
+      const next: IHeapNode | null = cur.dominatorNode ?? null;
+      if (!next || next.id === cur.id) {
+        // The chain genuinely ends here: there is no owner above, and that is a
+        // property of the graph, not of this walk.
+        conclusive = true;
+        break;
+      }
+      cur = next;
+      hops++;
+    }
+
+    // Memoize ONLY a conclusive result. Caching a hop-cap or cycle-break exit
+    // would store "no owner" — a fact about this walk's 64-hop budget — as if it
+    // were a fact about the node. A later, deeper node whose own budget WOULD
+    // have reached a real owner then short-circuits on the poisoned entry and is
+    // reported as "no single owner", which is precisely the unsound ownership
+    // claim this grouping exists to eliminate.
+    if (conclusive) {
+      for (const id of chain) cache.set(id, owner);
+    }
+    return owner;
+  };
+}
+
 interface GroupStats {
   count: number;
   totalRetained: number;
@@ -113,12 +195,25 @@ interface GroupStats {
   maxRetainedSize: number;
   // How many nodes in this group are retained ONLY via dev/automation roots.
   devOnlyCount: number;
+  // Distinct accountable dominators across the group's nodes, capped at
+  // MAX_TRACKED_OWNERS. A group with more than one is NOT freed by fixing a
+  // single owner — the headline "fixing this frees X" only holds at 1.
+  ownerIds: Set<number>;
+  ownersTruncated: boolean;
+  // Nodes whose accountable dominator could not be resolved (GC-root-dominated,
+  // or the hop cap was hit).
+  ownerlessCount: number;
+  // Dominator mode only: what the owner itself retains — the amount actually
+  // freed by releasing it, which includes whatever else it holds besides this
+  // group's detached DOM.
+  ownerRetained: number;
 }
 
 export function registerDetachedDom(server: McpServer): void {
   server.tool(
     'memlab_detached_dom',
-    'Find detached DOM elements still retained in memory. These are common sources of memory leaks — DOM nodes removed from the document but kept alive by JavaScript references. Supports count-only and ids-only modes for large result sets. Use group_by to aggregate by element tag, retainer pattern, or data-testid. ' +
+    'Find detached DOM elements still retained in memory. These are common sources of memory leaks — DOM nodes removed from the document but kept alive by JavaScript references. Supports count-only and ids-only modes for large result sets. Use group_by to aggregate by dominator (accountable owner), element tag, retainer pattern, or data-testid. ' +
+      'Prefer group_by: "dominator" when you intend to act on the result: it groups by the nearest non-detached DOMINATOR, so releasing that one object provably frees the whole group. The other groupings key on a shortest retainer path, which need not dominate the nodes — they report an "Owners" column (distinct accountable dominators) so a group split across many owners is not mistaken for a single fix. ' +
       'Reports a pinned-vs-GC-eligible split: detached nodes with a retainer path to a GC root are actual leaks, while nodes with no retainer path found are typically GC-eligible (transient / weak-only) and should be excluded from leak totals — set only_with_retainer_path to list/aggregate just the pinned ones. ' +
       '⚠ Full-heap scan — slow on very large heaps (millions of nodes); use count-only / ids-only modes and group_by to bound output.',
     {
@@ -130,10 +225,10 @@ export function registerDetachedDom(server: McpServer): void {
           'Output verbosity: "full" returns node summaries (default), "count" returns only the total count, "ids" returns only node IDs',
         ),
       group_by: z
-        .enum(['element', 'retainer', 'testid'])
+        .enum(['element', 'retainer', 'testid', 'dominator'])
         .optional()
         .describe(
-          'Group detached DOM nodes instead of listing individually. "element" groups by HTML tag (div, span, button), "retainer" groups by first non-framework retainer (the component/module holding them), "testid" groups by data-testid attribute.',
+          'Group detached DOM nodes instead of listing individually. "dominator" groups by the nearest non-detached dominator — the object that provably frees the whole group when released (use this to decide what to fix); "element" groups by HTML tag (div, span, button); "retainer" groups by first non-framework retainer on the shortest path (which need not dominate the nodes); "testid" groups by data-testid attribute.',
         ),
       offset: z
         .number()
@@ -194,6 +289,7 @@ export function registerDetachedDom(server: McpServer): void {
 
         if (group_by) {
           const groups = new Map<string, GroupStats>();
+          const resolveOwner = makeDominatorResolver();
           let totalDetached = 0;
           let totalRetainedAll = 0;
           let devOnlyRetained = 0;
@@ -227,6 +323,10 @@ export function registerDetachedDom(server: McpServer): void {
             // from the group aggregation — they are still counted in the split.
             if (only_with_retainer_path && !pinned) return;
 
+            // Resolved for every grouping, not just 'dominator': the other keys
+            // need it to report how many distinct owners they span.
+            const owner = resolveOwner(node);
+
             let key: string;
             switch (group_by) {
               case 'element':
@@ -238,6 +338,15 @@ export function registerDetachedDom(server: McpServer): void {
               case 'testid':
                 key = extractTestId(node);
                 break;
+              case 'dominator':
+                // No owner = the dominator is the GC root itself, i.e. the node
+                // is reachable through two or more independent paths. Naming
+                // that outcome matters more than the others: it is precisely the
+                // case where "fix this retainer and X is freed" is false.
+                key = owner
+                  ? `@${owner.id} ${truncateNodeName(owner.name, owner.type, owner.self_size, 60)}`
+                  : '(no single owner — dominated by the GC root, i.e. reachable via ≥2 independent paths)';
+                break;
             }
 
             const existing = groups.get(key);
@@ -245,6 +354,15 @@ export function registerDetachedDom(server: McpServer): void {
               existing.count++;
               existing.totalRetained += node.retainedSize;
               if (nodeIsDevOnly) existing.devOnlyCount++;
+              if (owner) {
+                if (existing.ownerIds.size < MAX_TRACKED_OWNERS) {
+                  existing.ownerIds.add(owner.id);
+                } else if (!existing.ownerIds.has(owner.id)) {
+                  existing.ownersTruncated = true;
+                }
+              } else {
+                existing.ownerlessCount++;
+              }
               if (node.retainedSize > existing.maxRetainedSize) {
                 existing.exampleId = node.id;
                 existing.maxRetainedSize = node.retainedSize;
@@ -256,6 +374,12 @@ export function registerDetachedDom(server: McpServer): void {
                 exampleId: node.id,
                 maxRetainedSize: node.retainedSize,
                 devOnlyCount: nodeIsDevOnly ? 1 : 0,
+                ownerIds: new Set(owner ? [owner.id] : []),
+                ownersTruncated: false,
+                ownerlessCount: owner ? 0 : 1,
+                // The owner's own retained size, not the sum of the group's
+                // detached nodes: releasing it frees everything it dominates.
+                ownerRetained: owner ? owner.retainedSize : 0,
               });
             }
           });
@@ -284,7 +408,9 @@ export function registerDetachedDom(server: McpServer): void {
               ? 'Element'
               : group_by === 'retainer'
                 ? 'Retainer'
-                : 'data-testid';
+                : group_by === 'dominator'
+                  ? 'Dominator (accountable owner)'
+                  : 'data-testid';
 
           // Per-group dev-only share. Without this the caller has to run
           // dev_artifacts separately and mentally join the two outputs, which is
@@ -293,15 +419,28 @@ export function registerDetachedDom(server: McpServer): void {
           const showDevOnly =
             devRoots != null &&
             sorted.some(([, stats]) => stats.devOnlyCount > 0);
+          // In dominator mode the owner count is 1 by construction, so the
+          // interesting column is what that owner frees; for every other
+          // grouping it is how many owners the group is split across.
+          const isDominatorMode = group_by === 'dominator';
+          const ownerCountLabel = (stats: GroupStats): string => {
+            const n = stats.ownerIds.size;
+            const shown = stats.ownersTruncated ? `${n}+` : String(n);
+            if (n === 0) return stats.ownerlessCount > 0 ? 'none' : '-';
+            return stats.ownerlessCount > 0 ? `${shown} (+unowned)` : shown;
+          };
           const headers = [
             groupLabel,
             'Count',
             ...(showDevOnly ? ['Dev-only'] : []),
             'Total Retained',
             '% of Detached',
+            ...(isDominatorMode ? ['Owner Frees'] : ['Owners']),
             'Example ID',
           ];
-          const rightCols = new Set(showDevOnly ? [1, 2, 3, 4] : [1, 2, 3]);
+          const rightCols = new Set(
+            showDevOnly ? [1, 2, 3, 4, 5] : [1, 2, 3, 4],
+          );
           const rows = sorted.map(([key, stats]) => {
             const pct =
               totalRetainedAll > 0
@@ -322,6 +461,11 @@ export function registerDetachedDom(server: McpServer): void {
                 : []),
               formatBytes(stats.totalRetained),
               pct,
+              isDominatorMode
+                ? stats.ownerRetained > 0
+                  ? formatBytes(stats.ownerRetained)
+                  : '-'
+                : ownerCountLabel(stats),
               `@${stats.exampleId}`,
             ];
           });
@@ -335,6 +479,31 @@ export function registerDetachedDom(server: McpServer): void {
           }
           lines.push('', markdownTable(headers, rows, rightCols));
 
+          if (isDominatorMode) {
+            const ownerless = sorted.find(
+              ([, s]) => s.ownerIds.size === 0 && s.ownerlessCount > 0,
+            );
+            lines.push(
+              '',
+              "_Grouped by the nearest non-detached **dominator**: releasing that object frees every detached node in its row. **Owner Frees** is the owner's own retained size — the true, non-overlapping figure, and the amount actually reclaimed (it also covers whatever else the owner holds). Total Retained is a plain sum over the group, so it double-counts nested detached subtrees and can exceed Owner Frees._",
+            );
+            if (ownerless) {
+              lines.push(
+                `_⚠ ${formatNumber(ownerless[1].count)} node(s) (${formatBytes(ownerless[1].totalRetained)}) have **no single owner** — their dominator is the GC root, so they are reachable through two or more independent paths and no one object frees them. Use \`memlab_retainer_summary\` / \`memlab_get_referrers\` to enumerate every path; all of them must be cut._`,
+              );
+            }
+          } else {
+            const notSingleOwner = sorted.filter(
+              ([, s]) =>
+                s.ownerIds.size === 0 ||
+                s.ownerIds.size + (s.ownerlessCount > 0 ? 1 : 0) > 1,
+            ).length;
+            lines.push(
+              '',
+              `_**Owners** = distinct accountable dominators the group spans (\`none\` = dominated by the GC root, i.e. reachable via ≥2 independent paths). This grouping keys on ${group_by === 'retainer' ? 'the first non-framework retainer along the SHORTEST retainer path, which need not dominate the nodes' : `the node's ${group_by}`}, so only a group with **Owners = 1** is freed by fixing one object.${notSingleOwner > 0 ? ` ${formatNumber(notSingleOwner)} of the ${formatNumber(sorted.length)} groups below are not single-owner — for those, "fixing this frees X" is wrong; re-run with \`group_by: "dominator"\` to see what actually frees them.` : ''}_`,
+            );
+          }
+
           if (devRoots && devRoots.byId.size > 0 && devOnlyRetained > 0) {
             const pct =
               totalRetainedAll > 0
@@ -347,9 +516,19 @@ export function registerDetachedDom(server: McpServer): void {
           }
 
           if (sorted.length > 0) {
+            // In dominator mode point at the largest row that HAS an owner —
+            // the ownerless bucket can top the table, and "run dominator_chain
+            // on it" is meaningless there (it is already at the root).
+            const topOwned = isDominatorMode
+              ? sorted.find(([, s]) => s.ownerIds.size > 0)
+              : undefined;
             lines.push(
               '',
-              `**Suggested action:** Use \`memlab_retainer_summary\` with node_ids from the top group's example to trace the common retention pattern.`,
+              isDominatorMode
+                ? topOwned
+                  ? `**Suggested action:** Run \`memlab_dominator_chain\` on the largest owned group's owner to find the accountable application object, then \`memlab_retainer_summary\` on its example (\`@${topOwned[1].exampleId}\`) for the reference that holds it.`
+                  : '**Suggested action:** No group has a single owner — every detached node here is reachable via multiple independent paths. Use `memlab_retainer_summary` on an example to enumerate the paths; each one must be cut.'
+                : `**Suggested action:** Use \`memlab_retainer_summary\` with node_ids from the top group's example to trace the common retention pattern. Before acting on a group, confirm its **Owners** is 1 — or re-run with \`group_by: "dominator"\`, which groups by what a fix actually frees.`,
             );
           }
 
@@ -406,7 +585,7 @@ export function registerDetachedDom(server: McpServer): void {
               '**Suggested action:** Check for missing `removeEventListener` calls, ' +
               'React component cleanup in `useEffect` return, or refs not cleared on unmount. ' +
               'Use `memlab_retainer_trace` on top entries to find the retention path. ' +
-              'Use `group_by: "retainer"` to see which components are retaining the most detached DOM.' +
+              'Use `group_by: "dominator"` to see which objects are accountable for the most detached DOM (releasing one frees its whole group), or `group_by: "retainer"` for the shortest-path view.' +
               pinnedNote +
               devNote,
           );
