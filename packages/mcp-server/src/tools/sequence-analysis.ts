@@ -27,6 +27,7 @@ import {
   errorResult,
   toolResult,
 } from '../utils.js';
+import {resolveLadderPaths} from './ladder.js';
 import {
   artifactLabel,
   artifactNote,
@@ -156,8 +157,22 @@ export async function computeSequenceTrends(
 ): Promise<SequenceTrends> {
   const toolName = opts.toolName ?? 'memlab_sequence_analysis';
   const steps: SequenceStep[] = [];
+  // `paths: ["ladder:<name>"]` expands to a saved ladder (see ladder.ts), so a
+  // six-rung trend call is one token instead of six absolute paths.
+  const {paths: resolvedPaths} = resolveLadderPaths(paths);
+  // The >=2 requirement is enforced here rather than in the schema: a ladder
+  // reference is a SINGLE array element that expands to many, so a schema-level
+  // `.min(2)` rejects `["ladder:name"]` before it can be expanded.
+  if (resolvedPaths.length < 2) {
+    throw new Error(
+      `${toolName} needs at least 2 snapshots; got ${resolvedPaths.length}. ` +
+        (paths.length === 1 && paths[0].startsWith('ladder:')
+          ? 'That ladder has fewer than 2 rungs — check it with memlab_ladder({action:"show"}).'
+          : 'Pass an ordered list of paths, or a single ["ladder:<name>"] reference.'),
+    );
+  }
 
-  for (const p of paths) {
+  for (const p of resolvedPaths) {
     let local: string;
     let fetchedFrom: string | null = null;
     try {
@@ -253,9 +268,9 @@ export function registerSequenceAnalysis(server: McpServer): void {
     {
       paths: z
         .array(z.string())
-        .min(2)
+        .min(1)
         .describe(
-          'Ordered list of >=2 snapshot paths (oldest first). Each may be a local absolute path, a manifold:// URL, or a bare snapshot filename.',
+          'Ordered list of >=2 snapshot paths (oldest first): local absolute paths, manifold:// URLs, or bare snapshot filenames. A single ["ladder:<name>"] entry expands to a ladder saved with memlab_ladder.',
         ),
       limit: z
         .number()

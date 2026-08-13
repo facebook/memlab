@@ -12,6 +12,7 @@ import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import type {IHeapNode} from '@memlab/core';
 import {getSnapshot} from '../heap-state.js';
+import {resolveSavedNodeIds} from '../result-handles.js';
 import {
   formatBytes,
   formatNumber,
@@ -39,6 +40,12 @@ export function registerObjectShape(server: McpServer): void {
         .optional()
         .describe(
           'Array of node IDs to inspect in a single call (batch mode). Returns shape for each node.',
+        ),
+      from_result: z
+        .string()
+        .optional()
+        .describe(
+          'Read the node ids from a result saved by memlab_eval ({save_as} / helpers.save) instead of listing them. Avoids round-tripping a long id list through the transcript.',
         ),
       class_name: z
         .string()
@@ -76,6 +83,7 @@ export function registerObjectShape(server: McpServer): void {
     async ({
       node_id,
       node_ids,
+      from_result,
       class_name,
       sample_count,
       include_internal,
@@ -85,7 +93,10 @@ export function registerObjectShape(server: McpServer): void {
       try {
         const snapshot = getSnapshot();
 
-        let ids: number[] = node_ids ?? (node_id != null ? [node_id] : []);
+        let ids: number[] =
+          node_ids ??
+          (from_result != null ? resolveSavedNodeIds(from_result) : null) ??
+          (node_id != null ? [node_id] : []);
         let classNote = '';
         if (ids.length === 0 && class_name != null && class_name !== '') {
           // Pick the largest instances by retained size: a shape read from the
@@ -120,7 +131,7 @@ export function registerObjectShape(server: McpServer): void {
         }
         if (ids.length === 0) {
           return errorResult(
-            'Provide node_id, node_ids, or class_name to inspect.',
+            'Provide node_id, node_ids, from_result, or class_name to inspect.',
           );
         }
         if (ids.length > 20) {

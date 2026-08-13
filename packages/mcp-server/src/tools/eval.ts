@@ -14,7 +14,11 @@ import {z} from 'zod';
 import vm from 'node:vm';
 import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
-import {getSnapshot, getEvalScratch} from '../heap-state.js';
+import {
+  getSnapshot,
+  getEvalScratch,
+  getSnapshotMetadata,
+} from '../heap-state.js';
 import {
   errorResult,
   toolResult,
@@ -234,6 +238,13 @@ export function registerEval(server: McpServer): void {
         .describe(
           'Save this call\'s `result` under a name, reusable in later calls via `helpers.load("<name>")`. Lets a multi-step investigation keep intermediate sets (candidate ids, per-id measurements) SERVER-SIDE instead of round-tripping them through the transcript. Save plain data (ids, counts, strings) — not node objects. Scoped to the current snapshot and dropped when it is unloaded.',
         ),
+      dry_run: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Report what the code WOULD scan and stop, without running it (default false). Returns the snapshot size, whether the code contains a full-heap walk, and the effective max_nodes budget. Use it before an exploratory scan on a multi-million-node heap, where the difference between an indexed lookup and a full walk is the difference between milliseconds and minutes.',
+        ),
       max_nodes: z
         .number()
         .int()
@@ -244,7 +255,7 @@ export function registerEval(server: McpServer): void {
           'Abort a `snapshot.nodes.forEach` walk after this many node visits (default 20000000, i.e. effectively unlimited). On abort the partial `result` is returned with a note instead of failing, so a broad exploratory scan can be attempted safely. Reported back as `nodes_visited` on every call.',
         ),
     },
-    async ({mode, code, timeout_ms, save_as, max_nodes}) => {
+    async ({mode, code, timeout_ms, save_as, max_nodes, dry_run}) => {
       const budget: VisitBudget = {visited: 0, max: max_nodes, exceeded: false};
       try {
         if (mode === 'describe_env') {
@@ -261,6 +272,34 @@ export function registerEval(server: McpServer): void {
           );
         }
         const snapshot = getSnapshot();
+
+        if (dry_run) {
+          // Estimate, do not execute. A full-heap walk is detected textually —
+          // the honest limit of a pre-flight check, and stated as such rather
+          // than implying the code was analysed.
+          const meta = getSnapshotMetadata();
+          const fullWalk =
+            /\b(?:snapshot\.)?(?:nodes|edges)\s*\.\s*forEach/.test(code);
+          const indexed = /helpers\.(byClass|byTypename|withProp|getNode)/.test(
+            code,
+          );
+          return toolResult(
+            [
+              '## Dry run — nothing was executed',
+              '',
+              `Snapshot: ${formatNumber(meta?.nodeCount ?? 0)} nodes, ${formatNumber(meta?.edgeCount ?? 0)} edges.`,
+              `Walk budget (\`max_nodes\`): ${formatNumber(budget.max)}.`,
+              '',
+              fullWalk
+                ? `⚠ The code contains a full-heap walk, so it will visit up to ${formatNumber(Math.min(budget.max, meta?.nodeCount ?? 0))} nodes. On a heap this size that is seconds to minutes.${indexed ? '' : ' `helpers.byClass` / `byTypename` / `withProp` are indexed and avoid the walk when you know what you are looking for.'}`
+                : indexed
+                  ? 'No full-heap walk detected; the code uses the indexed helpers, which do not scan the heap.'
+                  : 'No full-heap walk detected by text match. This is a textual check, not an analysis — a walk reached indirectly will not be seen here.',
+              '',
+              '_Re-run without `dry_run` to execute._',
+            ].join('\n'),
+          );
+        }
 
         const consoleOutput: string[] = [];
         const capturedConsole = {

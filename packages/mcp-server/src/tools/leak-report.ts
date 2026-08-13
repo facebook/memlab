@@ -92,9 +92,9 @@ export function registerLeakReport(server: McpServer): void {
     {
       paths: z
         .array(z.string())
-        .min(2)
+        .min(1)
         .describe(
-          'Ordered list of >=2 snapshot paths (oldest first). Each may be a local absolute path, a manifold:// URL, or a bare snapshot filename.',
+          'Ordered list of >=2 snapshot paths (oldest first): local absolute paths, manifold:// URLs, or bare snapshot filenames. A single ["ladder:<name>"] entry expands to a ladder saved with memlab_ladder.',
         ),
       cycles: z
         .number()

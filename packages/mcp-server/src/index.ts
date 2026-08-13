@@ -72,6 +72,10 @@ import {registerServerStatus} from './tools/server-status.js';
 import {registerDevArtifacts} from './tools/dev-artifacts.js';
 import {registerSequenceAnalysis} from './tools/sequence-analysis.js';
 import {registerLeakReport} from './tools/leak-report.js';
+import {registerMatchObject} from './tools/match-object.js';
+import {registerExplainDelta} from './tools/explain-delta.js';
+import {registerHypothesis} from './tools/hypothesis.js';
+import {registerLadder} from './tools/ladder.js';
 import {registerEventRegistry} from './tools/event-registry.js';
 import {registerDominatorChain} from './tools/dominator-chain.js';
 import {registerDuplicateObjects} from './tools/duplicate-objects.js';
@@ -80,7 +84,7 @@ import {registerBatch} from './tools/batch.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.40.0', // keep in sync with package.json
+  version: '2.41.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -141,6 +145,10 @@ registerServerStatus(server);
 registerDevArtifacts(server);
 registerSequenceAnalysis(server);
 registerLeakReport(server);
+registerMatchObject(server);
+registerExplainDelta(server);
+registerHypothesis(server);
+registerLadder(server);
 registerEventRegistry(server);
 registerDominatorChain(server);
 registerDuplicateObjects(server);

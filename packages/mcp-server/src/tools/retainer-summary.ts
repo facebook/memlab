@@ -12,6 +12,7 @@ import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode, IHeapEdge} from '@memlab/core';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
+import {resolveSavedNodeIds} from '../result-handles.js';
 import {
   collapseRepeatedLabels,
   filterLargestObjects,
@@ -217,6 +218,12 @@ export function registerRetainerSummary(server: McpServer): void {
             'structure (e.g., ["callback", "context"]). Matches the {prop1, prop2} naming ' +
             'from shape_histogram output.',
         ),
+      from_result: z
+        .string()
+        .optional()
+        .describe(
+          'Read the node ids from a result saved by memlab_eval ({save_as} / helpers.save) instead of listing them.',
+        ),
       node_ids: z
         .array(z.number())
         .optional()
@@ -270,6 +277,7 @@ export function registerRetainerSummary(server: McpServer): void {
       compact,
       framework_filter,
       include_properties,
+      from_result,
     }) => {
       try {
         const snapshot = getSnapshot();
@@ -277,9 +285,17 @@ export function registerRetainerSummary(server: McpServer): void {
         let nodes: IHeapNode[];
         let label: string;
 
-        if (node_ids && node_ids.length > 0) {
+        // A saved result stands in for an explicit id list (see
+        // result-handles.ts): same code path, ids never printed.
+        const effectiveNodeIds =
+          node_ids && node_ids.length > 0
+            ? node_ids
+            : from_result != null
+              ? resolveSavedNodeIds(from_result)
+              : null;
+        if (effectiveNodeIds && effectiveNodeIds.length > 0) {
           nodes = [];
-          for (const id of node_ids) {
+          for (const id of effectiveNodeIds) {
             const node = snapshot.getNodeById(id);
             if (node) nodes.push(node);
           }
@@ -329,7 +345,7 @@ export function registerRetainerSummary(server: McpServer): void {
         } else {
           return errorResult(
             new Error(
-              'Either class_name, name_prefix, shape, or node_ids must be provided.',
+              'Either class_name, name_prefix, shape, node_ids, or from_result must be provided.',
             ),
           );
         }
