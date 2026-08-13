@@ -10,6 +10,7 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
+import type {IHeapNode} from '@memlab/core';
 import {getSnapshot} from '../heap-state.js';
 import {
   formatBytes,
@@ -24,7 +25,8 @@ import {
 export function registerObjectShape(server: McpServer): void {
   server.tool(
     'memlab_object_shape',
-    'Show the shape/structure of one or more heap objects: all named properties with target node types and sizes. Filters out internal/hidden edges to show only user-visible properties. Supports batch inspection via node_ids to compare multiple objects side-by-side in a single call.',
+    'Show the shape/structure of one or more heap objects: all named properties with target node types and sizes. Filters out internal/hidden edges to show only user-visible properties. Supports batch inspection via node_ids to compare multiple objects side-by-side in a single call. ' +
+      'Accepts a class_name instead of ids: every other tool reports classes by NAME (memlab_class_histogram, memlab_sequence_analysis, memlab_leak_report), so requiring an id here forced a memlab_find_nodes_by_class round-trip — a second whole-heap scan, on a server where loading the snapshot took minutes — just to answer "what shape is this class?".',
     {
       node_id: z
         .number()
@@ -37,6 +39,19 @@ export function registerObjectShape(server: McpServer): void {
         .optional()
         .describe(
           'Array of node IDs to inspect in a single call (batch mode). Returns shape for each node.',
+        ),
+      class_name: z
+        .string()
+        .optional()
+        .describe(
+          'Inspect instances of this class by NAME instead of by id (exact match on the node name, as reported by memlab_class_histogram / memlab_sequence_analysis). Samples the largest instances by retained size — see sample_count. Ignored when node_id/node_ids is given.',
+        ),
+      sample_count: z
+        .number()
+        .optional()
+        .default(3)
+        .describe(
+          'How many instances to sample when class_name is used (default 3, max 20). The largest by retained size, so a shape read from them is representative of the memory rather than of an arbitrary instance.',
         ),
       include_internal: z
         .boolean()
@@ -58,13 +73,55 @@ export function registerObjectShape(server: McpServer): void {
           'Maximum number of properties to return per node (default 50)',
         ),
     },
-    async ({node_id, node_ids, include_internal, non_null_only, limit}) => {
+    async ({
+      node_id,
+      node_ids,
+      class_name,
+      sample_count,
+      include_internal,
+      non_null_only,
+      limit,
+    }) => {
       try {
         const snapshot = getSnapshot();
 
-        const ids: number[] = node_ids ?? (node_id != null ? [node_id] : []);
+        let ids: number[] = node_ids ?? (node_id != null ? [node_id] : []);
+        let classNote = '';
+        if (ids.length === 0 && class_name != null && class_name !== '') {
+          // Pick the largest instances by retained size: a shape read from the
+          // biggest instances describes where the memory actually is, whereas an
+          // arbitrary instance may be an empty or partially-initialized one.
+          const want = Math.min(Math.max(1, sample_count), 20);
+          const best: IHeapNode[] = [];
+          let total = 0;
+          snapshot.nodes.forEach(node => {
+            if (node.id <= 3) return;
+            if (node.name !== class_name) return;
+            total++;
+            let i = 0;
+            while (
+              i < best.length &&
+              best[i].retainedSize >= node.retainedSize
+            ) {
+              i++;
+            }
+            if (i < want) {
+              best.splice(i, 0, node);
+              if (best.length > want) best.length = want;
+            }
+          });
+          if (total === 0) {
+            return errorResult(
+              `No nodes named "${class_name}" found. Class names are matched exactly and are case-sensitive; check the spelling against memlab_class_histogram, or use memlab_search_nodes({name_pattern}) for a regex match.`,
+            );
+          }
+          ids = best.map(n => n.id);
+          classNote = `Sampling ${formatNumber(ids.length)} of ${formatNumber(total)} \`${class_name}\` instance(s), largest by retained size.\n\n`;
+        }
         if (ids.length === 0) {
-          return errorResult('Provide either node_id or node_ids to inspect.');
+          return errorResult(
+            'Provide node_id, node_ids, or class_name to inspect.',
+          );
         }
         if (ids.length > 20) {
           return errorResult(
@@ -253,7 +310,7 @@ export function registerObjectShape(server: McpServer): void {
           }
         }
 
-        return toolResult(sections.join('\n\n---\n\n'));
+        return toolResult(classNote + sections.join('\n\n---\n\n'));
       } catch (err) {
         return errorResult(err);
       }

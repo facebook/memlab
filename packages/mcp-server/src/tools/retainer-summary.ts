@@ -140,24 +140,52 @@ function formatTraceChain(steps: TraceStep[]): string {
   return collapseRepeatedLabels(hops).join('');
 }
 
+// Marks hops the framework filter removed between two rendered nodes, so a
+// compacted chain never implies that two nodes are directly connected when they
+// are not.
+export const COMPACT_GAP_MARKER = '⋯';
+
+/**
+ * Compact retainer chain.
+ *
+ * Compact mode used to render node names ONLY and drop every edge name. That is
+ * backwards: the edge name is usually the finding. A measured case collapsed to
+ * `Object ×3` and silently discarded `.memoizedState` and `.undoStack` — the two
+ * properties that identified the leak — and recovering them cost a full snapshot
+ * reload. So edge names are never elided here; repetition is collapsed on the
+ * NODE+edge pair instead, which still folds a genuinely repetitive `.next ×12`
+ * linked-list walk while keeping two different properties distinct.
+ */
 function formatTraceChainCompact(
   steps: TraceStep[],
   frameworkFilter: boolean,
 ): string {
-  const filtered = frameworkFilter
-    ? steps.filter(
-        (s, i) => i === 0 || i === steps.length - 1 || !isFrameworkStep(s),
-      )
-    : steps;
+  const keep: number[] = [];
+  for (let i = 0; i < steps.length; i++) {
+    if (
+      !frameworkFilter ||
+      i === 0 ||
+      i === steps.length - 1 ||
+      !isFrameworkStep(steps[i])
+    ) {
+      keep.push(i);
+    }
+  }
   const parts: string[] = [];
-  for (let i = 0; i < filtered.length; i++) {
-    const s = filtered[i];
+  for (let k = 0; k < keep.length; k++) {
+    const i = keep[k];
+    const s = steps[i];
     const name = shortenPath(s.name);
-    if (i === 0 || i === filtered.length - 1) {
-      const suffix = s.type === 'closure' ? '()' : '';
-      parts.push(`${name}${suffix}`);
-    } else {
-      parts.push(name);
+    const isEnd = k === 0 || k === keep.length - 1;
+    const suffix = isEnd && s.type === 'closure' ? '()' : '';
+    // The property on THIS node that holds the next hop.
+    const edge =
+      k < keep.length - 1 && s.edgeName != null ? `.${s.edgeName}` : '';
+    parts.push(`${name}${suffix}${edge}`);
+    // A filtered-out run between this hop and the next is an elision and must
+    // be visible; it also stops a run-collapse from spanning the gap.
+    if (k < keep.length - 1 && keep[k + 1] !== i + 1) {
+      parts.push(COMPACT_GAP_MARKER);
     }
   }
   return collapseRepeatedLabels(parts).join(' → ');
