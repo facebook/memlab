@@ -35,9 +35,17 @@ const SHAPE_PROP_CAP = 12;
 // otherwise turn an identity lookup into a full-heap ranking problem.
 const MAX_CANDIDATES = 5000;
 
-function shapeOf(node: IHeapNode): string[] {
+/**
+ * Property-name fingerprint, or null when the node is too wide to fingerprint.
+ *
+ * Returning an empty array for a wide node was wrong in a way that inverted the
+ * result: `jaccard(empty, empty)` is 1, so two wide objects of the same class
+ * scored a PERFECT shape match without a single property having been compared.
+ * "Not computed" and "genuinely has no properties" have to be distinguishable.
+ */
+function shapeOf(node: IHeapNode): string[] | null {
   const props: string[] = [];
-  if (node.edge_count > 1024) return props;
+  if (node.edge_count > 1024) return null;
   node.forEachReference(edge => {
     if (edge.type === 'property') {
       props.push(String(edge.name_or_index));
@@ -113,7 +121,8 @@ export function registerMatchObject(server: McpServer): void {
         const src = source.getNodeById(node_id);
         if (!src) return errorResult(`Node @${node_id} not found.`);
 
-        const srcShape = new Set(shapeOf(src));
+        const srcShapeProps = shapeOf(src);
+        const srcShape = srcShapeProps == null ? null : new Set(srcShapeProps);
         const srcRetainer = getFirstNonFrameworkRetainer(src);
 
         const candidates: Candidate[] = [];
@@ -127,7 +136,14 @@ export function registerMatchObject(server: McpServer): void {
             truncated = true;
             return;
           }
-          const shapeScore = jaccard(srcShape, new Set(shapeOf(node)));
+          const candProps = shapeOf(node);
+          // Either side being unfingerprintable means the shape term carries no
+          // evidence; score it 0 rather than 1 so a wide object cannot reach a
+          // perfect score on class and retainer alone.
+          const shapeKnown = srcShape != null && candProps != null;
+          const shapeScore = shapeKnown
+            ? jaccard(srcShape, new Set(candProps))
+            : 0;
           const retainerMatch =
             srcRetainer !== '(unknown)' &&
             getFirstNonFrameworkRetainer(node) === srcRetainer;
@@ -176,7 +192,7 @@ export function registerMatchObject(server: McpServer): void {
               return [
                 `@${c.node.id}`,
                 c.score.toFixed(2),
-                `${Math.round(c.shapeScore * 100)}%`,
+                c.shapeScore > 0 ? `${Math.round(c.shapeScore * 100)}%` : 'n/a',
                 c.retainerMatch ? 'yes' : 'no',
                 formatBytes(c.node.retainedSize),
                 `${delta >= 0 ? '+' : '−'}${formatBytes(Math.abs(delta))}`,

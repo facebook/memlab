@@ -46,11 +46,20 @@ import {peekSnapshotCounts, resolveSnapshotPath} from './load-snapshot.js';
  * Persisted as one JSON file so it survives a server restart — the case that
  * motivated it, since a dropped MCP connection is what loses the paths.
  */
-const REGISTRY_PATH = path.join(
-  process.env.HOME ?? '/tmp',
-  '.memlab-mcp',
-  'ladders.json',
-);
+function registryPath(): string {
+  // No /tmp fallback: on a shared host that is a predictable, often
+  // world-writable path, so ladders would collide across users and another
+  // process could overwrite the registry. Failing is better than a silently
+  // shared file.
+  const home = process.env.HOME;
+  if (!home) {
+    throw new Error(
+      'HOME is not set, so the ladder registry has no per-user location. ' +
+        'Refusing to fall back to a shared /tmp path.',
+    );
+  }
+  return path.join(home, '.memlab-mcp', 'ladders.json');
+}
 
 interface Ladder {
   name: string;
@@ -66,8 +75,8 @@ interface Ladder {
 
 function loadRegistry(): Record<string, Ladder> {
   try {
-    if (!fs.existsSync(REGISTRY_PATH)) return {};
-    const raw = fs.readFileSync(REGISTRY_PATH, 'utf8');
+    if (!fs.existsSync(registryPath())) return {};
+    const raw = fs.readFileSync(registryPath(), 'utf8');
     const parsed: unknown = JSON.parse(raw);
     if (parsed == null || typeof parsed !== 'object') return {};
     return parsed as Record<string, Ladder>;
@@ -79,8 +88,8 @@ function loadRegistry(): Record<string, Ladder> {
 }
 
 function saveRegistry(reg: Record<string, Ladder>): void {
-  fs.mkdirSync(path.dirname(REGISTRY_PATH), {recursive: true});
-  fs.writeFileSync(REGISTRY_PATH, JSON.stringify(reg, null, 2));
+  fs.mkdirSync(path.dirname(registryPath()), {recursive: true});
+  fs.writeFileSync(registryPath(), JSON.stringify(reg, null, 2));
 }
 
 /**

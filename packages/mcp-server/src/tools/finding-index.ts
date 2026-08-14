@@ -218,9 +218,15 @@ export function registerFindingIndex(server: McpServer): void {
                 ? f.signature.slice(0, 57) + '…'
                 : f.signature,
             ]);
+          // Sort by round id rather than trusting object insertion order: a
+          // re-recorded round moves in the object and "the last 8" silently
+          // stops meaning the most recent ones.
           const covered = Object.entries(index.combos_driven)
-            .map(([r, c]) => `${r}: ${c.join(', ')}`)
-            .slice(-8);
+            .sort((a, b) =>
+              a[0].localeCompare(b[0], undefined, {numeric: true}),
+            )
+            .slice(-8)
+            .map(([r, c]) => `${r}: ${c.join(', ')}`);
           return toolResult(
             [
               `## Findings index (${formatNumber(all.length)})`,

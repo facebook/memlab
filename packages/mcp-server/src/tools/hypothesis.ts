@@ -27,8 +27,10 @@ import {
 
 // Property names used to fingerprint a shape, matching the other shape tools.
 const SHAPE_PROP_CAP = 12;
-// Shapes tracked per rung before the tail is folded into "(other)". A heap with
-// a million distinct shapes must not turn this into a memory problem of its own.
+// Shapes tracked per rung. Once this many distinct shapes are seen, tracking
+// STOPS and the tail is uncounted (not folded into an "(other)" bucket) — the
+// report says so explicitly. A heap with a million distinct shapes must not turn
+// this into a memory problem of its own.
 const MAX_SHAPES = 2000;
 
 function shapeKey(node: IHeapNode): string {
@@ -133,28 +135,36 @@ export function registerHypothesis(server: McpServer): void {
           let selfBytes = 0;
           let scanned = 0;
           let predicateError: string | null = null;
+          // memlab's nodes.forEach has no early exit, so a predicate that throws
+          // on the first node would otherwise still walk every remaining node in
+          // a multi-million-node heap before the error is reported. Throwing a
+          // sentinel out of the callback actually stops the walk.
+          class AbortWalk extends Error {}
           const shapes = new Map<string, number>();
-          snapshot.nodes.forEach(node => {
-            scanned++;
-            if (predicateError != null) return;
-            let hit = false;
-            try {
-              hit = test(node);
-            } catch (e) {
-              // Report the predicate's own failure rather than a silent zero:
-              // a predicate that throws on the first node would otherwise look
-              // exactly like a hypothesis that is simply false.
-              predicateError = e instanceof Error ? e.message : String(e);
-              return;
-            }
-            if (!hit) return;
-            matched++;
-            selfBytes += node.self_size;
-            if (group_by_shape && shapes.size < MAX_SHAPES) {
-              const k = shapeKey(node);
-              shapes.set(k, (shapes.get(k) ?? 0) + 1);
-            }
-          });
+          try {
+            snapshot.nodes.forEach(node => {
+              scanned++;
+              let hit = false;
+              try {
+                hit = test(node);
+              } catch (e) {
+                // Report the predicate's own failure rather than a silent zero:
+                // a predicate that throws on the first node would otherwise look
+                // exactly like a hypothesis that is simply false.
+                predicateError = e instanceof Error ? e.message : String(e);
+                throw new AbortWalk();
+              }
+              if (!hit) return;
+              matched++;
+              selfBytes += node.self_size;
+              if (group_by_shape && shapes.size < MAX_SHAPES) {
+                const k = shapeKey(node);
+                shapes.set(k, (shapes.get(k) ?? 0) + 1);
+              }
+            });
+          } catch (e) {
+            if (!(e instanceof AbortWalk)) throw e;
+          }
           if (predicateError != null) {
             return errorResult(
               `Predicate threw while scanning ${p}: ${predicateError}. Guard against missing fields — it is applied to every node in the heap, not just the ones you have in mind.`,
