@@ -87,7 +87,7 @@ import {registerBatch} from './tools/batch.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.45.0', // keep in sync with package.json
+  version: '2.45.1', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
