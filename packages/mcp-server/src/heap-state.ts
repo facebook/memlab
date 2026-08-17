@@ -190,6 +190,36 @@ export function shouldEmitHeader(): boolean {
   return true;
 }
 
+/**
+ * Standing explanatory notes — artifact-family write-ups, capture-mode caveats,
+ * "a candidate is not a verdict" — are the same text on every call, and a trend
+ * tool gets called many times per investigation (8 times in one measured
+ * session). The information is worth stating; restating it is not. Returns true
+ * the FIRST time a key is seen in this server process and false thereafter, so
+ * a caller can print the long form once and a one-line pointer after that.
+ *
+ * Session-scoped on purpose, not per-snapshot: the reader is the same agent
+ * across snapshots, and re-teaching it the same caveat when it switches rungs is
+ * exactly the repetition being removed.
+ */
+const emittedNotes = new Set<string>();
+
+export function shouldEmitNote(key: string): boolean {
+  if (emittedNotes.has(key)) return false;
+  emittedNotes.add(key);
+  return true;
+}
+
+/** True if `key` has already been emitted, without marking it. */
+export function noteAlreadyEmitted(key: string): boolean {
+  return emittedNotes.has(key);
+}
+
+/** Force the standing notes to print again (used by `repeat_notes`). */
+export function resetEmittedNotes(): void {
+  emittedNotes.clear();
+}
+
 function uniqueHandle(base: string): string {
   // Sanitize to a short slug, then disambiguate against existing handles.
   const slug =

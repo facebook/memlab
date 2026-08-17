@@ -16,8 +16,10 @@ import {
   errorResult,
   toolResult,
   looksLikeFailurePayload,
+  suggestionsSuppressed,
 } from '../utils.js';
 import {classifyNonProductionString} from '../artifact-classes.js';
+import {buildStringIndex, stringIndexIsCached} from '../string-index.js';
 
 export function registerDuplicatedStrings(server: McpServer): void {
   server.tool(
@@ -49,53 +51,29 @@ export function registerDuplicatedStrings(server: McpServer): void {
       try {
         const snapshot = getSnapshot();
 
-        // Build frequency map: string value -> { count, totalSize, exampleIds }
-        const stringMap = new Map<
-          string,
-          {count: number; total_size: number; example_node_ids: number[]}
-        >();
-
-        snapshot.nodes.forEach(node => {
-          if (node.type !== 'string') return;
-          // Skip sliced strings (they share backing storage)
-          if (node.name === 'system / SlicedString') return;
-
-          const strNode = node.toStringNode();
-          if (!strNode) return;
-
-          const value = strNode.stringValue;
-          const entry = stringMap.get(value);
-          if (entry) {
-            entry.count++;
-            entry.total_size += node.retainedSize;
-            if (entry.example_node_ids.length < 3) {
-              entry.example_node_ids.push(node.id);
-            }
-          } else {
-            stringMap.set(value, {
-              count: 1,
-              total_size: node.retainedSize,
-              example_node_ids: [node.id],
-            });
-          }
-        });
+        // Shared with memlab_intern_opportunities, which needs the same
+        // value -> {count, size, ids} map. Cached per snapshot, so running the
+        // two back to back (the common case) walks every string node once
+        // instead of twice.
+        const reused = stringIndexIsCached();
+        const {byValue: stringMap} = buildStringIndex(snapshot);
 
         const duplicated = Array.from(stringMap.entries())
           .filter(([, stats]) => stats.count >= min_count)
-          .sort((a, b) => b[1].total_size - a[1].total_size)
+          .sort((a, b) => b[1].totalSize - a[1].totalSize)
           .slice(0, limit)
           .map(([value, stats]) => {
             const per_copy_size =
-              stats.count > 0 ? stats.total_size / stats.count : 0;
+              stats.count > 0 ? stats.totalSize / stats.count : 0;
             const potential_savings = (stats.count - 1) * per_copy_size;
             return {
               value:
                 value.length > 200 ? value.substring(0, 200) + '...' : value,
               count: stats.count,
-              total_size: stats.total_size,
-              total_size_formatted: formatBytes(stats.total_size),
+              total_size: stats.totalSize,
+              total_size_formatted: formatBytes(stats.totalSize),
               potential_savings,
-              example_node_ids: stats.example_node_ids,
+              example_node_ids: stats.exampleIds.slice(0, 3),
               field_context: null as string | null,
               actionability: null as string | null,
               harness_what: null as string | null,
@@ -264,7 +242,12 @@ export function registerDuplicatedStrings(server: McpServer): void {
             ? `\n\n⚠️ **${harnessEntries.length} entr${harnessEntries.length === 1 ? 'y' : 'ies'} (${formatBytes(harnessBytes)}) excluded from the total as measurement-harness content** — the CDP/devtools bridge injected into the page to drive this session, not application memory. Interning it reclaims nothing in production.`
             : '';
 
-        const body = `Duplicated strings (${summaryLine}):\n\n${lines.join('\n')}\n\n**Total interning savings: ${formatBytes(totalSavings)}** (if each string were stored only once, harness content excluded)${harnessNote}`;
+        // The two string tools answer different questions and their outputs
+        // used to restate each other. Say which is which, once, and note that
+        // the expensive scan is shared rather than repeated.
+        const relatedNote = `\n\n_This is the raw per-VALUE duplication table. \`memlab_intern_opportunities\` groups the same strings by property x parent shape and estimates what a canonical intern pool would actually reclaim (accounting for co-retention and the length cap) — use it to decide whether to write the fix, and this to see the values. It reuses this snapshot's string scan${reused ? ', which was itself already cached' : ''}, so running both costs one pass over the string nodes, not two._`;
+
+        const body = `Duplicated strings (${summaryLine}):\n\n${lines.join('\n')}\n\n**Total interning savings: ${formatBytes(totalSavings)}** (if each string were stored only once, harness content excluded)${harnessNote}${suggestionsSuppressed() ? '' : relatedNote}`;
         return toolResult(
           suggestions.length > 0
             ? `${body}\n\n---\n\n${suggestions.join('\n')}`

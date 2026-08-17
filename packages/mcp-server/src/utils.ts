@@ -1150,6 +1150,32 @@ export function formatQueryNodesResult(
   return `Total matching nodes: ${formatNumber(result.total_count)}${partial}`;
 }
 
+/**
+ * Build a name filter from a caller-supplied pattern.
+ *
+ * Interpreted as a case-insensitive regular expression, falling back to a plain
+ * case-insensitive substring test when the pattern is not valid regex — so a
+ * literal like `blink::UndoStep` works without escaping and a real pattern
+ * still works. An empty/absent pattern matches everything.
+ *
+ * Why this exists: answering "is `blink::UndoStep` present?" previously meant
+ * `class_histogram({node_type: "native", limit: 200})` and reading ~4 KB of
+ * table for one row. Filtering at the source is the difference between a
+ * yes/no answer and a page of output.
+ */
+export function makeNamePatternTest(
+  pattern: string | undefined,
+): (name: string) => boolean {
+  if (pattern == null || pattern.length === 0) return () => true;
+  try {
+    const re = new RegExp(pattern, 'i');
+    return (name: string) => re.test(name);
+  } catch {
+    const needle = pattern.toLowerCase();
+    return (name: string) => name.toLowerCase().includes(needle);
+  }
+}
+
 export function snapshotHeader(): string {
   const meta = getSnapshotMetadata();
   if (!meta) return '';

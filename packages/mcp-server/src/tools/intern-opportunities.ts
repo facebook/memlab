@@ -27,6 +27,7 @@ import {
   collectDevRoots,
   computeReachableWithoutDevRoots,
 } from './dev-artifacts.js';
+import {buildStringIndex} from '../string-index.js';
 import {
   classifyNonProductionString,
   isHarnessToolManifestShape,
@@ -291,31 +292,22 @@ export function registerInternOpportunities(server: McpServer): void {
         const meta = getSnapshotMetadata();
         const totalSize = meta?.totalSize ?? 0;
 
-        // Step 1: Build frequency map of duplicated strings
-        const stringMap = new Map<
-          string,
-          {
-            count: number;
-            totalSize: number;
-            exampleIds: number[];
-            devOnlyCount: number;
-          }
-        >();
-
-        // Cheap retention-pattern signal (Feedback round 7 §4): a heap dominated
-        // by `(concatenated string)` (cons/rope) nodes is string ACCUMULATION
-        // (repeated `+=` / join into a long-lived buffer), NOT value duplication
-        // — interning cannot help. Count them by name in the pass we already do
-        // (O(1) per node, no value materialization) so we can flag the pattern
-        // instead of silently reporting tiny interning wins.
-        let concatStringCount = 0;
-        let concatStringSize = 0;
-
-        // Strings retained ONLY through a dev/automation root (overwhelmingly
-        // the attached inspector's console holding dev-build log records) cannot
-        // be reclaimed by an intern pool in production. Compute reachability
-        // once and tag each string node so those groups can be bucketed out of
-        // the headline instead of inflating it.
+        // Step 1: per-value string duplication index.
+        //
+        // Shared with memlab_duplicated_strings and cached per snapshot, so the
+        // two tools (routinely run back to back) walk the string nodes once
+        // between them rather than once each. The dev-root reachability pass is
+        // requested here because only this tool needs it: strings retained ONLY
+        // through a dev/automation root — overwhelmingly the attached
+        // inspector's console holding dev-build log records — cannot be
+        // reclaimed by an intern pool in production, and counting them inflates
+        // the headline saving.
+        //
+        // `(concatenated string)` (cons/rope) nodes are counted by the same
+        // index: a heap dominated by them is string ACCUMULATION (repeated `+=`
+        // / join into a long-lived buffer), NOT value duplication, and
+        // interning cannot help. Flagging the pattern beats reporting a tiny
+        // interning win against it. (Feedback round 7 §4.)
         const devRoots = collectDevRoots(snapshot);
         const productionReachable =
           devRoots.byId.size > 0
@@ -325,34 +317,13 @@ export function registerInternOpportunities(server: McpServer): void {
           productionReachable != null &&
           productionReachable[node.nodeIndex] === 0;
 
-        snapshot.nodes.forEach(node => {
-          if (node.name === '(concatenated string)') {
-            concatStringCount++;
-            concatStringSize += node.self_size;
-          }
-          if (node.type !== 'string') return;
-          if (node.name === 'system / SlicedString') return;
-          const strNode = node.toStringNode();
-          if (!strNode) return;
-          const value = strNode.stringValue;
-          const entry = stringMap.get(value);
-          const devOnly = isDevOnlyNode(node);
-          if (entry) {
-            entry.count++;
-            entry.totalSize += node.retainedSize;
-            if (devOnly) entry.devOnlyCount++;
-            if (entry.exampleIds.length < 20) {
-              entry.exampleIds.push(node.id);
-            }
-          } else {
-            stringMap.set(value, {
-              count: 1,
-              totalSize: node.retainedSize,
-              exampleIds: [node.id],
-              devOnlyCount: devOnly ? 1 : 0,
-            });
-          }
+        const stringIndex = buildStringIndex(snapshot, {
+          withDevOnly: true,
+          isDevOnlyNode,
         });
+        const stringMap = stringIndex.byValue;
+        const concatStringCount = stringIndex.concatStringCount;
+        const concatStringSize = stringIndex.concatStringSize;
 
         // Step 2: For duplicated strings, sample referrers to get property × shape
         const groupMap = new Map<

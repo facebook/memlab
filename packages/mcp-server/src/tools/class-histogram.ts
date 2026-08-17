@@ -24,6 +24,7 @@ import {
   truncateNodeName,
   suggestionsSuppressed,
   boundedDominatorRetainedSize,
+  makeNamePatternTest,
 } from '../utils.js';
 
 export function registerClassHistogram(server: McpServer): void {
@@ -54,6 +55,12 @@ export function registerClassHistogram(server: McpServer): void {
         .number()
         .optional()
         .describe('Minimum total self size in bytes to include.'),
+      name_pattern: z
+        .string()
+        .optional()
+        .describe(
+          'Filter class names by pattern before aggregating — a case-insensitive regular expression, or a plain substring when the pattern is not valid regex (e.g. "blink::UndoStep", "Detached", "^WA"). Answering "is class X present?" this way costs one row instead of a whole table.',
+        ),
       node_type: z
         .string()
         .optional()
@@ -94,6 +101,7 @@ export function registerClassHistogram(server: McpServer): void {
       min_count,
       min_retained_size,
       min_self_size,
+      name_pattern,
       node_type,
       include_retained_size,
       max_retained_classes,
@@ -104,6 +112,7 @@ export function registerClassHistogram(server: McpServer): void {
         // Light-safe only without retained sizes: the retained path walks the
         // dominator tree, which a light load never built.
         const snapshot = getSnapshot({allowLight: !include_retained_size});
+        const nameMatches = makeNamePatternTest(name_pattern);
         const meta = getSnapshotMetadata();
 
         // Flat strings and numbers are leaf nodes: they dominate nothing but
@@ -130,6 +139,7 @@ export function registerClassHistogram(server: McpServer): void {
 
         snapshot.nodes.forEach(node => {
           if (node_type && node.type !== node_type) return;
+          if (!nameMatches(node.name)) return;
           // Skip internal meta nodes
           if (node.id <= 3) return;
 
@@ -200,6 +210,7 @@ export function registerClassHistogram(server: McpServer): void {
             idsByClass.set(key, new NumericSet());
           if (idsByClass.size > 0) {
             snapshot.nodes.forEach(node => {
+              if (!nameMatches(node.name)) return;
               if (node.id <= 3) return;
               if (node_type && node.type !== node_type) return;
               if (LEAF_TYPES.has(node.type)) return;

@@ -22,16 +22,26 @@ import {
   formatBytes,
   errorResult,
   toolResult,
+  makeNamePatternTest,
 } from '../utils.js';
 
 export function registerFindNodesByClass(server: McpServer): void {
   server.tool(
     'memlab_find_nodes_by_class',
-    'Find heap nodes by constructor/class name. Matches ANY node type by default (object, closure, array, string, native, …) — pass node_type to narrow. Ordering is controlled by order: the biggest by retained size (default), or the newest by node id. If the exact name matches nothing, reports near-miss names and the types they exist under instead of a bare "not found". Follow up with memlab_retainer_trace on a result node to see why it is retained, memlab_get_references to inspect its properties, or memlab_retainer_summary to find common retainer patterns across all instances.',
+    'Find heap nodes by constructor/class name, exactly (class_name) or by case-insensitive regex/substring (name_pattern). Matches ANY node type by default (object, closure, array, string, native, …) — pass node_type to narrow. Ordering is controlled by order: the biggest by retained size (default), or the newest by node id. If the exact name matches nothing, reports near-miss names and the types they exist under instead of a bare "not found". Follow up with memlab_retainer_trace on a result node to see why it is retained, memlab_get_references to inspect its properties, or memlab_retainer_summary to find common retainer patterns across all instances.',
     {
       class_name: z
         .string()
-        .describe('The constructor or class name to search for'),
+        .optional()
+        .describe(
+          'The exact constructor or class name to search for. Either this or name_pattern is required.',
+        ),
+      name_pattern: z
+        .string()
+        .optional()
+        .describe(
+          'Match class names by pattern instead of exactly — a case-insensitive regular expression, or a plain substring when the pattern is not valid regex (e.g. "blink::UndoStep", "^WAWeb", "Collection$"). Use when the exact name is unknown, or to sweep a family in one call. Combined with class_name, both must match.',
+        ),
       order: z
         .enum(['retained_size', 'newest'])
         .optional()
@@ -60,22 +70,43 @@ export function registerFindNodesByClass(server: McpServer): void {
         .default(20)
         .describe('Maximum number of results (default 20)'),
     },
-    async ({class_name, node_type, output_mode, limit, order}) => {
+    async ({
+      class_name,
+      name_pattern,
+      node_type,
+      output_mode,
+      limit,
+      order,
+    }) => {
       try {
+        if (class_name == null && name_pattern == null) {
+          return errorResult(
+            'Pass class_name (exact) or name_pattern (regex/substring); one of the two is required.',
+          );
+        }
         const snapshot = getSnapshot();
+        const nameMatches = makeNamePatternTest(name_pattern);
+        const label = class_name ?? `/${name_pattern}/`;
         // Historically this hard-filtered `type === 'object'`, so closures,
         // arrays, strings and natives were invisible: a class reported as a top
         // grower by memlab_sequence_analysis (which groups by `type::name`)
         // could return "No objects found" here, e.g. the closure `setValues_$0`.
         // Default to every type and let the caller narrow explicitly.
         const classFilter = (node: IHeapNode) =>
-          node.name === class_name &&
+          (class_name == null || node.name === class_name) &&
+          nameMatches(node.name) &&
           (node_type == null || node.type === node_type);
 
         // Zero exact matches is usually a type filter or a near-miss name, not
         // an empty heap — say which, so the caller does not conclude the class
         // is absent.
         const notFound = (): string => {
+          // The near-miss report keys on an exact name; with only a pattern
+          // there is no "similar name" to suggest — say what was searched
+          // instead of pretending to have a suggestion.
+          if (class_name == null) {
+            return `No nodes whose class name matches ${label}${node_type ? ` with node_type="${node_type}"` : ''}. The pattern is a case-insensitive regex (falling back to substring) — widen it, or drop node_type.`;
+          }
           const byType = new Map<string, number>();
           const similar = new Map<string, number>();
           const needle = class_name.toLowerCase();
@@ -131,7 +162,7 @@ export function registerFindNodesByClass(server: McpServer): void {
             (node: IHeapNode) => node.retainedSize,
           );
           return toolResult(
-            `"${class_name}": ${formatNumber(totalCount)} instances, ${formatBytes(totalSelf)} total self size, ${formatBytes(totalRetained)} aggregate retained size (dominator-deduplicated)`,
+            `"${label}": ${formatNumber(totalCount)} instances, ${formatBytes(totalSelf)} total self size, ${formatBytes(totalRetained)} aggregate retained size (dominator-deduplicated)`,
           );
         }
 
@@ -180,7 +211,7 @@ export function registerFindNodesByClass(server: McpServer): void {
 
         if (output_mode === 'ids') {
           return toolResult(
-            `"${class_name}": ${formatNumber(totalCount)} total instances (showing ${nodes.length} IDs by ${order === 'newest' ? 'node id — newest first' : 'retained size'})\n\nIDs: ${nodes.map(n => n.id).join(', ')}`,
+            `"${label}": ${formatNumber(totalCount)} total instances (showing ${nodes.length} IDs by ${order === 'newest' ? 'node id — newest first' : 'retained size'})\n\nIDs: ${nodes.map(n => n.id).join(', ')}`,
           );
         }
 
@@ -190,7 +221,7 @@ export function registerFindNodesByClass(server: McpServer): void {
             ? ` (${formatNumber(totalCount)} total, showing ${order === 'newest' ? `the ${nodes.length} newest by node id` : `top ${nodes.length} by retained size`})`
             : '';
         return toolResult(
-          `Found ${formatNumber(totalCount)} "${class_name}" objects${countNote}\n\n${formatNodeSummaryTable(summaries)}`,
+          `Found ${formatNumber(totalCount)} "${label}" objects${countNote}\n\n${formatNodeSummaryTable(summaries)}`,
         );
       } catch (err) {
         return errorResult(err);

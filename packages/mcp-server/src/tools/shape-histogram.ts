@@ -20,6 +20,7 @@ import {
   errorResult,
   toolResult,
   suggestionsSuppressed,
+  makeNamePatternTest,
 } from '../utils.js';
 
 interface ShapeGroup {
@@ -71,6 +72,12 @@ export function registerShapeHistogram(server: McpServer): void {
         .describe(
           'Filter to objects with this constructor name (e.g., "Object"). If omitted, includes all object-type nodes.',
         ),
+      name_pattern: z
+        .string()
+        .optional()
+        .describe(
+          'Filter constructor names by pattern before grouping by shape — a case-insensitive regular expression, or a plain substring when the pattern is not valid regex (e.g. "blink::UndoStep", "Detached", "^WA"). Answering "is class X present?" this way costs one row instead of a whole table.',
+        ),
       sort_by: z
         .enum(['retained_size', 'retained', 'count', 'self_size', 'self'])
         .optional()
@@ -91,6 +98,7 @@ export function registerShapeHistogram(server: McpServer): void {
       min_count,
       min_retained_size,
       class_name,
+      name_pattern,
       sort_by,
       exact_retained_size,
     }) => {
@@ -103,12 +111,14 @@ export function registerShapeHistogram(server: McpServer): void {
               ? 'self_size'
               : sort_by;
         const snapshot = getSnapshot();
+        const nameMatches = makeNamePatternTest(name_pattern);
         const shapeMap = new Map<string, ShapeGroup>();
 
         snapshot.nodes.forEach(node => {
           if (node.type !== 'object') return;
           if (node.id <= 3) return;
           if (class_name && node.name !== class_name) return;
+          if (!nameMatches(node.name)) return;
 
           const props = getPropertyNames(node);
           if (!props) return;

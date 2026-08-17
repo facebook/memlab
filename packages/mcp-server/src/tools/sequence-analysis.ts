@@ -28,6 +28,7 @@ import {
   toolResult,
 } from '../utils.js';
 import {resolveLadderPaths} from './ladder.js';
+import {resetEmittedNotes, shouldEmitNote} from '../heap-state.js';
 import {
   artifactLabel,
   artifactNote,
@@ -261,6 +262,22 @@ export async function computeSequenceTrends(
   return {steps, rows, keys};
 }
 
+/**
+ * Artifact-family explanations are long and identical on every call. Print the
+ * full note once per session and a one-line pointer afterwards; the COUNTS that
+ * accompany it are per-call data and are always shown by the caller.
+ */
+function pushArtifactNote(lines: string[], kind: ArtifactKind): void {
+  if (shouldEmitNote(`artifact:${kind}`)) {
+    lines.push('', `> ${artifactNote(kind)}`);
+  } else {
+    lines.push(
+      '',
+      `> ${artifactLabel(kind)} — explained earlier this session.`,
+    );
+  }
+}
+
 export function registerSequenceAnalysis(server: McpServer): void {
   server.tool(
     'memlab_sequence_analysis',
@@ -304,6 +321,13 @@ export function registerSequenceAnalysis(server: McpServer): void {
         .describe(
           'Include classes that are known measurement artifacts (CDP inspector network/performance/console retention, V8 JIT warmup, Blink a11y caches, captured Error stacks). Default false: they are collapsed into a one-line summary instead of filling the table, because in practice they dominate the top of the list and none of them is an app leak.',
         ),
+      repeat_notes: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Re-print the standing explanatory notes (artifact-family write-ups, capture-mode caveats, the "candidate, not verdict" paragraph) that are otherwise emitted once per server session. The per-call DATA — which classes grew, how many artifacts were suppressed — is always shown; only the unchanging prose is deduplicated.',
+        ),
       max_file_size_mb: z
         .number()
         .optional()
@@ -318,9 +342,11 @@ export function registerSequenceAnalysis(server: McpServer): void {
       monotonic_only,
       cycles,
       include_artifacts,
+      repeat_notes,
       max_file_size_mb,
     }) => {
       try {
+        if (repeat_notes) resetEmittedNotes();
         const {steps, rows, keys} = await computeSequenceTrends(paths, {
           minGrowthCount: min_growth_count,
           monotonicOnly: monotonic_only,
@@ -475,7 +501,12 @@ export function registerSequenceAnalysis(server: McpServer): void {
             isBrowser ? 'browser' : isNode ? 'node' : 'unknown',
             last.has(SMI_NUMBER_CLASS_KEY),
           );
-          lines.push('', `> ⚠️ \`heap number\` is growing. ${verdict.note}`);
+          lines.push(
+            '',
+            shouldEmitNote('seq:heap-number')
+              ? `> ⚠️ \`heap number\` is growing. ${verdict.note}`
+              : '> ⚠️ `heap number` is growing (capture-mode caveat already stated this session).',
+          );
         }
         // `smi number` growth in a Node capture is pure capture overhead — those
         // nodes do not exist unless the flag asked for them.
@@ -487,7 +518,9 @@ export function registerSequenceAnalysis(server: McpServer): void {
         ) {
           lines.push(
             '',
-            '> ⚠️ `smi number` is growing in a Node.js capture. Those nodes only exist because the snapshot was taken with numeric-value capture ON; they are capture overhead, not application memory. Re-capture without it to remove them from the trend.',
+            shouldEmitNote('seq:smi-number')
+              ? '> ⚠️ `smi number` is growing in a Node.js capture. Those nodes only exist because the snapshot was taken with numeric-value capture ON; they are capture overhead, not application memory. Re-capture without it to remove them from the trend.'
+              : '> ⚠️ `smi number` is growing — capture overhead (note already stated this session).',
           );
         }
 
@@ -514,17 +547,24 @@ export function registerSequenceAnalysis(server: McpServer): void {
             `> 🧹 **${artifactRows.length} growing class(es) suppressed as known measurement artifacts** (${parts.join(', ')}). None of these families is an application leak; pass \`include_artifacts: true\` to see them.`,
           );
           for (const kind of suppressedByKind.keys()) {
-            lines.push('', `> ${artifactNote(kind)}`);
+            pushArtifactNote(lines, kind);
           }
         }
         for (const kind of shownKinds) {
-          lines.push('', `> ${artifactNote(kind)}`);
+          pushArtifactNote(lines, kind);
         }
 
-        lines.push(
-          '',
-          '_"↑ every step (LEAK candidate)" is the strong unbounded-growth signal — it is a candidate, not a verdict: confirm with `memlab_dev_artifacts` and a `memlab_retainer_trace` before calling it a leak; "grew net (noisy)" often reflects GC timing or navigation and warrants a closer look before treating as a leak. Object-identity matching across snapshots is not available (node ids differ per capture) — to localize a specific growing collection, load the last snapshot and use `memlab_cache_analysis` / `memlab_event_listener_leaks` / `memlab_growth_signals`._',
-        );
+        if (shouldEmitNote('seq:candidate-not-verdict')) {
+          lines.push(
+            '',
+            '_"↑ every step (LEAK candidate)" is the strong unbounded-growth signal — it is a candidate, not a verdict: confirm with `memlab_dev_artifacts` and a `memlab_retainer_trace` before calling it a leak; "grew net (noisy)" often reflects GC timing or navigation and warrants a closer look before treating as a leak. Object-identity matching across snapshots is not available (node ids differ per capture) — to localize a specific growing collection, load the last snapshot and use `memlab_cache_analysis` / `memlab_event_listener_leaks` / `memlab_growth_signals`._',
+          );
+        } else {
+          lines.push(
+            '',
+            '_"↑ every step" is a candidate, not a verdict — see the first `memlab_sequence_analysis` result this session for the full caveat, or pass `repeat_notes: true`._',
+          );
+        }
 
         return toolResult(lines.join('\n'));
       } catch (err) {
