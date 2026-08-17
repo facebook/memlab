@@ -88,10 +88,11 @@ import {registerPopulationDiff} from './tools/population-diff.js';
 import {registerDominatorAttribution} from './tools/dominator-attribution.js';
 import {registerCollectionTrend} from './tools/collection-trend.js';
 import {registerVerifyFix} from './tools/verify-fix.js';
+import {registerToolsIndex} from './tools/tools-index.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.50.0', // keep in sync with package.json
+  version: '2.51.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -168,6 +169,7 @@ registerPopulationDiff(server);
 registerDominatorAttribution(server);
 registerCollectionTrend(server);
 registerVerifyFix(server);
+registerToolsIndex(server);
 
 async function main() {
   const transport = new StdioServerTransport();

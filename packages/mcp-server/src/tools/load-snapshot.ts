@@ -42,6 +42,7 @@ import {
   truncateNodeName,
   errorResult,
   textResult,
+  suggestionsSuppressed,
 } from '../utils.js';
 
 // The bucket the Nest auto-capture + the Manifold links in diffs use, so a
@@ -475,14 +476,32 @@ function quickDiagnosis(
     warnings.push(`⚠ ${formatNumber(count)}× \`${name}\` instances`);
   }
 
-  if (warnings.length > 0) {
-    warnings.push(
-      '',
-      'Run `memlab_quick_diagnosis` for actionable triage or `memlab_auto_investigate` for deep analysis.',
-    );
-  }
-
   return warnings;
+}
+
+/**
+ * What to call next, indexed by the QUESTION rather than by tool.
+ *
+ * The old trailer always pointed at `quick_diagnosis` / `auto_investigate`
+ * regardless of why the snapshot was loaded, which is right for "I don't know
+ * what I'm looking at" and wrong for every other case. Measured effect of the
+ * generic version: over one long investigation 28 of the server's tools were
+ * used and the rest never were, including several that answer a stated question
+ * in a single call. Naming the question is what makes the right tool findable
+ * at the only moment the caller is guaranteed to be reading.
+ */
+function nextStepMenu(): string[] {
+  return [
+    '**What do you want to know?**',
+    '- _What is this heap made of?_ → `memlab_app_heap` (application data vs bundle source vs V8 machinery — run it before trusting any percentage)',
+    '- _Anything obviously wrong?_ → `memlab_quick_diagnosis`, then `memlab_auto_investigate` for the deep dive',
+    '- _Is X a leak?_ → `memlab_hypothesis`',
+    '- _Who owns the growth?_ → `memlab_explain_delta` (needs a baseline loaded with `keep_previous:true`)',
+    '- _What grew across the ladder?_ → `memlab_leak_report` / `memlab_sequence_analysis`',
+    '- _What does this object pin?_ → `memlab_dominator_chain`, then `memlab_dominator_attribution`',
+    '- _Is it real or an artifact?_ → `memlab_dev_artifacts` (and `memlab_explain_delta` for JIT warmup, which it does not count)',
+    '- _Something else_ → `memlab_tools` lists every tool grouped by the question it answers',
+  ];
 }
 
 export function registerLoadSnapshot(server: McpServer): void {
@@ -989,6 +1008,9 @@ export function registerLoadSnapshot(server: McpServer): void {
         const warnings = quickDiagnosis(snapshot, totalSize, light);
         if (warnings.length > 0) {
           lines.push('', ...warnings);
+        }
+        if (!suggestionsSuppressed()) {
+          lines.push('', ...nextStepMenu());
         }
 
         return textResult(lines.join('\n'));
