@@ -220,6 +220,42 @@ export function resetEmittedNotes(): void {
   emittedNotes.clear();
 }
 
+/**
+ * Named results saved from `memlab_eval` (`save_as` / `helpers.save`).
+ *
+ * SESSION-scoped, deliberately not snapshot-scoped. Comparing a baseline scan
+ * against a final scan is the central job of a leak hunt, and the previous
+ * per-snapshot scratch dropped the baseline the moment the next rung was loaded
+ * — i.e. exactly when it became useful. The handle each value was saved against
+ * is recorded alongside it, because node ids are per-capture: `helpers.load`
+ * refuses a cross-snapshot read unless the caller says the value is portable.
+ */
+interface SavedResult {
+  value: unknown;
+  handle: string;
+}
+
+const savedResults = new Map<string, SavedResult>();
+
+export function setSavedResult(
+  name: string,
+  value: unknown,
+  handle: string,
+): void {
+  savedResults.set(name, {value, handle});
+}
+
+export function getSavedResult(name: string): SavedResult | undefined {
+  return savedResults.get(name);
+}
+
+export function listSavedResults(): Array<{name: string; handle: string}> {
+  return [...savedResults.entries()].map(([name, r]) => ({
+    name,
+    handle: r.handle,
+  }));
+}
+
 function uniqueHandle(base: string): string {
   // Sanitize to a short slug, then disambiguate against existing handles.
   const slug =

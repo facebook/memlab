@@ -91,7 +91,7 @@ import {registerVerifyFix} from './tools/verify-fix.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.49.0', // keep in sync with package.json
+  version: '2.50.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call

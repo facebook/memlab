@@ -15,8 +15,12 @@ import vm from 'node:vm';
 import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
 import {
+  getCurrentHandle,
+  getSavedResult,
   getSnapshot,
   isLightSnapshot,
+  listSavedResults,
+  setSavedResult,
   getEvalScratch,
   getSnapshotMetadata,
 } from '../heap-state.js';
@@ -29,6 +33,7 @@ import {
   formatNumber,
   markdownTable,
   isNodeWorthInspecting,
+  makeNamePatternTest,
   filterLargestObjects,
   queryNodes,
   enumerateMapEntries,
@@ -41,7 +46,6 @@ const MAX_OUTPUT_SIZE = 50 * 1024; // 50KB
 
 // Prefix for user-named result sets inside the per-snapshot eval scratch, so
 // they cannot collide with the internal `__classTypeIndex` / `__withProp:` keys.
-const SAVED_PREFIX = '__saved:';
 
 function truncate(str: string, max: number): string {
   if (str.length <= max) return str;
@@ -69,14 +73,55 @@ class BudgetExceeded extends Error {
 }
 
 const NODE_PROPERTY_ALIASES: Record<string, string> = {
-  retained_size: 'retainedSize',
   referrer_count: 'numOfReferrers',
 };
+
+/**
+ * Lets helpers recover the real node behind a sandbox proxy. Sandbox code holds
+ * proxies; the helpers it passes them to need the underlying object, both to
+ * avoid proxy overhead per property read and because the proxy deliberately
+ * refuses `retainedSize` (below) while the helpers legitimately read it.
+ */
+const RAW_NODE: unique symbol = Symbol('memlabRawNode');
+
+export function unwrapNode<T>(node: T): T {
+  if (node != null && typeof node === 'object') {
+    const raw = (node as Record<symbol, unknown>)[RAW_NODE];
+    if (raw != null) return raw as T;
+  }
+  return node;
+}
+
+function unwrapNodes<T>(nodes: T[]): T[] {
+  return Array.isArray(nodes) ? nodes.map(unwrapNode) : nodes;
+}
+
+/**
+ * `node.retainedSize` read off a node inside eval has been observed to come
+ * back ~0 for every node on some loads, while the same id read through
+ * `snapshot.getNodeById(id).retainedSize` returns the true value. A field that
+ * silently yields a wrong NUMBER is worse than one that fails: every ranking
+ * built on it looks plausible and is wrong, and nothing in the output says so.
+ *
+ * So the sandbox refuses the read and names the working call. The docs already
+ * carried this as a caveat; a caveat is only as good as the reader's memory of
+ * it, and this class of silent-zero bug has produced published errors before.
+ */
+const RETAINED_SIZE_PROPS = new Set(['retainedSize', 'retained_size']);
 
 function wrapNode(node: unknown): unknown {
   if (node == null) return node;
   return new Proxy(node as object, {
     get(target, prop, receiver) {
+      if (prop === RAW_NODE) return target;
+      if (typeof prop === 'string' && RETAINED_SIZE_PROPS.has(prop)) {
+        const id = (target as {id?: unknown}).id;
+        throw new Error(
+          `node.${prop} is not readable inside eval — it can come back ~0 for every node on some loads, which silently corrupts any ranking built on it. ` +
+            `Use helpers.retainedSize(${typeof id === 'number' ? id : 'id'}) for one node, helpers.retainedSizes([ids]) for many, or helpers.aggregateRetained([ids]) for a dominator-deduped total. ` +
+            'Self size (`node.self_size`) is read directly from the snapshot and IS reliable here.',
+        );
+      }
       if (typeof prop === 'string' && prop in NODE_PROPERTY_ALIASES) {
         return (target as Record<string, unknown>)[NODE_PROPERTY_ALIASES[prop]];
       }
@@ -239,8 +284,16 @@ export function registerEval(server: McpServer): void {
             'mapEntries(mapId, limit?)->[{key,value}] & setElements(setId, limit?)->[brief] (correct Map/Set/WeakMap enumeration — handles browser internal-typed slots AND SMI-value gaps, so you never re-derive it wrong), ' +
             'props(nodeOrId)->{prop: scalar | {ref,name,type}} & getProp(nodeOrId, name) & shapeSignature(nodeOrId, {maxStringLen?}) (content signature for dedup checks), ' +
             'byClass(name, {type?})->ids[] & byTypename(name)->ids[] & withProp(name)->ids[] (INDEXED lookups — built once per snapshot then memoized in a session scratch, so repeated questions are index-speed not full-scan; byClass covers EVERY node type, matching memlab_find_nodes_by_class, so closures/strings/arrays/natives are found — pass {type:"object"} to narrow), ' +
-            'aggregateRetained(ids[])->{retained,exact} (dominator-deduped retained for a SET of ids, no double-counting) }), ' +
+            'aggregateRetained(ids[])->{retained,exact} (dominator-deduped retained for a SET of ids, no double-counting), ' +
+            'iterByClass(name, {type?})->nodes[] & iterByType(type)->nodes[] (INDEXED iteration — no full scan), ' +
+            'classCounts({pattern?, type?, minCount?})->[{name,type,count,selfSize}] (one-pass histogram, cached), ' +
+            'entries(nodeOrId)->[{key,value}] (generic Map/Set/WeakMap/Array/object walk, holes filtered), ' +
+            'edgeTarget(nodeOrId, edgeName)->node|null, isRealDetached(node)->boolean (same filtering the tools apply internally), ' +
+            'dominates(id, {population?, limit?})->{count,selfSize,ids,truncated}, ' +
+            'pathBetween(fromId, toId, {maxNodes?})->{found,exhausted,path[]}, ' +
+            'save(name, value) / load(name, {allowCrossSnapshot?}) / listSaved() (SESSION-scoped, survives loading another snapshot) }), ' +
             'and standard JS built-ins. ' +
+            'NOTE: `node.retainedSize` / `node.retained_size` THROW inside eval — they can read back ~0 for every node on some loads, so a silent wrong number is refused; use helpers.retainedSize(id). `node.self_size` is reliable. ' +
             'Node traversal: use node.references (outgoing) and node.referrers (incoming) with for-of. ' +
             'Edge properties: .name_or_index, .type, .toNode, .fromNode.',
         ),
@@ -299,6 +352,7 @@ export function registerEval(server: McpServer): void {
         // check below, and by the helpers themselves as a backstop.
         const light = isLightSnapshot();
         const snapshot = getSnapshot({allowLight: true});
+        const currentHandle = getCurrentHandle() ?? '(none)';
 
         if (light) {
           const needsRetention = RETENTION_IDENTIFIERS.filter(id =>
@@ -663,34 +717,321 @@ export function registerEval(server: McpServer): void {
           return boundedDominatorRetainedSize(new NumericSet(ids), snapshot);
         };
 
-        // Named result sets live in the same per-snapshot scratch as the
-        // class/typename index, so they share its lifecycle: they are dropped
-        // when the snapshot is unloaded, and a saved id list can never be read
-        // back against a snapshot it was not built from.
+        // ---- additional traversal helpers -------------------------------
+        // Each of these was hand-written inside `code` during a leak hunt,
+        // several of them more than once and with small differences that made
+        // results incomparable. Shipping them makes the common traversals both
+        // cheaper to write and consistent with what the dedicated tools do.
+
+        // The oddball/root filtering the tools apply internally. Hand-written
+        // eval that omits it counts nodes the tools do not, so the two disagree
+        // for reasons that have nothing to do with the question being asked.
+        const isRealDetached = (node: unknown): boolean => {
+          const n = unwrapNode(node) as IHeapNode | null;
+          if (n == null || n.id <= 3) return false;
+          return n.is_detached || n.name.startsWith('Detached ');
+        };
+
+        // Cached type -> ids index, mirroring the class index above, so a
+        // second pass over "every closure" does not re-walk the heap.
+        const buildTypeIndex = (): Map<string, number[]> => {
+          const cached = scratch.__typeIndex as
+            Map<string, number[]> | undefined;
+          if (cached) return cached;
+          const byType = new Map<string, number[]>();
+          snapshot.nodes.forEach((node: IHeapNode) => {
+            if (node.id <= 3) return;
+            let a = byType.get(node.type);
+            if (!a) {
+              a = [];
+              byType.set(node.type, a);
+            }
+            a.push(node.id);
+          });
+          scratch.__typeIndex = byType;
+          return byType;
+        };
+
+        const nodesFromIds = (ids: number[]): IHeapNode[] => {
+          const out: IHeapNode[] = [];
+          for (const id of ids) {
+            const n = snapshot.getNodeById(id);
+            if (n) out.push(n);
+          }
+          return out;
+        };
+        const iterByClass = (name: string, opts?: {type?: string}) =>
+          nodesFromIds(byClass(name, opts)).map(wrapNode);
+        const iterByType = (type: string) =>
+          nodesFromIds(buildTypeIndex().get(type) ?? []).map(wrapNode);
+
+        // One-pass class histogram, cached, optionally filtered. `byClass`
+        // answers "where are the X"; this answers "what is in here at all",
+        // which otherwise means a full manual walk every time.
+        const classCounts = (opts?: {
+          pattern?: string;
+          type?: string;
+          minCount?: number;
+        }): Array<{
+          name: string;
+          type: string;
+          count: number;
+          selfSize: number;
+        }> => {
+          const cacheKey = '__classCounts';
+          let all = scratch[cacheKey] as
+            | Array<{
+                name: string;
+                type: string;
+                count: number;
+                selfSize: number;
+              }>
+            | undefined;
+          if (!all) {
+            const acc = new Map<
+              string,
+              {name: string; type: string; count: number; selfSize: number}
+            >();
+            snapshot.nodes.forEach((node: IHeapNode) => {
+              if (node.id <= 3) return;
+              const key = `${node.type}::${node.name}`;
+              const e = acc.get(key);
+              if (e) {
+                e.count++;
+                e.selfSize += node.self_size;
+              } else {
+                acc.set(key, {
+                  name: node.name,
+                  type: node.type,
+                  count: 1,
+                  selfSize: node.self_size,
+                });
+              }
+            });
+            all = [...acc.values()].sort((a, b) => b.count - a.count);
+            scratch[cacheKey] = all;
+          }
+          const matches = makeNamePatternTest(opts?.pattern);
+          const minCount = opts?.minCount ?? 1;
+          return all.filter(
+            r =>
+              r.count >= minCount &&
+              (opts?.type == null || r.type === opts.type) &&
+              matches(r.name),
+          );
+        };
+
+        // The node behind a named edge. Written from scratch in four separate
+        // evals because `props()` returns {ref,name,type} wrappers, which are
+        // awkward exactly when the node itself is what you need.
+        const edgeTarget = (nodeOrId: unknown, edgeName: string): unknown => {
+          const n =
+            typeof nodeOrId === 'number'
+              ? snapshot.getNodeById(nodeOrId)
+              : (unwrapNode(nodeOrId) as IHeapNode | null);
+          if (n == null) return null;
+          for (const e of n.references) {
+            if (e.type === 'hidden') continue;
+            if (String(e.name_or_index) !== edgeName) continue;
+            return e.toNode.id > 3 ? wrapNode(e.toNode) : null;
+          }
+          return null;
+        };
+
+        // Generic container walk. `mapEntries` / `setElements` cover Map and
+        // Set; WeakMap tables and plain arrays needed a manual `references`
+        // walk with hole filtering every time.
+        const entries = (
+          nodeOrId: unknown,
+        ): Array<{key: unknown; value: unknown}> => {
+          const n =
+            typeof nodeOrId === 'number'
+              ? snapshot.getNodeById(nodeOrId)
+              : (unwrapNode(nodeOrId) as IHeapNode | null);
+          if (n == null) return [];
+          if (n.name === 'Map' || n.name === 'WeakMap') {
+            return enumerateMapEntries(n).map(e => ({
+              key: wrapNode(e.key),
+              value: e.value == null ? null : wrapNode(e.value),
+            }));
+          }
+          if (n.name === 'Set' || n.name === 'WeakSet') {
+            return enumerateSetElements(n).map(el => ({
+              key: null,
+              value: wrapNode(el),
+            }));
+          }
+          const out: Array<{key: unknown; value: unknown}> = [];
+          for (const e of n.references) {
+            if (e.type === 'hidden') continue;
+            const name = String(e.name_or_index);
+            if (name === '__proto__' || name === 'map') continue;
+            if (e.type === 'element') {
+              out.push({
+                key: Number(e.name_or_index),
+                value: wrapNode(e.toNode),
+              });
+            } else if (name === 'elements' && e.type === 'internal') {
+              for (const el of e.toNode.references) {
+                if (el.type !== 'element') continue;
+                out.push({
+                  key: Number(el.name_or_index),
+                  value: wrapNode(el.toNode),
+                });
+              }
+            } else if (e.type === 'property') {
+              out.push({key: name, value: wrapNode(e.toNode)});
+            }
+          }
+          return out;
+        };
+
+        // What does this node actually own? The question behind
+        // memlab_dominator_attribution, exposed for ad-hoc populations.
+        const dominates = (
+          id: number,
+          opts?: {population?: (node: unknown) => boolean; limit?: number},
+        ): {
+          count: number;
+          selfSize: number;
+          ids: number[];
+          truncated: boolean;
+        } => {
+          requireRetention('dominates');
+          const limit = opts?.limit ?? 1000;
+          const pop = opts?.population;
+          let count = 0;
+          let selfSize = 0;
+          const ids: number[] = [];
+          let truncated = false;
+          snapshot.nodes.forEach((node: IHeapNode) => {
+            if (node.id <= 3 || node.id === id) return;
+            if (pop != null && !pop(wrapNode(node))) return;
+            let cur: IHeapNode | null = node.dominatorNode ?? null;
+            let hops = 0;
+            while (cur && hops++ < 500) {
+              if (cur.id === id) {
+                count++;
+                selfSize += node.self_size;
+                if (ids.length < limit) ids.push(node.id);
+                else truncated = true;
+                break;
+              }
+              const next: IHeapNode | null = cur.dominatorNode ?? null;
+              if (!next || next.id === cur.id) break;
+              cur = next;
+            }
+          });
+          return {count, selfSize, ids, truncated};
+        };
+
+        // Shortest reference path a -> b, by BFS over outgoing edges. Bounded,
+        // and reports that it gave up rather than returning null as if no path
+        // existed.
+        const pathBetween = (
+          fromId: number,
+          toId: number,
+          opts?: {maxNodes?: number},
+        ): {found: boolean; exhausted: boolean; path: string[]} => {
+          const maxNodes = opts?.maxNodes ?? 200_000;
+          const start = snapshot.getNodeById(fromId);
+          if (start == null || snapshot.getNodeById(toId) == null) {
+            return {found: false, exhausted: false, path: []};
+          }
+          const prev = new Map<number, {via: string; from: number}>();
+          const seen = new Set<number>([fromId]);
+          let queue: IHeapNode[] = [start];
+          let visited = 0;
+          while (queue.length > 0) {
+            const next: IHeapNode[] = [];
+            for (const node of queue) {
+              if (++visited > maxNodes) {
+                return {found: false, exhausted: true, path: []};
+              }
+              for (const e of node.references) {
+                const t = e.toNode;
+                if (t.id <= 3 || seen.has(t.id)) continue;
+                seen.add(t.id);
+                prev.set(t.id, {via: String(e.name_or_index), from: node.id});
+                if (t.id === toId) {
+                  const path: string[] = [];
+                  let cur = toId;
+                  while (cur !== fromId) {
+                    const p = prev.get(cur);
+                    if (p == null) break;
+                    const n = snapshot.getNodeById(cur);
+                    path.unshift(`.${p.via} -> @${cur} ${n?.name ?? ''}`);
+                    cur = p.from;
+                  }
+                  path.unshift(`@${fromId} ${start.name}`);
+                  return {found: true, exhausted: false, path};
+                }
+                next.push(t);
+              }
+            }
+            queue = next;
+          }
+          return {found: false, exhausted: false, path: []};
+        };
+
+        // Named result sets are SESSION-scoped, not snapshot-scoped: comparing
+        // a baseline scan against a final scan is the whole job, and the old
+        // per-snapshot scratch dropped the baseline the moment the next rung
+        // was loaded — exactly when it was needed.
+        //
+        // Node ids, however, are per-capture. A set of ids saved against one
+        // snapshot means nothing against another, so a cross-snapshot load is
+        // refused unless the caller opts in. Counts and strings are portable;
+        // ids are not, and silently letting them through is the failure this
+        // whole class of guard exists to prevent.
         const save = <T>(name: string, value: T): T => {
-          scratch[SAVED_PREFIX + name] = value;
+          setSavedResult(name, value, currentHandle);
           return value;
         };
-        const load = (name: string): unknown => {
-          const key = SAVED_PREFIX + name;
-          if (!(key in scratch)) {
+        const load = (name: string, opts?: {allowCrossSnapshot?: boolean}) => {
+          const entry = getSavedResult(name);
+          if (entry == null) {
             throw new Error(
               `No saved result named "${name}". Saved names: ${savedNames().join(', ') || '(none)'}. ` +
                 'Save one with the save_as parameter or helpers.save(name, value).',
             );
           }
-          return scratch[key];
+          if (
+            entry.handle !== currentHandle &&
+            opts?.allowCrossSnapshot !== true
+          ) {
+            throw new Error(
+              `"${name}" was saved against snapshot "${entry.handle}" and the current snapshot is "${currentHandle}". Node ids are per-capture, so ids from another snapshot resolve to unrelated objects or to nothing. ` +
+                'If the value is counts/strings/shapes rather than ids, pass {allowCrossSnapshot: true} to read it anyway.',
+            );
+          }
+          return entry.value;
         };
-        const listSaved = (): string[] => savedNames();
+        const listSaved = (): Array<{name: string; handle: string}> =>
+          listSavedResults();
 
+        // Sandbox code holds PROXIED nodes (see wrapNode). The helpers below
+        // read `retainedSize`, which the proxy refuses on purpose, so they take
+        // the real node: unwrap at the boundary rather than making every caller
+        // remember which helpers are proxy-safe.
         const helpers = {
-          serializeNodeSummary,
-          serializeNodeDetail,
+          serializeNodeSummary: (n: unknown) =>
+            serializeNodeSummary(unwrapNode(n) as IHeapNode),
+          serializeNodeDetail: (n: unknown) =>
+            serializeNodeDetail(unwrapNode(n) as IHeapNode),
           formatBytes,
           formatNumber,
           markdownTable,
-          isNodeWorthInspecting,
-          filterLargestObjects,
+          isNodeWorthInspecting: (n: unknown, ...rest: unknown[]) =>
+            (isNodeWorthInspecting as (...a: unknown[]) => boolean)(
+              unwrapNode(n),
+              ...rest,
+            ),
+          filterLargestObjects: (nodes: unknown[], ...rest: unknown[]) =>
+            (filterLargestObjects as (...a: unknown[]) => unknown)(
+              Array.isArray(nodes) ? nodes.map(unwrapNode) : nodes,
+              ...rest,
+            ),
           queryNodes,
           groupReferrersByEdge,
           groupArrayElementsByProperty,
@@ -708,6 +1049,14 @@ export function registerEval(server: McpServer): void {
           byTypename,
           withProp,
           aggregateRetained,
+          isRealDetached,
+          iterByClass,
+          iterByType,
+          classCounts,
+          edgeTarget,
+          entries,
+          dominates,
+          pathBetween,
           save,
           load,
           listSaved,
@@ -781,7 +1130,7 @@ export function registerEval(server: McpServer): void {
         // above only catches when the run produced no console output.
         const nothingToSave = sandbox.result === undefined;
         if (save_as != null && !budget.exceeded && !nothingToSave) {
-          scratch[SAVED_PREFIX + save_as] = sandbox.result;
+          setSavedResult(save_as, sandbox.result, currentHandle);
         }
 
         let output: string;
@@ -857,9 +1206,8 @@ function actionableEvalError(err: unknown, code: string | undefined): string {
 }
 
 function savedNames(): string[] {
-  return Object.keys(getEvalScratch())
-    .filter(k => k.startsWith(SAVED_PREFIX))
-    .map(k => k.slice(SAVED_PREFIX.length))
+  return listSavedResults()
+    .map(r => r.name)
     .sort();
 }
 
@@ -904,26 +1252,30 @@ function describeSavedValue(value: unknown): string {
 }
 
 function describeSaved(): string {
-  const scratch = getEvalScratch();
-  const names = savedNames();
-  if (names.length === 0) {
+  const saved = listSavedResults();
+  if (saved.length === 0) {
     return [
       '# Saved result sets: (none)',
       '',
       'Save one by passing `save_as: "<name>"` on a memlab_eval call, or calling `helpers.save("<name>", value)` inside your code.',
       'Read it back in a later call with `helpers.load("<name>")`.',
-      'Saved sets are scoped to the current snapshot and dropped when it is unloaded.',
+      'Saved sets last for the SERVER SESSION and survive loading another snapshot, so a baseline scan can be compared against a later rung. The snapshot each was saved against is recorded: reading one back under a different snapshot is refused unless you pass `{allowCrossSnapshot: true}`, because node ids are per-capture.',
     ].join('\n');
   }
+  const current = getCurrentHandle();
   return [
-    `# Saved result sets (${names.length}) for the current snapshot`,
+    `# Saved result sets (${saved.length}) — session-scoped`,
     '',
     markdownTable(
-      ['name', 'shape'],
-      names.map(n => [n, describeSavedValue(scratch[SAVED_PREFIX + n])]),
+      ['name', 'saved against', 'shape'],
+      saved.map(r => [
+        r.name,
+        r.handle === current ? `${r.handle} (current)` : r.handle,
+        describeSavedValue(getSavedResult(r.name)?.value),
+      ]),
     ),
     '',
-    'Read one back with `helpers.load("<name>")`.',
+    'Read one back with `helpers.load("<name>")`. Ids saved against another snapshot need `helpers.load("<name>", {allowCrossSnapshot: true})` — and are only meaningful if the value is counts/strings/shapes rather than node ids.',
   ].join('\n');
 }
 
@@ -947,6 +1299,14 @@ function describeEnv(): string {
     "- `helpers.props(nodeOrId) -> {prop: scalar | {ref, name, type}}` and `helpers.getProp(nodeOrId, name)` — read an object's own properties without the `for (const e of n.references) …` boilerplate. Number-valued props surface as a ref to a `smi number`/`heap number` node; their actual numeric value is not in the snapshot format.",
     '- `helpers.shapeSignature(nodeOrId, {maxStringLen?}) -> string` — stable shallow content signature (sorted prop names + scalar values) for duplicate-record detection. Numeric values are NOT captured (see `memlab_duplicate_objects`), so records differing only in a number field hash the same.',
     '- `helpers.byClass(name, {type?}) -> ids[]`, `helpers.byTypename(name) -> ids[]`, `helpers.withProp(name) -> ids[]` — INDEXED id lookups. The class/typename index is built once per snapshot and memoized in a session scratch, so a follow-up call is index-speed, not another full `snapshot.nodes` scan. `byClass` indexes EVERY node type (closure, string, array, native, …), matching `memlab_find_nodes_by_class`; pass `{type: "object"}` to narrow. `byTypename` is object-only because `__typename` is a JS property. (See also the `memlab_duplicate_objects` tool for a ready-made dedup report.)',
+    '- `helpers.iterByClass(name, {type?}) -> node[]` / `helpers.iterByType(type) -> node[]` — indexed iteration; no full scan, index built once per snapshot.',
+    '- `helpers.classCounts({pattern?, type?, minCount?}) -> [{name, type, count, selfSize}]` — one-pass class histogram, cached; `pattern` is a case-insensitive regex (substring fallback).',
+    '- `helpers.entries(nodeOrId) -> [{key, value}]` — generic container walk: Map/WeakMap (paired, SMI gaps handled), Set/WeakSet, Array (both direct `element` edges and the `(object elements)` backing store), plain object properties. Holes and `__proto__`/`map` are filtered.',
+    '- `helpers.edgeTarget(nodeOrId, edgeName) -> node | null` — the node behind a named edge, when you need the node and not the `{ref,name,type}` wrapper `props()` returns.',
+    '- `helpers.isRealDetached(node) -> boolean` — the oddball/root filtering the detached-DOM tools apply internally, so hand-written eval counts the same set they do.',
+    '- `helpers.dominates(id, {population?, limit?}) -> {count, selfSize, ids, truncated}` — what this node actually owns (bounded 500-hop dominator walk). `population` is a predicate over nodes.',
+    '- `helpers.pathBetween(fromId, toId, {maxNodes?}) -> {found, exhausted, path[]}` — BFS over outgoing edges; `exhausted:true` means the budget ran out, which is NOT the same as "no path".',
+    '- `helpers.save(name, value)` / `helpers.load(name, {allowCrossSnapshot?})` / `helpers.listSaved()` — named result sets, SESSION-scoped: they survive loading another snapshot, which is what makes a baseline-vs-final comparison possible. The snapshot each was saved against is recorded, and a cross-snapshot read is refused unless you opt in — node ids are per-capture and mean nothing in another snapshot.',
     '- `helpers.aggregateRetained(ids[]) -> {retained, exact}` — dominator-deduped retained size for a SET of ids (does not double-count when one id dominates another); `exact:false` means the bounded walk was truncated (upper bound).',
     '',
     '## Named result sets (multi-step exploration)',
@@ -962,10 +1322,10 @@ function describeEnv(): string {
     'Every call reports `nodes_visited`. Pass `max_nodes` to bound a `snapshot.nodes.forEach` walk: on overrun the walk aborts and the PARTIAL `result` is returned with a warning rather than failing, so a broad exploratory scan is safe to attempt. A partial result is never saved by `save_as`.',
     '',
     '## IHeapNode API',
-    '`.id`, `.name`, `.type`, `.self_size`, `.retainedSize` (alias `.retained_size`), `.edge_count`, `.is_detached`, `.numOfReferrers` (alias `.referrer_count`), `.isString`, `.toStringNode()?.stringValue`, `.hasPathEdge`, `.pathEdge`, `.dominatorNode`, `.location` (`script_id`/`line`/`column`).',
+    '`.id`, `.name`, `.type`, `.self_size`, `.edge_count`, `.is_detached`, `.numOfReferrers` (alias `.referrer_count`), `.isString`, `.toStringNode()?.stringValue`, `.hasPathEdge`, `.pathEdge`, `.dominatorNode`, `.location` (`script_id`/`line`/`column`).',
     '',
-    '## Caveat: retained_size',
-    'Inside eval, `.retainedSize`/`.retained_size` can read back ~0 for every node on some loads. Counts, property/edge walks, and string values are reliable. For authoritative retained sizes call `helpers.retainedSize(id)` (returns a number) or `helpers.retainedSizes([ids])` (returns a `Record<id, bytes>` OBJECT — not an array; iterate with `Object.values(sizes)` / index with `sizes[id]`) — both re-resolve the node on the real snapshot, so you can rank custom analyses by retained size. Or use `memlab_largest_objects`, `memlab_class_histogram`, `memlab_pinch_points`, or `memlab_object_shape`.',
+    '## `.retainedSize` THROWS here',
+    '`node.retainedSize` / `node.retained_size` raise inside eval instead of returning a number. They have been observed reading back ~0 for every node on some loads while the same id read via `snapshot.getNodeById(id)` returns the true value — and a silently wrong number ranks a whole analysis wrongly with nothing in the output to say so. Use `helpers.retainedSize(id)` (number), `helpers.retainedSizes([ids])` (a `Record<id, bytes>` OBJECT — index it as `sizes[id]` or iterate `Object.values(sizes)`, do not `.map`/`.reduce` it directly), or `helpers.aggregateRetained([ids])` for a dominator-deduped total. `node.self_size` is read straight from the snapshot and is reliable.',
     '',
     '## IHeapEdge API',
     '`.name_or_index`, `.type` (property/element/context/internal/hidden/shortcut), `.toNode`, `.fromNode`.',
