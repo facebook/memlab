@@ -11,7 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {getSnapshot, getSnapshotEnv} from '../heap-state.js';
-import type {IHeapNode, IHeapEdge} from '@memlab/core';
+import type {IHeapNode, IHeapEdge, IHeapSnapshot} from '@memlab/core';
 import {
   queryNodes,
   formatQueryNodesResult,
@@ -22,7 +22,10 @@ import {
   truncateNodeName,
   errorResult,
   toolResult,
+  boundedDominatorRetainedSize,
 } from '../utils.js';
+import memlabCore from '@memlab/core';
+const {NumericSet} = memlabCore;
 import type {OutputMode} from '../utils.js';
 import {
   collectDevRoots,
@@ -50,14 +53,43 @@ function isPinned(node: IHeapNode): boolean {
 
 interface ReachabilitySplit {
   pinnedCount: number;
+  // Plain sum of per-node retained size. Nested detached subtrees are counted
+  // once per ancestor AND once per descendant, so this OVERSTATES what freeing
+  // the detached set would actually reclaim — see formatReachabilitySplit.
   pinnedRetained: number;
   noPathCount: number;
   noPathRetained: number;
+  pinnedIds: number[];
 }
 
-function formatReachabilitySplit(split: ReachabilitySplit): string[] {
+function emptySplit(): ReachabilitySplit {
+  return {
+    pinnedCount: 0,
+    pinnedRetained: 0,
+    noPathCount: 0,
+    noPathRetained: 0,
+    pinnedIds: [],
+  };
+}
+
+/**
+ * Two different numbers, and quoting the wrong one has produced published
+ * errors: on one round the plain sum read 9.7 MB where the amount actually
+ * reclaimable was 308 KB. Lead with the dominator-deduped figure and keep the
+ * sum visible but explicitly labelled.
+ */
+function formatReachabilitySplit(
+  split: ReachabilitySplit,
+  snapshot: IHeapSnapshot,
+): string[] {
+  const deduped = boundedDominatorRetainedSize(
+    new NumericSet(split.pinnedIds),
+    snapshot,
+  );
+  const bound = deduped.exact ? '' : ' (upper bound; deep dominator chain)';
   return [
-    `- Pinned (retainer path to a GC root — actionable leak): ${formatNumber(split.pinnedCount)} nodes, ${formatBytes(split.pinnedRetained)}`,
+    `- Pinned (retainer path to a GC root — actionable leak): ${formatNumber(split.pinnedCount)} nodes, **${formatBytes(deduped.retained)} reclaimable**${bound} (dominator-deduped)`,
+    `  - sum over nodes: ${formatBytes(split.pinnedRetained)} — double-counts nested detached subtrees; do NOT quote this as the size of the leak`,
     `- No retainer path found (likely GC-eligible / weak-only — exclude from leak totals): ${formatNumber(split.noPathCount)} nodes, ${formatBytes(split.noPathRetained)}`,
   ];
 }
@@ -297,12 +329,7 @@ export function registerDetachedDom(server: McpServer): void {
           let totalDetached = 0;
           let totalRetainedAll = 0;
           let devOnlyRetained = 0;
-          const split: ReachabilitySplit = {
-            pinnedCount: 0,
-            pinnedRetained: 0,
-            noPathCount: 0,
-            noPathRetained: 0,
-          };
+          const split: ReachabilitySplit = emptySplit();
 
           snapshot.nodes.forEach(node => {
             if (!isDetachedDOMNode(node)) return;
@@ -312,6 +339,7 @@ export function registerDetachedDom(server: McpServer): void {
             if (pinned) {
               split.pinnedCount++;
               split.pinnedRetained += node.retainedSize;
+              split.pinnedIds.push(node.id);
             } else {
               split.noPathCount++;
               split.noPathRetained += node.retainedSize;
@@ -393,7 +421,7 @@ export function registerDetachedDom(server: McpServer): void {
               return toolResult(
                 [
                   `Detached DOM grouped by ${group_by}: ${formatNumber(totalDetached)} total nodes, ${formatBytes(totalRetainedAll)} total retained`,
-                  ...formatReachabilitySplit(split),
+                  ...formatReachabilitySplit(split, snapshot),
                   only_with_retainer_path
                     ? '_No pinned (retainer-path) detached nodes — all detached DOM is GC-eligible / weak-only, not a leak._'
                     : '',
@@ -476,7 +504,7 @@ export function registerDetachedDom(server: McpServer): void {
 
           const lines = [
             `Detached DOM grouped by ${group_by}: ${formatNumber(totalDetached)} total nodes, ${formatBytes(totalRetainedAll)} total retained`,
-            ...formatReachabilitySplit(split),
+            ...formatReachabilitySplit(split, snapshot),
           ];
           if (only_with_retainer_path) {
             lines.push('_(groups below show pinned nodes only)_');
@@ -539,17 +567,13 @@ export function registerDetachedDom(server: McpServer): void {
           return toolResult(lines.join('\n'));
         }
 
-        const split: ReachabilitySplit = {
-          pinnedCount: 0,
-          pinnedRetained: 0,
-          noPathCount: 0,
-          noPathRetained: 0,
-        };
+        const split: ReachabilitySplit = emptySplit();
         snapshot.nodes.forEach(node => {
           if (!isDetachedDOMNode(node)) return;
           if (isPinned(node)) {
             split.pinnedCount++;
             split.pinnedRetained += node.retainedSize;
+            split.pinnedIds.push(node.id);
           } else {
             split.noPathCount++;
             split.noPathRetained += node.retainedSize;
@@ -572,7 +596,7 @@ export function registerDetachedDom(server: McpServer): void {
         const splitBlock =
           output_mode === 'ids'
             ? ''
-            : formatReachabilitySplit(split).join('\n') + '\n\n';
+            : formatReachabilitySplit(split, snapshot).join('\n') + '\n\n';
         const output = splitBlock + formatQueryNodesResult(result, offset);
         if (result.total_count > 0 && output_mode === 'full') {
           const devNote =

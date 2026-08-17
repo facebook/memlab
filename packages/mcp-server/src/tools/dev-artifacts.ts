@@ -58,6 +58,64 @@ const REACT_REFRESH_GLOBAL_EDGE_NAMES = new Set([
   '$RefreshReg$',
 ]);
 
+// Detecting Fast Refresh by its GLOBALS alone is not enough, and the gap is
+// large rather than marginal. `$RefreshSig$` / `$RefreshReg$` are thin wrappers;
+// the registries they talk to live in the refresh runtime's module scope and are
+// reachable only through compiled-code constant pools
+// (`system/TrustedWeakFixedArray`, `system/InstructionStream`), so the globals
+// DOMINATE almost nothing and the registries stay classified `production`.
+//
+// Measured on a WhatsApp Web round: dev_artifacts reported
+// `React Fast Refresh registry ($RefreshSig$) x2` and attributed 1.4 KB, while
+// in the same snapshot the `allSignaturesByType` WeakMap's backing table alone
+// was 4,096 KB and `allFamiliesByID` held 16,367 entries / 1.2 MB. The 4 MB was
+// filed as a production optimization opportunity before being withdrawn.
+//
+// So match the registries by CONTENT as well, independent of retainer path:
+//
+//   1. the registry container, by the edge name that binds it in module scope;
+//   2. the per-type signature record react-refresh stores via
+//      `setSignature(type, key, forceReset, getCustomHooks)`.
+const REACT_REFRESH_REGISTRY_EDGE_NAMES = new Set([
+  'allFamiliesByID',
+  'allFamiliesByType',
+  'allSignaturesByType',
+  'updatedFamiliesByType',
+  'pendingUpdates',
+  'helpersByRendererID',
+  'helpersByRoot',
+  'mountedRoots',
+  'failedRoots',
+  'rootElements',
+]);
+
+// The rarest property of the react-refresh signature record; used as the cheap
+// gate before confirming the full shape, so the scan stays one edge-name compare
+// per edge on everything else.
+const REACT_REFRESH_SIGNATURE_GATE_PROP = 'getCustomHooks';
+const REACT_REFRESH_SIGNATURE_PROPS = [
+  'forceReset',
+  'ownKey',
+  'fullKey',
+  'getCustomHooks',
+];
+
+/**
+ * True when `node` is a react-refresh signature record — the value side of
+ * `allSignaturesByType`, shaped `{forceReset, ownKey, fullKey, getCustomHooks}`.
+ * Callers gate on the rare property first; this confirms the rest.
+ */
+function isReactRefreshSignatureRecord(node: IHeapNode): boolean {
+  const seen = new Set<string>();
+  for (const edge of node.references) {
+    if (edge.type !== 'property') continue;
+    const name = String(edge.name_or_index);
+    if (REACT_REFRESH_SIGNATURE_PROPS.includes(name)) seen.add(name);
+    if (seen.size === REACT_REFRESH_SIGNATURE_PROPS.length) return true;
+  }
+  return false;
+}
+
 // The automation/devtools *bridge* injected into the page by a CDP-driven
 // harness (the browser MCP plugin, a browser-tools extension, Puppeteer helper
 // bundles). This is the harness observing the app, not the app.
@@ -246,6 +304,29 @@ export function collectDevRoots(snapshot: IHeapSnapshot): DevRoots {
           `${eName} (automation/devtools bridge injected by the harness)`,
         );
         categoryById.set(edge.toNode.id, 'harness');
+      }
+      // Fast Refresh registries bound in the refresh runtime's module scope.
+      // Matched by edge name rather than by retainer path, because the path
+      // runs through compiled-code constant pools that no dev global dominates.
+      if (REACT_REFRESH_REGISTRY_EDGE_NAMES.has(eName) && edge.toNode.id > 3) {
+        byId.set(
+          edge.toNode.id,
+          `${eName} (React Fast Refresh registry; absent in production builds)`,
+        );
+        categoryById.set(edge.toNode.id, 'reactFastRefresh');
+      }
+      // The signature record itself, so entries survive being read out of a
+      // WeakMap whose table is not itself dominated by the registry edge.
+      if (
+        eName === REACT_REFRESH_SIGNATURE_GATE_PROP &&
+        node.id > 3 &&
+        isReactRefreshSignatureRecord(node)
+      ) {
+        byId.set(
+          node.id,
+          'react-refresh signature record ({forceReset, ownKey, fullKey, getCustomHooks}; absent in production builds)',
+        );
+        categoryById.set(node.id, 'reactFastRefresh');
       }
     }
     if (DEV_NODE_NAME_RE.test(node.name)) {
@@ -609,6 +690,8 @@ export function registerDevArtifacts(server: McpServer): void {
         }
         lines.push(
           '_This total covers the whole heap and is NOT limited by `min_retained_size` — high-count/low-size artifacts (per-event log strings, one logged object per interaction) are included._',
+          '',
+          "> ⚠️ **This is not the whole artifact bill.** This tool measures RETENTION-BY-A-DEV-ROOT (dev/extension globals, the inspector console, a11y caches, Fast Refresh, the automation bridge). It does NOT count **V8 JIT warmup** — `system/Code`, `InstructionStream`, `BytecodeArray`, `ProtectedFixedArray` — which is a separate and often larger bucket, and which grows simply because a hunt exercises new code paths. On one measured round this tool reported 4.8 MB / 1.5% dev-only while JIT warmup accounted for +5.7 MB of that round's 10.8 MB of growth. For the growth-side view of both, run `memlab_explain_delta` with `include_artifacts: true` against the baseline rung.",
           '',
         );
 

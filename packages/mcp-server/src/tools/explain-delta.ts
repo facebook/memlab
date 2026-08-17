@@ -227,6 +227,7 @@ export function registerExplainDelta(server: McpServer): void {
           const bytes = artifactRows.reduce((s, r) => s + r.delta, 0);
           lines.push(
             `> 🧹 **${formatNumber(artifactRows.length)} owner(s) suppressed as known measurement artifacts** (net ${bytes >= 0 ? '+' : '−'}${formatBytes(Math.abs(bytes))}) — JIT warmup, CDP inspector retention, a11y caches, captured Error stacks. Pass \`include_artifacts: true\` to see them.`,
+            '> Note the split of responsibilities: the JIT-warmup families counted here (`system/Code`, `InstructionStream`, `BytecodeArray`, `ProtectedFixedArray`) are NOT counted by `memlab_dev_artifacts`, which measures retention by a dev root instead. Neither total is the whole artifact bill on its own — read both before deciding how much of a round is real.',
             '',
           );
         }

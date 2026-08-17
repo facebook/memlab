@@ -218,7 +218,7 @@ export function registerEval(server: McpServer): void {
             'retainedSize(id)->number, retainedSizes(ids[])->Record<id,bytes> (an OBJECT keyed by id, NOT an array — index it as sizes[id] or Object.values(sizes)), ' +
             'mapEntries(mapId, limit?)->[{key,value}] & setElements(setId, limit?)->[brief] (correct Map/Set/WeakMap enumeration — handles browser internal-typed slots AND SMI-value gaps, so you never re-derive it wrong), ' +
             'props(nodeOrId)->{prop: scalar | {ref,name,type}} & getProp(nodeOrId, name) & shapeSignature(nodeOrId, {maxStringLen?}) (content signature for dedup checks), ' +
-            'byClass(name)->ids[] & byTypename(name)->ids[] & withProp(name)->ids[] (INDEXED lookups — built once per snapshot then memoized in a session scratch, so repeated questions are index-speed not full-scan), ' +
+            'byClass(name, {type?})->ids[] & byTypename(name)->ids[] & withProp(name)->ids[] (INDEXED lookups — built once per snapshot then memoized in a session scratch, so repeated questions are index-speed not full-scan; byClass covers EVERY node type, matching memlab_find_nodes_by_class, so closures/strings/arrays/natives are found — pass {type:"object"} to narrow), ' +
             'aggregateRetained(ids[])->{retained,exact} (dominator-deduped retained for a SET of ids, no double-counting) }), ' +
             'and standard JS built-ins. ' +
             'Node traversal: use node.references (outgoing) and node.referrers (incoming) with for-of. ' +
@@ -525,14 +525,26 @@ export function registerEval(server: McpServer): void {
           const byClass = new Map<string, number[]>();
           const byTypename = new Map<string, number[]>();
           snapshot.nodes.forEach((node: IHeapNode) => {
-            if (node.type !== 'object') return;
             if (node.id <= 3) return; // skip oddball/root nodes, matching the histogram/duplicate-objects tools for count parity
+            // Index EVERY node type. Restricting this to `object` made the
+            // helper silently return [] for closures, strings, arrays and
+            // native (`blink::*`) nodes — which is most of what other tools
+            // report. Measured: byClass('setComposerLinks_$0') returned [] on a
+            // snapshot where a manual walk found 1,011 of them, because the
+            // class is a closure; the empty result reads as "does not exist".
+            // memlab_find_nodes_by_class matches any type by default and this
+            // helper is documented as its indexed equivalent, so the two must
+            // agree.
             let a = byClass.get(node.name);
             if (!a) {
               a = [];
               byClass.set(node.name, a);
             }
             a.push(node.id);
+            // `__typename` is a JS object property, so only object nodes can
+            // carry one; skipping the edge walk for other types keeps the
+            // widened index roughly as cheap as the object-only one.
+            if (node.type !== 'object') return;
             for (const e of node.references) {
               if (
                 e.type === 'property' &&
@@ -556,8 +568,12 @@ export function registerEval(server: McpServer): void {
           scratch.__classTypeIndex = idx;
           return idx;
         };
-        const byClass = (name: string): number[] =>
-          buildClassTypeIndex().byClass.get(name) ?? [];
+        const byClass = (name: string, opts?: {type?: string}): number[] => {
+          const ids = buildClassTypeIndex().byClass.get(name) ?? [];
+          const want = opts?.type;
+          if (want == null) return ids;
+          return ids.filter(id => snapshot.getNodeById(id)?.type === want);
+        };
         const byTypename = (name: string): number[] =>
           buildClassTypeIndex().byTypename.get(name) ?? [];
         const withProp = (name: string): number[] => {
@@ -566,8 +582,11 @@ export function registerEval(server: McpServer): void {
           if (cached) return cached;
           const ids: number[] = [];
           snapshot.nodes.forEach((node: IHeapNode) => {
-            if (node.type !== 'object') return;
             if (node.id <= 3) return; // skip oddball/root nodes for parity with other tools
+            // Every node type is scanned: the `property` edge check below is
+            // what constrains the match, and closures do carry named property
+            // edges. Restricting the walk to `object` hid them, the same way it
+            // hid non-object classes from byClass.
             for (const e of node.references) {
               if (e.type === 'property' && String(e.name_or_index) === name) {
                 ids.push(node.id);
@@ -870,7 +889,7 @@ function describeEnv(): string {
     '- `helpers.mapEntries(mapId, limit=1000) -> [{key, value}]` and `helpers.setElements(setId, limit=1000) -> [brief]` — CORRECT Map/Set/WeakMap enumeration. Handles browser `internal`-typed backing slots and SMI-value gaps (naive `type === "element"` filtering or positional `[i],[i+1]` pairing silently returns 0 / mispairs). Each brief is `{id, name, type, self_size, retained_size, string}`.',
     "- `helpers.props(nodeOrId) -> {prop: scalar | {ref, name, type}}` and `helpers.getProp(nodeOrId, name)` — read an object's own properties without the `for (const e of n.references) …` boilerplate. Number-valued props surface as a ref to a `smi number`/`heap number` node; their actual numeric value is not in the snapshot format.",
     '- `helpers.shapeSignature(nodeOrId, {maxStringLen?}) -> string` — stable shallow content signature (sorted prop names + scalar values) for duplicate-record detection. Numeric values are NOT captured (see `memlab_duplicate_objects`), so records differing only in a number field hash the same.',
-    '- `helpers.byClass(name) -> ids[]`, `helpers.byTypename(name) -> ids[]`, `helpers.withProp(name) -> ids[]` — INDEXED id lookups. The class/typename index is built once per snapshot and memoized in a session scratch, so a follow-up call is index-speed, not another full `snapshot.nodes` scan. (See also the `memlab_duplicate_objects` tool for a ready-made dedup report.)',
+    '- `helpers.byClass(name, {type?}) -> ids[]`, `helpers.byTypename(name) -> ids[]`, `helpers.withProp(name) -> ids[]` — INDEXED id lookups. The class/typename index is built once per snapshot and memoized in a session scratch, so a follow-up call is index-speed, not another full `snapshot.nodes` scan. `byClass` indexes EVERY node type (closure, string, array, native, …), matching `memlab_find_nodes_by_class`; pass `{type: "object"}` to narrow. `byTypename` is object-only because `__typename` is a JS property. (See also the `memlab_duplicate_objects` tool for a ready-made dedup report.)',
     '- `helpers.aggregateRetained(ids[]) -> {retained, exact}` — dominator-deduped retained size for a SET of ids (does not double-count when one id dominates another); `exact:false` means the bounded walk was truncated (upper bound).',
     '',
     '## Named result sets (multi-step exploration)',
