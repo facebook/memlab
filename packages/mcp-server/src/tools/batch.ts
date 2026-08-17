@@ -58,6 +58,7 @@ export function registerBatch(server: McpServer): void {
       'The natural unit of heap work is "load snapshot X, then run these N tools", but loading is by far the dominant cost — a 380 MB / 4M-node snapshot takes minutes to parse and build a dominator tree, and an MCP session that drops (or a client that cannot attach) makes every call pay it again. ' +
       'Pass `load` to load a snapshot first (same arguments as memlab_load_snapshot); omit it to run against the already-resident snapshot. ' +
       "Steps run sequentially and see each other's side effects, so a step may depend on an earlier one (e.g. load -> check_health -> retainer_summary). " +
+      "Every step's tool name AND arguments are validated before step 0 runs, so a step missing a required argument fails the batch immediately instead of after the snapshot load has been paid for. " +
       'NOTE ON TIMEOUTS: the whole batch runs under a single wall-clock guardrail, not one per step — size it with `timeout_ms` (e.g. 600000 for a load plus several whole-heap scans).',
     {
       load: z
@@ -119,19 +120,60 @@ export function registerBatch(server: McpServer): void {
           );
         }
 
-        const results: StepResult[] = [];
-        for (const {tool, args} of plan) {
+        // Validate EVERY step's arguments before running step 0.
+        //
+        // Parsing inside the execution loop means a step that is missing a
+        // required argument fails only after the load has been paid for — and
+        // the load is the expensive part: on a 243 MB snapshot this cost a full
+        // parse twice in one session (`weakmap_entries` and `retainer_layers`,
+        // both missing `node_id`) before the batch reported anything. The
+        // information needed to refuse was available before any work started.
+        const planned: Array<{tool: string; parsed: unknown}> = [];
+        const argErrors: string[] = [];
+        plan.forEach(({tool, args}, i) => {
           const entry = getRegisteredTool(tool);
-          if (entry == null) continue;
+          if (entry == null) return;
           try {
             // Apply the tool's own zod shape so `.default()` values are
             // materialized exactly as they are for a direct MCP call. Without
             // this a step that omits an optional gets `undefined` and a scan
             // gated on e.g. `min_count` silently returns nothing.
-            const parsed =
-              entry.shape != null
-                ? z.object(entry.shape as never).parse(args)
-                : args;
+            planned.push({
+              tool,
+              parsed:
+                entry.shape != null
+                  ? z.object(entry.shape as never).parse(args)
+                  : args,
+            });
+          } catch (err) {
+            const detail =
+              err instanceof z.ZodError
+                ? err.issues
+                    .map(
+                      iss =>
+                        `${iss.path.join('.') || '(root)'}: ${iss.message}`,
+                    )
+                    .join('; ')
+                : err instanceof Error
+                  ? err.message
+                  : String(err);
+            argErrors.push(`step ${i + 1} \`${tool}\` — ${detail}`);
+          }
+        });
+        if (argErrors.length > 0) {
+          return errorResult(
+            new Error(
+              `${argErrors.length} step(s) have invalid arguments; nothing was run (the snapshot load is the expensive part of a batch, so the whole plan is checked first):\n` +
+                argErrors.map(e => `- ${e}`).join('\n'),
+            ),
+          );
+        }
+
+        const results: StepResult[] = [];
+        for (const {tool, parsed} of planned) {
+          const entry = getRegisteredTool(tool);
+          if (entry == null) continue;
+          try {
             const res = await entry.handler(parsed, {});
             const ok = !isErrorResult(res);
             results.push({tool, ok, text: renderToolText(res)});

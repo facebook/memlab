@@ -16,6 +16,7 @@ import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
 import {
   getSnapshot,
+  isLightSnapshot,
   getEvalScratch,
   getSnapshotMetadata,
 } from '../heap-state.js';
@@ -164,6 +165,24 @@ function wrapSnapshot(snapshot: unknown, budget: VisitBudget): unknown {
   });
 }
 
+/**
+ * Identifiers whose value comes from the dominator / retained-size / shortest-
+ * path pass that a LIGHT load skips. On such a snapshot each of these reads
+ * back 0 or undefined WITHOUT failing, so eval code using them returns
+ * confident zeros — worse than an error. Matched textually before the code
+ * runs, so the refusal costs nothing.
+ */
+const RETENTION_IDENTIFIERS = [
+  'retainedSize',
+  'retainedSizes',
+  'retained_size',
+  'aggregateRetained',
+  'dominatorNode',
+  'hasPathEdge',
+  'pathEdge',
+  'filterLargestObjects',
+];
+
 export function registerEval(server: McpServer): void {
   server.tool(
     'memlab_eval',
@@ -195,6 +214,7 @@ export function registerEval(server: McpServer): void {
       'for (const id of ids) { const s = helpers.shapeSignature(id); sigs[s] = (sigs[s]||0)+1; }\n' +
       'result = {count: ids.length, distinct: Object.keys(sigs).length};\n```\n' +
       '**Multi-step exploration:** pass `save_as` to keep a result set server-side and `helpers.load(name)` to read it back in a later call, so intermediate id lists never have to be printed to the transcript. `mode:"list_saved"` lists them. ' +
+      'Runs on a LIGHT snapshot too (counts, names, types, self sizes, string values, edge walks). Code referencing retained sizes, dominators or path edges is refused up front there rather than returning zeros. ' +
       'Pass `max_nodes` to bound a full-heap walk — on overrun the partial `result` is returned with a warning instead of failing, so a broad scan is safe to attempt. Every call reports `nodes_visited`.',
     {
       mode: z
@@ -271,7 +291,30 @@ export function registerEval(server: McpServer): void {
             ),
           );
         }
-        const snapshot = getSnapshot();
+        // Light snapshots are allowed here. Most eval code touches only
+        // `name`, `type`, `self_size`, `references` and `referrers`, none of
+        // which the dominator pass produces — refusing the whole tool forced a
+        // full (2x slower) load for counts-only work on a baseline rung. What
+        // IS unavailable is refused precisely instead: by a pre-flight text
+        // check below, and by the helpers themselves as a backstop.
+        const light = isLightSnapshot();
+        const snapshot = getSnapshot({allowLight: true});
+
+        if (light) {
+          const needsRetention = RETENTION_IDENTIFIERS.filter(id =>
+            new RegExp(`\\b${id}\\b`).test(code),
+          );
+          if (needsRetention.length > 0) {
+            return errorResult(
+              new Error(
+                `This snapshot was loaded in LIGHT mode (no dominator tree, no retained sizes, no shortest-path edges), and the code references ${needsRetention.map(i => `\`${i}\``).join(', ')}. ` +
+                  'Those would read 0 / undefined rather than fail, so the run is refused instead of returning confident zeros. ' +
+                  'Reload without `light` for retention work, or drop the reference — counts, names, types, self sizes, string values and edge walks all work fine on a light snapshot. ' +
+                  '(If the identifier only appears inside a string literal, this is a false match; the same call succeeds on a non-light load.)',
+              ),
+            );
+          }
+        }
 
         if (dry_run) {
           // Estimate, do not execute. A full-heap walk is detected textually —
@@ -381,11 +424,23 @@ export function registerEval(server: McpServer): void {
         // ~0; these helpers look the node up fresh on the real snapshot (the
         // same path the dedicated tools use) so custom analyses can rank by
         // retained size.
+        // On a light snapshot these would return 0 for every id, which is
+        // indistinguishable from a genuinely tiny object. Throw instead: the
+        // pre-flight check above catches the common case, and this covers code
+        // that reaches them indirectly.
+        const requireRetention = (what: string): void => {
+          if (!light) return;
+          throw new Error(
+            `helpers.${what} needs retained sizes, which a LIGHT snapshot does not have (it would return 0 for every id). Reload with memlab_load_snapshot({file_path, light: false}).`,
+          );
+        };
         const retainedSize = (id: number): number => {
+          requireRetention('retainedSize');
           const n = snapshot.getNodeById(id);
           return n ? n.retainedSize : 0;
         };
         const retainedSizes = (ids: number[]): Record<number, number> => {
+          requireRetention('retainedSizes');
           const out: Record<number, number> = {};
           for (const id of ids) {
             const n = snapshot.getNodeById(id);
@@ -603,8 +658,10 @@ export function registerEval(server: McpServer): void {
         // bytes when one id dominates another in the set.
         const aggregateRetained = (
           ids: number[],
-        ): {retained: number; exact: boolean} =>
-          boundedDominatorRetainedSize(new NumericSet(ids), snapshot);
+        ): {retained: number; exact: boolean} => {
+          requireRetention('aggregateRetained');
+          return boundedDominatorRetainedSize(new NumericSet(ids), snapshot);
+        };
 
         // Named result sets live in the same per-snapshot scratch as the
         // class/typename index, so they share its lifecycle: they are dropped
