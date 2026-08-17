@@ -68,6 +68,10 @@ interface Candidate {
   node: IHeapNode;
   score: number;
   shapeScore: number;
+  // Whether shapeScore is evidence at all. A forced 0 (either side too wide to
+  // fingerprint) and a computed 0 (no overlapping properties) are opposite
+  // findings, and only the score can no longer tell them apart.
+  shapeKnown: boolean;
   retainerMatch: boolean;
 }
 
@@ -148,7 +152,7 @@ export function registerMatchObject(server: McpServer): void {
             srcRetainer !== '(unknown)' &&
             getFirstNonFrameworkRetainer(node) === srcRetainer;
           const score = 0.7 * shapeScore + 0.3 * (retainerMatch ? 1 : 0);
-          candidates.push({node, score, shapeScore, retainerMatch});
+          candidates.push({node, score, shapeScore, shapeKnown, retainerMatch});
         });
 
         if (sameClass === 0) {
@@ -192,7 +196,7 @@ export function registerMatchObject(server: McpServer): void {
               return [
                 `@${c.node.id}`,
                 c.score.toFixed(2),
-                c.shapeScore > 0 ? `${Math.round(c.shapeScore * 100)}%` : 'n/a',
+                c.shapeKnown ? `${Math.round(c.shapeScore * 100)}%` : 'n/a',
                 c.retainerMatch ? 'yes' : 'no',
                 formatBytes(c.node.retainedSize),
                 `${delta >= 0 ? '+' : '−'}${formatBytes(Math.abs(delta))}`,

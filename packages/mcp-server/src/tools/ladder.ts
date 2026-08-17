@@ -74,9 +74,13 @@ interface Ladder {
 }
 
 function loadRegistry(): Record<string, Ladder> {
+  // Resolved outside the try: a missing HOME must propagate here exactly as it
+  // does from saveRegistry. Swallowed into the catch below it would render as a
+  // valid, empty registry, which is indistinguishable from "no ladders yet".
+  const file = registryPath();
   try {
-    if (!fs.existsSync(registryPath())) return {};
-    const raw = fs.readFileSync(registryPath(), 'utf8');
+    if (!fs.existsSync(file)) return {};
+    const raw = fs.readFileSync(file, 'utf8');
     const parsed: unknown = JSON.parse(raw);
     if (parsed == null || typeof parsed !== 'object') return {};
     return parsed as Record<string, Ladder>;
