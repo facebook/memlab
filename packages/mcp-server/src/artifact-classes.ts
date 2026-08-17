@@ -146,9 +146,17 @@ export function artifactNote(kind: ArtifactKind): string {
 }
 
 /**
- * Content signatures of strings that belong to the MEASUREMENT HARNESS rather
- * than to the application: the CDP-driven bridge the agent injects to observe
- * the page (browser MCP plugin, browser-tools extension, Puppeteer helpers).
+ * Where a non-production string came from. Both kinds are equally unshippable,
+ * but they call for different follow-up: `harness` means re-run without the
+ * bridge attached to measure the app cleanly, `dev-build` means measure a
+ * production build.
+ */
+export type NonProductionStringKind = 'harness' | 'dev-build';
+
+/**
+ * Content signatures of strings that do NOT ship: the CDP-driven bridge the
+ * agent injects to observe the page (browser MCP plugin, browser-tools
+ * extension, Puppeteer helpers), and DEV-build-only framework machinery.
  *
  * Why this needs its own classifier, separate from `classifyArtifact`: these are
  * matched on string CONTENT, not on a class name, and they are not reachable
@@ -160,10 +168,18 @@ export function artifactNote(kind: ArtifactKind): string {
  * in `duplicated_strings` and the single largest "opportunity" in
  * `intern_opportunities`. Interning it would save the application nothing,
  * because none of it ships. Reporting it as a win is worse than not reporting it
- * at all: it sends a fix author after the test rig.
+ * at all: it sends a fix author after the test rig. The React DEV entries below
+ * were the same story a round later: 4,529 `_debugStack` Error stacks, 3.0 MB,
+ * none of which exist in a production build.
+ *
+ * Every pattern here has to be specific enough that application source cannot
+ * match it — a false "this doesn't ship" hides a real win, which is the more
+ * expensive direction to be wrong in for THIS classifier (the opposite of
+ * `classifyArtifact`, where a false artifact hides a real leak).
  */
-const HARNESS_STRING_SIGNATURES: ReadonlyArray<{
+const NON_PRODUCTION_STRING_SIGNATURES: ReadonlyArray<{
   re: RegExp;
+  kind: NonProductionStringKind;
   what: string;
 }> = [
   {
@@ -171,23 +187,105 @@ const HARNESS_STRING_SIGNATURES: ReadonlyArray<{
     // the start and required to reach `commonjsGlobal` within the prologue, so
     // ordinary application source strings do not match.
     re: /^\(function\s*\(exports\)\s*\{[\s\S]{0,400}commonjsGlobal/,
+    kind: 'harness',
     what: 'injected CommonJS bundle (automation/devtools bridge)',
   },
   {
     re: /^\s*at (?:Object\.)?__PUPPETEER|puppeteer_evaluation_script/,
+    kind: 'harness',
     what: 'Puppeteer evaluation frame',
+  },
+  {
+    // react-dom DEV names the frames it inserts into owner stacks
+    // `react-stack-top-frame` / `react-stack-bottom-frame`, in hyphenated and
+    // underscored spellings depending on the build. BOTH ends must be matched:
+    // measured on one 2.5M-node capture, `react-stack-top-frame` appears 56
+    // times and `react_stack_bottom_frame` twice, so a bottom-only pattern
+    // misses the dominant form and classifies most DEV owner stacks as
+    // production. The hyphenated spelling cannot be a JS identifier, so it only
+    // ever appears inside a captured stack string.
+    re: /react[-_]stack[-_](?:top|bottom)[-_]frame/,
+    kind: 'dev-build',
+    what: 'React DEV owner stack (_debugStack) — not captured in production',
+  },
+  {
+    // A compiled DEV module's Fast Refresh epilogue. Requires the call form, so
+    // a string that merely mentions the identifier does not match.
+    re: /\$RefreshReg\$\(|\$RefreshSig\$\(/,
+    kind: 'dev-build',
+    what: 'React Fast Refresh instrumentation in compiled source (DEV bundle only)',
   },
 ];
 
 /**
- * Classify a string VALUE as harness-injected, or null when it is app content.
- * Returns a short human description of what it is, for the row annotation.
+ * Classify a string VALUE as non-production (harness-injected or DEV-build
+ * only), or null when it is app content that really does ship.
  */
-export function classifyHarnessString(value: string): string | null {
-  for (const {re, what} of HARNESS_STRING_SIGNATURES) {
-    if (re.test(value)) return what;
+export function classifyNonProductionString(
+  value: string,
+): {kind: NonProductionStringKind; what: string} | null {
+  for (const {re, kind, what} of NON_PRODUCTION_STRING_SIGNATURES) {
+    if (re.test(value)) return {kind, what};
   }
   return null;
+}
+
+/**
+ * Back-compatible wrapper returning just the description. Prefer
+ * {@link classifyNonProductionString} when the caller can act on the kind.
+ */
+export function classifyHarnessString(value: string): string | null {
+  return classifyNonProductionString(value)?.what ?? null;
+}
+
+/**
+ * React Fast Refresh module-scope registries, by the edge name that binds each
+ * one. These live in the refresh runtime's closure and are reachable only
+ * through compiled-code constant pools, so a retainer-root scan does not find
+ * them and they classify as `production` unless matched by name here. See
+ * `tools/dev-artifacts` for the measured cost of missing them.
+ */
+export const REACT_REFRESH_REGISTRY_EDGE_NAMES: ReadonlySet<string> = new Set([
+  'allFamiliesByID',
+  'allFamiliesByType',
+  'allSignaturesByType',
+  'updatedFamiliesByType',
+  'pendingUpdates',
+  'helpersByRendererID',
+  'helpersByRoot',
+  'mountedRoots',
+  'failedRoots',
+  'rootElements',
+]);
+
+/**
+ * The rarest property of the react-refresh signature record. Callers gate on
+ * this before confirming the full shape, so a scan stays one name compare per
+ * edge on everything else.
+ */
+export const REACT_REFRESH_SIGNATURE_GATE_PROP = 'getCustomHooks';
+
+const REACT_REFRESH_SIGNATURE_PROPS = [
+  'forceReset',
+  'ownKey',
+  'fullKey',
+  'getCustomHooks',
+];
+
+/**
+ * Recognize the per-type signature record react-refresh stores via
+ * `setSignature(type, key, forceReset, getCustomHooks)` — the value side of
+ * `allSignaturesByType`, shaped `{forceReset, ownKey, fullKey, getCustomHooks}`.
+ */
+export function isReactRefreshSignatureShape(
+  propNames: Iterable<string>,
+): boolean {
+  const seen = new Set<string>();
+  for (const name of propNames) {
+    if (REACT_REFRESH_SIGNATURE_PROPS.includes(name)) seen.add(name);
+    if (seen.size === REACT_REFRESH_SIGNATURE_PROPS.length) return true;
+  }
+  return false;
 }
 
 /**

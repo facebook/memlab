@@ -84,10 +84,14 @@ import {registerDominatorChain} from './tools/dominator-chain.js';
 import {registerDuplicateObjects} from './tools/duplicate-objects.js';
 import {registerRetainerLayers} from './tools/retainer-layers.js';
 import {registerBatch} from './tools/batch.js';
+import {registerPopulationDiff} from './tools/population-diff.js';
+import {registerDominatorAttribution} from './tools/dominator-attribution.js';
+import {registerCollectionTrend} from './tools/collection-trend.js';
+import {registerVerifyFix} from './tools/verify-fix.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.46.0', // keep in sync with package.json
+  version: '2.47.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -160,6 +164,10 @@ registerDominatorChain(server);
 registerDuplicateObjects(server);
 registerRetainerLayers(server);
 registerBatch(server);
+registerPopulationDiff(server);
+registerDominatorAttribution(server);
+registerCollectionTrend(server);
+registerVerifyFix(server);
 
 async function main() {
   const transport = new StdioServerTransport();

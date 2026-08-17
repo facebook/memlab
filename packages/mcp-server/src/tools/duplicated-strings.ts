@@ -17,7 +17,7 @@ import {
   toolResult,
   looksLikeFailurePayload,
 } from '../utils.js';
-import {classifyHarnessString} from '../artifact-classes.js';
+import {classifyNonProductionString} from '../artifact-classes.js';
 
 export function registerDuplicatedStrings(server: McpServer): void {
   server.tool(
@@ -160,13 +160,17 @@ export function registerDuplicatedStrings(server: McpServer): void {
               }
             }
           }
-          // Harness-injected content outranks the app/framework split: it is
-          // not the application's memory at all, so it must never be counted
-          // toward an interning win (see classifyHarnessString).
-          const harness = classifyHarnessString(d.value);
-          if (harness != null) {
+          // Non-production content outranks the app/framework split: whether it
+          // was injected by the measurement harness or exists only in a DEV
+          // build, it is not memory the shipped app has, so it must never be
+          // counted toward an interning win (see classifyNonProductionString).
+          const nonProd = classifyNonProductionString(d.value);
+          if (nonProd != null) {
             d.actionability = 'harness';
-            d.harness_what = harness;
+            d.harness_what =
+              nonProd.kind === 'dev-build'
+                ? `${nonProd.what} — DEV build only, absent in production`
+                : nonProd.what;
           } else if (appCount > 0 && frameworkCount > 0) {
             d.actionability = 'mixed';
           } else if (frameworkCount > 0) {

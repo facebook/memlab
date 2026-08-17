@@ -23,6 +23,11 @@ import {
   errorResult,
   toolResult,
 } from '../utils.js';
+import {
+  isReactRefreshSignatureShape,
+  REACT_REFRESH_REGISTRY_EDGE_NAMES,
+  REACT_REFRESH_SIGNATURE_GATE_PROP,
+} from '../artifact-classes.js';
 
 // Globals installed by browser dev tools / extensions. Anything retained ONLY
 // through one of these would be garbage-collected in production — it's a
@@ -76,44 +81,21 @@ const REACT_REFRESH_GLOBAL_EDGE_NAMES = new Set([
 //   1. the registry container, by the edge name that binds it in module scope;
 //   2. the per-type signature record react-refresh stores via
 //      `setSignature(type, key, forceReset, getCustomHooks)`.
-const REACT_REFRESH_REGISTRY_EDGE_NAMES = new Set([
-  'allFamiliesByID',
-  'allFamiliesByType',
-  'allSignaturesByType',
-  'updatedFamiliesByType',
-  'pendingUpdates',
-  'helpersByRendererID',
-  'helpersByRoot',
-  'mountedRoots',
-  'failedRoots',
-  'rootElements',
-]);
-
-// The rarest property of the react-refresh signature record; used as the cheap
-// gate before confirming the full shape, so the scan stays one edge-name compare
-// per edge on everything else.
-const REACT_REFRESH_SIGNATURE_GATE_PROP = 'getCustomHooks';
-const REACT_REFRESH_SIGNATURE_PROPS = [
-  'forceReset',
-  'ownKey',
-  'fullKey',
-  'getCustomHooks',
-];
+//
+// Both signatures live in `artifact-classes`, which is where every
+// content-matched non-production family is registered.
 
 /**
- * True when `node` is a react-refresh signature record — the value side of
- * `allSignaturesByType`, shaped `{forceReset, ownKey, fullKey, getCustomHooks}`.
- * Callers gate on the rare property first; this confirms the rest.
+ * True when `node` is a react-refresh signature record. Callers gate on the
+ * rare property first; this confirms the rest.
  */
 function isReactRefreshSignatureRecord(node: IHeapNode): boolean {
-  const seen = new Set<string>();
+  const propNames: string[] = [];
   for (const edge of node.references) {
     if (edge.type !== 'property') continue;
-    const name = String(edge.name_or_index);
-    if (REACT_REFRESH_SIGNATURE_PROPS.includes(name)) seen.add(name);
-    if (seen.size === REACT_REFRESH_SIGNATURE_PROPS.length) return true;
+    propNames.push(String(edge.name_or_index));
   }
-  return false;
+  return isReactRefreshSignatureShape(propNames);
 }
 
 // The automation/devtools *bridge* injected into the page by a CDP-driven

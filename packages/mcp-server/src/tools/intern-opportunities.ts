@@ -28,7 +28,7 @@ import {
   computeReachableWithoutDevRoots,
 } from './dev-artifacts.js';
 import {
-  classifyHarnessString,
+  classifyNonProductionString,
   isHarnessToolManifestShape,
 } from '../artifact-classes.js';
 
@@ -161,7 +161,7 @@ interface InternGroup {
   // True when the duplicated content belongs to the MEASUREMENT HARNESS — the
   // CDP/devtools bridge injected into the page to drive the session — rather
   // than to the application. Detected either from the string content
-  // (classifyHarnessString) or from the parent shape being the bridge's tool
+  // (classifyNonProductionString) or from the parent shape being the bridge's tool
   // manifest (isHarnessToolManifestShape). None of it ships, so interning it
   // reclaims nothing in production: bucketed OUT of the within-load headline.
   // On a measured WA Web round the injected bundle was the single largest
@@ -630,10 +630,15 @@ export function registerInternOpportunities(server: McpServer): void {
               // reclaim; longer values are skipped by that cap (feedback §3).
               if (value.length <= CANONICAL_CAP_CHARS) savingsCappable += s;
               else savingsOverCap += s;
-              const what = classifyHarnessString(value);
-              if (what != null) {
+              const nonProd = classifyNonProductionString(value);
+              if (nonProd != null) {
                 savingsHarness += s;
-                if (!harnessWhat) harnessWhat = what;
+                if (!harnessWhat) {
+                  harnessWhat =
+                    nonProd.kind === 'dev-build'
+                      ? `${nonProd.what} — DEV build only, absent in production`
+                      : nonProd.what;
+                }
               }
             }
             topStrings.push({
