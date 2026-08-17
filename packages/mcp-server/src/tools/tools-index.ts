@@ -290,6 +290,10 @@ const GROUPS: Group[] = [
       ],
       ['memlab_reports', 'Render the findings.'],
       ['memlab_hunt_report', 'Render a leak-hunt run.'],
+      [
+        'memlab_analyze_run',
+        'Point at a run.json and get the WHOLE analysis protocol — trend, owner attribution, population diff, artifact classification, caveats — in one call.',
+      ],
     ],
   },
 ];
