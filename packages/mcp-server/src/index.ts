@@ -93,7 +93,7 @@ import {registerAnalyzeRun} from './tools/analyze-run.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.52.0', // keep in sync with package.json
+  version: '2.52.1', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call

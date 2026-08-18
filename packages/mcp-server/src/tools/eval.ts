@@ -9,7 +9,7 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
-import type {IHeapNode} from '@memlab/core';
+import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import {z} from 'zod';
 import vm from 'node:vm';
 import memlabCore from '@memlab/core';
@@ -29,6 +29,8 @@ import {
   toolResult,
   serializeNodeSummary,
   serializeNodeDetail,
+  type NodeDetail,
+  type NodeSummary,
   formatBytes,
   formatNumber,
   markdownTable,
@@ -43,9 +45,6 @@ import {
 } from '../utils.js';
 
 const MAX_OUTPUT_SIZE = 50 * 1024; // 50KB
-
-// Prefix for user-named result sets inside the per-snapshot eval scratch, so
-// they cannot collide with the internal `__classTypeIndex` / `__withProp:` keys.
 
 function truncate(str: string, max: number): string {
   if (str.length <= max) return str;
@@ -90,10 +89,6 @@ export function unwrapNode<T>(node: T): T {
     if (raw != null) return raw as T;
   }
   return node;
-}
-
-function unwrapNodes<T>(nodes: T[]): T[] {
-  return Array.isArray(nodes) ? nodes.map(unwrapNode) : nodes;
 }
 
 /**
@@ -175,6 +170,10 @@ function wrapEdgeIterable(iterable: unknown): unknown {
 function wrapSnapshot(snapshot: unknown, budget: VisitBudget): unknown {
   return new Proxy(snapshot as object, {
     get(target, prop, receiver) {
+      // Same escape hatch the node proxy carries, for the same reason: helpers
+      // that take a whole snapshot walk it with the real `forEach` and read
+      // `retainedSize` off the nodes it yields, which this proxy refuses.
+      if (prop === RAW_NODE) return target;
       if (prop === 'getNodeById') {
         const orig = (
           target as Record<string, (...args: unknown[]) => unknown>
@@ -532,6 +531,12 @@ export function registerEval(server: McpServer): void {
         // resolved via the trusted `retainedSize(id)` re-lookup (NOT the raw
         // `.retainedSize`, which can read back ~0 inside eval on some loads — the
         // foot-gun this whole tool's description warns about).
+        //
+        // On a LIGHT snapshot it is reported as `null` rather than thrown:
+        // `mapEntries` / `setElements` are built on this and are legitimate
+        // there (keys, values, names and self sizes all survive a light load),
+        // so propagating `retainedSize`'s refusal would refuse them too. A null
+        // reads as "not measured"; a 0 would read as "measured and tiny".
         const nodeBrief = (n: IHeapNode | null | undefined) =>
           n == null
             ? null
@@ -540,7 +545,7 @@ export function registerEval(server: McpServer): void {
                 name: n.name,
                 type: n.type,
                 self_size: n.self_size,
-                retained_size: retainedSize(n.id),
+                retained_size: light ? null : retainedSize(n.id),
                 string: n.isString
                   ? (n.toStringNode()?.stringValue ?? null)
                   : null,
@@ -865,7 +870,12 @@ export function registerEval(server: McpServer): void {
           for (const e of n.references) {
             if (e.type === 'hidden') continue;
             const name = String(e.name_or_index);
-            if (name === '__proto__' || name === 'map') continue;
+            if (name === '__proto__') continue;
+            // V8 hangs the hidden class off an internal edge literally named
+            // `map`; dropping it unconditionally also dropped a real property
+            // named `map` (a config object with a `.map` field), which then
+            // read as "the object does not have one".
+            if (name === 'map' && e.type !== 'property') continue;
             if (e.type === 'element') {
               out.push({
                 key: Number(e.name_or_index),
@@ -937,6 +947,15 @@ export function registerEval(server: McpServer): void {
           const start = snapshot.getNodeById(fromId);
           if (start == null || snapshot.getNodeById(toId) == null) {
             return {found: false, exhausted: false, path: []};
+          }
+          // `seen` is seeded with `fromId`, so the BFS below can never reach it
+          // again and the trivial 0-hop path would come back as "no path".
+          if (fromId === toId) {
+            return {
+              found: true,
+              exhausted: false,
+              path: [`@${fromId} ${start.name}`],
+            };
           }
           const prev = new Map<number, {via: string; from: number}>();
           const seen = new Set<number>([fromId]);
@@ -1014,11 +1033,30 @@ export function registerEval(server: McpServer): void {
         // read `retainedSize`, which the proxy refuses on purpose, so they take
         // the real node: unwrap at the boundary rather than making every caller
         // remember which helpers are proxy-safe.
+        // The retention-bearing fields of a serialized node, blanked on a LIGHT
+        // snapshot. The dominator pass never ran there, so they serialize as 0 /
+        // null-by-accident — a confident wrong number. Blanked rather than
+        // refused because everything else these two return (id, name, type,
+        // self size, edge/referrer counts, string value) is genuinely available
+        // on a light load, and refusing would take that away too.
+        const blankRetentionOnLight = (
+          s: NodeSummary | NodeDetail,
+        ): Record<string, unknown> => {
+          if (!light) return {...s};
+          const out: Record<string, unknown> = {...s, retained_size: null};
+          if ('dominator_id' in s) out.dominator_id = null;
+          return out;
+        };
+
         const helpers = {
           serializeNodeSummary: (n: unknown) =>
-            serializeNodeSummary(unwrapNode(n) as IHeapNode),
+            blankRetentionOnLight(
+              serializeNodeSummary(unwrapNode(n) as IHeapNode),
+            ),
           serializeNodeDetail: (n: unknown) =>
-            serializeNodeDetail(unwrapNode(n) as IHeapNode),
+            blankRetentionOnLight(
+              serializeNodeDetail(unwrapNode(n) as IHeapNode),
+            ),
           formatBytes,
           formatNumber,
           markdownTable,
@@ -1027,12 +1065,37 @@ export function registerEval(server: McpServer): void {
               unwrapNode(n),
               ...rest,
             ),
-          filterLargestObjects: (nodes: unknown[], ...rest: unknown[]) =>
-            (filterLargestObjects as (...a: unknown[]) => unknown)(
-              Array.isArray(nodes) ? nodes.map(unwrapNode) : nodes,
-              ...rest,
-            ),
-          queryNodes,
+          // Both of these RANK by `node.retainedSize`, so both need the real
+          // snapshot and a non-light load. The previous wrapper renamed the
+          // first parameter `nodes` and mapped it as an array, which matched
+          // neither utility's signature — `filterLargestObjects(snapshot,
+          // filter, limit)` — and did nothing. Unwrapping is what was actually
+          // needed: sandbox code only ever holds the PROXIED snapshot, whose
+          // nodes refuse the very `retainedSize` read these two rank on.
+          //
+          // `RETENTION_IDENTIFIERS` catches `filterLargestObjects` textually
+          // before the code runs; these runtime guards cover both, and cover
+          // them precisely (a `queryNodes` count needs no retention at all).
+          filterLargestObjects: (
+            snap: unknown,
+            filter: (node: IHeapNode) => boolean,
+            limit: number,
+          ) => {
+            requireRetention('filterLargestObjects');
+            return filterLargestObjects(
+              unwrapNode(snap) as IHeapSnapshot,
+              filter,
+              limit,
+            );
+          },
+          queryNodes: (
+            snap: unknown,
+            filter: (node: IHeapNode) => boolean,
+            opts: Parameters<typeof queryNodes>[2],
+          ) => {
+            if (opts?.outputMode !== 'count') requireRetention('queryNodes');
+            return queryNodes(unwrapNode(snap) as IHeapSnapshot, filter, opts);
+          },
           groupReferrersByEdge,
           groupArrayElementsByProperty,
           isOrphaned,

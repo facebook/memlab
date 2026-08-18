@@ -325,14 +325,26 @@ export function registerToolsIndex(server: McpServer): void {
             : `memlab_${tool}`
           : null;
         const matchesQuestion = makeNamePatternTest(question);
+        const indexed = new Set(GROUPS.flatMap(g => g.tools.map(([n]) => n)));
+        const uncategorized = [...registered].filter(n => !indexed.has(n));
 
         let groups = GROUPS;
         if (wanted != null) {
           groups = groups.filter(g => g.tools.some(([n]) => n === wanted));
           if (groups.length === 0) {
-            return textResult(
-              `\`${wanted}\` is not in the index${registered.has(wanted) ? ' (but it IS registered — the index is missing an entry; see the uncategorized list below)' : ' and is not a registered tool'}.\n\nRegistered tools: ${[...registered].join(', ')}`,
-            );
+            // This branch returns immediately, so the uncategorized list has to
+            // be rendered HERE. Pointing at the drift-guard section further
+            // down sent the reader to output this call never produces.
+            const parts = [
+              `\`${wanted}\` is not in the index${registered.has(wanted) ? ' (but it IS registered — the index is missing an entry)' : ' and is not a registered tool'}.`,
+            ];
+            if (uncategorized.length > 0) {
+              parts.push(
+                `Registered but not categorized: ${uncategorized.map(n => `\`${n}\``).join(', ')}.`,
+              );
+            }
+            parts.push(`Registered tools: ${[...registered].join(', ')}`);
+            return textResult(parts.join('\n\n'));
           }
         }
         if (question != null) {
@@ -350,8 +362,20 @@ export function registerToolsIndex(server: McpServer): void {
           '',
         ];
         if (groups.length === 0) {
+          // Name BOTH filters when both were passed: `tool` narrows first, so
+          // "no group matches <question>" alone describes the wrong search and
+          // suggests re-running with no arguments when dropping one would do.
+          const filterDesc =
+            wanted != null && question != null
+              ? `\`${wanted}\` and "${question}" together`
+              : question != null
+                ? `"${question}"`
+                : 'that filter';
           lines.push(
-            `No group matches ${question != null ? `"${question}"` : 'that filter'}. Call \`memlab_tools\` with no arguments for the full index.`,
+            `No group matches ${filterDesc}. ` +
+              (wanted != null && question != null
+                ? `\`${wanted}\` is in the index, but not in a group matching "${question}" — drop one of the two, or call \`memlab_tools\` with no arguments for the full index.`
+                : 'Call `memlab_tools` with no arguments for the full index.'),
           );
           return textResult(lines.join('\n'));
         }
@@ -370,8 +394,6 @@ export function registerToolsIndex(server: McpServer): void {
         // added tool would otherwise be invisible here — which is the exact
         // failure this tool exists to fix, reproduced one level up.
         if (question == null && wanted == null) {
-          const indexed = new Set(GROUPS.flatMap(g => g.tools.map(([n]) => n)));
-          const uncategorized = [...registered].filter(n => !indexed.has(n));
           if (uncategorized.length > 0) {
             lines.push(
               '## Not yet categorized',

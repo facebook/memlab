@@ -67,6 +67,16 @@ export function buildStringIndex(
   const scratch = getEvalScratch();
   const cached = scratch[CACHE_KEY] as StringIndex | undefined;
   const wantDevOnly = opts.withDevOnly === true;
+  // `withDevOnly` without an `isDevOnlyNode` is a programmer error, not a
+  // degraded mode: without the predicate the pass cannot run, so the index
+  // would be built with `hasDevOnly: false`, fail the cache-reuse guard below,
+  // and be rebuilt in full on every call. Refuse instead of silently
+  // re-scanning the whole graph forever.
+  if (wantDevOnly && opts.isDevOnlyNode == null) {
+    throw new Error(
+      'buildStringIndex: withDevOnly requires isDevOnlyNode; without it the dev-root pass cannot run.',
+    );
+  }
   if (cached && (!wantDevOnly || cached.hasDevOnly)) {
     return cached;
   }

@@ -89,9 +89,17 @@ async function runTool(
   unanalyzed: string[],
 ): Promise<string> {
   const entry = getRegisteredTool(name);
-  if (entry == null) return `_(${name} is not registered on this server)_`;
+  if (entry == null) {
+    // A step that did not run belongs under UNANALYZED whatever the reason.
+    // Returning only the inline note let a misspelled step name — or a tool
+    // missing from this server build — print "every step of the protocol ran"
+    // underneath a section that never executed.
+    unanalyzed.push(`${name} is not registered on this server`);
+    return `_(${name} is not registered on this server)_`;
+  }
   const outerRemaining = Math.max(0, activeTimeoutMs_() - activeElapsedMs());
   const outerTimeout = activeTimeoutMs_();
+  const stepStart = Date.now();
   beginAnalysisBudget(budgetMs);
   try {
     const res = await entry.handler(args, {});
@@ -132,9 +140,15 @@ async function runTool(
   } finally {
     // Restore the caller's budget, minus what this step consumed, so the
     // remaining steps still run under the overall timeout rather than getting
-    // a fresh one each.
+    // a fresh one each. The subtraction is the whole point:
+    // `beginAnalysisBudget` resets the clock unconditionally, so restoring the
+    // pre-step remaining would pause the outer guardrail for the duration of
+    // every step and let a chain of N steps overrun `timeout_ms` by the sum of
+    // their wall clocks. The floor of 1ms keeps the budget ARMED once it is
+    // exhausted (0 would disable it), so the next step trips immediately.
     if (outerTimeout > 0) {
-      beginAnalysisBudget(Math.max(1, outerRemaining));
+      const stepElapsed = Date.now() - stepStart;
+      beginAnalysisBudget(Math.max(1, outerRemaining - stepElapsed));
     } else {
       endAnalysisBudget();
     }
