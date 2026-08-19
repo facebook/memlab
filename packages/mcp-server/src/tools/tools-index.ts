@@ -63,6 +63,10 @@ const GROUPS: Group[] = [
         'memlab_object_cost_breakdown',
         'Where one class’s bytes actually go (self vs properties vs elements).',
       ],
+      [
+        'memlab_unit_cost',
+        'Retained bytes per instance, AVERAGE and MARGINAL — the number a cap, an LRU size or an eviction policy is sized against.',
+      ],
     ],
   },
   {
@@ -83,6 +87,10 @@ const GROUPS: Group[] = [
       [
         'memlab_population_diff',
         'Whether two snapshots hold the same POPULATION or just the same count — equal totals are not identity.',
+      ],
+      [
+        'memlab_settle_check',
+        'Backlog or leak? Compares a busy rung against one captured after idle + GC — growth that comes back was work in flight.',
       ],
       [
         'memlab_growth_signals',
@@ -250,6 +258,10 @@ const GROUPS: Group[] = [
       [
         'memlab_eval',
         'Arbitrary JS over the snapshot, with indexed helpers (`byClass`, `iterByType`, `classCounts`, `entries`, `dominates`, `pathBetween`). Use `mode:"describe_env"` for the calling convention. This is the escape hatch when no fixed-shape tool matches the question.',
+      ],
+      [
+        'memlab_eval_across',
+        'The same eval program run against several snapshots at once — comparative questions without the switch-and-diff.',
       ],
       [
         'memlab_auto_investigate',

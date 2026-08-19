@@ -172,17 +172,54 @@ export function registerEventRegistry(server: McpServer): void {
           .sort((a, b) => b[1].totalListeners - a[1].totalListeners)
           .slice(0, limit);
 
-        // Structural vs leak: if duplicates are rare relative to total, the
-        // accumulation is O(hosts) structural (one listener per host/event);
-        // many duplicates => real re-subscription leak.
+        // Structural vs leak. Duplicate (callback, context) pairs catch only
+        // ONE leak shape: the same subscriber re-registering on the same host.
+        // The other shape — many DISTINCT subscribers accumulating on one host,
+        // each with its own context — produces zero duplicates and used to be
+        // reported as "structural (not a leak)". That verdict is how a
+        // 874k-listener accumulation reads as an O(hosts) baseline, so two more
+        // signals are considered before calling anything structural.
         const dupRatio =
           totalListenersAll > 0 ? totalDuplicateExtra / totalListenersAll : 0;
-        const verdict =
-          totalDuplicateExtra === 0
-            ? '**Structural (not a leak):** every listener is a distinct callback/context on its host — this is the expected O(hosts) baseline (one listener per model per event).'
-            : dupRatio < 0.01
-              ? `**Mostly structural:** ${formatNumber(totalDuplicateExtra)} duplicate registration(s) (${(dupRatio * 100).toFixed(2)}%) — small re-subscription effect, likely benign.`
-              : `**⚠ Re-subscription leak:** ${formatNumber(totalDuplicateExtra)} duplicate registration(s) (${(dupRatio * 100).toFixed(1)}%) — the same callback instance is bound to the same host/event repeatedly (missing \`.off()\`/unsubscribe).`;
+
+        // (1) Distribution skew. A true one-listener-per-host baseline has mean
+        // ~= median. A few hosts carrying thousands while the median carries a
+        // handful is accumulation, whatever the callback identities look like.
+        const skew = median > 0 ? avgPerHost / median : avgPerHost;
+        const skewed = median > 0 && skew >= 3 && maxPerHost >= 50;
+
+        // (2) Per-host concentration: any single host holding a large listener
+        // array is worth flagging even when the fleet-wide mean looks sane.
+        const concentrated = maxPerHost >= 100;
+
+        let verdict: string;
+        if (dupRatio >= 0.01) {
+          verdict = `**⚠ Re-subscription leak:** ${formatNumber(totalDuplicateExtra)} duplicate registration(s) (${(dupRatio * 100).toFixed(1)}%) — the same callback instance is bound to the same host/event repeatedly (missing \`.off()\`/unsubscribe).`;
+        } else if (skewed || concentrated) {
+          const reasons: string[] = [];
+          if (skewed) {
+            reasons.push(
+              `mean ${avgPerHost.toFixed(1)} vs median ${formatNumber(median)} listeners per host (${skew.toFixed(1)}× skew)`,
+            );
+          }
+          if (concentrated) {
+            reasons.push(
+              `one host holds ${formatNumber(maxPerHost)} listeners`,
+            );
+          }
+          verdict =
+            `**⚠ Accumulation, not an O(hosts) baseline:** ${reasons.join('; ')}. ` +
+            `Only ${formatNumber(totalDuplicateExtra)} duplicate (callback, context) pair(s) were found, so this is NOT the same-subscriber-twice shape — it is the other one: many DISTINCT subscribers piling up on the same emitter, each with its own context (typically short-lived views/collections that \`listenTo\` a long-lived model and never \`stopListening\`). ` +
+            'Check the context objects: if they share a class and most are unreachable except through these registrations, they are stranded. ' +
+            '`memlab_event_listener_leaks` (context distribution, orphan detection) and `memlab_retainer_trace` on one context will confirm.';
+        } else if (totalDuplicateExtra === 0) {
+          verdict =
+            '**Structural, on the evidence checked:** every listener is a distinct callback/context, the per-host distribution is flat (mean ' +
+            `${avgPerHost.toFixed(1)}, median ${formatNumber(median)}, max ${formatNumber(maxPerHost)}), and no host is disproportionately loaded — consistent with the expected O(hosts) baseline of one listener per model per event. ` +
+            'This rules out re-subscription and per-host pile-up; it does NOT rule out the host population itself growing without bound, which needs a second rung (`memlab_sequence_analysis`).';
+        } else {
+          verdict = `**Mostly structural:** ${formatNumber(totalDuplicateExtra)} duplicate registration(s) (${(dupRatio * 100).toFixed(2)}%) — small re-subscription effect, likely benign. Per-host distribution is flat (mean ${avgPerHost.toFixed(1)}, median ${formatNumber(median)}).`;
+        }
 
         const lines: string[] = [
           '## Event Registry Analysis',

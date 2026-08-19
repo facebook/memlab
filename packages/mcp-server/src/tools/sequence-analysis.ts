@@ -566,6 +566,18 @@ export function registerSequenceAnalysis(server: McpServer): void {
           );
         }
 
+        // A ladder driven under load cannot distinguish retention from work in
+        // flight: a burst legitimately inflates promise chains, IDB
+        // transactions, scheduler queues and request buffers, and every one of
+        // those climbs at every step exactly like a leak. The check that
+        // separates them is a rung captured after the app settles, and it is
+        // the step most often skipped — so the absence of one is called out
+        // here rather than left for the reader to remember.
+        lines.push(
+          '',
+          '⏳ **No settle rung.** Every growth figure above was measured while the app was active, so in-flight work is indistinguishable from retention here. Capture one more snapshot after ~30-60s idle with a forced GC and run `memlab_settle_check(busy_handle, settled_handle)`: classes that return to baseline were backlog, not leaks.',
+        );
+
         return toolResult(lines.join('\n'));
       } catch (err) {
         return errorResult(err);

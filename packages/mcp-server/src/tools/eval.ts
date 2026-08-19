@@ -327,923 +327,937 @@ export function registerEval(server: McpServer): void {
           'Abort a `snapshot.nodes.forEach` walk after this many node visits (default 20000000, i.e. effectively unlimited). On abort the partial `result` is returned with a note instead of failing, so a broad exploratory scan can be attempted safely. Reported back as `nodes_visited` on every call.',
         ),
     },
-    async ({mode, code, timeout_ms, save_as, max_nodes, dry_run}) => {
-      const budget: VisitBudget = {visited: 0, max: max_nodes, exceeded: false};
-      try {
-        if (mode === 'describe_env') {
-          return toolResult(describeEnv());
-        }
-        if (mode === 'list_saved') {
-          return toolResult(describeSaved());
-        }
-        if (code == null || code.trim() === '') {
-          return errorResult(
-            new Error(
-              'No code provided. Pass `code`, or use mode:"describe_env" to see the available globals and conventions.',
-            ),
-          );
-        }
-        // Light snapshots are allowed here. Most eval code touches only
-        // `name`, `type`, `self_size`, `references` and `referrers`, none of
-        // which the dominator pass produces — refusing the whole tool forced a
-        // full (2x slower) load for counts-only work on a baseline rung. What
-        // IS unavailable is refused precisely instead: by a pre-flight text
-        // check below, and by the helpers themselves as a backstop.
-        const light = isLightSnapshot();
-        const snapshot = getSnapshot({allowLight: true});
-        const currentHandle = getCurrentHandle() ?? '(none)';
-
-        if (light) {
-          const needsRetention = RETENTION_IDENTIFIERS.filter(id =>
-            new RegExp(`\\b${id}\\b`).test(code),
-          );
-          if (needsRetention.length > 0) {
-            return errorResult(
-              new Error(
-                `This snapshot was loaded in LIGHT mode (no dominator tree, no retained sizes, no shortest-path edges), and the code references ${needsRetention.map(i => `\`${i}\``).join(', ')}. ` +
-                  'Those would read 0 / undefined rather than fail, so the run is refused instead of returning confident zeros. ' +
-                  'Reload without `light` for retention work, or drop the reference — counts, names, types, self sizes, string values and edge walks all work fine on a light snapshot. ' +
-                  '(If the identifier only appears inside a string literal, this is a false match; the same call succeeds on a non-light load.)',
-              ),
-            );
-          }
-        }
-
-        if (dry_run) {
-          // Estimate, do not execute. A full-heap walk is detected textually —
-          // the honest limit of a pre-flight check, and stated as such rather
-          // than implying the code was analysed.
-          const meta = getSnapshotMetadata();
-          const fullWalk =
-            /\b(?:snapshot\.)?(?:nodes|edges)\s*\.\s*forEach/.test(code);
-          const indexed = /helpers\.(byClass|byTypename|withProp|getNode)/.test(
-            code,
-          );
-          return toolResult(
-            [
-              '## Dry run — nothing was executed',
-              '',
-              `Snapshot: ${formatNumber(meta?.nodeCount ?? 0)} nodes, ${formatNumber(meta?.edgeCount ?? 0)} edges.`,
-              `Walk budget (\`max_nodes\`): ${formatNumber(budget.max)}.`,
-              '',
-              fullWalk
-                ? `⚠ The code contains a full-heap walk, so it will visit up to ${formatNumber(Math.min(budget.max, meta?.nodeCount ?? 0))} nodes. On a heap this size that is seconds to minutes.${indexed ? '' : ' `helpers.byClass` / `byTypename` / `withProp` are indexed and avoid the walk when you know what you are looking for.'}`
-                : indexed
-                  ? 'No full-heap walk detected; the code uses the indexed helpers, which do not scan the heap.'
-                  : 'No full-heap walk detected by text match. This is a textual check, not an analysis — a walk reached indirectly will not be seen here.',
-              '',
-              '_Re-run without `dry_run` to execute._',
-            ].join('\n'),
-          );
-        }
-
-        const consoleOutput: string[] = [];
-        const capturedConsole = {
-          log: (...args: unknown[]) =>
-            consoleOutput.push(args.map(String).join(' ')),
-          warn: (...args: unknown[]) =>
-            consoleOutput.push('[warn] ' + args.map(String).join(' ')),
-          error: (...args: unknown[]) =>
-            consoleOutput.push('[error] ' + args.map(String).join(' ')),
-          info: (...args: unknown[]) =>
-            consoleOutput.push('[info] ' + args.map(String).join(' ')),
-        };
-
-        const groupReferrersByEdge = (nodeId: number) => {
-          const target = snapshot.getNodeById(nodeId);
-          if (!target) return {};
-          const groups: Record<
-            string,
-            Array<{fromName: string; fromType: string; fromId: number}>
-          > = {};
-          for (const edge of target.referrers) {
-            const eName = String(edge.name_or_index);
-            const from = edge.fromNode;
-            if (!groups[eName]) groups[eName] = [];
-            if (groups[eName].length < 10) {
-              groups[eName].push({
-                fromName: from.name,
-                fromType: from.type,
-                fromId: from.id,
-              });
-            }
-          }
-          return groups;
-        };
-
-        const groupArrayElementsByProperty = (
-          arrayNodeId: number,
-          propertyName: string,
-        ) => {
-          const arrNode = snapshot.getNodeById(arrayNodeId);
-          if (!arrNode) return {error: 'Node not found'};
-          const groups: Record<string, {count: number; exampleId: number}> = {};
-          let missing = 0;
-          let total = 0;
-          for (const edge of arrNode.references) {
-            if (edge.type !== 'element') continue;
-            const elem = edge.toNode;
-            if (elem.id <= 3) continue;
-            total++;
-            let found = false;
-            for (const propEdge of elem.references) {
-              if (String(propEdge.name_or_index) === propertyName) {
-                const target = propEdge.toNode;
-                const key = target.name;
-                if (!groups[key])
-                  groups[key] = {count: 0, exampleId: target.id};
-                groups[key].count++;
-                found = true;
-                break;
-              }
-            }
-            if (!found) missing++;
-          }
-          return {groups, total, missing};
-        };
-
-        const isOrphaned = (nodeId: number, ownershipEdgeNames: string[]) => {
-          const target = snapshot.getNodeById(nodeId);
-          if (!target) return false;
-          const ownerSet = new Set(ownershipEdgeNames);
-          for (const edge of target.referrers) {
-            if (ownerSet.has(String(edge.name_or_index))) return false;
-          }
-          return true;
-        };
-
-        // Authoritative retained sizes (Feedback round 3 §3b). Reading
-        // `.retainedSize` off proxied/iterated nodes inside eval can come back
-        // ~0; these helpers look the node up fresh on the real snapshot (the
-        // same path the dedicated tools use) so custom analyses can rank by
-        // retained size.
-        // On a light snapshot these would return 0 for every id, which is
-        // indistinguishable from a genuinely tiny object. Throw instead: the
-        // pre-flight check above catches the common case, and this covers code
-        // that reaches them indirectly.
-        const requireRetention = (what: string): void => {
-          if (!light) return;
-          throw new Error(
-            `helpers.${what} needs retained sizes, which a LIGHT snapshot does not have (it would return 0 for every id). Reload with memlab_load_snapshot({file_path, light: false}).`,
-          );
-        };
-        const retainedSize = (id: number): number => {
-          requireRetention('retainedSize');
-          const n = snapshot.getNodeById(id);
-          return n ? n.retainedSize : 0;
-        };
-        const retainedSizes = (ids: number[]): Record<number, number> => {
-          requireRetention('retainedSizes');
-          const out: Record<number, number> = {};
-          for (const id of ids) {
-            const n = snapshot.getNodeById(id);
-            out[id] = n ? n.retainedSize : 0;
-          }
-          return out;
-        };
-
-        const countUniqueTargets = (
-          arrayNodeId: number,
-          propertyName: string,
-        ) => {
-          const arrNode = snapshot.getNodeById(arrayNodeId);
-          if (!arrNode) return {error: 'Node not found'};
-          const uniqueIds = new Set<number>();
-          let total = 0;
-          for (const edge of arrNode.references) {
-            if (edge.type !== 'element') continue;
-            const elem = edge.toNode;
-            if (elem.id <= 3) continue;
-            total++;
-            for (const propEdge of elem.references) {
-              if (String(propEdge.name_or_index) === propertyName) {
-                uniqueIds.add(propEdge.toNode.id);
-                break;
-              }
-            }
-          }
-          return {uniqueCount: uniqueIds.size, totalElements: total};
-        };
-
-        // Compact, ready-to-use view of a node (no proxy, values inlined) so
-        // custom scripts get data they can JSON-return directly instead of
-        // re-deriving `.toStringNode()?.stringValue` etc. `retained_size` is
-        // resolved via the trusted `retainedSize(id)` re-lookup (NOT the raw
-        // `.retainedSize`, which can read back ~0 inside eval on some loads — the
-        // foot-gun this whole tool's description warns about).
-        //
-        // On a LIGHT snapshot it is reported as `null` rather than thrown:
-        // `mapEntries` / `setElements` are built on this and are legitimate
-        // there (keys, values, names and self sizes all survive a light load),
-        // so propagating `retainedSize`'s refusal would refuse them too. A null
-        // reads as "not measured"; a 0 would read as "measured and tiny".
-        const nodeBrief = (n: IHeapNode | null | undefined) =>
-          n == null
-            ? null
-            : {
-                id: n.id,
-                name: n.name,
-                type: n.type,
-                self_size: n.self_size,
-                retained_size: light ? null : retainedSize(n.id),
-                string: n.isString
-                  ? (n.toStringNode()?.stringValue ?? null)
-                  : null,
-              };
-
-        const resolveNode = (
-          nodeOrId: number | {id: number} | null | undefined,
-        ): IHeapNode | null => {
-          if (nodeOrId == null) return null;
-          const id = typeof nodeOrId === 'number' ? nodeOrId : nodeOrId.id;
-          return snapshot.getNodeById(id);
-        };
-
-        // Correctly enumerate Map/WeakMap entries and Set elements via the shared
-        // index-aware backing-store walk (handles browser `internal`-typed slots
-        // AND SMI-value gaps). Removes the #1 eval foot-gun: hand-rolling this
-        // and silently getting 0 results by filtering on `type === 'element'`.
-        const mapEntries = (id: number, limit = 1000) => {
-          const node = snapshot.getNodeById(id);
-          if (!node) throw new Error(`mapEntries: node @${id} not found`);
-          // Guard the node type — enumerateMapEntries assumes key/value slots, so
-          // running it on a Set (element/chain layout) would emit each element as
-          // a lone key with value:null, which is silently misleading.
-          if (node.name !== 'Map' && node.name !== 'WeakMap') {
-            throw new Error(
-              `mapEntries: @${id} is a ${node.name} (${node.type}), not a Map/WeakMap. ` +
-                `For a Set use helpers.setElements(${id}); otherwise inspect with helpers.props()/get_references.`,
-            );
-          }
-          return enumerateMapEntries(node)
-            .slice(0, limit)
-            .map(e => ({key: nodeBrief(e.key), value: nodeBrief(e.value)}));
-        };
-        const setElements = (id: number, limit = 1000) => {
-          const node = snapshot.getNodeById(id);
-          if (!node) throw new Error(`setElements: node @${id} not found`);
-          if (node.name !== 'Set' && node.name !== 'WeakSet') {
-            throw new Error(
-              `setElements: @${id} is a ${node.name} (${node.type}), not a Set/WeakSet. ` +
-                `For a Map use helpers.mapEntries(${id}).`,
-            );
-          }
-          return enumerateSetElements(node).slice(0, limit).map(nodeBrief);
-        };
-
-        // Read an object's own properties as a plain object: scalars inlined,
-        // object-valued props as `{ref, name, type}`. Saves the repetitive
-        // `for (const e of n.references) if (e.name_or_index === X)` boilerplate.
-        const props = (
-          nodeOrId: number | {id: number},
-        ): Record<string, unknown> => {
-          const node = resolveNode(nodeOrId);
-          if (!node) return {};
-          const out: Record<string, unknown> = {};
-          for (const e of node.references) {
-            if (e.type !== 'property') continue;
-            const name = String(e.name_or_index);
-            if (name === '__proto__') continue;
-            const t = e.toNode;
-            if (t.isString) out[name] = t.toStringNode()?.stringValue ?? '';
-            else if (t.name === 'true') out[name] = true;
-            else if (t.name === 'false') out[name] = false;
-            else if (t.name === 'null') out[name] = null;
-            else if (t.name === 'undefined') out[name] = undefined;
-            else out[name] = {ref: t.id, name: t.name, type: t.type};
-          }
-          return out;
-        };
-        const getProp = (nodeOrId: number | {id: number}, name: string) =>
-          props(nodeOrId)[name];
-
-        const shapeSignature = (
-          nodeOrId: number | {id: number},
-          opts?: {maxStringLen?: number; ignoreProps?: ReadonlySet<string>},
-        ): string => {
-          const node = resolveNode(nodeOrId);
-          return node ? objectContentSignature(node, opts ?? {}) : '';
-        };
-
-        // Index helpers — build once per snapshot, memoized in the eval scratch
-        // so a follow-up call is index-speed, not a fresh 12M-node scan. Ids are
-        // only valid for the active snapshot (the scratch is keyed to it).
-        const scratch = getEvalScratch();
-        interface ClassTypeIndex {
-          byClass: Map<string, number[]>;
-          byTypename: Map<string, number[]>;
-        }
-        const buildClassTypeIndex = (): ClassTypeIndex => {
-          const cached = scratch.__classTypeIndex as ClassTypeIndex | undefined;
-          if (cached) return cached;
-          const byClass = new Map<string, number[]>();
-          const byTypename = new Map<string, number[]>();
-          snapshot.nodes.forEach((node: IHeapNode) => {
-            if (node.id <= 3) return; // skip oddball/root nodes, matching the histogram/duplicate-objects tools for count parity
-            // Index EVERY node type. Restricting this to `object` made the
-            // helper silently return [] for closures, strings, arrays and
-            // native (`blink::*`) nodes — which is most of what other tools
-            // report. Measured: byClass('setComposerLinks_$0') returned [] on a
-            // snapshot where a manual walk found 1,011 of them, because the
-            // class is a closure; the empty result reads as "does not exist".
-            // memlab_find_nodes_by_class matches any type by default and this
-            // helper is documented as its indexed equivalent, so the two must
-            // agree.
-            let a = byClass.get(node.name);
-            if (!a) {
-              a = [];
-              byClass.set(node.name, a);
-            }
-            a.push(node.id);
-            // `__typename` is a JS object property, so only object nodes can
-            // carry one; skipping the edge walk for other types keeps the
-            // widened index roughly as cheap as the object-only one.
-            if (node.type !== 'object') return;
-            for (const e of node.references) {
-              if (
-                e.type === 'property' &&
-                String(e.name_or_index) === '__typename'
-              ) {
-                const t = e.toNode;
-                const tn = t.isString ? t.toStringNode()?.stringValue : null;
-                if (tn) {
-                  let b = byTypename.get(tn);
-                  if (!b) {
-                    b = [];
-                    byTypename.set(tn, b);
-                  }
-                  b.push(node.id);
-                }
-                break;
-              }
-            }
-          });
-          const idx: ClassTypeIndex = {byClass, byTypename};
-          scratch.__classTypeIndex = idx;
-          return idx;
-        };
-        const byClass = (name: string, opts?: {type?: string}): number[] => {
-          const ids = buildClassTypeIndex().byClass.get(name) ?? [];
-          const want = opts?.type;
-          if (want == null) return ids;
-          return ids.filter(id => snapshot.getNodeById(id)?.type === want);
-        };
-        const byTypename = (name: string): number[] =>
-          buildClassTypeIndex().byTypename.get(name) ?? [];
-        const withProp = (name: string): number[] => {
-          const key = `__withProp:${name}`;
-          const cached = scratch[key] as number[] | undefined;
-          if (cached) return cached;
-          const ids: number[] = [];
-          snapshot.nodes.forEach((node: IHeapNode) => {
-            if (node.id <= 3) return; // skip oddball/root nodes for parity with other tools
-            // Every node type is scanned: the `property` edge check below is
-            // what constrains the match, and closures do carry named property
-            // edges. Restricting the walk to `object` hid them, the same way it
-            // hid non-object classes from byClass.
-            for (const e of node.references) {
-              if (e.type === 'property' && String(e.name_or_index) === name) {
-                ids.push(node.id);
-                break;
-              }
-            }
-          });
-          scratch[key] = ids;
-          return ids;
-        };
-
-        // Dominator-deduped retained size for a SET of ids (bounded walk). Unlike
-        // summing helpers.retainedSize over the ids, this does not double-count
-        // bytes when one id dominates another in the set.
-        const aggregateRetained = (
-          ids: number[],
-        ): {retained: number; exact: boolean} => {
-          requireRetention('aggregateRetained');
-          return boundedDominatorRetainedSize(new NumericSet(ids), snapshot);
-        };
-
-        // ---- additional traversal helpers -------------------------------
-        // Each of these was hand-written inside `code` during a leak hunt,
-        // several of them more than once and with small differences that made
-        // results incomparable. Shipping them makes the common traversals both
-        // cheaper to write and consistent with what the dedicated tools do.
-
-        // The oddball/root filtering the tools apply internally. Hand-written
-        // eval that omits it counts nodes the tools do not, so the two disagree
-        // for reasons that have nothing to do with the question being asked.
-        const isRealDetached = (node: unknown): boolean => {
-          const n = unwrapNode(node) as IHeapNode | null;
-          if (n == null || n.id <= 3) return false;
-          return n.is_detached || n.name.startsWith('Detached ');
-        };
-
-        // Cached type -> ids index, mirroring the class index above, so a
-        // second pass over "every closure" does not re-walk the heap.
-        const buildTypeIndex = (): Map<string, number[]> => {
-          const cached = scratch.__typeIndex as
-            Map<string, number[]> | undefined;
-          if (cached) return cached;
-          const byType = new Map<string, number[]>();
-          snapshot.nodes.forEach((node: IHeapNode) => {
-            if (node.id <= 3) return;
-            let a = byType.get(node.type);
-            if (!a) {
-              a = [];
-              byType.set(node.type, a);
-            }
-            a.push(node.id);
-          });
-          scratch.__typeIndex = byType;
-          return byType;
-        };
-
-        const nodesFromIds = (ids: number[]): IHeapNode[] => {
-          const out: IHeapNode[] = [];
-          for (const id of ids) {
-            const n = snapshot.getNodeById(id);
-            if (n) out.push(n);
-          }
-          return out;
-        };
-        const iterByClass = (name: string, opts?: {type?: string}) =>
-          nodesFromIds(byClass(name, opts)).map(wrapNode);
-        const iterByType = (type: string) =>
-          nodesFromIds(buildTypeIndex().get(type) ?? []).map(wrapNode);
-
-        // One-pass class histogram, cached, optionally filtered. `byClass`
-        // answers "where are the X"; this answers "what is in here at all",
-        // which otherwise means a full manual walk every time.
-        const classCounts = (opts?: {
-          pattern?: string;
-          type?: string;
-          minCount?: number;
-        }): Array<{
-          name: string;
-          type: string;
-          count: number;
-          selfSize: number;
-        }> => {
-          const cacheKey = '__classCounts';
-          let all = scratch[cacheKey] as
-            | Array<{
-                name: string;
-                type: string;
-                count: number;
-                selfSize: number;
-              }>
-            | undefined;
-          if (!all) {
-            const acc = new Map<
-              string,
-              {name: string; type: string; count: number; selfSize: number}
-            >();
-            snapshot.nodes.forEach((node: IHeapNode) => {
-              if (node.id <= 3) return;
-              const key = `${node.type}::${node.name}`;
-              const e = acc.get(key);
-              if (e) {
-                e.count++;
-                e.selfSize += node.self_size;
-              } else {
-                acc.set(key, {
-                  name: node.name,
-                  type: node.type,
-                  count: 1,
-                  selfSize: node.self_size,
-                });
-              }
-            });
-            all = [...acc.values()].sort((a, b) => b.count - a.count);
-            scratch[cacheKey] = all;
-          }
-          const matches = makeNamePatternTest(opts?.pattern);
-          const minCount = opts?.minCount ?? 1;
-          return all.filter(
-            r =>
-              r.count >= minCount &&
-              (opts?.type == null || r.type === opts.type) &&
-              matches(r.name),
-          );
-        };
-
-        // The node behind a named edge. Written from scratch in four separate
-        // evals because `props()` returns {ref,name,type} wrappers, which are
-        // awkward exactly when the node itself is what you need.
-        const edgeTarget = (nodeOrId: unknown, edgeName: string): unknown => {
-          const n =
-            typeof nodeOrId === 'number'
-              ? snapshot.getNodeById(nodeOrId)
-              : (unwrapNode(nodeOrId) as IHeapNode | null);
-          if (n == null) return null;
-          for (const e of n.references) {
-            if (e.type === 'hidden') continue;
-            if (String(e.name_or_index) !== edgeName) continue;
-            return e.toNode.id > 3 ? wrapNode(e.toNode) : null;
-          }
-          return null;
-        };
-
-        // Generic container walk. `mapEntries` / `setElements` cover Map and
-        // Set; WeakMap tables and plain arrays needed a manual `references`
-        // walk with hole filtering every time.
-        const entries = (
-          nodeOrId: unknown,
-        ): Array<{key: unknown; value: unknown}> => {
-          const n =
-            typeof nodeOrId === 'number'
-              ? snapshot.getNodeById(nodeOrId)
-              : (unwrapNode(nodeOrId) as IHeapNode | null);
-          if (n == null) return [];
-          if (n.name === 'Map' || n.name === 'WeakMap') {
-            return enumerateMapEntries(n).map(e => ({
-              key: wrapNode(e.key),
-              value: e.value == null ? null : wrapNode(e.value),
-            }));
-          }
-          if (n.name === 'Set' || n.name === 'WeakSet') {
-            return enumerateSetElements(n).map(el => ({
-              key: null,
-              value: wrapNode(el),
-            }));
-          }
-          const out: Array<{key: unknown; value: unknown}> = [];
-          for (const e of n.references) {
-            if (e.type === 'hidden') continue;
-            const name = String(e.name_or_index);
-            if (name === '__proto__') continue;
-            // V8 hangs the hidden class off an internal edge literally named
-            // `map`; dropping it unconditionally also dropped a real property
-            // named `map` (a config object with a `.map` field), which then
-            // read as "the object does not have one".
-            if (name === 'map' && e.type !== 'property') continue;
-            if (e.type === 'element') {
-              out.push({
-                key: Number(e.name_or_index),
-                value: wrapNode(e.toNode),
-              });
-            } else if (name === 'elements' && e.type === 'internal') {
-              for (const el of e.toNode.references) {
-                if (el.type !== 'element') continue;
-                out.push({
-                  key: Number(el.name_or_index),
-                  value: wrapNode(el.toNode),
-                });
-              }
-            } else if (e.type === 'property') {
-              out.push({key: name, value: wrapNode(e.toNode)});
-            }
-          }
-          return out;
-        };
-
-        // What does this node actually own? The question behind
-        // memlab_dominator_attribution, exposed for ad-hoc populations.
-        const dominates = (
-          id: number,
-          opts?: {population?: (node: unknown) => boolean; limit?: number},
-        ): {
-          count: number;
-          selfSize: number;
-          ids: number[];
-          truncated: boolean;
-        } => {
-          requireRetention('dominates');
-          const limit = opts?.limit ?? 1000;
-          const pop = opts?.population;
-          let count = 0;
-          let selfSize = 0;
-          const ids: number[] = [];
-          let truncated = false;
-          snapshot.nodes.forEach((node: IHeapNode) => {
-            if (node.id <= 3 || node.id === id) return;
-            if (pop != null && !pop(wrapNode(node))) return;
-            let cur: IHeapNode | null = node.dominatorNode ?? null;
-            let hops = 0;
-            while (cur && hops++ < 500) {
-              if (cur.id === id) {
-                count++;
-                selfSize += node.self_size;
-                if (ids.length < limit) ids.push(node.id);
-                else truncated = true;
-                break;
-              }
-              const next: IHeapNode | null = cur.dominatorNode ?? null;
-              if (!next || next.id === cur.id) break;
-              cur = next;
-            }
-          });
-          return {count, selfSize, ids, truncated};
-        };
-
-        // Shortest reference path a -> b, by BFS over outgoing edges. Bounded,
-        // and reports that it gave up rather than returning null as if no path
-        // existed.
-        const pathBetween = (
-          fromId: number,
-          toId: number,
-          opts?: {maxNodes?: number},
-        ): {found: boolean; exhausted: boolean; path: string[]} => {
-          const maxNodes = opts?.maxNodes ?? 200_000;
-          const start = snapshot.getNodeById(fromId);
-          if (start == null || snapshot.getNodeById(toId) == null) {
-            return {found: false, exhausted: false, path: []};
-          }
-          // `seen` is seeded with `fromId`, so the BFS below can never reach it
-          // again and the trivial 0-hop path would come back as "no path".
-          if (fromId === toId) {
-            return {
-              found: true,
-              exhausted: false,
-              path: [`@${fromId} ${start.name}`],
-            };
-          }
-          const prev = new Map<number, {via: string; from: number}>();
-          const seen = new Set<number>([fromId]);
-          let queue: IHeapNode[] = [start];
-          let visited = 0;
-          while (queue.length > 0) {
-            const next: IHeapNode[] = [];
-            for (const node of queue) {
-              if (++visited > maxNodes) {
-                return {found: false, exhausted: true, path: []};
-              }
-              for (const e of node.references) {
-                const t = e.toNode;
-                if (t.id <= 3 || seen.has(t.id)) continue;
-                seen.add(t.id);
-                prev.set(t.id, {via: String(e.name_or_index), from: node.id});
-                if (t.id === toId) {
-                  const path: string[] = [];
-                  let cur = toId;
-                  while (cur !== fromId) {
-                    const p = prev.get(cur);
-                    if (p == null) break;
-                    const n = snapshot.getNodeById(cur);
-                    path.unshift(`.${p.via} -> @${cur} ${n?.name ?? ''}`);
-                    cur = p.from;
-                  }
-                  path.unshift(`@${fromId} ${start.name}`);
-                  return {found: true, exhausted: false, path};
-                }
-                next.push(t);
-              }
-            }
-            queue = next;
-          }
-          return {found: false, exhausted: false, path: []};
-        };
-
-        // Named result sets are SESSION-scoped, not snapshot-scoped: comparing
-        // a baseline scan against a final scan is the whole job, and the old
-        // per-snapshot scratch dropped the baseline the moment the next rung
-        // was loaded — exactly when it was needed.
-        //
-        // Node ids, however, are per-capture. A set of ids saved against one
-        // snapshot means nothing against another, so a cross-snapshot load is
-        // refused unless the caller opts in. Counts and strings are portable;
-        // ids are not, and silently letting them through is the failure this
-        // whole class of guard exists to prevent.
-        const save = <T>(name: string, value: T): T => {
-          setSavedResult(name, value, currentHandle);
-          return value;
-        };
-        const load = (name: string, opts?: {allowCrossSnapshot?: boolean}) => {
-          const entry = getSavedResult(name);
-          if (entry == null) {
-            throw new Error(
-              `No saved result named "${name}". Saved names: ${savedNames().join(', ') || '(none)'}. ` +
-                'Save one with the save_as parameter or helpers.save(name, value).',
-            );
-          }
-          if (
-            entry.handle !== currentHandle &&
-            opts?.allowCrossSnapshot !== true
-          ) {
-            throw new Error(
-              `"${name}" was saved against snapshot "${entry.handle}" and the current snapshot is "${currentHandle}". Node ids are per-capture, so ids from another snapshot resolve to unrelated objects or to nothing. ` +
-                'If the value is counts/strings/shapes rather than ids, pass {allowCrossSnapshot: true} to read it anyway.',
-            );
-          }
-          return entry.value;
-        };
-        const listSaved = (): Array<{name: string; handle: string}> =>
-          listSavedResults();
-
-        // Sandbox code holds PROXIED nodes (see wrapNode). The helpers below
-        // read `retainedSize`, which the proxy refuses on purpose, so they take
-        // the real node: unwrap at the boundary rather than making every caller
-        // remember which helpers are proxy-safe.
-        // The retention-bearing fields of a serialized node, blanked on a LIGHT
-        // snapshot. The dominator pass never ran there, so they serialize as 0 /
-        // null-by-accident — a confident wrong number. Blanked rather than
-        // refused because everything else these two return (id, name, type,
-        // self size, edge/referrer counts, string value) is genuinely available
-        // on a light load, and refusing would take that away too.
-        const blankRetentionOnLight = (
-          s: NodeSummary | NodeDetail,
-        ): Record<string, unknown> => {
-          if (!light) return {...s};
-          const out: Record<string, unknown> = {...s, retained_size: null};
-          if ('dominator_id' in s) out.dominator_id = null;
-          return out;
-        };
-
-        const helpers = {
-          serializeNodeSummary: (n: unknown) =>
-            blankRetentionOnLight(
-              serializeNodeSummary(unwrapNode(n) as IHeapNode),
-            ),
-          serializeNodeDetail: (n: unknown) =>
-            blankRetentionOnLight(
-              serializeNodeDetail(unwrapNode(n) as IHeapNode),
-            ),
-          formatBytes,
-          formatNumber,
-          markdownTable,
-          isNodeWorthInspecting: (n: unknown, ...rest: unknown[]) =>
-            (isNodeWorthInspecting as (...a: unknown[]) => boolean)(
-              unwrapNode(n),
-              ...rest,
-            ),
-          // Both of these RANK by `node.retainedSize`, so both need the real
-          // snapshot and a non-light load. The previous wrapper renamed the
-          // first parameter `nodes` and mapped it as an array, which matched
-          // neither utility's signature — `filterLargestObjects(snapshot,
-          // filter, limit)` — and did nothing. Unwrapping is what was actually
-          // needed: sandbox code only ever holds the PROXIED snapshot, whose
-          // nodes refuse the very `retainedSize` read these two rank on.
-          //
-          // `RETENTION_IDENTIFIERS` catches `filterLargestObjects` textually
-          // before the code runs; these runtime guards cover both, and cover
-          // them precisely (a `queryNodes` count needs no retention at all).
-          filterLargestObjects: (
-            snap: unknown,
-            filter: (node: IHeapNode) => boolean,
-            limit: number,
-          ) => {
-            requireRetention('filterLargestObjects');
-            return filterLargestObjects(
-              unwrapNode(snap) as IHeapSnapshot,
-              filter,
-              limit,
-            );
-          },
-          queryNodes: (
-            snap: unknown,
-            filter: (node: IHeapNode) => boolean,
-            opts: Parameters<typeof queryNodes>[2],
-          ) => {
-            if (opts?.outputMode !== 'count') requireRetention('queryNodes');
-            return queryNodes(unwrapNode(snap) as IHeapSnapshot, filter, opts);
-          },
-          groupReferrersByEdge,
-          groupArrayElementsByProperty,
-          isOrphaned,
-          countUniqueTargets,
-          retainedSize,
-          retainedSizes,
-          nodeBrief,
-          mapEntries,
-          setElements,
-          props,
-          getProp,
-          shapeSignature,
-          byClass,
-          byTypename,
-          withProp,
-          aggregateRetained,
-          isRealDetached,
-          iterByClass,
-          iterByType,
-          classCounts,
-          edgeTarget,
-          entries,
-          dominates,
-          pathBetween,
-          save,
-          load,
-          listSaved,
-        };
-
-        const sandbox = {
-          snapshot: wrapSnapshot(snapshot, budget),
-          utils,
-          helpers,
-          console: capturedConsole,
-          result: undefined as unknown,
-          // Standard JS globals
-          Array,
-          Object,
-          Map,
-          Set,
-          JSON,
-          Math,
-          RegExp,
-          String,
-          Number,
-          Boolean,
-          Date,
-          Error,
-          TypeError,
-          RangeError,
-          WeakMap,
-          WeakSet,
-          Symbol,
-          parseInt,
-          parseFloat,
-          isNaN,
-          isFinite,
-          Infinity,
-          NaN,
-          undefined,
-        };
-
-        const context = vm.createContext(sandbox);
-        const script = new vm.Script(code, {filename: 'memlab_eval'});
-        // A budget abort is a controlled stop, not a failure: whatever the code
-        // had already assigned to `result` is still returned, annotated below.
-        try {
-          script.runInContext(context, {timeout: timeout_ms});
-        } catch (err) {
-          // Keyed on the error itself, never on `budget.exceeded`: code that
-          // catches the abort and then throws for an unrelated reason must
-          // still surface that error.
-          if (!(err instanceof BudgetExceeded)) throw err;
-        }
-
-        // Actionable hint when nothing was assigned to `result` (the #1 user
-        // error — code that `return`s a value or runs a value-returning IIFE
-        // never populates `result`, so output is silently "undefined").
-        if (
-          sandbox.result === undefined &&
-          consoleOutput.length === 0 &&
-          !budget.exceeded
-        ) {
-          return toolResult(
-            'Your code ran without error but never assigned to `result`, so there is nothing to return.\n' +
-              'Assign the value you want back to `result` (do NOT use `return` at the top level), e.g.:\n' +
-              '  `result = someValue;`\n' +
-              'Use mode:"describe_env" to see the full calling convention.',
-          );
-        }
-
-        // `undefined` is never worth persisting: on reload it is
-        // indistinguishable from a name that was never saved, and the usual
-        // cause is the "never assigned to `result`" mistake — which the hint
-        // above only catches when the run produced no console output.
-        const nothingToSave = sandbox.result === undefined;
-        if (save_as != null && !budget.exceeded && !nothingToSave) {
-          setSavedResult(save_as, sandbox.result, currentHandle);
-        }
-
-        let output: string;
-        try {
-          output = JSON.stringify(sandbox.result, null, 2) ?? 'undefined';
-        } catch {
-          output = String(sandbox.result);
-        }
-
-        output = truncate(output, MAX_OUTPUT_SIZE);
-
-        if (consoleOutput.length > 0) {
-          const consolePart = truncate(
-            consoleOutput.join('\n'),
-            MAX_OUTPUT_SIZE - output.length > 1024 ? 4096 : 1024,
-          );
-          output += '\n\n--- console output ---\n' + consolePart;
-        }
-
-        const footer: string[] = [];
-        if (budget.exceeded) {
-          footer.push(
-            `⚠️ Walk aborted after ${formatNumber(budget.max)} node visits (max_nodes). The value above is PARTIAL. ` +
-              'Raise max_nodes, or narrow the scan with an indexed helper (`helpers.byClass` / `byTypename` / `withProp`) instead of a full `snapshot.nodes` walk.',
-          );
-          if (save_as != null) {
-            footer.push(
-              `Not saved as "${save_as}" — a partial result would be indistinguishable from a complete one on reload.`,
-            );
-          }
-        } else if (budget.visited > 0) {
-          footer.push(`nodes_visited: ${formatNumber(budget.visited)}`);
-        }
-        if (save_as != null && !budget.exceeded) {
-          footer.push(
-            nothingToSave
-              ? `Not saved as "${save_as}" — \`result\` was undefined, and a saved \`undefined\` is indistinguishable from a name that was never saved. Assign the value you want to keep to \`result\` (do NOT \`return\` at the top level) and re-run.`
-              : `Saved as "${save_as}" — read it back in a later call with \`helpers.load("${save_as}")\`.`,
-          );
-        }
-        if (footer.length > 0) {
-          output += '\n\n--- ' + footer.join('\n');
-        }
-
-        return toolResult(output);
-      } catch (err) {
-        return errorResult(new Error(actionableEvalError(err, code)));
-      }
-    },
+    async args => runEval(args),
   );
+}
+
+/**
+ * The `memlab_eval` handler, callable directly so a caller can run the same
+ * code against several snapshots (see memlab_eval_across) with identical
+ * sandbox semantics — one definition of the helper surface, not two.
+ */
+export async function runEval({
+  mode,
+  code,
+  timeout_ms,
+  save_as,
+  max_nodes,
+  dry_run,
+}: {
+  mode?: 'eval' | 'describe_env' | 'list_saved';
+  code?: string;
+  timeout_ms?: number;
+  save_as?: string;
+  max_nodes?: number;
+  dry_run?: boolean;
+}): Promise<ReturnType<typeof toolResult>> {
+  // Schema defaults are applied by the MCP layer for tool calls; a direct
+  // caller (memlab_eval_across) gets them here so both paths behave alike.
+  mode = mode ?? 'eval';
+  timeout_ms = timeout_ms ?? 60000;
+  max_nodes = max_nodes ?? 20000000;
+  dry_run = dry_run ?? false;
+  const budget: VisitBudget = {visited: 0, max: max_nodes, exceeded: false};
+  try {
+    if (mode === 'describe_env') {
+      return toolResult(describeEnv());
+    }
+    if (mode === 'list_saved') {
+      return toolResult(describeSaved());
+    }
+    if (code == null || code.trim() === '') {
+      return errorResult(
+        new Error(
+          'No code provided. Pass `code`, or use mode:"describe_env" to see the available globals and conventions.',
+        ),
+      );
+    }
+    // Light snapshots are allowed here. Most eval code touches only
+    // `name`, `type`, `self_size`, `references` and `referrers`, none of
+    // which the dominator pass produces — refusing the whole tool forced a
+    // full (2x slower) load for counts-only work on a baseline rung. What
+    // IS unavailable is refused precisely instead: by a pre-flight text
+    // check below, and by the helpers themselves as a backstop.
+    const light = isLightSnapshot();
+    const snapshot = getSnapshot({allowLight: true});
+    const currentHandle = getCurrentHandle() ?? '(none)';
+
+    if (light) {
+      const needsRetention = RETENTION_IDENTIFIERS.filter(id =>
+        new RegExp(`\\b${id}\\b`).test(code),
+      );
+      if (needsRetention.length > 0) {
+        return errorResult(
+          new Error(
+            `This snapshot was loaded in LIGHT mode (no dominator tree, no retained sizes, no shortest-path edges), and the code references ${needsRetention.map(i => `\`${i}\``).join(', ')}. ` +
+              'Those would read 0 / undefined rather than fail, so the run is refused instead of returning confident zeros. ' +
+              'Reload without `light` for retention work, or drop the reference — counts, names, types, self sizes, string values and edge walks all work fine on a light snapshot. ' +
+              '(If the identifier only appears inside a string literal, this is a false match; the same call succeeds on a non-light load.)',
+          ),
+        );
+      }
+    }
+
+    if (dry_run) {
+      // Estimate, do not execute. A full-heap walk is detected textually —
+      // the honest limit of a pre-flight check, and stated as such rather
+      // than implying the code was analysed.
+      const meta = getSnapshotMetadata();
+      const fullWalk = /\b(?:snapshot\.)?(?:nodes|edges)\s*\.\s*forEach/.test(
+        code,
+      );
+      const indexed = /helpers\.(byClass|byTypename|withProp|getNode)/.test(
+        code,
+      );
+      return toolResult(
+        [
+          '## Dry run — nothing was executed',
+          '',
+          `Snapshot: ${formatNumber(meta?.nodeCount ?? 0)} nodes, ${formatNumber(meta?.edgeCount ?? 0)} edges.`,
+          `Walk budget (\`max_nodes\`): ${formatNumber(budget.max)}.`,
+          '',
+          fullWalk
+            ? `⚠ The code contains a full-heap walk, so it will visit up to ${formatNumber(Math.min(budget.max, meta?.nodeCount ?? 0))} nodes. On a heap this size that is seconds to minutes.${indexed ? '' : ' `helpers.byClass` / `byTypename` / `withProp` are indexed and avoid the walk when you know what you are looking for.'}`
+            : indexed
+              ? 'No full-heap walk detected; the code uses the indexed helpers, which do not scan the heap.'
+              : 'No full-heap walk detected by text match. This is a textual check, not an analysis — a walk reached indirectly will not be seen here.',
+          '',
+          '_Re-run without `dry_run` to execute._',
+        ].join('\n'),
+      );
+    }
+
+    const consoleOutput: string[] = [];
+    const capturedConsole = {
+      log: (...args: unknown[]) =>
+        consoleOutput.push(args.map(String).join(' ')),
+      warn: (...args: unknown[]) =>
+        consoleOutput.push('[warn] ' + args.map(String).join(' ')),
+      error: (...args: unknown[]) =>
+        consoleOutput.push('[error] ' + args.map(String).join(' ')),
+      info: (...args: unknown[]) =>
+        consoleOutput.push('[info] ' + args.map(String).join(' ')),
+    };
+
+    const groupReferrersByEdge = (nodeId: number) => {
+      const target = snapshot.getNodeById(nodeId);
+      if (!target) return {};
+      const groups: Record<
+        string,
+        Array<{fromName: string; fromType: string; fromId: number}>
+      > = {};
+      for (const edge of target.referrers) {
+        const eName = String(edge.name_or_index);
+        const from = edge.fromNode;
+        if (!groups[eName]) groups[eName] = [];
+        if (groups[eName].length < 10) {
+          groups[eName].push({
+            fromName: from.name,
+            fromType: from.type,
+            fromId: from.id,
+          });
+        }
+      }
+      return groups;
+    };
+
+    const groupArrayElementsByProperty = (
+      arrayNodeId: number,
+      propertyName: string,
+    ) => {
+      const arrNode = snapshot.getNodeById(arrayNodeId);
+      if (!arrNode) return {error: 'Node not found'};
+      const groups: Record<string, {count: number; exampleId: number}> = {};
+      let missing = 0;
+      let total = 0;
+      for (const edge of arrNode.references) {
+        if (edge.type !== 'element') continue;
+        const elem = edge.toNode;
+        if (elem.id <= 3) continue;
+        total++;
+        let found = false;
+        for (const propEdge of elem.references) {
+          if (String(propEdge.name_or_index) === propertyName) {
+            const target = propEdge.toNode;
+            const key = target.name;
+            if (!groups[key]) groups[key] = {count: 0, exampleId: target.id};
+            groups[key].count++;
+            found = true;
+            break;
+          }
+        }
+        if (!found) missing++;
+      }
+      return {groups, total, missing};
+    };
+
+    const isOrphaned = (nodeId: number, ownershipEdgeNames: string[]) => {
+      const target = snapshot.getNodeById(nodeId);
+      if (!target) return false;
+      const ownerSet = new Set(ownershipEdgeNames);
+      for (const edge of target.referrers) {
+        if (ownerSet.has(String(edge.name_or_index))) return false;
+      }
+      return true;
+    };
+
+    // Authoritative retained sizes (Feedback round 3 §3b). Reading
+    // `.retainedSize` off proxied/iterated nodes inside eval can come back
+    // ~0; these helpers look the node up fresh on the real snapshot (the
+    // same path the dedicated tools use) so custom analyses can rank by
+    // retained size.
+    // On a light snapshot these would return 0 for every id, which is
+    // indistinguishable from a genuinely tiny object. Throw instead: the
+    // pre-flight check above catches the common case, and this covers code
+    // that reaches them indirectly.
+    const requireRetention = (what: string): void => {
+      if (!light) return;
+      throw new Error(
+        `helpers.${what} needs retained sizes, which a LIGHT snapshot does not have (it would return 0 for every id). Reload with memlab_load_snapshot({file_path, light: false}).`,
+      );
+    };
+    const retainedSize = (id: number): number => {
+      requireRetention('retainedSize');
+      const n = snapshot.getNodeById(id);
+      return n ? n.retainedSize : 0;
+    };
+    const retainedSizes = (ids: number[]): Record<number, number> => {
+      requireRetention('retainedSizes');
+      const out: Record<number, number> = {};
+      for (const id of ids) {
+        const n = snapshot.getNodeById(id);
+        out[id] = n ? n.retainedSize : 0;
+      }
+      return out;
+    };
+
+    const countUniqueTargets = (arrayNodeId: number, propertyName: string) => {
+      const arrNode = snapshot.getNodeById(arrayNodeId);
+      if (!arrNode) return {error: 'Node not found'};
+      const uniqueIds = new Set<number>();
+      let total = 0;
+      for (const edge of arrNode.references) {
+        if (edge.type !== 'element') continue;
+        const elem = edge.toNode;
+        if (elem.id <= 3) continue;
+        total++;
+        for (const propEdge of elem.references) {
+          if (String(propEdge.name_or_index) === propertyName) {
+            uniqueIds.add(propEdge.toNode.id);
+            break;
+          }
+        }
+      }
+      return {uniqueCount: uniqueIds.size, totalElements: total};
+    };
+
+    // Compact, ready-to-use view of a node (no proxy, values inlined) so
+    // custom scripts get data they can JSON-return directly instead of
+    // re-deriving `.toStringNode()?.stringValue` etc. `retained_size` is
+    // resolved via the trusted `retainedSize(id)` re-lookup (NOT the raw
+    // `.retainedSize`, which can read back ~0 inside eval on some loads — the
+    // foot-gun this whole tool's description warns about).
+    //
+    // On a LIGHT snapshot it is reported as `null` rather than thrown:
+    // `mapEntries` / `setElements` are built on this and are legitimate
+    // there (keys, values, names and self sizes all survive a light load),
+    // so propagating `retainedSize`'s refusal would refuse them too. A null
+    // reads as "not measured"; a 0 would read as "measured and tiny".
+    const nodeBrief = (n: IHeapNode | null | undefined) =>
+      n == null
+        ? null
+        : {
+            id: n.id,
+            name: n.name,
+            type: n.type,
+            self_size: n.self_size,
+            retained_size: light ? null : retainedSize(n.id),
+            string: n.isString ? (n.toStringNode()?.stringValue ?? null) : null,
+          };
+
+    const resolveNode = (
+      nodeOrId: number | {id: number} | null | undefined,
+    ): IHeapNode | null => {
+      if (nodeOrId == null) return null;
+      const id = typeof nodeOrId === 'number' ? nodeOrId : nodeOrId.id;
+      return snapshot.getNodeById(id);
+    };
+
+    // Correctly enumerate Map/WeakMap entries and Set elements via the shared
+    // index-aware backing-store walk (handles browser `internal`-typed slots
+    // AND SMI-value gaps). Removes the #1 eval foot-gun: hand-rolling this
+    // and silently getting 0 results by filtering on `type === 'element'`.
+    const mapEntries = (id: number, limit = 1000) => {
+      const node = snapshot.getNodeById(id);
+      if (!node) throw new Error(`mapEntries: node @${id} not found`);
+      // Guard the node type — enumerateMapEntries assumes key/value slots, so
+      // running it on a Set (element/chain layout) would emit each element as
+      // a lone key with value:null, which is silently misleading.
+      if (node.name !== 'Map' && node.name !== 'WeakMap') {
+        throw new Error(
+          `mapEntries: @${id} is a ${node.name} (${node.type}), not a Map/WeakMap. ` +
+            `For a Set use helpers.setElements(${id}); otherwise inspect with helpers.props()/get_references.`,
+        );
+      }
+      return enumerateMapEntries(node)
+        .slice(0, limit)
+        .map(e => ({key: nodeBrief(e.key), value: nodeBrief(e.value)}));
+    };
+    const setElements = (id: number, limit = 1000) => {
+      const node = snapshot.getNodeById(id);
+      if (!node) throw new Error(`setElements: node @${id} not found`);
+      if (node.name !== 'Set' && node.name !== 'WeakSet') {
+        throw new Error(
+          `setElements: @${id} is a ${node.name} (${node.type}), not a Set/WeakSet. ` +
+            `For a Map use helpers.mapEntries(${id}).`,
+        );
+      }
+      return enumerateSetElements(node).slice(0, limit).map(nodeBrief);
+    };
+
+    // Read an object's own properties as a plain object: scalars inlined,
+    // object-valued props as `{ref, name, type}`. Saves the repetitive
+    // `for (const e of n.references) if (e.name_or_index === X)` boilerplate.
+    const props = (
+      nodeOrId: number | {id: number},
+    ): Record<string, unknown> => {
+      const node = resolveNode(nodeOrId);
+      if (!node) return {};
+      const out: Record<string, unknown> = {};
+      for (const e of node.references) {
+        if (e.type !== 'property') continue;
+        const name = String(e.name_or_index);
+        if (name === '__proto__') continue;
+        const t = e.toNode;
+        if (t.isString) out[name] = t.toStringNode()?.stringValue ?? '';
+        else if (t.name === 'true') out[name] = true;
+        else if (t.name === 'false') out[name] = false;
+        else if (t.name === 'null') out[name] = null;
+        else if (t.name === 'undefined') out[name] = undefined;
+        else out[name] = {ref: t.id, name: t.name, type: t.type};
+      }
+      return out;
+    };
+    const getProp = (nodeOrId: number | {id: number}, name: string) =>
+      props(nodeOrId)[name];
+
+    const shapeSignature = (
+      nodeOrId: number | {id: number},
+      opts?: {maxStringLen?: number; ignoreProps?: ReadonlySet<string>},
+    ): string => {
+      const node = resolveNode(nodeOrId);
+      return node ? objectContentSignature(node, opts ?? {}) : '';
+    };
+
+    // Index helpers — build once per snapshot, memoized in the eval scratch
+    // so a follow-up call is index-speed, not a fresh 12M-node scan. Ids are
+    // only valid for the active snapshot (the scratch is keyed to it).
+    const scratch = getEvalScratch();
+    interface ClassTypeIndex {
+      byClass: Map<string, number[]>;
+      byTypename: Map<string, number[]>;
+    }
+    const buildClassTypeIndex = (): ClassTypeIndex => {
+      const cached = scratch.__classTypeIndex as ClassTypeIndex | undefined;
+      if (cached) return cached;
+      const byClass = new Map<string, number[]>();
+      const byTypename = new Map<string, number[]>();
+      snapshot.nodes.forEach((node: IHeapNode) => {
+        if (node.id <= 3) return; // skip oddball/root nodes, matching the histogram/duplicate-objects tools for count parity
+        // Index EVERY node type. Restricting this to `object` made the
+        // helper silently return [] for closures, strings, arrays and
+        // native (`blink::*`) nodes — which is most of what other tools
+        // report. Measured: byClass('setComposerLinks_$0') returned [] on a
+        // snapshot where a manual walk found 1,011 of them, because the
+        // class is a closure; the empty result reads as "does not exist".
+        // memlab_find_nodes_by_class matches any type by default and this
+        // helper is documented as its indexed equivalent, so the two must
+        // agree.
+        let a = byClass.get(node.name);
+        if (!a) {
+          a = [];
+          byClass.set(node.name, a);
+        }
+        a.push(node.id);
+        // `__typename` is a JS object property, so only object nodes can
+        // carry one; skipping the edge walk for other types keeps the
+        // widened index roughly as cheap as the object-only one.
+        if (node.type !== 'object') return;
+        for (const e of node.references) {
+          if (
+            e.type === 'property' &&
+            String(e.name_or_index) === '__typename'
+          ) {
+            const t = e.toNode;
+            const tn = t.isString ? t.toStringNode()?.stringValue : null;
+            if (tn) {
+              let b = byTypename.get(tn);
+              if (!b) {
+                b = [];
+                byTypename.set(tn, b);
+              }
+              b.push(node.id);
+            }
+            break;
+          }
+        }
+      });
+      const idx: ClassTypeIndex = {byClass, byTypename};
+      scratch.__classTypeIndex = idx;
+      return idx;
+    };
+    const byClass = (name: string, opts?: {type?: string}): number[] => {
+      const ids = buildClassTypeIndex().byClass.get(name) ?? [];
+      const want = opts?.type;
+      if (want == null) return ids;
+      return ids.filter(id => snapshot.getNodeById(id)?.type === want);
+    };
+    const byTypename = (name: string): number[] =>
+      buildClassTypeIndex().byTypename.get(name) ?? [];
+    const withProp = (name: string): number[] => {
+      const key = `__withProp:${name}`;
+      const cached = scratch[key] as number[] | undefined;
+      if (cached) return cached;
+      const ids: number[] = [];
+      snapshot.nodes.forEach((node: IHeapNode) => {
+        if (node.id <= 3) return; // skip oddball/root nodes for parity with other tools
+        // Every node type is scanned: the `property` edge check below is
+        // what constrains the match, and closures do carry named property
+        // edges. Restricting the walk to `object` hid them, the same way it
+        // hid non-object classes from byClass.
+        for (const e of node.references) {
+          if (e.type === 'property' && String(e.name_or_index) === name) {
+            ids.push(node.id);
+            break;
+          }
+        }
+      });
+      scratch[key] = ids;
+      return ids;
+    };
+
+    // Dominator-deduped retained size for a SET of ids (bounded walk). Unlike
+    // summing helpers.retainedSize over the ids, this does not double-count
+    // bytes when one id dominates another in the set.
+    const aggregateRetained = (
+      ids: number[],
+    ): {retained: number; exact: boolean} => {
+      requireRetention('aggregateRetained');
+      return boundedDominatorRetainedSize(new NumericSet(ids), snapshot);
+    };
+
+    // ---- additional traversal helpers -------------------------------
+    // Each of these was hand-written inside `code` during a leak hunt,
+    // several of them more than once and with small differences that made
+    // results incomparable. Shipping them makes the common traversals both
+    // cheaper to write and consistent with what the dedicated tools do.
+
+    // The oddball/root filtering the tools apply internally. Hand-written
+    // eval that omits it counts nodes the tools do not, so the two disagree
+    // for reasons that have nothing to do with the question being asked.
+    const isRealDetached = (node: unknown): boolean => {
+      const n = unwrapNode(node) as IHeapNode | null;
+      if (n == null || n.id <= 3) return false;
+      return n.is_detached || n.name.startsWith('Detached ');
+    };
+
+    // Cached type -> ids index, mirroring the class index above, so a
+    // second pass over "every closure" does not re-walk the heap.
+    const buildTypeIndex = (): Map<string, number[]> => {
+      const cached = scratch.__typeIndex as Map<string, number[]> | undefined;
+      if (cached) return cached;
+      const byType = new Map<string, number[]>();
+      snapshot.nodes.forEach((node: IHeapNode) => {
+        if (node.id <= 3) return;
+        let a = byType.get(node.type);
+        if (!a) {
+          a = [];
+          byType.set(node.type, a);
+        }
+        a.push(node.id);
+      });
+      scratch.__typeIndex = byType;
+      return byType;
+    };
+
+    const nodesFromIds = (ids: number[]): IHeapNode[] => {
+      const out: IHeapNode[] = [];
+      for (const id of ids) {
+        const n = snapshot.getNodeById(id);
+        if (n) out.push(n);
+      }
+      return out;
+    };
+    const iterByClass = (name: string, opts?: {type?: string}) =>
+      nodesFromIds(byClass(name, opts)).map(wrapNode);
+    const iterByType = (type: string) =>
+      nodesFromIds(buildTypeIndex().get(type) ?? []).map(wrapNode);
+
+    // One-pass class histogram, cached, optionally filtered. `byClass`
+    // answers "where are the X"; this answers "what is in here at all",
+    // which otherwise means a full manual walk every time.
+    const classCounts = (opts?: {
+      pattern?: string;
+      type?: string;
+      minCount?: number;
+    }): Array<{
+      name: string;
+      type: string;
+      count: number;
+      selfSize: number;
+    }> => {
+      const cacheKey = '__classCounts';
+      let all = scratch[cacheKey] as
+        | Array<{
+            name: string;
+            type: string;
+            count: number;
+            selfSize: number;
+          }>
+        | undefined;
+      if (!all) {
+        const acc = new Map<
+          string,
+          {name: string; type: string; count: number; selfSize: number}
+        >();
+        snapshot.nodes.forEach((node: IHeapNode) => {
+          if (node.id <= 3) return;
+          const key = `${node.type}::${node.name}`;
+          const e = acc.get(key);
+          if (e) {
+            e.count++;
+            e.selfSize += node.self_size;
+          } else {
+            acc.set(key, {
+              name: node.name,
+              type: node.type,
+              count: 1,
+              selfSize: node.self_size,
+            });
+          }
+        });
+        all = [...acc.values()].sort((a, b) => b.count - a.count);
+        scratch[cacheKey] = all;
+      }
+      const matches = makeNamePatternTest(opts?.pattern);
+      const minCount = opts?.minCount ?? 1;
+      return all.filter(
+        r =>
+          r.count >= minCount &&
+          (opts?.type == null || r.type === opts.type) &&
+          matches(r.name),
+      );
+    };
+
+    // The node behind a named edge. Written from scratch in four separate
+    // evals because `props()` returns {ref,name,type} wrappers, which are
+    // awkward exactly when the node itself is what you need.
+    const edgeTarget = (nodeOrId: unknown, edgeName: string): unknown => {
+      const n =
+        typeof nodeOrId === 'number'
+          ? snapshot.getNodeById(nodeOrId)
+          : (unwrapNode(nodeOrId) as IHeapNode | null);
+      if (n == null) return null;
+      for (const e of n.references) {
+        if (e.type === 'hidden') continue;
+        if (String(e.name_or_index) !== edgeName) continue;
+        return e.toNode.id > 3 ? wrapNode(e.toNode) : null;
+      }
+      return null;
+    };
+
+    // Generic container walk. `mapEntries` / `setElements` cover Map and
+    // Set; WeakMap tables and plain arrays needed a manual `references`
+    // walk with hole filtering every time.
+    const entries = (
+      nodeOrId: unknown,
+    ): Array<{key: unknown; value: unknown}> => {
+      const n =
+        typeof nodeOrId === 'number'
+          ? snapshot.getNodeById(nodeOrId)
+          : (unwrapNode(nodeOrId) as IHeapNode | null);
+      if (n == null) return [];
+      if (n.name === 'Map' || n.name === 'WeakMap') {
+        return enumerateMapEntries(n).map(e => ({
+          key: wrapNode(e.key),
+          value: e.value == null ? null : wrapNode(e.value),
+        }));
+      }
+      if (n.name === 'Set' || n.name === 'WeakSet') {
+        return enumerateSetElements(n).map(el => ({
+          key: null,
+          value: wrapNode(el),
+        }));
+      }
+      const out: Array<{key: unknown; value: unknown}> = [];
+      for (const e of n.references) {
+        if (e.type === 'hidden') continue;
+        const name = String(e.name_or_index);
+        if (name === '__proto__') continue;
+        // V8 hangs the hidden class off an internal edge literally named
+        // `map`; dropping it unconditionally also dropped a real property
+        // named `map` (a config object with a `.map` field), which then
+        // read as "the object does not have one".
+        if (name === 'map' && e.type !== 'property') continue;
+        if (e.type === 'element') {
+          out.push({
+            key: Number(e.name_or_index),
+            value: wrapNode(e.toNode),
+          });
+        } else if (name === 'elements' && e.type === 'internal') {
+          for (const el of e.toNode.references) {
+            if (el.type !== 'element') continue;
+            out.push({
+              key: Number(el.name_or_index),
+              value: wrapNode(el.toNode),
+            });
+          }
+        } else if (e.type === 'property') {
+          out.push({key: name, value: wrapNode(e.toNode)});
+        }
+      }
+      return out;
+    };
+
+    // What does this node actually own? The question behind
+    // memlab_dominator_attribution, exposed for ad-hoc populations.
+    const dominates = (
+      id: number,
+      opts?: {population?: (node: unknown) => boolean; limit?: number},
+    ): {
+      count: number;
+      selfSize: number;
+      ids: number[];
+      truncated: boolean;
+    } => {
+      requireRetention('dominates');
+      const limit = opts?.limit ?? 1000;
+      const pop = opts?.population;
+      let count = 0;
+      let selfSize = 0;
+      const ids: number[] = [];
+      let truncated = false;
+      snapshot.nodes.forEach((node: IHeapNode) => {
+        if (node.id <= 3 || node.id === id) return;
+        if (pop != null && !pop(wrapNode(node))) return;
+        let cur: IHeapNode | null = node.dominatorNode ?? null;
+        let hops = 0;
+        while (cur && hops++ < 500) {
+          if (cur.id === id) {
+            count++;
+            selfSize += node.self_size;
+            if (ids.length < limit) ids.push(node.id);
+            else truncated = true;
+            break;
+          }
+          const next: IHeapNode | null = cur.dominatorNode ?? null;
+          if (!next || next.id === cur.id) break;
+          cur = next;
+        }
+      });
+      return {count, selfSize, ids, truncated};
+    };
+
+    // Shortest reference path a -> b, by BFS over outgoing edges. Bounded,
+    // and reports that it gave up rather than returning null as if no path
+    // existed.
+    const pathBetween = (
+      fromId: number,
+      toId: number,
+      opts?: {maxNodes?: number},
+    ): {found: boolean; exhausted: boolean; path: string[]} => {
+      const maxNodes = opts?.maxNodes ?? 200_000;
+      const start = snapshot.getNodeById(fromId);
+      if (start == null || snapshot.getNodeById(toId) == null) {
+        return {found: false, exhausted: false, path: []};
+      }
+      // `seen` is seeded with `fromId`, so the BFS below can never reach it
+      // again and the trivial 0-hop path would come back as "no path".
+      if (fromId === toId) {
+        return {
+          found: true,
+          exhausted: false,
+          path: [`@${fromId} ${start.name}`],
+        };
+      }
+      const prev = new Map<number, {via: string; from: number}>();
+      const seen = new Set<number>([fromId]);
+      let queue: IHeapNode[] = [start];
+      let visited = 0;
+      while (queue.length > 0) {
+        const next: IHeapNode[] = [];
+        for (const node of queue) {
+          if (++visited > maxNodes) {
+            return {found: false, exhausted: true, path: []};
+          }
+          for (const e of node.references) {
+            const t = e.toNode;
+            if (t.id <= 3 || seen.has(t.id)) continue;
+            seen.add(t.id);
+            prev.set(t.id, {via: String(e.name_or_index), from: node.id});
+            if (t.id === toId) {
+              const path: string[] = [];
+              let cur = toId;
+              while (cur !== fromId) {
+                const p = prev.get(cur);
+                if (p == null) break;
+                const n = snapshot.getNodeById(cur);
+                path.unshift(`.${p.via} -> @${cur} ${n?.name ?? ''}`);
+                cur = p.from;
+              }
+              path.unshift(`@${fromId} ${start.name}`);
+              return {found: true, exhausted: false, path};
+            }
+            next.push(t);
+          }
+        }
+        queue = next;
+      }
+      return {found: false, exhausted: false, path: []};
+    };
+
+    // Named result sets are SESSION-scoped, not snapshot-scoped: comparing
+    // a baseline scan against a final scan is the whole job, and the old
+    // per-snapshot scratch dropped the baseline the moment the next rung
+    // was loaded — exactly when it was needed.
+    //
+    // Node ids, however, are per-capture. A set of ids saved against one
+    // snapshot means nothing against another, so a cross-snapshot load is
+    // refused unless the caller opts in. Counts and strings are portable;
+    // ids are not, and silently letting them through is the failure this
+    // whole class of guard exists to prevent.
+    const save = <T>(name: string, value: T): T => {
+      setSavedResult(name, value, currentHandle);
+      return value;
+    };
+    const load = (name: string, opts?: {allowCrossSnapshot?: boolean}) => {
+      const entry = getSavedResult(name);
+      if (entry == null) {
+        throw new Error(
+          `No saved result named "${name}". Saved names: ${savedNames().join(', ') || '(none)'}. ` +
+            'Save one with the save_as parameter or helpers.save(name, value).',
+        );
+      }
+      if (entry.handle !== currentHandle && opts?.allowCrossSnapshot !== true) {
+        throw new Error(
+          `"${name}" was saved against snapshot "${entry.handle}" and the current snapshot is "${currentHandle}". Node ids are per-capture, so ids from another snapshot resolve to unrelated objects or to nothing. ` +
+            'If the value is counts/strings/shapes rather than ids, pass {allowCrossSnapshot: true} to read it anyway.',
+        );
+      }
+      return entry.value;
+    };
+    const listSaved = (): Array<{name: string; handle: string}> =>
+      listSavedResults();
+
+    // Sandbox code holds PROXIED nodes (see wrapNode). The helpers below
+    // read `retainedSize`, which the proxy refuses on purpose, so they take
+    // the real node: unwrap at the boundary rather than making every caller
+    // remember which helpers are proxy-safe.
+    // The retention-bearing fields of a serialized node, blanked on a LIGHT
+    // snapshot. The dominator pass never ran there, so they serialize as 0 /
+    // null-by-accident — a confident wrong number. Blanked rather than
+    // refused because everything else these two return (id, name, type,
+    // self size, edge/referrer counts, string value) is genuinely available
+    // on a light load, and refusing would take that away too.
+    const blankRetentionOnLight = (
+      s: NodeSummary | NodeDetail,
+    ): Record<string, unknown> => {
+      if (!light) return {...s};
+      const out: Record<string, unknown> = {...s, retained_size: null};
+      if ('dominator_id' in s) out.dominator_id = null;
+      return out;
+    };
+
+    const helpers = {
+      serializeNodeSummary: (n: unknown) =>
+        blankRetentionOnLight(serializeNodeSummary(unwrapNode(n) as IHeapNode)),
+      serializeNodeDetail: (n: unknown) =>
+        blankRetentionOnLight(serializeNodeDetail(unwrapNode(n) as IHeapNode)),
+      formatBytes,
+      formatNumber,
+      markdownTable,
+      isNodeWorthInspecting: (n: unknown, ...rest: unknown[]) =>
+        (isNodeWorthInspecting as (...a: unknown[]) => boolean)(
+          unwrapNode(n),
+          ...rest,
+        ),
+      // Both of these RANK by `node.retainedSize`, so both need the real
+      // snapshot and a non-light load. The previous wrapper renamed the
+      // first parameter `nodes` and mapped it as an array, which matched
+      // neither utility's signature — `filterLargestObjects(snapshot,
+      // filter, limit)` — and did nothing. Unwrapping is what was actually
+      // needed: sandbox code only ever holds the PROXIED snapshot, whose
+      // nodes refuse the very `retainedSize` read these two rank on.
+      //
+      // `RETENTION_IDENTIFIERS` catches `filterLargestObjects` textually
+      // before the code runs; these runtime guards cover both, and cover
+      // them precisely (a `queryNodes` count needs no retention at all).
+      filterLargestObjects: (
+        snap: unknown,
+        filter: (node: IHeapNode) => boolean,
+        limit: number,
+      ) => {
+        requireRetention('filterLargestObjects');
+        return filterLargestObjects(
+          unwrapNode(snap) as IHeapSnapshot,
+          filter,
+          limit,
+        );
+      },
+      queryNodes: (
+        snap: unknown,
+        filter: (node: IHeapNode) => boolean,
+        opts: Parameters<typeof queryNodes>[2],
+      ) => {
+        if (opts?.outputMode !== 'count') requireRetention('queryNodes');
+        return queryNodes(unwrapNode(snap) as IHeapSnapshot, filter, opts);
+      },
+      groupReferrersByEdge,
+      groupArrayElementsByProperty,
+      isOrphaned,
+      countUniqueTargets,
+      retainedSize,
+      retainedSizes,
+      nodeBrief,
+      mapEntries,
+      setElements,
+      props,
+      getProp,
+      shapeSignature,
+      byClass,
+      byTypename,
+      withProp,
+      aggregateRetained,
+      isRealDetached,
+      iterByClass,
+      iterByType,
+      classCounts,
+      edgeTarget,
+      entries,
+      dominates,
+      pathBetween,
+      save,
+      load,
+      listSaved,
+    };
+
+    const sandbox = {
+      snapshot: wrapSnapshot(snapshot, budget),
+      utils,
+      helpers,
+      console: capturedConsole,
+      result: undefined as unknown,
+      // Standard JS globals
+      Array,
+      Object,
+      Map,
+      Set,
+      JSON,
+      Math,
+      RegExp,
+      String,
+      Number,
+      Boolean,
+      Date,
+      Error,
+      TypeError,
+      RangeError,
+      WeakMap,
+      WeakSet,
+      Symbol,
+      parseInt,
+      parseFloat,
+      isNaN,
+      isFinite,
+      Infinity,
+      NaN,
+      undefined,
+    };
+
+    const context = vm.createContext(sandbox);
+    const script = new vm.Script(code, {filename: 'memlab_eval'});
+    // A budget abort is a controlled stop, not a failure: whatever the code
+    // had already assigned to `result` is still returned, annotated below.
+    try {
+      script.runInContext(context, {timeout: timeout_ms});
+    } catch (err) {
+      // Keyed on the error itself, never on `budget.exceeded`: code that
+      // catches the abort and then throws for an unrelated reason must
+      // still surface that error.
+      if (!(err instanceof BudgetExceeded)) throw err;
+    }
+
+    // Actionable hint when nothing was assigned to `result` (the #1 user
+    // error — code that `return`s a value or runs a value-returning IIFE
+    // never populates `result`, so output is silently "undefined").
+    if (
+      sandbox.result === undefined &&
+      consoleOutput.length === 0 &&
+      !budget.exceeded
+    ) {
+      return toolResult(
+        'Your code ran without error but never assigned to `result`, so there is nothing to return.\n' +
+          'Assign the value you want back to `result` (do NOT use `return` at the top level), e.g.:\n' +
+          '  `result = someValue;`\n' +
+          'Use mode:"describe_env" to see the full calling convention.',
+      );
+    }
+
+    // `undefined` is never worth persisting: on reload it is
+    // indistinguishable from a name that was never saved, and the usual
+    // cause is the "never assigned to `result`" mistake — which the hint
+    // above only catches when the run produced no console output.
+    const nothingToSave = sandbox.result === undefined;
+    if (save_as != null && !budget.exceeded && !nothingToSave) {
+      setSavedResult(save_as, sandbox.result, currentHandle);
+    }
+
+    let output: string;
+    try {
+      output = JSON.stringify(sandbox.result, null, 2) ?? 'undefined';
+    } catch {
+      output = String(sandbox.result);
+    }
+
+    output = truncate(output, MAX_OUTPUT_SIZE);
+
+    if (consoleOutput.length > 0) {
+      const consolePart = truncate(
+        consoleOutput.join('\n'),
+        MAX_OUTPUT_SIZE - output.length > 1024 ? 4096 : 1024,
+      );
+      output += '\n\n--- console output ---\n' + consolePart;
+    }
+
+    const footer: string[] = [];
+    if (budget.exceeded) {
+      footer.push(
+        `⚠️ Walk aborted after ${formatNumber(budget.max)} node visits (max_nodes). The value above is PARTIAL. ` +
+          'Raise max_nodes, or narrow the scan with an indexed helper (`helpers.byClass` / `byTypename` / `withProp`) instead of a full `snapshot.nodes` walk.',
+      );
+      if (save_as != null) {
+        footer.push(
+          `Not saved as "${save_as}" — a partial result would be indistinguishable from a complete one on reload.`,
+        );
+      }
+    } else if (budget.visited > 0) {
+      footer.push(`nodes_visited: ${formatNumber(budget.visited)}`);
+    }
+    if (save_as != null && !budget.exceeded) {
+      footer.push(
+        nothingToSave
+          ? `Not saved as "${save_as}" — \`result\` was undefined, and a saved \`undefined\` is indistinguishable from a name that was never saved. Assign the value you want to keep to \`result\` (do NOT \`return\` at the top level) and re-run.`
+          : `Saved as "${save_as}" — read it back in a later call with \`helpers.load("${save_as}")\`.`,
+      );
+    }
+    if (footer.length > 0) {
+      output += '\n\n--- ' + footer.join('\n');
+    }
+
+    return toolResult(output);
+  } catch (err) {
+    return errorResult(new Error(actionableEvalError(err, code)));
+  }
 }
 
 // Map the opaque VM errors that the documented calling-convention mistakes

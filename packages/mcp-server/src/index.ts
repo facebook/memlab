@@ -90,10 +90,13 @@ import {registerCollectionTrend} from './tools/collection-trend.js';
 import {registerVerifyFix} from './tools/verify-fix.js';
 import {registerToolsIndex} from './tools/tools-index.js';
 import {registerAnalyzeRun} from './tools/analyze-run.js';
+import {registerEvalAcross} from './tools/eval-across.js';
+import {registerSettleCheck} from './tools/settle-check.js';
+import {registerUnitCost} from './tools/unit-cost.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.52.1', // keep in sync with package.json
+  version: '2.53.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -172,6 +175,9 @@ registerCollectionTrend(server);
 registerVerifyFix(server);
 registerToolsIndex(server);
 registerAnalyzeRun(server);
+registerEvalAcross(server);
+registerSettleCheck(server);
+registerUnitCost(server);
 
 async function main() {
   const transport = new StdioServerTransport();
