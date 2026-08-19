@@ -119,6 +119,47 @@ const HARNESS_NODE_NAME_RE =
 
 const DEV_NODE_NAME_RE = /__REACT_DEVTOOLS|DEVTOOLS_GLOBAL_HOOK|ReactDevTools/;
 
+// Dev-tools BRIDGES are not reached through a window global, so none of the
+// checks above see them: the bridge module sits in the app's own module
+// registry and the objects it accumulates (stanza logs, route history, command
+// registries) root at the real Window. A dev-build bridge that records one
+// entry per network message accumulates for as long as the tab is open — on one
+// measured session 15,582 records / 3.05 MB, still growing while idle — and was
+// reported as production memory.
+const DEV_BRIDGE_NODE_NAME_RE =
+  /DevToolsBridge|DevToolBridge|__DEVTOOLS_BRIDGE__/i;
+
+/**
+ * Deployment-specific artifact roots, so a repo can teach this tool about a
+ * dev-only global or module the OSS package cannot know about, instead of the
+ * family being silently counted as production memory.
+ *
+ *   MEMLAB_DEV_ARTIFACT_GLOBALS=myDebugHook,__MY_DEVTOOLS__
+ *   MEMLAB_DEV_ARTIFACT_NODE_PATTERN=MyAppDebugBridge|MyProfiler
+ */
+function extraDevGlobalNames(): Set<string> {
+  const raw = process.env.MEMLAB_DEV_ARTIFACT_GLOBALS;
+  if (raw == null || raw.trim() === '') return new Set();
+  return new Set(
+    raw
+      .split(',')
+      .map(n => n.trim())
+      .filter(n => n.length > 0),
+  );
+}
+
+function extraDevNodePattern(): RegExp | null {
+  const raw = process.env.MEMLAB_DEV_ARTIFACT_NODE_PATTERN;
+  if (raw == null || raw.trim() === '') return null;
+  try {
+    return new RegExp(raw, 'i');
+  } catch {
+    // A malformed pattern must not take the whole tool down; it is reported by
+    // the explain output instead.
+    return null;
+  }
+}
+
 // Blink accessibility caches. Under CDP-driven automation the a11y tree is
 // materialized (and browser_take_snapshot inflates it further), so this native
 // cache balloons and co-retains detached DOM — automation-inflated retention
@@ -228,8 +269,23 @@ export function summarizeDevRoots(devRoots: DevRoots, showAll = false): string {
 export function collectDevRoots(snapshot: IHeapSnapshot): DevRoots {
   const byId = new Map<number, string>();
   const categoryById = new Map<number, DevRootCategory>();
+  const extraGlobals = extraDevGlobalNames();
+  const extraNodeRe = extraDevNodePattern();
   snapshot.nodes.forEach(node => {
     if (node.id <= 3) return;
+    // Bridges and deployment-specific dev modules are matched by NODE name:
+    // they are not hung off a window global, so the edge-name checks below
+    // never see them.
+    if (
+      DEV_BRIDGE_NODE_NAME_RE.test(node.name) ||
+      (extraNodeRe != null && extraNodeRe.test(node.name))
+    ) {
+      byId.set(
+        node.id,
+        `${node.name} (dev-tools bridge; absent in production)`,
+      );
+      categoryById.set(node.id, 'devGlobal');
+    }
     const isGlobal =
       node.name.startsWith('Window ') ||
       node.name === 'global' ||
@@ -237,7 +293,10 @@ export function collectDevRoots(snapshot: IHeapSnapshot): DevRoots {
     if (isGlobal) {
       for (const edge of node.references) {
         const eName = String(edge.name_or_index);
-        if (DEV_GLOBAL_EDGE_NAMES.has(eName) && edge.toNode.id > 3) {
+        if (
+          (DEV_GLOBAL_EDGE_NAMES.has(eName) || extraGlobals.has(eName)) &&
+          edge.toNode.id > 3
+        ) {
           byId.set(edge.toNode.id, eName);
           categoryById.set(edge.toNode.id, 'devGlobal');
         }
@@ -530,6 +589,71 @@ export function classifyDevOnly(
   return {devOnly: false, via: null};
 }
 
+/**
+ * The families this tool knows how to look for, and whether any root for each
+ * was found. Printed on demand because the failure mode of a hardcoded family
+ * list is silence: a family nobody thought of contributes 0 bytes and reads
+ * exactly like "there are no artifacts in this snapshot".
+ */
+function explainCoverage(devRoots: DevRoots): string {
+  const seen = new Map<DevRootCategory, number>();
+  for (const cat of devRoots.categoryById.values()) {
+    seen.set(cat, (seen.get(cat) ?? 0) + 1);
+  }
+  const families: Array<[DevRootCategory, string, string]> = [
+    [
+      'devGlobal',
+      'Dev/extension globals + dev-tools bridges',
+      [...DEV_GLOBAL_EDGE_NAMES].join(', ') +
+        `; node names matching ${DEV_BRIDGE_NODE_NAME_RE}`,
+    ],
+    [
+      'reactFastRefresh',
+      'React Fast Refresh registries',
+      [...REACT_REFRESH_GLOBAL_EDGE_NAMES].join(', '),
+    ],
+    [
+      'a11y',
+      'Blink accessibility caches (CDP-inflated)',
+      String(AX_NODE_NAME_RE),
+    ],
+    [
+      'console',
+      'Inspector console retention',
+      `${GLOBAL_HANDLES_NODE_NAME} edges matching ${CONSOLE_HANDLE_EDGE_RE}`,
+    ],
+    [
+      'harness',
+      'Automation/test-harness bundle',
+      [...HARNESS_EDGE_NAMES].join(', ') + `; ${HARNESS_NODE_NAME_RE}`,
+    ],
+    [
+      'reactDebugStack',
+      'React DEV owner stacks',
+      [...REACT_DEBUG_STACK_EDGE_NAMES].join(', '),
+    ],
+  ];
+  const rows = families.map(([cat, name, rule]) => [
+    name,
+    seen.has(cat) ? `${seen.get(cat)} root(s)` : 'none found',
+    rule.length > 90 ? rule.slice(0, 87) + '…' : rule,
+  ]);
+  const extraGlobals = [...extraDevGlobalNames()];
+  const extraPattern = process.env.MEMLAB_DEV_ARTIFACT_NODE_PATTERN;
+  const lines = [
+    '### Families checked',
+    '',
+    markdownTable(['Family', 'Found here', 'Match rule'], rows),
+    '',
+    extraGlobals.length > 0 || extraPattern
+      ? `Deployment additions in effect: ${extraGlobals.length > 0 ? `globals [${extraGlobals.join(', ')}]` : ''}${extraGlobals.length > 0 && extraPattern ? '; ' : ''}${extraPattern ? `node pattern /${extraPattern}/` : ''}.`
+      : '_No deployment additions configured. If a family below reads "none found" but you know the surface has one, teach it: `MEMLAB_DEV_ARTIFACT_GLOBALS=name1,name2` for a window global, `MEMLAB_DEV_ARTIFACT_NODE_PATTERN=regex` for a module/bridge reached through the app\'s own registry._',
+    '',
+    '_"none found" means no ROOT for that family exists in this capture — it does not mean the family was ruled out for the objects you are looking at._',
+  ];
+  return lines.join('\n');
+}
+
 export function registerDevArtifacts(server: McpServer): void {
   server.tool(
     'memlab_dev_artifacts',
@@ -540,6 +664,13 @@ export function registerDevArtifacts(server: McpServer): void {
         .optional()
         .default(25)
         .describe('Maximum number of objects to classify (default 25).'),
+      explain: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'List every artifact family this tool checks and whether roots for it were found in this snapshot (default false). A family that is missing from the built-in set produces a silent zero, which reads as "no artifacts here" — this makes the coverage visible so a miss can be recognised and, if needed, taught with MEMLAB_DEV_ARTIFACT_GLOBALS / MEMLAB_DEV_ARTIFACT_NODE_PATTERN.',
+        ),
       min_retained_size: z
         .number()
         .optional()
@@ -562,7 +693,7 @@ export function registerDevArtifacts(server: McpServer): void {
           'List every dev/automation root by name instead of summarizing them as counts per family (default false). The full list is unbounded — one root per a11y object and per bridge export — and cost ~1,500 tokens per call on a measured run. Use it only when chasing one specific root.',
         ),
     },
-    async ({limit, min_retained_size, only_dev, show_roots}) => {
+    async ({limit, min_retained_size, only_dev, show_roots, explain}) => {
       try {
         const snapshot = getSnapshot();
         const meta = getSnapshotMetadata();
@@ -572,7 +703,8 @@ export function registerDevArtifacts(server: McpServer): void {
         if (devRoots.byId.size === 0) {
           return toolResult(
             'No dev/extension globals (__REACT_DEVTOOLS_GLOBAL_HOOK__, __REDUX_DEVTOOLS_EXTENSION__, window.Debug, …) or accessibility caches (AXObjectCacheImpl, …) found in this snapshot. ' +
-              'Either this is a production/clean capture, or none were installed — large retainers here are NOT dev/automation artifacts.',
+              'Either this is a production/clean capture, or none were installed — large retainers here are NOT dev/automation artifacts.' +
+              (explain ? '\n\n' + explainCoverage(devRoots) : ''),
           );
         }
 
@@ -734,6 +866,10 @@ export function registerDevArtifacts(server: McpServer): void {
           '',
           '_"dev-only" = the object\'s dominator chain passes through a dev/extension global, a Blink a11y cache, or an inspector "DevTools console" global handle, so every retainer path goes through it. Dev-global-retained objects would be GC\'d in production; a11y-cache and DevTools-console retention are automation/inspector-inflated (the a11y tree is materialized by CDP; console-logged objects are held by the attached inspector) and not present in a normal user session with DevTools closed. Either way, discount from production leak totals. Verify with `memlab_retainer_trace`._',
         );
+        if (explain) {
+          lines.push('', explainCoverage(devRoots));
+        }
+
         return toolResult(lines.join('\n'));
       } catch (err) {
         return errorResult(err);

@@ -60,8 +60,16 @@ const GROUPS: Group[] = [
         'Groups plain objects by their property set — finds record types the class name hides behind `Object`.',
       ],
       [
+        'memlab_identify',
+        'Name a minified structure from its property shape — listener record, LRU node, React update record, undo entry.',
+      ],
+      [
         'memlab_object_cost_breakdown',
         'Where one class’s bytes actually go (self vs properties vs elements).',
+      ],
+      [
+        'memlab_what_if',
+        'If this set were freed, how many bytes actually come back — dominator-deduped, no double counting.',
       ],
       [
         'memlab_unit_cost',

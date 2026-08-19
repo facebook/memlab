@@ -93,10 +93,12 @@ import {registerAnalyzeRun} from './tools/analyze-run.js';
 import {registerEvalAcross} from './tools/eval-across.js';
 import {registerSettleCheck} from './tools/settle-check.js';
 import {registerUnitCost} from './tools/unit-cost.js';
+import {registerIdentify} from './tools/identify.js';
+import {registerWhatIf} from './tools/what-if.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.53.0', // keep in sync with package.json
+  version: '2.54.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -178,6 +180,8 @@ registerAnalyzeRun(server);
 registerEvalAcross(server);
 registerSettleCheck(server);
 registerUnitCost(server);
+registerIdentify(server);
+registerWhatIf(server);
 
 async function main() {
   const transport = new StdioServerTransport();
