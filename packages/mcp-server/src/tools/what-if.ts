@@ -9,7 +9,7 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
-import type {IHeapNode} from '@memlab/core';
+import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import memlabCore from '@memlab/core';
 import {z} from 'zod';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
@@ -32,6 +32,84 @@ function matchesShape(node: IHeapNode, shape: string[]): boolean {
     if (want.size === 0) return true;
   }
   return false;
+}
+
+/**
+ * Second-order collectability: what ELSE dies when this population goes away.
+ *
+ * The dominator-deduped figure is a floor by construction — it counts only what
+ * the population exclusively dominates. An object reachable by two paths, both
+ * of which run through the population, is dominated by neither member and so is
+ * counted by neither, yet it becomes garbage the moment they do. On a graph with
+ * shared substructure that is not a rounding error.
+ *
+ * Answering it properly means recomputing reachability, which is what this does:
+ * a BFS from the GC roots with the population's edges removed, compared against
+ * the same BFS with them present. It is O(N+E) twice rather than a dominator
+ * pass, so it is affordable, but it is a real graph walk and not a heuristic.
+ */
+function findRootIds(snapshot: IHeapSnapshot): number[] {
+  const roots: number[] = [];
+  snapshot.nodes.forEach(node => {
+    if (roots.length > 0) return;
+    if (node.type === 'synthetic' && node.name.includes('GC roots')) {
+      roots.push(node.id);
+    }
+  });
+  if (roots.length === 0) {
+    // Fall back to every node V8 marks as unreachable-from-nothing: the first
+    // node in a V8 snapshot is the root by convention.
+    snapshot.nodes.forEach(node => {
+      if (roots.length === 0) roots.push(node.id);
+    });
+  }
+  return roots;
+}
+
+/**
+ * Reachability marking uses a flat byte array indexed by node id, not a Set.
+ * A Set of ids throws "Set maximum size exceeded" on a large server heap
+ * (observed on a 9.9M-node Node.js capture), and the failure lands in the
+ * middle of an otherwise-complete analysis. The array costs one byte per id
+ * slot — tens of MB on the largest heaps that load at all — and cannot hit a
+ * collection limit.
+ */
+function maxNodeId(snapshot: IHeapSnapshot): number {
+  let max = 0;
+  snapshot.nodes.forEach(node => {
+    if (node.id > max) max = node.id;
+  });
+  return max;
+}
+
+function reachableFrom(
+  snapshot: IHeapSnapshot,
+  rootIds: number[],
+  removed: Uint8Array,
+  maxId: number,
+): Uint8Array {
+  const seen = new Uint8Array(maxId + 1);
+  const stack: number[] = [];
+  for (const id of rootIds) {
+    if (id > maxId || removed[id] === 1) continue;
+    seen[id] = 1;
+    stack.push(id);
+  }
+  while (stack.length > 0) {
+    const id = stack.pop() as number;
+    const node = snapshot.getNodeById(id);
+    if (node == null) continue;
+    for (const edge of node.references) {
+      // A weak edge does not keep its target alive, so following it would
+      // report objects as surviving that a real GC would collect.
+      if (edge.type === 'weak') continue;
+      const toId = edge.toNode.id;
+      if (toId > maxId || removed[toId] === 1 || seen[toId] === 1) continue;
+      seen[toId] = 1;
+      stack.push(toId);
+    }
+  }
+  return seen;
 }
 
 export function registerWhatIf(server: McpServer): void {
@@ -69,8 +147,15 @@ export function registerWhatIf(server: McpServer): void {
         .optional()
         .default(12)
         .describe('Rows in the breakdown table (default 12).'),
+      cascade: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Also compute the SECOND-ORDER effect: objects that become unreachable because the population was their last live referrer, even though no member dominated them. Recomputes reachability from the GC roots with the population removed (two O(N+E) walks — seconds on a multi-million-node heap, not instant). Off by default because the dominator figure alone is the conservative answer.',
+        ),
     },
-    async ({node_ids, class_name, shape, breakdown, limit}) => {
+    async ({node_ids, class_name, shape, breakdown, limit, cascade}) => {
       try {
         const snapshot = getSnapshot();
         const selectors = [
@@ -206,9 +291,49 @@ export function registerWhatIf(server: McpServer): void {
           );
         }
 
+        if (cascade) {
+          const maxId = maxNodeId(snapshot);
+          const removed = new Uint8Array(maxId + 1);
+          for (const id of ids) if (id <= maxId) removed[id] = 1;
+          const none = new Uint8Array(maxId + 1);
+          const roots = findRootIds(snapshot);
+          const before = reachableFrom(snapshot, roots, none, maxId);
+          const after = reachableFrom(snapshot, roots, removed, maxId);
+          let cascadeBytes = 0;
+          let cascadeNodes = 0;
+          for (let id = 0; id <= maxId; id++) {
+            if (before[id] !== 1) continue;
+            // The population's own bytes are already counted; this walk is
+            // about what ELSE dies with it.
+            if (after[id] === 1 || removed[id] === 1) continue;
+            cascadeNodes++;
+            cascadeBytes += snapshot.getNodeById(id)?.self_size ?? 0;
+          }
+          // The dominator figure splits into the population's own bytes plus
+          // what it exclusively dominates. Only the second part is comparable
+          // to the cascade walk, which excludes the population itself.
+          const dominatedNonSelf = Math.max(0, retained - selfTotal);
+          const extra = cascadeBytes - dominatedNonSelf;
+          const totalFreed = selfTotal + cascadeBytes;
+          lines.push(
+            '',
+            '### Second-order effect (cascade)',
+            '',
+            `Recomputing reachability from ${formatNumber(roots.length)} GC root(s) with this population removed: **${formatNumber(cascadeNodes)} node(s) outside the population / ${formatBytes(cascadeBytes)} become unreachable**, against ${formatBytes(dominatedNonSelf)} that the population exclusively dominates.`,
+            '',
+            extra > 0
+              ? `**${formatBytes(extra)} of that is second-order** — objects no member dominated (they were reachable by several paths, all of which ran through the population) but which nothing else keeps alive. Total freed including the population's own ${formatBytes(selfTotal)}: **${formatBytes(totalFreed)}**, against the ${formatBytes(retained)} dominator figure.`
+              : extra === 0
+                ? 'No second-order effect: the exclusively-dominated set is exactly what becomes unreachable.'
+                : `The cascade walk found ${formatBytes(-extra)} LESS than the dominator figure claims is exclusively dominated. That is a discrepancy, not a saving — it means part of the dominated set stays reachable in this walk, most likely through an edge type the walk skips (weak) or a root the walk did not start from (${formatNumber(roots.length)} found). Trust the dominator figure and treat this cascade run as inconclusive.`,
+            '',
+            '_Reachability only. It does not model finalizers, and it treats weak edges as non-retaining (which is correct for collectability but means a WeakMap value shown as freed is freed only if its key also dies)._',
+          );
+        }
+
         lines.push(
           '',
-          '_Counts only what this population EXCLUSIVELY dominates: anything also reachable from elsewhere stays and is not included. It does not model second-order effects — objects that become collectable because a freed one was the last referrer of something it did not dominate are not counted, so treat this as a floor._',
+          '_Counts only what this population EXCLUSIVELY dominates: anything also reachable from elsewhere stays and is not included. Second-order effects — objects that become collectable because a freed one was their last referrer without dominating them — are not in this figure, so treat it as a floor; pass `cascade: true` to measure them._',
         );
         return toolResult(lines.join('\n'));
       } catch (err) {

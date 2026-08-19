@@ -80,6 +80,14 @@ const GROUPS: Group[] = [
         'Did the population grow along the same retention path, or did a NEW owner appear? The question a count diff cannot answer.',
       ],
       [
+        'memlab_identity_diff',
+        'Same objects, or just the same count? Matches a population across two captures by CONTENT — churn and retention need different fixes.',
+      ],
+      [
+        'memlab_next_measurement',
+        'What the loaded snapshots cannot support, and which capture would fix it. Run it before writing a conclusion.',
+      ],
+      [
         'memlab_app_config',
         'Read the feature flags the app was actually running with, out of the capture — "was the fix even enabled here?" without circular inference.',
       ],
