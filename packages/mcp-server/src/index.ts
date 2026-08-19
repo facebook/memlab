@@ -96,10 +96,12 @@ import {registerUnitCost} from './tools/unit-cost.js';
 import {registerIdentify} from './tools/identify.js';
 import {registerWhatIf} from './tools/what-if.js';
 import {registerMetric} from './tools/metric.js';
+import {registerTraceAll} from './tools/trace-all.js';
+import {registerRetainerDiff} from './tools/retainer-diff.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.55.0', // keep in sync with package.json
+  version: '2.56.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -184,6 +186,8 @@ registerUnitCost(server);
 registerIdentify(server);
 registerWhatIf(server);
 registerMetric(server);
+registerTraceAll(server);
+registerRetainerDiff(server);
 
 async function main() {
   const transport = new StdioServerTransport();

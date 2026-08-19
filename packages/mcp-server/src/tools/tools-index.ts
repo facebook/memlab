@@ -72,6 +72,14 @@ const GROUPS: Group[] = [
         'If this set were freed, how many bytes actually come back — dominator-deduped, no double counting.',
       ],
       [
+        'memlab_trace_all',
+        'Retainer-trace an ENTIRE population and cluster the paths server-side — finds the minority path a 10-instance sample cannot.',
+      ],
+      [
+        'memlab_retainer_diff',
+        'Did the population grow along the same retention path, or did a NEW owner appear? The question a count diff cannot answer.',
+      ],
+      [
         'memlab_metric',
         'Record a measurement under a name and keep it ACROSS sessions — the only way a number measured today survives to be compared next week.',
       ],

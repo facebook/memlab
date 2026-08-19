@@ -22,7 +22,7 @@ import {
   toolResult,
 } from '../utils.js';
 
-interface TraceStep {
+export interface TraceStep {
   name: string;
   type: string;
   edgeName?: string;
@@ -55,7 +55,7 @@ function isFrameworkStep(step: TraceStep): boolean {
   return false;
 }
 
-function getRetainerTrace(node: IHeapNode): TraceStep[] | null {
+export function getRetainerTrace(node: IHeapNode): TraceStep[] | null {
   if (!node.hasPathEdge) return null;
 
   const visited = new Set<number>([node.id]);
@@ -97,7 +97,10 @@ function normalizeStepName(name: string): string {
   return name.replace(/ @\d+\b/g, ' @…');
 }
 
-function traceToKey(steps: TraceStep[], frameworkFilter: boolean): string {
+export function traceToKey(
+  steps: TraceStep[],
+  frameworkFilter: boolean,
+): string {
   const filtered = frameworkFilter
     ? steps.filter(
         (s, i) => i === 0 || i === steps.length - 1 || !isFrameworkStep(s),
@@ -127,7 +130,7 @@ function shortenPath(name: string): string {
   return `…/${dir}/${fileName}`;
 }
 
-function formatTraceChain(steps: TraceStep[]): string {
+export function formatTraceChain(steps: TraceStep[]): string {
   // Fold runs of identical `Name (type) --edge-->` hops. A linked structure
   // (e.g. a React update queue's `.next` chain) otherwise renders hundreds of
   // byte-identical hops, which is pure token cost.
