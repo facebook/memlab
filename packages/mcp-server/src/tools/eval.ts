@@ -289,6 +289,8 @@ export function registerEval(server: McpServer): void {
             'entries(nodeOrId)->[{key,value}] (generic Map/Set/WeakMap/Array/object walk, holes filtered), ' +
             'edgeTarget(nodeOrId, edgeName)->node|null, isRealDetached(node)->boolean (same filtering the tools apply internally), ' +
             'dominates(id, {population?, limit?})->{count,selfSize,ids,truncated}, ' +
+            'owner(idOrNode, {maxHops?})->{id,name,type,hops,selfSize,named}|null, ' +
+            'histogram(ids, keyFn, {limit?})->[{key,count}], ' +
             'pathBetween(fromId, toId, {maxNodes?})->{found,exhausted,path[]}, ' +
             'save(name, value) / load(name, {allowCrossSnapshot?}) / listSaved() (SESSION-scoped, survives loading another snapshot) }), ' +
             'and standard JS built-ins. ' +
@@ -958,6 +960,93 @@ export async function runEval({
       return {count, selfSize, ids, truncated};
     };
 
+    // Walk up the dominator chain to the nearest node that carries a class
+    // identity, skipping V8's containers and system objects. "Who owns this?"
+    // is a loop every investigation rewrites by hand — and writes slightly
+    // differently each time, which is why the same population gets attributed
+    // to different owners on different days.
+    //
+    // A single-letter name is NOT skipped. In a minified bundle `t` and `e`
+    // are the only class identity that exists; treating them as meaningless
+    // walks straight past the owner and reports the system container above it.
+    // Pair the name with `memlab_identify` to find out what it is.
+    const CONTAINER_OWNER = /^(Object|Array|system(\s*\/.*)?|\(.*\))$/;
+    const owner = (
+      nodeOrId: number | {id: number},
+      opts?: {maxHops?: number},
+    ): {
+      id: number;
+      name: string;
+      type: string;
+      hops: number;
+      selfSize: number;
+      named: boolean;
+    } | null => {
+      requireRetention('owner');
+      const start =
+        typeof nodeOrId === 'number'
+          ? snapshot.getNodeById(nodeOrId)
+          : (unwrapNode(nodeOrId) as IHeapNode | null);
+      if (start == null) return null;
+      const maxHops = opts?.maxHops ?? 50;
+      let cur: IHeapNode | null = start.dominatorNode ?? null;
+      let last: IHeapNode | null = null;
+      let hops = 1;
+      let lastHops = 0;
+      while (cur != null && cur.id > 3 && hops <= maxHops) {
+        last = cur;
+        lastHops = hops;
+        if (!CONTAINER_OWNER.test(cur.name)) {
+          return {
+            id: cur.id,
+            name: cur.name,
+            type: cur.type,
+            hops,
+            selfSize: cur.self_size,
+            named: true,
+          };
+        }
+        const next: IHeapNode | null = cur.dominatorNode ?? null;
+        if (next == null || next.id === cur.id) break;
+        cur = next;
+        hops++;
+      }
+      // Nothing but containers all the way up is itself the answer — report
+      // the furthest node reached with named:false rather than null, which
+      // would be indistinguishable from "no such node".
+      if (last == null) return null;
+      return {
+        id: last.id,
+        name: last.name,
+        type: last.type,
+        hops: lastHops,
+        selfSize: last.self_size,
+        named: false,
+      };
+    };
+
+    // Group-and-count over ids. The single most-rewritten block in ad-hoc eval
+    // code, and the one whose hand-written versions most often silently drop
+    // the undefined bucket.
+    const histogram = (
+      ids: Iterable<number>,
+      keyFn: (node: unknown, id: number) => string | null | undefined,
+      opts?: {limit?: number},
+    ): Array<{key: string; count: number}> => {
+      const counts = new Map<string, number>();
+      for (const id of ids) {
+        const node = snapshot.getNodeById(id);
+        if (node == null) continue;
+        const raw = keyFn(wrapNode(node), id);
+        const key = raw == null ? '(none)' : String(raw);
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+      const rows = [...counts.entries()]
+        .map(([key, count]) => ({key, count}))
+        .sort((a, b) => b.count - a.count);
+      return opts?.limit != null ? rows.slice(0, opts.limit) : rows;
+    };
+
     // Shortest reference path a -> b, by BFS over outgoing edges. Bounded,
     // and reports that it gave up rather than returning null as if no path
     // existed.
@@ -1135,6 +1224,8 @@ export async function runEval({
       edgeTarget,
       entries,
       dominates,
+      owner,
+      histogram,
       pathBetween,
       save,
       load,
@@ -1382,6 +1473,8 @@ function describeEnv(): string {
     '- `helpers.edgeTarget(nodeOrId, edgeName) -> node | null` — the node behind a named edge, when you need the node and not the `{ref,name,type}` wrapper `props()` returns.',
     '- `helpers.isRealDetached(node) -> boolean` — the oddball/root filtering the detached-DOM tools apply internally, so hand-written eval counts the same set they do.',
     '- `helpers.dominates(id, {population?, limit?}) -> {count, selfSize, ids, truncated}` — what this node actually owns (bounded 500-hop dominator walk). `population` is a predicate over nodes.',
+    '- `helpers.owner(idOrNode, {maxHops?}) -> {id, name, type, hops, selfSize, named} | null` — nearest dominator carrying a class identity, skipping V8 containers (`Object`, `Array`, `system / …`, `(closure)`). Minified single-letter names are KEPT: in a production bundle they are the only identity there is — pair with `memlab_identify`. `named:false` means the walk found only containers and is reporting the furthest node reached.',
+    '- `helpers.histogram(ids, keyFn, {limit?}) -> [{key, count}]` — group-and-count over ids, sorted by count; a null/undefined key becomes `(none)` rather than being dropped.',
     '- `helpers.pathBetween(fromId, toId, {maxNodes?}) -> {found, exhausted, path[]}` — BFS over outgoing edges; `exhausted:true` means the budget ran out, which is NOT the same as "no path".',
     '- `helpers.save(name, value)` / `helpers.load(name, {allowCrossSnapshot?})` / `helpers.listSaved()` — named result sets, SESSION-scoped: they survive loading another snapshot, which is what makes a baseline-vs-final comparison possible. The snapshot each was saved against is recorded, and a cross-snapshot read is refused unless you opt in — node ids are per-capture and mean nothing in another snapshot.',
     '- `helpers.aggregateRetained(ids[]) -> {retained, exact}` — dominator-deduped retained size for a SET of ids (does not double-count when one id dominates another); `exact:false` means the bounded walk was truncated (upper bound).',

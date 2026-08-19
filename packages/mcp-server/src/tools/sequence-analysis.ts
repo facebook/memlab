@@ -28,6 +28,7 @@ import {
   toolResult,
 } from '../utils.js';
 import {resolveLadderPaths} from './ladder.js';
+import {findResidentByPath, getSnapshotByHandle} from '../heap-state.js';
 import {resetEmittedNotes, shouldEmitNote} from '../heap-state.js';
 import {
   artifactLabel,
@@ -129,6 +130,9 @@ export interface SequenceTrends {
   // flagged via `artifact`; dropping them is a presentation choice each caller
   // makes for itself.
   rows: SequenceRow[];
+  // Labels of the rungs served from an already-resident snapshot instead of a
+  // fresh parse. Surfaced so a slow call and a fast one are distinguishable.
+  reusedHandles: string[];
   // Union of non-noise class keys across all steps (for new-since-baseline).
   keys: Set<string>;
 }
@@ -158,6 +162,7 @@ export async function computeSequenceTrends(
 ): Promise<SequenceTrends> {
   const toolName = opts.toolName ?? 'memlab_sequence_analysis';
   const steps: SequenceStep[] = [];
+  const reusedHandles: string[] = [];
   // `paths: ["ladder:<name>"]` expands to a saved ladder (see ladder.ts), so a
   // six-rung trend call is one token instead of six absolute paths.
   const {paths: resolvedPaths} = resolveLadderPaths(paths);
@@ -200,9 +205,20 @@ export async function computeSequenceTrends(
           `or restart the MCP server with more memory (NODE_OPTIONS="--max-old-space-size=8192") if it isn't already provisioned.`,
       );
     }
-    // Load sequentially and drop the graph before the next one so only
-    // one full graph is resident at a time (memory-safe for big heaps).
-    const snapshot = await getFullHeapFromFile(local);
+    // Reuse a snapshot that is already resident rather than re-parsing it.
+    // Parsing a 250 MB capture costs tens of seconds, and the common call
+    // shape is a ladder whose rungs the caller already loaded to look at
+    // individually — so the expensive step was being paid twice for no
+    // difference in the result. Resident graphs are read-only here and the
+    // active handle is never changed.
+    const resident = findResidentByPath(local);
+    const residentSnapshot =
+      resident != null ? getSnapshotByHandle(resident.handle) : null;
+    if (residentSnapshot != null)
+      reusedHandles.push(resident?.fileName ?? local);
+    // Otherwise load sequentially and drop the graph before the next one so
+    // only one full graph is resident at a time (memory-safe for big heaps).
+    const snapshot = residentSnapshot ?? (await getFullHeapFromFile(local));
     const {hist, nodeCount, totalSize} = buildHistogram(snapshot);
     steps.push({
       label: fetchedFrom ?? p.replace(/^.*\//, ''),
@@ -259,7 +275,7 @@ export async function computeSequenceTrends(
     return b.netSize - a.netSize;
   });
 
-  return {steps, rows, keys};
+  return {steps, rows, keys, reusedHandles};
 }
 
 /**
@@ -347,11 +363,14 @@ export function registerSequenceAnalysis(server: McpServer): void {
     }) => {
       try {
         if (repeat_notes) resetEmittedNotes();
-        const {steps, rows, keys} = await computeSequenceTrends(paths, {
-          minGrowthCount: min_growth_count,
-          monotonicOnly: monotonic_only,
-          maxFileSizeMB: max_file_size_mb,
-        });
+        const {steps, rows, keys, reusedHandles} = await computeSequenceTrends(
+          paths,
+          {
+            minGrowthCount: min_growth_count,
+            monotonicOnly: monotonic_only,
+            maxFileSizeMB: max_file_size_mb,
+          },
+        );
 
         const n = steps.length;
         const first = steps[0].hist;
@@ -381,6 +400,12 @@ export function registerSequenceAnalysis(server: McpServer): void {
           formatBytes(s.totalSize),
         ]);
         lines.push(markdownTable(totalHeaders, totalRows, new Set([2, 3])));
+        if (reusedHandles.length > 0) {
+          lines.push(
+            '',
+            `_${reusedHandles.length} of ${n} rung(s) were served from a snapshot already resident in this session rather than re-parsed._`,
+          );
+        }
         const heapNet = steps[n - 1].totalSize - steps[0].totalSize;
         lines.push(
           '',

@@ -72,6 +72,10 @@ const GROUPS: Group[] = [
         'If this set were freed, how many bytes actually come back — dominator-deduped, no double counting.',
       ],
       [
+        'memlab_metric',
+        'Record a measurement under a name and keep it ACROSS sessions — the only way a number measured today survives to be compared next week.',
+      ],
+      [
         'memlab_unit_cost',
         'Retained bytes per instance, AVERAGE and MARGINAL — the number a cap, an LRU size or an eviction policy is sized against.',
       ],

@@ -245,15 +245,30 @@ export function estimateMaxLoadableMB(
  * Resolve the effective max-file-size limit (MB). An explicit caller value always
  * wins; otherwise default by source — Manifold-fetched server snapshots get the
  * higher ceiling, local files keep the tighter guard.
+ *
+ * Both defaults are floors, not constants. They were sized for a 2 GB default
+ * old-space; on a server started with more heap they refuse files it could
+ * comfortably parse, and the refusal reads like a property of the snapshot
+ * rather than of the server's configuration. A 1.13 GB local browser capture
+ * on an 8 GB server is the case that matters: the guard fired, and the
+ * remedy — repeat the call with an explicit max_file_size_mb — has to be
+ * rediscovered every time, on every subsequent load call in the session.
+ * The cap therefore scales with the configured old-space limit and never
+ * drops below the historical fixed value.
  */
+export const FILE_MB_PER_HEAP_MB = 0.25;
+
 export function resolveMaxFileSizeMB(
   explicit: number | undefined,
   fetchedFromManifold: boolean,
 ): number {
   if (explicit != null) return explicit;
-  return fetchedFromManifold
+  const floor = fetchedFromManifold
     ? MANIFOLD_FETCH_SIZE_LIMIT_MB
     : LOCAL_FILE_SIZE_LIMIT_MB;
+  const heapLimitMB = getOldSpaceLimitMB();
+  if (heapLimitMB <= 0) return floor;
+  return Math.max(floor, Math.round(heapLimitMB * FILE_MB_PER_HEAP_MB));
 }
 
 /**
@@ -543,7 +558,7 @@ export function registerLoadSnapshot(server: McpServer): void {
         .number()
         .optional()
         .describe(
-          `Maximum file size in MB to attempt loading. Defaults to ${LOCAL_FILE_SIZE_LIMIT_MB} for local files; for snapshots fetched from Manifold (a bare Nest snapshot filename or a manifold:// URL) it defaults to ${MANIFOLD_FETCH_SIZE_LIMIT_MB} — the analyzer's safe ceiling — since server captures routinely exceed ${LOCAL_FILE_SIZE_LIMIT_MB} MB. Pass an explicit value to override either default (e.g. raise it if your Node.js process has extra memory via --max-old-space-size). Snapshots larger than the effective limit return an error instead of risking an OOM crash.`,
+          `Maximum file size in MB to attempt loading. The default scales with the server's configured --max-old-space-size (≈${FILE_MB_PER_HEAP_MB}× the old-space MB), floored at ${LOCAL_FILE_SIZE_LIMIT_MB} for local files and ${MANIFOLD_FETCH_SIZE_LIMIT_MB} for Manifold-fetched server captures (a bare Nest snapshot filename or a manifold:// URL), which routinely exceed the local floor. So an 8 GB server accepts a ~${Math.round(8192 * FILE_MB_PER_HEAP_MB)} MB local file without an override. Pass an explicit value to raise or lower it. Snapshots larger than the effective limit return an error instead of risking an OOM crash.`,
         ),
       max_nodes: z
         .number()
