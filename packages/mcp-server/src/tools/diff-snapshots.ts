@@ -473,6 +473,37 @@ export function registerDiffSnapshots(server: McpServer): void {
           lines.push('');
         }
 
+        // On a minified bundle a class name is not an identity: `t`, `e`, `s`
+        // and `Object` cover most of the app, so a row saying "Object +18,431"
+        // names nothing a fix could target, and the reader has no signal that
+        // the table is uninformative rather than the heap being uninteresting.
+        const minifiedGrowers = grew.filter(
+          d => d.name === 'Object' || /^[A-Za-z]{1,2}$/.test(d.name),
+        );
+        const minifiedDelta = minifiedGrowers.reduce(
+          (a, d) => a + Math.abs(d.count_delta),
+          0,
+        );
+        const totalDelta = grew.reduce(
+          (a, d) => a + Math.abs(d.count_delta),
+          0,
+        );
+        // Trigger on either signal: a large share of the growth being nameless,
+        // or the single biggest grower being nameless. The second matters even
+        // at a small share, because the top row is what gets read and acted on.
+        const topIsNameless =
+          grew.length > 0 &&
+          (grew[0].name === 'Object' || /^[A-Za-z]{1,2}$/.test(grew[0].name));
+        if (
+          totalDelta > 0 &&
+          (minifiedDelta / totalDelta >= 0.3 || topIsNameless)
+        ) {
+          lines.push(
+            `> ⚠ **${((minifiedDelta / totalDelta) * 100).toFixed(0)}% of the growth is in classes whose name carries no information**${topIsNameless ? ', including the largest grower' : ''} (\`Object\` or a one-to-two-letter minified name). Those rows identify nothing a fix could target. Diff by property SHAPE instead — \`memlab_population_diff\` with \`group_by: "shape"\`, or \`memlab_shape_histogram\` on each snapshot — and \`memlab_identify\` to name a shape once you have one.`,
+            '',
+          );
+        }
+
         if (grew.length === 0 && shrunk.length === 0) {
           lines.push(
             'No significant differences found between the two snapshots.',

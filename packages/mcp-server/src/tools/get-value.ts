@@ -20,7 +20,7 @@ import {
   suggestionsSuppressed,
 } from '../utils.js';
 
-function decodeSmi(node: IHeapNode): number | null {
+export function decodeSmi(node: IHeapNode): number | null {
   // V8 stores Small Integers (SMIs) with the value encoded in the node ID.
   // SMI node IDs are odd numbers; the actual value is id >> 1.
   // SMI nodes have type "number" and name "smi number" with self_size 0.
@@ -37,7 +37,7 @@ function decodeSmi(node: IHeapNode): number | null {
   return null;
 }
 
-interface SmiCalibration {
+export interface SmiCalibration {
   checked: number;
   agreed: number;
   verdict: 'holds' | 'fails' | 'unknown';
@@ -51,7 +51,7 @@ interface SmiCalibration {
  * not, every decoded SMI in this snapshot is suspect and the tool should say so
  * instead of printing a number.
  */
-function calibrateSmiDecode(
+export function calibrateSmiDecode(
   snapshot: IHeapSnapshot,
   sampleSize = 25,
 ): SmiCalibration {

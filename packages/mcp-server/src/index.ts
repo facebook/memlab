@@ -98,10 +98,11 @@ import {registerWhatIf} from './tools/what-if.js';
 import {registerMetric} from './tools/metric.js';
 import {registerTraceAll} from './tools/trace-all.js';
 import {registerRetainerDiff} from './tools/retainer-diff.js';
+import {registerAppConfig} from './tools/app-config.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.56.0', // keep in sync with package.json
+  version: '2.57.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -188,6 +189,7 @@ registerWhatIf(server);
 registerMetric(server);
 registerTraceAll(server);
 registerRetainerDiff(server);
+registerAppConfig(server);
 
 async function main() {
   const transport = new StdioServerTransport();

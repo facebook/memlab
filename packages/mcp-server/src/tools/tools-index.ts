@@ -80,6 +80,10 @@ const GROUPS: Group[] = [
         'Did the population grow along the same retention path, or did a NEW owner appear? The question a count diff cannot answer.',
       ],
       [
+        'memlab_app_config',
+        'Read the feature flags the app was actually running with, out of the capture — "was the fix even enabled here?" without circular inference.',
+      ],
+      [
         'memlab_metric',
         'Record a measurement under a name and keep it ACROSS sessions — the only way a number measured today survives to be compared next week.',
       ],

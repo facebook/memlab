@@ -11,6 +11,9 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import {z} from 'zod';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import vm from 'node:vm';
 import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
@@ -289,6 +292,8 @@ export function registerEval(server: McpServer): void {
             'entries(nodeOrId)->[{key,value}] (generic Map/Set/WeakMap/Array/object walk, holes filtered), ' +
             'edgeTarget(nodeOrId, edgeName)->node|null, isRealDetached(node)->boolean (same filtering the tools apply internally), ' +
             'dominates(id, {population?, limit?})->{count,selfSize,ids,truncated}, ' +
+            'remember(name, value)/recall(name?) (persist ACROSS sessions), ' +
+            'sample(items, n) (deterministic, evenly spaced), ' +
             'owner(idOrNode, {maxHops?})->{id,name,type,hops,selfSize,named}|null, ' +
             'histogram(ids, keyFn, {limit?})->[{key,count}], ' +
             'pathBetween(fromId, toId, {maxNodes?})->{found,exhausted,path[]}, ' +
@@ -338,6 +343,36 @@ export function registerEval(server: McpServer): void {
  * code against several snapshots (see memlab_eval_across) with identical
  * sandbox semantics — one definition of the helper surface, not two.
  */
+/**
+ * Cross-session scratch for `helpers.remember` / `helpers.recall`. Kept beside
+ * the metric store (same MEMLAB_STATE_DIR) because it answers the same problem
+ * from the other end: `memlab_metric` persists a NUMBER worth quoting, this
+ * persists whatever an exploration derived on the way to it.
+ */
+function evalStorePath(): string {
+  const dir =
+    process.env.MEMLAB_STATE_DIR ?? path.join(os.homedir(), '.memlab');
+  return path.join(dir, 'eval-store.json');
+}
+
+function readEvalStore(): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(evalStorePath(), 'utf8'));
+    if (parsed != null && typeof parsed === 'object') {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // A missing or corrupt store must not fail the eval that is writing to it.
+  }
+  return {};
+}
+
+function writeEvalStore(store: Record<string, unknown>): void {
+  const file = evalStorePath();
+  fs.mkdirSync(path.dirname(file), {recursive: true});
+  fs.writeFileSync(file, JSON.stringify(store, null, 2));
+}
+
 export async function runEval({
   mode,
   code,
@@ -1135,6 +1170,34 @@ export async function runEval({
       }
       return entry.value;
     };
+    // Cross-SESSION persistence. `save`/`load` above are scoped to the current
+    // snapshot and dropped when it is unloaded, which is right for an id list
+    // (ids are per-capture) and wrong for a derived fact — a decoded cap, a
+    // per-entry cost, a conclusion. Those are what a later session needs and
+    // the only thing that can meaningfully outlive the heap they came from.
+    const remember = <T>(name: string, value: T): T => {
+      writeEvalStore({...readEvalStore(), [name]: value});
+      return value;
+    };
+    const recall = (name?: string): unknown => {
+      const store = readEvalStore();
+      return name == null ? Object.keys(store) : store[name];
+    };
+
+    // Evenly-spaced sampling, not random: two calls over the same population
+    // return the same members, so a follow-up question lands on the objects
+    // the first answer described. Math.random() here would silently make
+    // every re-run a different measurement.
+    const sample = <T>(items: Iterable<T>, n: number): T[] => {
+      const arr = Array.isArray(items) ? (items as T[]) : [...items];
+      if (n <= 0 || arr.length === 0) return [];
+      if (arr.length <= n) return arr.slice();
+      const step = arr.length / n;
+      const out: T[] = [];
+      for (let i = 0; i < n; i++) out.push(arr[Math.floor(i * step)]);
+      return out;
+    };
+
     const listSaved = (): Array<{name: string; handle: string}> =>
       listSavedResults();
 
@@ -1230,6 +1293,9 @@ export async function runEval({
       save,
       load,
       listSaved,
+      remember,
+      recall,
+      sample,
     };
 
     const sandbox = {
@@ -1474,6 +1540,8 @@ function describeEnv(): string {
     '- `helpers.isRealDetached(node) -> boolean` — the oddball/root filtering the detached-DOM tools apply internally, so hand-written eval counts the same set they do.',
     '- `helpers.dominates(id, {population?, limit?}) -> {count, selfSize, ids, truncated}` — what this node actually owns (bounded 500-hop dominator walk). `population` is a predicate over nodes.',
     '- `helpers.owner(idOrNode, {maxHops?}) -> {id, name, type, hops, selfSize, named} | null` — nearest dominator carrying a class identity, skipping V8 containers (`Object`, `Array`, `system / …`, `(closure)`). Minified single-letter names are KEPT: in a production bundle they are the only identity there is — pair with `memlab_identify`. `named:false` means the walk found only containers and is reporting the furthest node reached.',
+    '- `helpers.remember(name, value)` / `helpers.recall(name?)` — persist a derived fact to disk (`~/.memlab/eval-store.json`, override with `MEMLAB_STATE_DIR`) and read it back in a LATER session. `save`/`load` are per-snapshot and dropped on unload, which is right for id lists (ids are per-capture) and wrong for a conclusion. `recall()` with no name lists the keys.',
+    '- `helpers.sample(items, n) -> items[]` — evenly-spaced sample, NOT random: two calls over the same population return the same members, so a follow-up question lands on the objects the first answer described.',
     '- `helpers.histogram(ids, keyFn, {limit?}) -> [{key, count}]` — group-and-count over ids, sorted by count; a null/undefined key becomes `(none)` rather than being dropped.',
     '- `helpers.pathBetween(fromId, toId, {maxNodes?}) -> {found, exhausted, path[]}` — BFS over outgoing edges; `exhausted:true` means the budget ran out, which is NOT the same as "no path".',
     '- `helpers.save(name, value)` / `helpers.load(name, {allowCrossSnapshot?})` / `helpers.listSaved()` — named result sets, SESSION-scoped: they survive loading another snapshot, which is what makes a baseline-vs-final comparison possible. The snapshot each was saved against is recorded, and a cross-snapshot read is refused unless you opt in — node ids are per-capture and mean nothing in another snapshot.',

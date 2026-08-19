@@ -48,9 +48,42 @@ function matchesShape(node: IHeapNode, shape: string[]): boolean {
 
 function measure(
   snapshot: IHeapSnapshot,
-  opts: {className?: string; shape?: string[]},
+  opts: {className?: string; shape?: string[]; containerId?: number},
 ): Population {
   const ids: number[] = [];
+  // Sizing a cap needs the per-entry cost of THAT cache, not of a class that
+  // happens to include its entries alongside thousands of unrelated objects.
+  // The entries of one container are the population the cap actually bounds.
+  if (opts.containerId != null) {
+    const container = snapshot.getNodeById(opts.containerId);
+    if (container == null) return {count: 0, retained: 0, exact: true};
+    const seen = new Set<number>();
+    for (const edge of container.references) {
+      if (edge.type !== 'element' && edge.type !== 'property') continue;
+      const name = String(edge.name_or_index);
+      // Structural properties are not entries; counting them inflates the
+      // denominator and understates the per-entry cost.
+      if (
+        edge.type === 'property' &&
+        (name === 'length' ||
+          name === 'size' ||
+          name === '__proto__' ||
+          name.startsWith('_'))
+      ) {
+        continue;
+      }
+      const target = edge.toNode;
+      if (target.id <= 3 || seen.has(target.id)) continue;
+      seen.add(target.id);
+      ids.push(target.id);
+    }
+    if (ids.length === 0) return {count: 0, retained: 0, exact: true};
+    const {retained, exact} = boundedDominatorRetainedSize(
+      new NumericSet(ids),
+      snapshot,
+    );
+    return {count: ids.length, retained, exact};
+  }
   snapshot.nodes.forEach(node => {
     if (node.id <= 3) return;
     if (opts.className != null) {
@@ -101,6 +134,12 @@ export function registerUnitCost(server: McpServer): void {
         .describe(
           'Earlier snapshot. When given, the marginal cost is (retained_now − retained_baseline) / (count_now − count_baseline) — what one MORE instance costs, which is the number a cap or eviction policy is sized against.',
         ),
+      container_id: z
+        .number()
+        .optional()
+        .describe(
+          'Measure the ENTRIES of this container (a Map, Set, Array or plain-object cache from memlab_cache_analysis) instead of a class or shape. This is the population an LRU cap actually bounds, so it is the right denominator when sizing one — a class-wide average mixes in instances the cache does not hold. Structural properties (length, size, _-prefixed) are excluded from the entry count.',
+        ),
       project_caps: z
         .array(z.number())
         .optional()
@@ -108,12 +147,23 @@ export function registerUnitCost(server: McpServer): void {
           'Instance counts to project retained size for, e.g. [100, 500, 2000] when choosing a cache cap. Uses the marginal cost when available, otherwise the average (and says which).',
         ),
     },
-    async ({class_name, shape, handle, baseline_handle, project_caps}) => {
+    async ({
+      class_name,
+      shape,
+      container_id,
+      handle,
+      baseline_handle,
+      project_caps,
+    }) => {
       try {
-        if (class_name == null && (shape == null || shape.length === 0)) {
+        if (
+          container_id == null &&
+          class_name == null &&
+          (shape == null || shape.length === 0)
+        ) {
           return errorResult(
             new Error(
-              'Pass class_name or shape. On a minified heap prefer shape — class names like "t"/"e" match thousands of unrelated objects.',
+              'Pass class_name, shape or container_id. On a minified heap prefer shape — class names like "t"/"e" match thousands of unrelated objects — and prefer container_id when sizing a cap for one specific cache.',
             ),
           );
         }
@@ -130,10 +180,21 @@ export function registerUnitCost(server: McpServer): void {
         }
         const targetLabel = handle ?? getCurrentHandle() ?? '(active)';
 
-        const now = measure(target, {className: class_name, shape});
+        if (container_id != null && baseline_handle != null) {
+          return errorResult(
+            new Error(
+              'container_id cannot be combined with baseline_handle: node ids are per-capture, so the same id in the baseline is a different object (or nothing) and the marginal cost would be computed from two unrelated populations. Select the container in each snapshot separately, or use a shape.',
+            ),
+          );
+        }
+        const now = measure(target, {
+          className: class_name,
+          shape,
+          containerId: container_id,
+        });
         if (now.count === 0) {
           return toolResult(
-            `No instances found for ${class_name != null ? `class \`${class_name}\`` : `shape {${(shape ?? []).join(', ')}}`} in \`${targetLabel}\`. ` +
+            `No instances found for ${container_id != null ? `the entries of @${container_id}` : class_name != null ? `class \`${class_name}\`` : `shape {${(shape ?? []).join(', ')}}`} in \`${targetLabel}\`. ` +
               'For a class, check the exact name with memlab_class_histogram; for a shape, with memlab_shape_histogram.',
           );
         }
@@ -150,16 +211,27 @@ export function registerUnitCost(server: McpServer): void {
               ),
             );
           }
-          base = measure(baseSnapshot, {className: class_name, shape});
+          base = measure(baseSnapshot, {
+            className: class_name,
+            shape,
+            // Node ids are per-capture, so a container selected by id in one
+            // snapshot is a different object (or nothing) in another. Refusing
+            // is the only honest option; silently measuring whatever holds
+            // that id in the baseline would produce a marginal cost computed
+            // from two unrelated populations.
+            containerId: undefined,
+          });
           const dCount = now.count - base.count;
           const dBytes = now.retained - base.retained;
           if (dCount > 0) marginal = dBytes / dCount;
         }
 
         const label =
-          class_name != null
-            ? `class \`${class_name}\``
-            : `shape \`{${(shape ?? []).join(', ')}}\``;
+          container_id != null
+            ? `entries of @${container_id}`
+            : class_name != null
+              ? `class \`${class_name}\``
+              : `shape \`{${(shape ?? []).join(', ')}}\``;
         const lines: string[] = [
           `## Unit cost — ${label}`,
           '',
