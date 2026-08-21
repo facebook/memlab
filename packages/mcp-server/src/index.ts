@@ -71,6 +71,9 @@ import {registerGrowthSignals} from './tools/growth-signals.js';
 import {registerServerStatus} from './tools/server-status.js';
 import {registerDevArtifacts} from './tools/dev-artifacts.js';
 import {registerSequenceAnalysis} from './tools/sequence-analysis.js';
+import {registerLadderProbe} from './tools/ladder-probe.js';
+import {registerCensusDiff} from './tools/census-diff.js';
+import {registerArtifactBudget} from './tools/artifact-budget.js';
 import {registerLeakReport} from './tools/leak-report.js';
 import {registerMatchObject} from './tools/match-object.js';
 import {registerExplainDelta} from './tools/explain-delta.js';
@@ -104,7 +107,7 @@ import {registerNextMeasurement} from './tools/next-measurement.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.58.0', // keep in sync with package.json
+  version: '2.59.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -164,6 +167,9 @@ registerGrowthSignals(server);
 registerServerStatus(server);
 registerDevArtifacts(server);
 registerSequenceAnalysis(server);
+registerLadderProbe(server);
+registerCensusDiff(server);
+registerArtifactBudget(server);
 registerLeakReport(server);
 registerMatchObject(server);
 registerExplainDelta(server);

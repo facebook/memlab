@@ -42,11 +42,39 @@ import {
  * it is written by default on every round, and anything requiring a backend
  * would not be. It is seeded from prior runs' manifests.
  */
-const INDEX_PATH = path.join(
-  process.env.HOME ?? '/tmp',
-  '.memlab-mcp',
-  'findings.json',
-);
+
+/**
+ * Where the index lives, most specific wins.
+ *
+ * The default is a per-machine home directory, and that default is the reason
+ * the tool has already produced a wrong verdict: an index with no history
+ * answers `check` with **NEW** for a finding that is fully documented and
+ * already has a fix diff. A home-dir file cannot be shared, does not survive a
+ * host change, and is empty on every new devserver — so the failure recurs for
+ * every operator rather than once.
+ *
+ * `MEMLAB_FINDINGS_INDEX` therefore points at a checked-in, shared file, and
+ * `workstream` scopes several of them side by side. The home-dir path is kept as
+ * the fallback so nothing that already works breaks.
+ */
+export function resolveIndexPath(workstream?: string): string {
+  const override = process.env.MEMLAB_FINDINGS_INDEX;
+  if (override != null && override !== '') {
+    if (workstream == null || workstream === '') return override;
+    // Treat the override as a directory when a workstream is named, so one
+    // shared location can hold several workstreams without collision.
+    return override.endsWith('.json')
+      ? override.replace(/\.json$/, `.${workstream}.json`)
+      : path.join(override, `findings.${workstream}.json`);
+  }
+  const base = path.join(process.env.HOME ?? '/tmp', '.memlab-mcp');
+  return path.join(
+    base,
+    workstream != null && workstream !== ''
+      ? `findings.${workstream}.json`
+      : 'findings.json',
+  );
+}
 
 interface Finding {
   fingerprint: string;
@@ -66,10 +94,10 @@ interface FindingIndex {
   combos_driven: Record<string, string[]>;
 }
 
-function loadIndex(): FindingIndex {
+function loadIndex(indexPath: string): FindingIndex {
   try {
-    if (fs.existsSync(INDEX_PATH)) {
-      const parsed: unknown = JSON.parse(fs.readFileSync(INDEX_PATH, 'utf8'));
+    if (fs.existsSync(indexPath)) {
+      const parsed: unknown = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
       if (parsed != null && typeof parsed === 'object') {
         const idx = parsed as Partial<FindingIndex>;
         return {
@@ -85,8 +113,8 @@ function loadIndex(): FindingIndex {
     // the file wholesale and every prior fingerprint is gone, which defeats the
     // one thing this tool exists to do. Preserve it for recovery first.
     try {
-      if (fs.existsSync(INDEX_PATH)) {
-        fs.renameSync(INDEX_PATH, `${INDEX_PATH}.corrupt`);
+      if (fs.existsSync(indexPath)) {
+        fs.renameSync(indexPath, `${indexPath}.corrupt`);
       }
     } catch {
       // Best effort; a failed rename must not block the hunt either.
@@ -95,9 +123,69 @@ function loadIndex(): FindingIndex {
   return {version: 1, findings: {}, combos_driven: {}};
 }
 
-function saveIndex(idx: FindingIndex): void {
-  fs.mkdirSync(path.dirname(INDEX_PATH), {recursive: true});
-  fs.writeFileSync(INDEX_PATH, JSON.stringify(idx, null, 2));
+function saveIndex(indexPath: string, idx: FindingIndex): void {
+  fs.mkdirSync(path.dirname(indexPath), {recursive: true});
+  fs.writeFileSync(indexPath, JSON.stringify(idx, null, 2));
+}
+
+/**
+ * Findings accepted by `action: "import"`.
+ *
+ * Loose on purpose: the source is a hand-maintained team document or a previous
+ * round's notes, and rejecting a row for a missing optional field would mean the
+ * bootstrap does not happen at all — which is the status quo this fixes.
+ */
+const IMPORTED_FINDING_SCHEMA = z.object({
+  retainer_path: z.string().optional(),
+  signature: z.string().optional(),
+  growing_classes: z.array(z.string()).optional(),
+  round: z.string().optional(),
+  status: z.enum(['new', 'known', 'fixed']).optional(),
+  fixed_behind: z.string().optional(),
+  note: z.string().optional(),
+});
+
+type ImportedFinding = z.infer<typeof IMPORTED_FINDING_SCHEMA>;
+
+export function importFindings(
+  index: FindingIndex,
+  incoming: ImportedFinding[],
+): {imported: number; updated: number; skipped: string[]} {
+  let imported = 0;
+  let updated = 0;
+  const skipped: string[] = [];
+
+  incoming.forEach((raw, i) => {
+    const source = raw.retainer_path ?? raw.signature;
+    if (source == null || source === '') {
+      skipped.push(`entry ${i}: neither retainer_path nor signature`);
+      return;
+    }
+    // A `signature` is already normalized by definition; normalizing again is a
+    // no-op on well-formed input and repairs a hand-written one.
+    const signature = normalizeRetainerPath(source);
+    const classes = raw.growing_classes ?? [];
+    const fingerprint = fingerprintOf(signature, classes);
+    const existing = index.findings[fingerprint];
+    const round = raw.round ?? 'imported';
+    index.findings[fingerprint] = {
+      fingerprint,
+      signature,
+      growing_classes: classes,
+      first_seen_round: existing?.first_seen_round ?? round,
+      last_seen_round: round,
+      status: raw.status ?? existing?.status ?? 'known',
+      fixed_behind: raw.fixed_behind ?? existing?.fixed_behind,
+      note: raw.note ?? existing?.note,
+      // An import is history, not a sighting: it must not inflate seen_count
+      // for a finding this operator has never actually observed.
+      seen_count: existing?.seen_count ?? 1,
+    };
+    if (existing) updated++;
+    else imported++;
+  });
+
+  return {imported, updated, skipped};
 }
 
 /**
@@ -136,12 +224,13 @@ export function registerFindingIndex(server: McpServer): void {
     'memlab_finding_index',
     'Fingerprint a leak finding by its retainer path and check it against findings from previous rounds, so a hunt does not spend itself re-discovering a known or already-fixed leak. ' +
       'This is the highest-cost failure a leak hunt has: a measured round produced three findings that were all already known — two already fixed behind gates — which is an entire round spent re-deriving history. Class names cannot detect that (`Object` and `Array` top every heap); the retainer PATH can, so the fingerprint is a normalized path signature with node ids, array indices and per-capture scope ids stripped. ' +
-      'Actions: "check" fingerprints a candidate and reports NEW / KNOWN / KNOWN-AND-FIXED; "record" adds it; "list" prints the index; "cover" records which combos a round drove, so the "do not repeat covered combos" rule stops depending on someone remembering. Stored in ~/.memlab-mcp/findings.json.',
+      'Actions: "check" fingerprints a candidate and reports NEW / KNOWN / KNOWN-AND-FIXED; "record" adds it; "import" bootstraps history in bulk from a team doc or a JSON file; "list" prints the index; "cover" records which combos a round drove, so the "do not repeat covered combos" rule stops depending on someone remembering.\n\n' +
+      'IMPORTANT: a verdict of NEW is only as good as the index behind it. An empty index answers NEW for everything, including findings that are documented and already fixed — so seed it with `action: "import"` before trusting the first `check` of a workstream. Set `MEMLAB_FINDINGS_INDEX` to a checked-in path to share the index across hosts and operators instead of keeping it in a per-machine home directory.',
     {
       action: z
-        .enum(['check', 'record', 'list', 'cover'])
+        .enum(['check', 'record', 'list', 'cover', 'import'])
         .describe(
-          '"check" (fingerprint + look up, no write), "record" (add/update), "list", "cover" (log combos driven in a round).',
+          '"check" (fingerprint + look up, no write), "record" (add/update), "import" (bulk-seed history), "list", "cover" (log combos driven in a round).',
         ),
       retainer_path: z
         .string()
@@ -180,6 +269,24 @@ export function registerFindingIndex(server: McpServer): void {
         .optional()
         .default([])
         .describe('For action "cover": combo names driven in this round.'),
+      workstream: z
+        .string()
+        .optional()
+        .describe(
+          'Scopes the index file, so one shared location can hold several hunts side by side (e.g. "wa-web"). Omit to use the unscoped index.',
+        ),
+      from: z
+        .string()
+        .optional()
+        .describe(
+          'For action "import": path to a JSON file holding either an array of findings or {findings: [...]}. Each entry needs retainer_path (or signature) and may carry growing_classes, round, status, fixed_behind, note.',
+        ),
+      findings: z
+        .array(IMPORTED_FINDING_SCHEMA)
+        .optional()
+        .describe(
+          'For action "import": findings passed inline, for seeding straight from a team doc without writing a file first.',
+        ),
     },
     async ({
       action,
@@ -190,17 +297,83 @@ export function registerFindingIndex(server: McpServer): void {
       fixed_behind,
       note,
       combos,
+      workstream,
+      from,
+      findings,
     }) => {
       try {
-        const index = loadIndex();
+        const indexPath = resolveIndexPath(workstream);
+        const index = loadIndex(indexPath);
+
+        if (action === 'import') {
+          const incoming: ImportedFinding[] = [...(findings ?? [])];
+          const fileErrors: string[] = [];
+          if (from != null && from !== '') {
+            if (!fs.existsSync(from)) {
+              return errorResult(`import source not found: ${from}`);
+            }
+            const parsed: unknown = JSON.parse(fs.readFileSync(from, 'utf8'));
+            const fromFile = Array.isArray(parsed)
+              ? parsed
+              : ((parsed as {findings?: unknown[]})?.findings ?? null);
+            if (!Array.isArray(fromFile)) {
+              return errorResult(
+                `${from} must hold a JSON array of findings, or an object with a "findings" array.`,
+              );
+            }
+            // Validate each row with the SAME schema the inline `findings`
+            // argument gets. A bare `as ImportedFinding[]` here let a row whose
+            // `growing_classes` is a string reach `fingerprintOf`, which sorts
+            // and joins it — producing a fingerprint no real `check` can ever
+            // match, and silently defeating the seeding this action exists for.
+            // A malformed row is reported as skipped, never cast through.
+            fromFile.forEach((row, i) => {
+              const parsedRow = IMPORTED_FINDING_SCHEMA.safeParse(row);
+              if (parsedRow.success) {
+                incoming.push(parsedRow.data);
+              } else {
+                fileErrors.push(
+                  `${from} entry ${i}: ${parsedRow.error.issues
+                    .map(
+                      issue =>
+                        `${issue.path.join('.') || '(root)'} ${issue.message}`,
+                    )
+                    .join('; ')}`,
+                );
+              }
+            });
+          }
+          if (incoming.length === 0) {
+            return errorResult(
+              'action "import" needs `findings` (inline) or `from` (a JSON file path).',
+            );
+          }
+          const {imported, updated, skipped} = importFindings(index, incoming);
+          skipped.unshift(...fileErrors);
+          saveIndex(indexPath, index);
+          return toolResult(
+            [
+              `Imported **${imported} new** and updated **${updated}** finding(s) into \`${indexPath}\`; ` +
+                `the index now holds ${formatNumber(Object.keys(index.findings).length)}.`,
+              skipped.length > 0
+                ? `\nSkipped ${skipped.length}:\n${skipped.map(s => `- ${s}`).join('\n')}`
+                : '',
+              '\n`check` verdicts of NEW are now meaningful for anything this history covers. ' +
+                'Imported entries carry `seen_count: 1` — they are history, not sightings by this operator.',
+            ]
+              .filter(Boolean)
+              .join('\n'),
+          );
+        }
 
         if (action === 'list') {
           const all = Object.values(index.findings);
           if (all.length === 0) {
             return toolResult(
-              'The findings index is empty. Record findings as you confirm them ' +
-                '(`action: "record"`); the value is entirely in future rounds being ' +
-                'able to recognize them.',
+              `The findings index at \`${indexPath}\` is **empty**, so every \`check\` in this ` +
+                'session will answer NEW — including for findings that are already documented ' +
+                'and already fixed. Seed it first with `action: "import"` from the workstream\'s ' +
+                'history, then record findings as you confirm them (`action: "record"`).',
             );
           }
           const rows = all
@@ -229,7 +402,7 @@ export function registerFindingIndex(server: McpServer): void {
             .map(([r, c]) => `${r}: ${c.join(', ')}`);
           return toolResult(
             [
-              `## Findings index (${formatNumber(all.length)})`,
+              `## Findings index (${formatNumber(all.length)}) — \`${indexPath}\``,
               '',
               markdownTable(
                 [
@@ -252,7 +425,7 @@ export function registerFindingIndex(server: McpServer): void {
         if (action === 'cover') {
           if (!round) return errorResult('action "cover" requires a round.');
           index.combos_driven[round] = combos;
-          saveIndex(index);
+          saveIndex(indexPath, index);
           return toolResult(
             `Recorded ${combos.length} combo(s) driven in ${round}: ${combos.join(', ') || '(none)'}.`,
           );
@@ -267,14 +440,30 @@ export function registerFindingIndex(server: McpServer): void {
 
         if (action === 'check') {
           if (!existing) {
+            // The single most damaging thing this tool can do is answer NEW from
+            // an index that has never been seeded — the verdict looks identical
+            // to a real one, and it has already sent a round off to re-derive a
+            // documented, already-fixed finding. Say so at the point of use.
+            const indexSize = Object.keys(index.findings).length;
+            const unreliable =
+              indexSize === 0
+                ? [
+                    '',
+                    `> ⚠️ **The index at \`${indexPath}\` is EMPTY, so this verdict carries no information.** ` +
+                      'Every candidate reads as NEW. Seed the workstream history with ' +
+                      '`action: "import"` before treating a NEW here as evidence of anything.',
+                  ]
+                : [];
             return toolResult(
               [
                 `## NEW finding — fingerprint \`${fingerprint}\``,
                 '',
                 `Signature: \`${signature}\``,
+                ...unreliable,
                 '',
-                'No previous round recorded this retainer path with this class set. ' +
-                  'Confirm it, then `action: "record"` so the next round recognizes it.',
+                `No previous round in this index (${formatNumber(indexSize)} finding(s)) recorded this ` +
+                  'retainer path with this class set. Confirm it, then `action: "record"` so the next ' +
+                  'round recognizes it.',
               ].join('\n'),
             );
           }
@@ -312,7 +501,7 @@ export function registerFindingIndex(server: McpServer): void {
           note: note ?? existing?.note,
           seen_count: (existing?.seen_count ?? 0) + 1,
         };
-        saveIndex(index);
+        saveIndex(indexPath, index);
         return toolResult(
           `Recorded \`${fingerprint}\` as **${status}**${fixed_behind ? ` (behind \`${fixed_behind}\`)` : ''} for round ${roundId}. ` +
             `Signature: \`${signature}\`. The index now holds ${formatNumber(Object.keys(index.findings).length)} finding(s).`,

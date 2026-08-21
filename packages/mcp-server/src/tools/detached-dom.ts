@@ -34,7 +34,7 @@ import {
   summarizeDevRoots,
 } from './dev-artifacts.js';
 
-function isDetachedDOMNode(node: IHeapNode): boolean {
+export function isDetachedDOMNode(node: IHeapNode): boolean {
   if (node.id <= 3) return false;
   if (node.is_detached) return true;
   return node.name.startsWith('Detached ');
@@ -47,7 +47,7 @@ function isDetachedDOMNode(node: IHeapNode): boolean {
 // leak total. This distinguishes the "which half is real" problem where a
 // snapshot's detached-node list mixes genuinely-pinned nodes with transient
 // ones. `hasPathEdge` is the same reachability signal used to walk retainers.
-function isPinned(node: IHeapNode): boolean {
+export function isPinned(node: IHeapNode): boolean {
   return Boolean(node.hasPathEdge);
 }
 
@@ -94,7 +94,7 @@ function formatReachabilitySplit(
   ];
 }
 
-function extractElementTag(name: string): string {
+export function extractElementTag(name: string): string {
   // V8 names detached DOM as "Detached <div>" or "Detached <div class="...">"
   const match = name.match(/^(?:Detached\s+)?<(\w+)/);
   return match ? match[1] : name;

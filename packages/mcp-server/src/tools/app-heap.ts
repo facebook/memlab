@@ -8,7 +8,6 @@
  * @oncall memory_lab
  */
 
-import type {IHeapNode} from '@memlab/core';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
@@ -19,11 +18,7 @@ import {
   errorResult,
   toolResult,
 } from '../utils.js';
-import {classifyArtifact} from '../artifact-classes.js';
-import {
-  collectDevRoots,
-  computeReachableWithoutDevRoots,
-} from './dev-artifacts.js';
+import {computeHeapBudget} from '../heap-budget.js';
 
 /**
  * How much of this heap is actually the APPLICATION?
@@ -39,14 +34,10 @@ import {
  * The split below is deliberately coarse and named, not a single magic number:
  * a reader has to be able to see WHICH bucket dominates, because that is what
  * decides whether the capture is usable at all.
+ *
+ * The partition itself lives in `heap-budget.ts`, shared with
+ * `memlab_artifact_budget` so the two cannot report different splits.
  */
-const CODE_TYPES: ReadonlySet<string> = new Set(['code']);
-
-// Bundle source text and the V8 structures that hold it. These exist because
-// the app was *loaded*, not because it did anything.
-const BUNDLE_NAME_RE =
-  /ExternalStringData|InstructionStream|BytecodeArray|SharedFunctionInfo|ScopeInfo|UncompiledData|FeedbackVector|FeedbackMetadata|FeedbackCell|ClosureFeedbackCellArray|\(constant pool\)|ConstantPool/;
-
 export function registerAppHeap(server: McpServer): void {
   server.tool(
     'memlab_app_heap',
@@ -67,48 +58,8 @@ export function registerAppHeap(server: McpServer): void {
         const snapshot = getSnapshot();
         const meta = getSnapshotMetadata();
 
-        const devRoots = collectDevRoots(snapshot);
-        const reached =
-          devRoots.byId.size > 0
-            ? computeReachableWithoutDevRoots(snapshot, devRoots)
-            : null;
-
-        let total = 0;
-        let code = 0;
-        let bundle = 0;
-        let devOnly = 0;
-        let artifact = 0;
-        let app = 0;
-        let appNodes = 0;
-
-        const isDevOnly = (node: IHeapNode): boolean =>
-          reached != null && reached[node.nodeIndex] === 0;
-
-        snapshot.nodes.forEach(node => {
-          if (node.id <= 3) return;
-          const size = node.self_size;
-          total += size;
-          // Precedence matters: a node is counted once, in the most specific
-          // bucket that explains why it is NOT app memory.
-          if (isDevOnly(node)) {
-            devOnly += size;
-            return;
-          }
-          if (CODE_TYPES.has(node.type)) {
-            code += size;
-            return;
-          }
-          if (BUNDLE_NAME_RE.test(node.name)) {
-            bundle += size;
-            return;
-          }
-          if (classifyArtifact(node.name) != null) {
-            artifact += size;
-            return;
-          }
-          app += size;
-          appNodes++;
-        });
+        const {total, app, appNodes, bundle, code, devOnly, artifact} =
+          computeHeapBudget(snapshot);
 
         const pct = (n: number): string =>
           total > 0 ? `${((n / total) * 100).toFixed(1)}%` : '—';
