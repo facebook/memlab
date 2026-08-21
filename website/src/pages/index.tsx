@@ -176,7 +176,7 @@ const features: FeatureItem[] = [
   },
   {
     title: 'MCP server for AI agents',
-    docUrl: 'docs/cli/CLI-commands',
+    docUrl: 'docs/mcp-server',
     icon: (
       <Icon>
         <rect height="11" rx="2.5" width="16" x="4" y="8" />

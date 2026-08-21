@@ -30,6 +30,7 @@ const sidebars = {
     'installation',
     'getting-started',
     'cli/CLI-commands',
+    'mcp-server',
     {
       type: 'category',
       label: 'Guides',
