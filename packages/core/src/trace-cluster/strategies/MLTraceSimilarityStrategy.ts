@@ -33,8 +33,13 @@ export default class MLTraceSimilarityStrategy implements IClusterStrategy {
       if (!map.has(repTrace)) {
         map.set(repTrace, [repTrace]);
       }
-      // to please linter
-      map.get(repTrace)?.push(trace);
+      // the representative trace is already seeded at index 0, and exactly one
+      // trace per cluster satisfies `result[i] === i`; without this guard that
+      // trace is added twice, inflating the cluster size by one
+      if (trace !== repTrace) {
+        // to please linter
+        map.get(repTrace)?.push(trace);
+      }
     }
 
     return {
