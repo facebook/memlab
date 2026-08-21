@@ -21,6 +21,7 @@ const Showcase = () => {
   const showcase = users.map((user, i) => {
     return (
       <Logo
+        key={user.caption}
         i={i}
         infoUrl={user.infoUrl}
         imageUrl={user.imageUrl}
@@ -30,22 +31,13 @@ const Showcase = () => {
   });
 
   return (
-    <section className={classnames('text--center', styles.showcase)}>
-      <h2
-        className={classnames(
-          'showcaseHeading',
-          styles.showcaseHeadingColored,
-        )}>
-        Who's using memlab?
-      </h2>
+    <section className={styles.showcase}>
+      <h2 className={styles.showcaseHeading}>Finding leaks in production at</h2>
       <div className={styles.showcaseLogos}>{showcase}</div>
       {siteConfig.customFields.showAddLogoButton && (
-        <div className="more-users">
+        <div className={styles.showcaseButton}>
           <Link
-            className={classnames(
-              'button button--primary button--outline',
-              styles.button,
-            )}
+            className={classnames('button button--outline button--primary')}
             href="https://github.com/facebook/memlab/edit/main/website/docusaurus.config.js">
             Add your company/project here
           </Link>

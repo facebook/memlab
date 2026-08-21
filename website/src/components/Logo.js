@@ -12,10 +12,14 @@ import styles from '../pages/styles.module.css';
 import useBaseUrl from '@docusaurus/useBaseUrl';
 import React from 'react';
 
-const Logo = ({caption, i, imageUrl, infoUrl}) => {
+const Logo = ({caption, imageUrl, infoUrl}) => {
   return (
-    <a key={i} className={styles.showcaseLogo} href={infoUrl}>
-      <img src={useBaseUrl(imageUrl)} title={caption} />
+    <a
+      className={styles.showcaseLogo}
+      href={infoUrl}
+      rel="noreferrer noopener"
+      target="_blank">
+      <img alt={caption} src={useBaseUrl(imageUrl)} title={caption} />
     </a>
   );
 };

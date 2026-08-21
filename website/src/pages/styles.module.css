@@ -13,81 +13,855 @@
  * and scoped locally.
  */
 
-.heroBanner {
+.main {
+  --ml-yellow: #f0db4f;
+  --ml-cyan: #4fd1e0;
+  --ml-ink: #0a0c11;
+  --ml-surface: #ffffff;
+  --ml-border: rgba(15, 23, 42, 0.1);
+  --ml-muted: rgba(23, 37, 49, 0.72);
+  --ml-radius: 16px;
+}
+
+[data-theme='dark'] .main {
+  --ml-surface: #14171f;
+  --ml-border: rgba(255, 255, 255, 0.1);
+  --ml-muted: rgba(235, 240, 245, 0.7);
+}
+
+/* ---------------------------------------------------------------- hero -- */
+
+.hero {
+  background:
+    radial-gradient(
+      900px 420px at 12% -10%,
+      rgba(240, 219, 79, 0.18),
+      transparent 60%
+    ),
+    radial-gradient(
+      760px 420px at 88% 8%,
+      rgba(50, 172, 205, 0.22),
+      transparent 60%
+    ),
+    var(--ml-ink, #0a0c11);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e8edf5;
   overflow: hidden;
-  padding: 4rem 0;
+  padding: 5.5rem 1.5rem 4.5rem;
   position: relative;
+}
+
+.hero > canvas {
+  inset: 0;
+  opacity: 0.55;
+  position: absolute;
+  z-index: 0;
+}
+
+/* faint grid + vignette layered over the animated node graph */
+.heroOverlay {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 64px 64px;
+  inset: 0;
+  mask-image: radial-gradient(circle at 50% 30%, #000 10%, transparent 78%);
+  -webkit-mask-image: radial-gradient(
+    circle at 50% 30%,
+    #000 10%,
+    transparent 78%
+  );
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+}
+
+.heroInner {
+  align-items: center;
+  display: grid;
+  gap: 3rem;
+  grid-template-columns: 1fr;
+  margin: 0 auto;
+  max-width: 1360px;
+  position: relative;
+  z-index: 2;
+}
+
+.heroCopy {
   text-align: center;
 }
 
-@media screen and (max-width: 996px) {
-  .heroBanner {
-    padding: 2rem;
-  }
+.heroBadge {
+  align-items: center;
+  backdrop-filter: blur(6px);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  color: rgba(232, 237, 245, 0.86);
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 500;
+  gap: 0.5rem;
+  letter-spacing: 0.01em;
+  padding: 0.4rem 0.9rem;
+  text-decoration: none;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
 }
 
-.buttons {
+.heroBadge:hover {
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(240, 219, 79, 0.45);
+  color: #fff;
+  text-decoration: none;
+}
+
+.heroBadgeDot {
+  background: var(--ml-yellow, #f0db4f);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(240, 219, 79, 0.18);
+  height: 7px;
+  width: 7px;
+}
+
+.heroBadgeArrow {
+  opacity: 0.6;
+}
+
+.heroTitle {
+  font-size: clamp(2.35rem, 6.2vw, 4.1rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+  margin: 1.5rem 0 0;
+}
+
+.gradientText {
+  background: linear-gradient(96deg, #f7df1e 8%, #8be7ff 92%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.heroSubtitle {
+  color: rgba(226, 234, 244, 0.74);
+  font-size: clamp(1rem, 1.6vw, 1.2rem);
+  line-height: 1.6;
+  margin: 1.1rem auto 0;
+  max-width: 34rem;
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  justify-content: center;
+  margin-top: 2rem;
+}
+
+.buttonPrimary,
+.buttonGhost {
   align-items: center;
+  border-radius: 10px;
+  display: inline-flex;
+  font-size: 1rem;
+  font-weight: 600;
+  gap: 0.55rem;
+  justify-content: center;
+  padding: 0.78rem 1.5rem;
+  text-decoration: none;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+  white-space: nowrap;
+}
+
+.buttonPrimary {
+  background: linear-gradient(180deg, #f7e26b, #ecd23c);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 24px rgba(240, 219, 79, 0.22);
+  color: #1a1c22;
+}
+
+.buttonPrimary:hover {
+  box-shadow: 0 12px 30px rgba(240, 219, 79, 0.32);
+  color: #1a1c22;
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+
+.buttonGhost {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #e8edf5;
+}
+
+.buttonGhost:hover {
+  background: rgba(255, 255, 255, 0.13);
+  color: #fff;
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+
+.install {
+  align-items: center;
+  background: rgba(6, 8, 12, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  display: inline-flex;
+  gap: 0.75rem;
+  margin: 1.5rem auto 0;
+  max-width: 100%;
+  padding: 0.5rem 0.5rem 0.5rem 0.95rem;
+}
+
+.installCommand {
+  background: transparent;
+  border: 0;
+  color: #dbe5f0;
+  font-size: 0.92rem;
+  font-weight: 500;
+  overflow-x: auto;
+  padding: 0;
+  white-space: nowrap;
+}
+
+.installPrompt {
+  color: var(--ml-yellow, #f0db4f);
+  user-select: none;
+}
+
+.copyButton {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  color: #cfd9e6;
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 0.82rem;
+  gap: 0.4rem;
+  padding: 0.38rem 0.6rem;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
+}
+
+.copyButton:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+/* ------------------------------------------------------------ terminal -- */
+
+.heroVisual {
   display: flex;
   justify-content: center;
+  min-width: 0;
 }
 
-.features {
-  align-items: center;
-  display: flex;
-  padding: 2rem 0;
+.terminalCard {
+  backdrop-filter: blur(10px);
+  background: rgba(13, 16, 23, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.45);
+  max-width: 780px;
+  overflow: hidden;
   width: 100%;
 }
 
-.features h3 {
+.terminalBar {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  gap: 0.45rem;
+  padding: 0.7rem 0.9rem;
+}
+
+.terminalDot {
+  border-radius: 50%;
+  height: 11px;
+  width: 11px;
+}
+
+.dotRed {
+  background: #ff5f57;
+}
+
+.dotYellow {
+  background: #febc2e;
+}
+
+.dotGreen {
+  background: #28c840;
+}
+
+.terminalTitle {
+  color: rgba(226, 234, 244, 0.55);
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.78rem;
+  margin-left: 0.6rem;
+}
+
+.terminalBody {
+  overflow: hidden;
+  padding: 1rem 1.1rem 1.2rem;
+}
+
+.terminalBody :global(.terminal-content) {
+  margin: 0;
+}
+
+.terminalBody :global(.terminal-inner) {
+  background: transparent;
+  min-height: 390px;
+  padding: 0;
+}
+
+.terminalStaticOutput {
+  background: transparent;
+  color: #c7d3e1;
+  font-size: 0.78rem;
+  line-height: 1.65;
+  margin: 0;
+  overflow-x: auto;
+  padding: 0;
+  text-align: left;
+}
+
+.outCommand {
+  color: var(--ml-yellow, #f0db4f);
+}
+
+.outSuccess {
+  color: #7fdd8f;
   font-weight: 600;
 }
 
-.featureImage {
-  height: 200px;
-  width: 200px;
+.outDim {
+  color: rgba(199, 211, 225, 0.55);
 }
 
+/* ------------------------------------------------------------ sections -- */
+
+.section {
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: 5rem 1.5rem;
+}
+
+.sectionAlt {
+  background: linear-gradient(180deg, rgba(50, 172, 205, 0.06), transparent);
+  border: 1px solid var(--ml-border);
+  border-radius: 24px;
+  margin-bottom: 1rem;
+  margin-top: 1rem;
+  max-width: 1240px;
+}
+
+[data-theme='dark'] .sectionAlt {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent);
+}
+
+.sectionHead {
+  margin: 0 auto 3rem;
+  max-width: 44rem;
+  text-align: center;
+}
+
+.eyebrow {
+  color: var(--ifm-color-primary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin: 0 0 0.75rem;
+  text-transform: uppercase;
+}
+
+.sectionTitle {
+  font-size: clamp(1.6rem, 3.4vw, 2.35rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.sectionSubtitle {
+  color: var(--ml-muted);
+  font-size: 1.05rem;
+  line-height: 1.65;
+  margin: 1rem 0 0;
+}
+
+.textLink {
+  display: inline-block;
+  font-weight: 600;
+  margin-top: 1.25rem;
+}
+
+/* ------------------------------------------------------------ features -- */
+
+.featureGrid {
+  display: grid;
+  gap: 1.1rem;
+  grid-template-columns: 1fr;
+}
+
+.featureCard {
+  background: var(--ml-surface);
+  border: 1px solid var(--ml-border);
+  border-radius: var(--ml-radius);
+  display: block;
+  padding: 1.6rem;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.featureLink {
+  color: inherit;
+}
+
+.featureLink:hover {
+  border-color: rgba(50, 172, 205, 0.55);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.09);
+  color: inherit;
+  text-decoration: none;
+  transform: translateY(-3px);
+}
+
+[data-theme='dark'] .featureLink:hover {
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+}
+
+.featureIconWrapper {
+  align-items: center;
+  background: linear-gradient(
+    145deg,
+    rgba(240, 219, 79, 0.22),
+    rgba(50, 172, 205, 0.22)
+  );
+  border-radius: 11px;
+  color: var(--ifm-color-content);
+  display: inline-flex;
+  height: 42px;
+  justify-content: center;
+  margin-bottom: 1.1rem;
+  width: 42px;
+}
+
+.featureIcon {
+  display: block;
+}
+
+.featureTitle {
+  font-size: 1.08rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.5rem;
+}
+
+.featureText {
+  color: var(--ml-muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* --------------------------------------------------------------- steps -- */
+
+.stepGrid {
+  display: grid;
+  gap: 1.1rem;
+  grid-template-columns: 1fr;
+}
+
+.stepCard {
+  background: var(--ml-surface);
+  border: 1px solid var(--ml-border);
+  border-radius: var(--ml-radius);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 1.5rem;
+}
+
+.stepHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.85rem;
+}
+
+.stepNumber {
+  align-items: center;
+  background: linear-gradient(180deg, #f7e26b, #ecd23c);
+  border-radius: 9px;
+  color: #1a1c22;
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.stepTitle {
+  font-size: 1.08rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 0.1rem 0 0.35rem;
+}
+
+.stepText {
+  color: var(--ml-muted);
+  font-size: 0.92rem;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.stepBody {
+  margin-top: 1.1rem;
+  min-width: 0;
+}
+
+.stepBody pre {
+  border-radius: 10px;
+  font-size: 0.72rem;
+  line-height: 1.6;
+  margin-bottom: 0.75rem;
+  overflow-x: auto;
+}
+
+.stepBody pre:last-child {
+  margin-bottom: 0;
+}
+
+/* --------------------------------------------------------------- split -- */
+
+.split {
+  align-items: center;
+  display: grid;
+  gap: 2.5rem;
+  grid-template-columns: 1fr;
+}
+
+.splitCopy {
+  min-width: 0;
+}
+
+.splitMedia {
+  min-width: 0;
+}
+
+.splitImage {
+  background: #fff;
+  border: 1px solid var(--ml-border);
+  border-radius: var(--ml-radius);
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.14);
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+[data-theme='dark'] .splitImage {
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+
+/* ----------------------------------------------------------------- cta -- */
+
+.ctaSection {
+  padding: 1rem 1.5rem 5rem;
+}
+
+.cta {
+  background:
+    radial-gradient(
+      600px 240px at 20% 0%,
+      rgba(240, 219, 79, 0.22),
+      transparent 65%
+    ),
+    radial-gradient(
+      520px 240px at 85% 100%,
+      rgba(50, 172, 205, 0.25),
+      transparent 65%
+    ),
+    #0a0c11;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  color: #e8edf5;
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: 3.5rem 1.5rem;
+  text-align: center;
+}
+
+.ctaTitle {
+  font-size: clamp(1.6rem, 3.4vw, 2.2rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  margin: 0;
+}
+
+.ctaText {
+  color: rgba(226, 234, 244, 0.72);
+  font-size: 1.02rem;
+  margin: 0.85rem auto 0;
+  max-width: 32rem;
+}
+
+.ctaInstall {
+  margin-top: 1.75rem;
+}
+
+.ctaLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+/* ------------------------------------------------------------ showcase -- */
+
 .showcase {
-  padding: 0 20px 80px 20px;
+  border-bottom: 1px solid var(--ml-border);
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: 3rem 1.5rem;
+  text-align: center;
 }
 
 .showcaseHeading {
-  font-size: 30px;
-  line-height: 1em;
-  margin-top: 20px;
-  padding: 10px 0;
-}
-
-.showcaseHeadingColored {
-  color: var(--ifm-color-content);
-  font-weight: 600;
+  color: var(--ml-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  margin: 0;
+  text-transform: uppercase;
 }
 
 .showcaseLogos {
   align-items: center;
   display: flex;
   flex-flow: row wrap;
+  gap: 1rem 2.5rem;
   justify-content: center;
-  padding: 20px;
+  margin-top: 1.75rem;
 }
 
 .showcaseLogo {
   align-items: center;
-  background: transparent;
-  border-radius: 8px;
   display: flex;
-  height: 100px;
+  filter: grayscale(1);
+  height: 46px;
   justify-content: center;
-  margin: 15px;
-  padding: 5px;
-  width: 100px;
+  opacity: 0.55;
+  transition:
+    opacity 0.2s ease,
+    filter 0.2s ease;
 }
 
-.titleLink {
-  color: var(--ifm-color-content);
+.showcaseLogo:hover {
+  filter: grayscale(0);
+  opacity: 1;
 }
 
-[data-theme='dark'] .titleLink {
-  color: var(--ifm-link-color);
+.showcaseLogo img {
+  height: 100%;
+  max-width: 140px;
+  object-fit: contain;
+  width: auto;
+}
+
+[data-theme='dark'] .showcaseLogo {
+  opacity: 0.75;
+}
+
+[data-theme='dark'] .showcaseLogo:hover {
+  opacity: 1;
+}
+
+.showcaseButton {
+  margin-top: 1.75rem;
+}
+
+/* --------------------------------------------------------- breakpoints -- */
+
+@media screen and (min-width: 700px) {
+  .featureGrid,
+  .stepGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media screen and (min-width: 997px) {
+  .featureGrid,
+  .stepGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .split {
+    gap: 3.5rem;
+    grid-template-columns: 1fr 1.15fr;
+  }
+}
+
+@media screen and (min-width: 1400px) {
+  .hero {
+    padding: 6rem 2rem 5rem;
+  }
+
+  .heroInner {
+    gap: 4rem;
+    grid-template-columns: minmax(380px, 1fr) 820px;
+  }
+
+  .heroCopy {
+    text-align: left;
+  }
+
+  .heroSubtitle {
+    margin-left: 0;
+  }
+
+  .heroActions,
+  .heroCopy .install {
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+
+  .heroVisual {
+    justify-content: flex-end;
+  }
+
+  /* the animated terminal renders at a fixed 780px width */
+  .terminalCard {
+    max-width: none;
+    width: 820px;
+  }
+}
+
+@media screen and (max-width: 996px) {
+  .hero {
+    padding: 3.5rem 1.15rem 3rem;
+  }
+
+  .heroInner {
+    gap: 2.25rem;
+  }
+
+  .heroTitle {
+    margin-top: 1.15rem;
+  }
+
+  .section {
+    padding: 3.5rem 1.15rem;
+  }
+
+  .sectionHead {
+    margin-bottom: 2rem;
+  }
+
+  .sectionAlt {
+    border-radius: 0;
+  }
+
+  .ctaSection {
+    padding: 0.5rem 1.15rem 3.5rem;
+  }
+
+  .cta {
+    border-radius: 20px;
+    padding: 2.5rem 1.25rem;
+  }
+
+  .showcase {
+    padding: 2.5rem 1.15rem;
+  }
+
+  .showcaseLogos {
+    gap: 0.75rem 1.75rem;
+  }
+
+  .showcaseLogo {
+    height: 34px;
+  }
+
+  .showcaseLogo img {
+    max-width: 104px;
+  }
+}
+
+@media screen and (max-width: 600px) {
+  .heroBadge {
+    font-size: 0.75rem;
+    padding: 0.35rem 0.75rem;
+  }
+
+  .heroActions {
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  .buttonPrimary,
+  .buttonGhost {
+    padding: 0.8rem 1.1rem;
+    width: 100%;
+  }
+
+  .install {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.45rem 0.45rem 0.45rem 0.75rem;
+    width: 100%;
+  }
+
+  .installCommand {
+    flex: 1 1 auto;
+    font-size: 0.84rem;
+    min-width: 0;
+  }
+
+  .copyLabel {
+    display: none;
+  }
+
+  .terminalBody {
+    padding: 0.85rem 0.9rem 1rem;
+  }
+
+  .terminalStaticOutput {
+    font-size: 0.68rem;
+  }
+
+  .featureCard,
+  .stepCard {
+    padding: 1.25rem;
+  }
+
+  .ctaLinks {
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .buttonPrimary,
+  .buttonGhost,
+  .featureLink {
+    transition: none;
+  }
+
+  .buttonPrimary:hover,
+  .buttonGhost:hover,
+  .featureLink:hover {
+    transform: none;
+  }
 }

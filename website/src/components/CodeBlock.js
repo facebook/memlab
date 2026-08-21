@@ -8,20 +8,19 @@
  * @oncall memory_lab
  */
 
-import {useColorMode} from '@docusaurus/theme-common';
 import Highlight, {defaultProps} from 'prism-react-renderer';
 import palenight from 'prism-react-renderer/themes/palenight';
-import vsLight from 'prism-react-renderer/themes/vsLight';
 import React from 'react';
 
 const CodeBlock = ({code, language}) => {
-  const {colorMode} = useColorMode();
+  // always rendered on the dark palenight theme so the landing page code
+  // samples read the same in light and dark mode
   return (
     <Highlight
       {...defaultProps}
       code={code}
       language={language}
-      theme={colorMode === 'dark' ? palenight : vsLight}>
+      theme={palenight}>
       {({className, getLineProps, getTokenProps, style, tokens}) => (
         <pre className={className} style={{...style, textAlign: 'left'}}>
           {tokens.map((line, i) => (

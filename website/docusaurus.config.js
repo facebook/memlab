@@ -203,6 +203,12 @@ const config = {
         pinned: true,
       },
       {
+        caption: 'WhatsApp Web',
+        imageUrl: 'img/users/whatsapp.svg',
+        infoUrl: 'https://web.whatsapp.com',
+        pinned: true,
+      },
+      {
         caption: 'Workplace',
         imageUrl: 'img/users/workplace.svg',
         infoUrl: 'https://www.workplace.com/features',
