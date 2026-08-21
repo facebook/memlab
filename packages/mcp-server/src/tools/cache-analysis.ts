@@ -431,6 +431,13 @@ export function registerCacheAnalysis(server: McpServer): void {
             'Shows "key_type → value_shape" instead of full object descriptions. ' +
             'Set to false for verbose entry details.',
         ),
+      summary_only: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Headline counts and totals ONLY — no ranked table, no per-entry samples, no "long but small" section (default false). Use after the first call in a session, when the ranked table has already been read and only the totals are wanted.',
+        ),
     },
     async ({
       limit,
@@ -441,6 +448,7 @@ export function registerCacheAnalysis(server: McpServer): void {
       detect_identical_entries,
       sample_entries,
       compact_samples,
+      summary_only,
     }) => {
       try {
         const snapshot = getSnapshot();
@@ -775,6 +783,18 @@ export function registerCacheAnalysis(server: McpServer): void {
         const cacheLike = caches.filter(
           c => c.classification === 'cache-like',
         ).length;
+
+        if (summary_only) {
+          return toolResult(
+            [
+              `Cache analysis: ${caches.length} large collection(s) (${cacheLike} cache-like, ${caches.length - cacheLike} plain collection/working-set), ${formatBytes(totalRetained)} total retained`,
+              '',
+              `Largest: \`${caches[0].ownerName}\` — ${formatNumber(caches[0].entryCount)} entries, ${formatBytes(caches[0].retainedSize)}.`,
+              '',
+              `_summary_only: the ${formatNumber(rows.length)}-row ranked table and the per-entry samples are withheld. Re-run with \`summary_only: false\` for them._`,
+            ].join('\n'),
+          );
+        }
 
         const lines = [
           `Cache analysis: ${caches.length} large collection(s) (${cacheLike} cache-like, ${caches.length - cacheLike} plain collection/working-set), ${formatBytes(totalRetained)} total retained`,

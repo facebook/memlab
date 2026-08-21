@@ -31,6 +31,7 @@ import {
   computeReachableWithoutDevRoots,
 } from './dev-artifacts.js';
 import {getFirstNonFrameworkRetainer} from './detached-dom.js';
+import {makeProgressReporter} from '../progress.js';
 
 // Nodes kept per candidate class for the retainer sample. Small on purpose: the
 // question is "what shape of thing holds these", and a handful of instances
@@ -137,21 +138,25 @@ export function registerLeakReport(server: McpServer): void {
           'Per-file size ceiling in MB, matching memlab_load_snapshot / memlab_sequence_analysis defaults. Snapshots are loaded one at a time and dropped before the next.',
         ),
     },
-    async ({
-      paths,
-      cycles,
-      limit,
-      min_growth_count,
-      monotonic_only,
-      include_artifacts,
-      max_file_size_mb,
-    }) => {
+    async (
+      {
+        paths,
+        cycles,
+        limit,
+        min_growth_count,
+        monotonic_only,
+        include_artifacts,
+        max_file_size_mb,
+      },
+      extra,
+    ) => {
       try {
         const {steps, rows} = await computeSequenceTrends(paths, {
           minGrowthCount: min_growth_count,
           monotonicOnly: monotonic_only,
           maxFileSizeMB: max_file_size_mb,
           toolName: 'memlab_leak_report',
+          progress: makeProgressReporter(extra, 'leak_report'),
         });
 
         const n = steps.length;

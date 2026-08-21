@@ -13,6 +13,8 @@ import type {IHeapSnapshot} from '@memlab/core';
 import fs from 'fs';
 import {z} from 'zod';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
+import memlabCore from '@memlab/core';
+const {utils: memlabUtils} = memlabCore;
 const {getFullHeapFromFile} = memlabHeapAnalysis;
 import {
   LOCAL_FILE_SIZE_LIMIT_MB,
@@ -28,6 +30,8 @@ import {
   toolResult,
 } from '../utils.js';
 import {resolveLadderPaths} from './ladder.js';
+import {makeProgressReporter} from '../progress.js';
+import type {ProgressReporter} from '../progress.js';
 import {findResidentByPath, getSnapshotByHandle} from '../heap-state.js';
 import {resetEmittedNotes, shouldEmitNote} from '../heap-state.js';
 import {
@@ -156,8 +160,17 @@ export async function computeSequenceTrends(
     minGrowthCount: number;
     monotonicOnly?: boolean;
     maxFileSizeMB?: number;
+    // Parse only, skipping the dominator / retained-size / shortest-path pass.
+    // The trend itself needs nothing that pass produces (see the load below),
+    // so it defaults ON; callers that go on to deep-dive a rung from the same
+    // graph pass false.
+    light?: boolean;
     // Named in the size-limit error so the remedy it prints is callable.
     toolName?: string;
+    // Per-rung progress. A six-rung trend is minutes of silence otherwise, and
+    // silence is indistinguishable from a hang — which is what pushed three
+    // measured calls past the tool timeout into backgrounding.
+    progress?: ProgressReporter;
   },
 ): Promise<SequenceTrends> {
   const toolName = opts.toolName ?? 'memlab_sequence_analysis';
@@ -178,7 +191,14 @@ export async function computeSequenceTrends(
     );
   }
 
+  let rungIndex = 0;
   for (const p of resolvedPaths) {
+    rungIndex++;
+    opts.progress?.phase(
+      rungIndex,
+      resolvedPaths.length,
+      `rung ${rungIndex}/${resolvedPaths.length}: ${p.replace(/^.*\//, '')}`,
+    );
     let local: string;
     let fetchedFrom: string | null = null;
     try {
@@ -218,7 +238,22 @@ export async function computeSequenceTrends(
       reusedHandles.push(resident?.fileName ?? local);
     // Otherwise load sequentially and drop the graph before the next one so
     // only one full graph is resident at a time (memory-safe for big heaps).
-    const snapshot = residentSnapshot ?? (await getFullHeapFromFile(local));
+    // The trend pass reads counts, names, types and SELF sizes only —
+    // `buildHistogram` touches nothing that the dominator / retained-size /
+    // shortest-path pass produces. That pass is the expensive half of a load
+    // (measured on a 380 MB / 4.19M-node capture: 18s vs 8s), and paying it on
+    // five rungs to compute a histogram is most of why a six-rung report gets
+    // backgrounded past the tool timeout. A resident graph is still reused
+    // as-is, light or not.
+    const useLight = opts.light !== false;
+    const snapshot =
+      residentSnapshot ??
+      (useLight
+        ? await memlabUtils.getSnapshotFromFile(local, {
+            buildNodeIdIndex: true,
+            verbose: false,
+          })
+        : await getFullHeapFromFile(local));
     const {hist, nodeCount, totalSize} = buildHistogram(snapshot);
     steps.push({
       label: fetchedFrom ?? p.replace(/^.*\//, ''),
@@ -351,16 +386,19 @@ export function registerSequenceAnalysis(server: McpServer): void {
           `Per-file size ceiling in MB to avoid OOM. Matches memlab_load_snapshot's by-source defaults — ${LOCAL_FILE_SIZE_LIMIT_MB} for local files and ${MANIFOLD_FETCH_SIZE_LIMIT_MB} for snapshots fetched from Manifold (server captures routinely exceed the local limit); pass an explicit value to override. Snapshots are loaded one at a time and dropped before the next, so a ladder of large files is safe as long as each single file is under the ceiling.`,
         ),
     },
-    async ({
-      paths,
-      limit,
-      min_growth_count,
-      monotonic_only,
-      cycles,
-      include_artifacts,
-      repeat_notes,
-      max_file_size_mb,
-    }) => {
+    async (
+      {
+        paths,
+        limit,
+        min_growth_count,
+        monotonic_only,
+        cycles,
+        include_artifacts,
+        repeat_notes,
+        max_file_size_mb,
+      },
+      extra,
+    ) => {
       try {
         if (repeat_notes) resetEmittedNotes();
         const {steps, rows, keys, reusedHandles} = await computeSequenceTrends(
@@ -369,6 +407,7 @@ export function registerSequenceAnalysis(server: McpServer): void {
             minGrowthCount: min_growth_count,
             monotonicOnly: monotonic_only,
             maxFileSizeMB: max_file_size_mb,
+            progress: makeProgressReporter(extra, 'sequence_analysis'),
           },
         );
 

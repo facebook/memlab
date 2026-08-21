@@ -1220,12 +1220,37 @@ export function toolResult(text: string) {
 }
 
 /**
+ * After this many suggestion trailers in one server process, the rest are
+ * suppressed automatically.
+ *
+ * The trailer is genuinely useful the first time and pure cost thereafter: it
+ * is the same text on every call, and a long investigation makes dozens of
+ * calls. `suppressSuggestions` already existed but has to be set deliberately,
+ * which means it is set — if at all — only after the tokens have been spent.
+ * Auto-suppressing keeps the onboarding value and drops the repetition without
+ * anyone having to notice.
+ */
+const SUGGESTION_TRAILER_BUDGET = 5;
+let suggestionTrailersEmitted = 0;
+
+/**
  * Whether tools should omit "Suggested next steps" / "How to fix" trailers.
  * Honors the session-level `suppressSuggestions` config so callers can trim
- * repeated boilerplate tokens across a long investigation.
+ * repeated boilerplate tokens across a long investigation, and self-suppresses
+ * after `SUGGESTION_TRAILER_BUDGET` trailers.
+ *
+ * NOTE: this both reads and ADVANCES the budget, so call it once per decision.
  */
 export function suggestionsSuppressed(): boolean {
-  return getSessionConfig().suppressSuggestions;
+  if (getSessionConfig().suppressSuggestions) return true;
+  if (suggestionTrailersEmitted >= SUGGESTION_TRAILER_BUDGET) return true;
+  suggestionTrailersEmitted++;
+  return false;
+}
+
+/** Test seam; also reset when the session config is changed explicitly. */
+export function resetSuggestionBudget(): void {
+  suggestionTrailersEmitted = 0;
 }
 
 export function jsonResult(data: unknown) {

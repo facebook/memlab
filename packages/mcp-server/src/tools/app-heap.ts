@@ -52,8 +52,15 @@ export function registerAppHeap(server: McpServer): void {
         .describe(
           'Show the per-bucket table (default true). The breakdown is the point — which bucket dominates decides whether the capture is usable.',
         ),
+      summary_only: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          "Headline figure only, suppressing the per-bucket table. Equivalent to `show_breakdown: false`; accepted under the name the other tools use so a caller trimming a whole round's output does not have to remember which flag each tool spells it with.",
+        ),
     },
-    async ({show_breakdown}) => {
+    async ({show_breakdown, summary_only}) => {
       try {
         const snapshot = getSnapshot();
         const meta = getSnapshotMetadata();
@@ -73,7 +80,7 @@ export function registerAppHeap(server: McpServer): void {
           '',
         ];
 
-        if (show_breakdown) {
+        if (show_breakdown && !summary_only) {
           lines.push(
             markdownTable(
               ['Bucket', 'Self size', '% of heap', 'What it is'],

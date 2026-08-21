@@ -692,8 +692,22 @@ export function registerDevArtifacts(server: McpServer): void {
         .describe(
           'List every dev/automation root by name instead of summarizing them as counts per family (default false). The full list is unbounded — one root per a11y object and per bridge export — and cost ~1,500 tokens per call on a measured run. Use it only when chasing one specific root.',
         ),
+      summary_only: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Headline totals and the per-source breakdown ONLY — no per-object classification table and no below-threshold aggregation (default false). This is the largest single output of any tool here, and after the first call in a session the tables are usually re-read for a number that is already in the headline.',
+        ),
     },
-    async ({limit, min_retained_size, only_dev, show_roots, explain}) => {
+    async ({
+      limit,
+      min_retained_size,
+      only_dev,
+      show_roots,
+      explain,
+      summary_only,
+    }) => {
       try {
         const snapshot = getSnapshot();
         const meta = getSnapshotMetadata();
@@ -808,6 +822,22 @@ export function registerDevArtifacts(server: McpServer): void {
           "> ⚠️ **This is not the whole artifact bill.** This tool measures RETENTION-BY-A-DEV-ROOT (dev/extension globals, the inspector console, a11y caches, Fast Refresh, the automation bridge). It does NOT count **V8 JIT warmup** — `system/Code`, `InstructionStream`, `BytecodeArray`, `ProtectedFixedArray` — which is a separate and often larger bucket, and which grows simply because a hunt exercises new code paths. On one measured round this tool reported 4.8 MB / 1.5% dev-only while JIT warmup accounted for +5.7 MB of that round's 10.8 MB of growth. For the growth-side view of both, run `memlab_explain_delta` with `include_artifacts: true` against the baseline rung.",
           '',
         );
+
+        if (summary_only) {
+          // Say what was withheld and how to get it. A tool that quietly prints
+          // less reads as a tool that found less.
+          lines.push(
+            `_summary_only: the ${formatNumber(cands.length)}-row classification table` +
+              (belowDevOnlyCount > 0
+                ? ` and the below-threshold aggregation (${formatNumber(belowDevOnlyCount)} objects)`
+                : '') +
+              ' are withheld. Re-run with `summary_only: false` for them._',
+          );
+          if (explain) {
+            lines.push('', explainCoverage(devRoots));
+          }
+          return toolResult(lines.join('\n'));
+        }
 
         if (cands.length > 0) {
           const headers = ['ID', 'Name', 'Type', 'Retained', 'Classification'];

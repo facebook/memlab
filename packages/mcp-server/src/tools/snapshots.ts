@@ -18,7 +18,13 @@ import {
   setSessionConfig,
   getSessionConfig,
 } from '../heap-state.js';
-import {formatBytes, formatNumber, errorResult, textResult} from '../utils.js';
+import {
+  formatBytes,
+  formatNumber,
+  errorResult,
+  resetSuggestionBudget,
+  textResult,
+} from '../utils.js';
 
 export function registerSnapshots(server: McpServer): void {
   server.tool(
@@ -59,6 +65,10 @@ export function registerSnapshots(server: McpServer): void {
               ? {suppressSuggestions: suppress_suggestions}
               : {}),
           });
+          // Explicitly turning suppression OFF means "I want the trailers
+          // back", which has to also clear the automatic budget — otherwise the
+          // flag reads as broken once the budget has already run out.
+          if (suppress_suggestions === false) resetSuggestionBudget();
           const cfg = getSessionConfig();
           configChanges.push(
             `Output config: quietHeader=${cfg.quietHeader}, suppressSuggestions=${cfg.suppressSuggestions}`,
