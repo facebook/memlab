@@ -31,7 +31,10 @@ export default class MLTraceSimilarityStrategy implements IClusterStrategy {
       const repTrace = newLeakTraces[traceIdx];
       const trace = newLeakTraces[i];
       if (!map.has(repTrace)) {
-        map.set(repTrace, [repTrace]);
+        // initialize the cluster with an empty trace list; every trace
+        // (including the representative trace itself) is added below exactly
+        // once, otherwise the representative would be counted twice
+        map.set(repTrace, []);
       }
       // to please linter
       map.get(repTrace)?.push(trace);
