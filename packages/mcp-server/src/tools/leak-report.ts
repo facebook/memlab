@@ -51,6 +51,13 @@ interface Evidence {
   // Only instances with a retainer path are sampled: the sample exists to be
   // walked upward, and a node with no path edge yields "(unknown)" every time.
   samples: IHeapNode[];
+  // The newest traceable instances, kept as a min-heap-ish sorted window of the
+  // highest node ids. V8 assigns heap-snapshot node ids monotonically as objects
+  // are allocated, so the highest ids in a class ARE its most recently created
+  // instances — which is the cohort the ladder's growth is made of. See
+  // `growthSamples` below for why this, and not `samples`, drives the retainer
+  // column.
+  newest: IHeapNode[];
   // Largest traceable instance — what the follow-up retainer_trace should
   // target. `anyExample` is the fallback when nothing in the class is
   // traceable, so the report still names a node instead of nothing.
@@ -67,9 +74,15 @@ function displayName(row: {name: string; type: string}): string {
   return row.name.length > 0 ? row.name : `(unnamed ${row.type})`;
 }
 
-function topRetainerLabel(ev: Evidence): string {
+function modalRetainer(nodes: readonly IHeapNode[]): {
+  label: string;
+  votes: number;
+  of: number;
+} {
   const counts = new Map<string, number>();
-  for (const node of ev.samples.slice(0, RETAINER_SAMPLES)) {
+  let considered = 0;
+  for (const node of nodes.slice(0, RETAINER_SAMPLES)) {
+    considered++;
     const label = getFirstNonFrameworkRetainer(node);
     counts.set(label, (counts.get(label) ?? 0) + 1);
   }
@@ -81,7 +94,46 @@ function topRetainerLabel(ev: Evidence): string {
       bestCount = c;
     }
   }
-  return best;
+  return {label: best, votes: bestCount, of: considered};
+}
+
+/**
+ * The retainer to report for a GROWING class.
+ *
+ * This used to vote over instances sampled from the class's whole final
+ * population, which answers the wrong question: it reports whoever holds the
+ * MOST instances, not whoever holds the NEW ones. Those differ exactly when a
+ * large static collection coexists with a small accumulating one — which is the
+ * common case, and the case the report exists to diagnose.
+ *
+ * Measured failure this fixes: across three separate rounds the `Set` class was
+ * growing by ~2,000 instances and the column named `CometStyleXSheet
+ * .externalRules`, a collection that a per-rung trend pass shows is FLAT at
+ * 9,356 entries at every rung. It contributed none of the growth; it was simply
+ * the largest static Set population in the heap, so it won every vote. A reader
+ * who trusts the column chases a collection that is not moving.
+ *
+ * The growth cohort is approximated by node id: V8 assigns heap-snapshot ids
+ * monotonically as objects are allocated, so the highest-id instances of a class
+ * are its newest. That is a heuristic — ids are not a timestamp and a class can
+ * churn — so when the two cohorts disagree the report says so rather than
+ * silently preferring one.
+ */
+function growthRetainer(ev: Evidence): {
+  label: string;
+  votes: number;
+  of: number;
+  populationLabel: string | null;
+} {
+  const growth = modalRetainer(ev.newest);
+  const population = modalRetainer(ev.samples);
+  return {
+    ...growth,
+    populationLabel:
+      growth.label !== population.label && population.label !== '(unknown)'
+        ? population.label
+        : null,
+  };
 }
 
 export function registerLeakReport(server: McpServer): void {
@@ -89,7 +141,8 @@ export function registerLeakReport(server: McpServer): void {
     'memlab_leak_report',
     'One-call leak triage across an ORDERED ladder of >=2 heap snapshots: runs the growth-trend pass, then gathers per-class EVIDENCE from the final snapshot and returns a single table — class, per-rung counts, Δ and Δ/cycle, how much of it is dev/automation-retained, the dominant retainer, and a verdict hint. ' +
       'Exists because the trend pass alone cannot tell a leak from an artifact: every hunt then ran memlab_dev_artifacts and a retainer trace by hand on each grower and joined the three outputs mentally, which is the step that gets skipped right before something is reported as a production leak. Composes memlab_sequence_analysis with memlab_dev_artifacts and a retainer sample; costs one extra snapshot load (the last rung) on top of the ladder pass. ' +
-      'The verdict column is a HINT, not a conclusion — confirm a candidate with memlab_retainer_trace on the example node before calling it a leak. Paths may be local, manifold:// URLs, or bare filenames.',
+      'The verdict column is a HINT, not a conclusion — confirm a candidate with memlab_retainer_trace on the example node before calling it a leak. ' +
+      "The retainer column votes over the class's NEWEST instances (highest node ids = the growth cohort), NOT over its whole population: voting over the population names whoever holds the most instances, which is a large STATIC collection whenever one exists and is not what grew. Rows where the two disagree are listed under the table. Paths may be local, manifold:// URLs, or bare filenames.",
     {
       paths: z
         .array(z.string())
@@ -209,6 +262,7 @@ export function registerLeakReport(server: McpServer): void {
             total: 0,
             devOnly: 0,
             samples: [],
+            newest: [],
             example: null,
             exampleRetained: -1,
             anyExample: null,
@@ -227,6 +281,18 @@ export function registerLeakReport(server: McpServer): void {
           if (ev.anyExample == null) ev.anyExample = node;
           if (!node.hasPathEdge) return;
           if (ev.samples.length < MAX_SAMPLES_PER_CLASS) ev.samples.push(node);
+          // Keep the highest-id traceable instances — the class's newest, i.e.
+          // the cohort the ladder's growth is made of. Insertion into a window
+          // this small (8) is cheaper than sorting the class at the end.
+          if (
+            ev.newest.length < MAX_SAMPLES_PER_CLASS ||
+            node.id > ev.newest[ev.newest.length - 1].id
+          ) {
+            let i = ev.newest.length;
+            while (i > 0 && ev.newest[i - 1].id < node.id) i--;
+            ev.newest.splice(i, 0, node);
+            if (ev.newest.length > MAX_SAMPLES_PER_CLASS) ev.newest.pop();
+          }
           if (node.retainedSize > ev.exampleRetained) {
             ev.exampleRetained = node.retainedSize;
             ev.example = node;
@@ -253,7 +319,7 @@ export function registerLeakReport(server: McpServer): void {
           ...(perCycle ? ['Δ/cycle'] : []),
           'Δ size',
           ...(showDevOnly ? ['Dev-only'] : []),
-          'Top retainer',
+          'Top retainer (newest instances)',
           'Verdict hint',
         ];
         const rightCols = new Set<number>();
@@ -261,6 +327,11 @@ export function registerLeakReport(server: McpServer): void {
 
         let leakCandidates = 0;
         let devOnlyClasses = 0;
+        // Rows where the newest instances and the population at large are held
+        // by different things. That disagreement is the signal a static
+        // collection is masking the accumulating one, so it is reported rather
+        // than resolved silently.
+        const retainerSplits: string[] = [];
         const tableRows = candidates.map(r => {
           const ev = evidence.get(r.key) as Evidence;
           const devShare = ev.total > 0 ? ev.devOnly / ev.total : 0;
@@ -296,13 +367,36 @@ export function registerLeakReport(server: McpServer): void {
                       : `${(devShare * 100).toFixed(0)}%`,
                 ]
               : []),
-            (label => (label.length > 44 ? label.slice(0, 41) + '…' : label))(
-              topRetainerLabel(ev),
-            ),
+            (() => {
+              const g = growthRetainer(ev);
+              if (g.populationLabel != null) {
+                retainerSplits.push(
+                  `\`${label}\`: newest → \`${g.label}\`, population at large → \`${g.populationLabel}\``,
+                );
+              }
+              const shown =
+                g.of > 1 ? `${g.label} (${g.votes}/${g.of})` : g.label;
+              return shown.length > 44 ? shown.slice(0, 41) + '…' : shown;
+            })(),
             verdict,
           ];
         });
         lines.push(markdownTable(headers, tableRows, rightCols));
+
+        lines.push(
+          '',
+          '_"Top retainer" votes over the class\'s NEWEST instances (highest node ids — V8 allocates ids monotonically, so those are the growth cohort), not over its whole population. ' +
+            'Voting over the population reports whoever holds the MOST instances, which is a large static collection whenever one exists, and is not what grew. ' +
+            'It is a small sample of a heuristic cohort — confirm with `memlab_collection_trend` on the named collection before acting, since a retainer that is itself flat across the ladder contributed none of the growth._',
+        );
+        if (retainerSplits.length > 0) {
+          lines.push(
+            '',
+            `⚠ **${retainerSplits.length} class(es) where the newest instances and the bulk population have DIFFERENT retainers.** ` +
+              'That is the signature of a static collection sitting alongside an accumulating one; the newest-instance retainer is the one that grew:',
+            ...retainerSplits.map(s => `- ${s}`),
+          );
+        }
 
         lines.push(
           '',

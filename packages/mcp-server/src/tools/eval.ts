@@ -77,6 +77,26 @@ export function scaledEvalTimeoutMs(): number {
 }
 
 /**
+ * Default `max_nodes`, scaled to the loaded graph.
+ *
+ * A probe that makes several passes over the heap is the normal shape — one
+ * pass to census classes, one to match shapes, one to size things — so the
+ * budget has to be a MULTIPLE of the node count, not a constant. At the old
+ * flat 20,000,000 a routine two-pass probe on an 8.24M-node capture aborted
+ * mid-walk and returned a partial value; because the result was assigned after
+ * the loops, what came back was `undefined` with a note, which reads as a
+ * legitimate empty answer.
+ *
+ * Six passes is generous on purpose: the wall-clock timeout above is the real
+ * guard against a runaway eval, and this budget exists to stop pathological
+ * traversals, not ordinary multi-pass analysis.
+ */
+export function scaledWalkBudget(): number {
+  const nodes = getSnapshotMetadata()?.nodeCount ?? 0;
+  return Math.max(20000000, nodes * 6);
+}
+
+/**
  * Shorten a heap result STRUCTURALLY rather than mid-string.
  *
  * A census result is an array of rows or a `{key: count}` map, and cutting the
@@ -413,9 +433,11 @@ export function registerEval(server: McpServer): void {
             'retainedSize(id)->number, retainedSizes(ids[])->Record<id,bytes> (an OBJECT keyed by id, NOT an array — index it as sizes[id] or Object.values(sizes)), ' +
             'mapEntries(mapId, limit?)->[{key,value}] & setElements(setId, limit?)->[brief] (correct Map/Set/WeakMap enumeration — handles browser internal-typed slots AND SMI-value gaps, so you never re-derive it wrong), ' +
             'props(nodeOrId)->{prop: scalar | {ref,name,type}} & getProp(nodeOrId, name) & shapeSignature(nodeOrId, {maxStringLen?}) (content signature for dedup checks), ' +
+            'shapeKeys(nodeOrId)->Set<string> & ownProps(nodeOrId) & hasShape(nodeOrId, [names], {exact?,exclude?}) (own JS properties ONLY — USE THESE FOR SHAPE MATCHING; props() falls back to an internal-edge walk and injects length/map/__via/__note, which makes a props()-based shape test silently return zero matches), ' +
+            'rootPath(nodeOrId, {maxHops?})->[{id,name,type,edge}] (GC-root path, root first — the retainer_trace walk, callable inside an eval), ' +
             'byClass(name, {type?})->ids[] & byTypename(name)->ids[] & withProp(name)->ids[] (INDEXED lookups — built once per snapshot then memoized in a session scratch, so repeated questions are index-speed not full-scan; byClass covers EVERY node type, matching memlab_find_nodes_by_class, so closures/strings/arrays/natives are found — pass {type:"object"} to narrow), ' +
             'aggregateRetained(ids[])->{retained,exact} (dominator-deduped retained for a SET of ids, no double-counting), ' +
-            'iterByClass(name, {type?})->nodes[] & iterByType(type)->nodes[] (INDEXED iteration — no full scan), ' +
+            'iterByClass(name, {type?, instancesOnly?})->nodes[] & iterByType(type)->nodes[] (INDEXED iteration — no full scan; instancesOnly defaults TRUE and drops the constructor closure, the `Foo (prototype)` object and `system/SharedFunctionInfo/Foo`, which otherwise come back as class members whose only "properties" are length/map and make a per-instance loop produce garbage), ' +
             'classCounts({pattern?, type?, minCount?})->[{name,type,count,selfSize}] (one-pass histogram, cached), ' +
             'entries(nodeOrId)->[{key,value}] (generic Map/Set/WeakMap/Array/object walk, holes filtered), ' +
             'edgeTarget(nodeOrId, edgeName)->node|null, isRealDetached(node)->boolean (same filtering the tools apply internally), ' +
@@ -465,9 +487,8 @@ export function registerEval(server: McpServer): void {
         .int()
         .min(1)
         .optional()
-        .default(20000000)
         .describe(
-          'Abort a `snapshot.nodes.forEach` walk after this many node visits (default 20000000, i.e. effectively unlimited). On abort the partial `result` is returned with a note instead of failing, so a broad exploratory scan can be attempted safely. Reported back as `nodes_visited` on every call.',
+          'Abort a `snapshot.nodes.forEach` walk after this many node visits. Defaults to a budget SCALED from the loaded graph (6 full passes, floored at 20,000,000) — a probe that makes several passes is the normal shape, so a flat cap silently truncated ordinary multi-pass analysis on large heaps. On abort the partial `result` is returned with a note; an abort that produced NO result is refused outright, because an empty value is indistinguishable from a genuine empty census. Reported back as `nodes_visited` on every call.',
         ),
     },
     async args => runEval({...args, ownsScanBudget: true}),
@@ -537,6 +558,15 @@ export async function runEval({
 }): Promise<ReturnType<typeof toolResult>> {
   // Schema defaults are applied by the MCP layer for tool calls; a direct
   // caller (memlab_eval_across) gets them here so both paths behave alike.
+  //
+  // Anything that needs to scale with the LOADED SNAPSHOT therefore must NOT
+  // carry a `.default()` in the zod schema — the MCP layer fills that in before
+  // this function runs, so the `?? scaled...()` below never fires and the
+  // scaling is silently dead for every tool call. `max_nodes` shipped with
+  // exactly that bug: the schema default of 20,000,000 shadowed the scaled
+  // budget, and a three-pass probe on an 8.06M-node capture still aborted at
+  // 20,000,000 while the error text correctly reported the graph as 8,055,593
+  // nodes. Both schemas now leave it optional-with-no-default.
   mode = mode ?? 'eval';
   const scaledTimeout = timeout_ms ?? scaledEvalTimeoutMs();
   if (ownsScanBudget === true && timeout_ms == null && scaledTimeout > 0) {
@@ -556,7 +586,14 @@ export async function runEval({
     beginAnalysisBudget(scaledTimeout);
   }
   timeout_ms = scaledTimeout;
-  max_nodes = max_nodes ?? 20000000;
+  // Scale the walk budget to the graph, the way the timeout already scales.
+  // A flat 20M was under one snapshot's worth of visits for any probe that
+  // makes more than two passes over a large heap: on an 8.06M-node capture a
+  // routine three-pass probe hit the cap and returned a PARTIAL result, which —
+  // because the accumulator was assigned at the end — printed as a bare
+  // `undefined`. A budget that silently converts "too big" into "no answer"
+  // is worse than one that is simply large.
+  max_nodes = max_nodes ?? scaledWalkBudget();
   dry_run = dry_run ?? false;
   const budget: VisitBudget = {visited: 0, max: max_nodes, exceeded: false};
   try {
@@ -878,6 +915,60 @@ export async function runEval({
     const getProp = (nodeOrId: number | {id: number}, name: string) =>
       props(nodeOrId)[name];
 
+    /**
+     * Own JS properties ONLY — no `internal`/`shortcut`/`hidden` edges, no
+     * `__via`/`__note` provenance keys, no fallback.
+     *
+     * `props()` deliberately falls back to a named-edge walk so that natives and
+     * closures show their state, and marks the result. That is right for
+     * INSPECTION and wrong for SHAPE MATCHING, and the failure is silent in the
+     * worst direction: a shape test written as
+     *   `new Set(Object.keys(helpers.props(id)))` … `s.size === 2 && s.has('element')`
+     * returns ZERO matches on objects that plainly have that shape, because the
+     * fallback injected `length`/`map`/`__via`/`__note`. An empty result reads as
+     * "this pattern is not in the heap" and gets written up as a negative.
+     *
+     * Use `ownProps`/`shapeKeys` whenever the question is "what shape is this",
+     * and `props` when the question is "what is in this".
+     */
+    const ownProps = (
+      nodeOrId: number | {id: number},
+    ): Record<string, unknown> => {
+      const node = resolveNode(nodeOrId);
+      if (!node) return {};
+      const out: Record<string, unknown> = {};
+      for (const e of node.references) {
+        if (e.type !== 'property') continue;
+        const name = String(e.name_or_index);
+        if (name === '__proto__') continue;
+        out[name] = describeTarget(e.toNode);
+      }
+      return out;
+    };
+    const shapeKeys = (nodeOrId: number | {id: number}): Set<string> => {
+      const node = resolveNode(nodeOrId);
+      const out = new Set<string>();
+      if (!node) return out;
+      for (const e of node.references) {
+        if (e.type !== 'property') continue;
+        const name = String(e.name_or_index);
+        if (name === '__proto__') continue;
+        out.add(name);
+      }
+      return out;
+    };
+    const hasShape = (
+      nodeOrId: number | {id: number},
+      required: readonly string[],
+      opts?: {exact?: boolean; exclude?: readonly string[]},
+    ): boolean => {
+      const keys = shapeKeys(nodeOrId);
+      for (const r of required) if (!keys.has(r)) return false;
+      for (const x of opts?.exclude ?? []) if (keys.has(x)) return false;
+      if (opts?.exact === true && keys.size !== required.length) return false;
+      return true;
+    };
+
     const shapeSignature = (
       nodeOrId: number | {id: number},
       opts?: {maxStringLen?: number; ignoreProps?: ReadonlySet<string>},
@@ -943,11 +1034,52 @@ export async function runEval({
       scratch.__classTypeIndex = idx;
       return idx;
     };
-    const byClass = (name: string, opts?: {type?: string}): number[] => {
-      const ids = buildClassTypeIndex().byClass.get(name) ?? [];
+    /**
+     * A class index entry is not necessarily an INSTANCE of that class. V8 names
+     * the constructor closure, the prototype object and the `SharedFunctionInfo`
+     * after the class too, so `iterByClass('Resolvable')` hands back nodes whose
+     * only "properties" are `length`/`map` — and a per-instance loop over them
+     * produces confident garbage. (Measured: `Resolvable` and `JobInfoEvent`
+     * both came back looking like empty objects for exactly this reason.)
+     *
+     * `instancesOnly` (default true) drops those three shapes. Pass false to get
+     * the raw index back.
+     */
+    const isClassScaffolding = (id: number, className: string): boolean => {
+      const n = snapshot.getNodeById(id);
+      if (!n) return false;
+      // `Foo (prototype) / https://…` and `system / SharedFunctionInfo / Foo`.
+      if (n.name !== className) return true;
+      if (n.type === 'code' || n.type === 'synthetic') return true;
+      // The constructor closure itself: a closure named exactly like the class
+      // whose only outgoing named edge is `prototype`.
+      if (n.type === 'closure') {
+        for (const e of n.references) {
+          if (
+            e.type === 'property' &&
+            String(e.name_or_index) === 'prototype'
+          ) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+    const byClass = (
+      name: string,
+      opts?: {type?: string; instancesOnly?: boolean},
+    ): number[] => {
+      const raw = buildClassTypeIndex().byClass.get(name) ?? [];
       const want = opts?.type;
-      if (want == null) return ids;
-      return ids.filter(id => snapshot.getNodeById(id)?.type === want);
+      const ids =
+        want == null
+          ? raw
+          : raw.filter(id => snapshot.getNodeById(id)?.type === want);
+      if (opts?.instancesOnly === false) return ids;
+      const filtered = ids.filter(id => !isClassScaffolding(id, name));
+      // If the filter would empty a non-empty class, the heuristic is wrong for
+      // this shape — hand back what we had rather than report "not present".
+      return filtered.length > 0 || ids.length === 0 ? filtered : ids;
     };
     const byTypename = (name: string): number[] =>
       buildClassTypeIndex().byTypename.get(name) ?? [];
@@ -971,6 +1103,48 @@ export async function runEval({
       });
       scratch[key] = ids;
       return ids;
+    };
+
+    /**
+     * The GC-root path for one node, as `retainer_trace` walks it — but callable
+     * from inside an eval.
+     *
+     * This exact `pathEdge` loop was hand-written five separate times in one
+     * session, once per probe that needed to name an owner, each time with
+     * slightly different truncation. Shipping it makes the traversal consistent
+     * with the dedicated tool and removes the boilerplate that discourages
+     * asking "who holds this?" in the middle of a larger eval.
+     *
+     * Root first, target last. `maxHops` bounds pathological chains.
+     */
+    const rootPath = (
+      nodeOrId: number | {id: number},
+      opts?: {maxHops?: number},
+    ): Array<{id: number; name: string; type: string; edge: string | null}> => {
+      const maxHops = opts?.maxHops ?? 24;
+      let cur = resolveNode(nodeOrId);
+      const out: Array<{
+        id: number;
+        name: string;
+        type: string;
+        edge: string | null;
+      }> = [];
+      const seen = new Set<number>();
+      let hops = 0;
+      while (cur != null && hops < maxHops && !seen.has(cur.id)) {
+        seen.add(cur.id);
+        const edge = cur.hasPathEdge && cur.pathEdge ? cur.pathEdge : null;
+        out.push({
+          id: cur.id,
+          name: cur.name,
+          type: cur.type,
+          edge: edge ? `${String(edge.name_or_index)} [${edge.type}]` : null,
+        });
+        if (!edge) break;
+        cur = edge.fromNode as IHeapNode | null;
+        hops++;
+      }
+      return out.reverse();
     };
 
     // Dominator-deduped retained size for a SET of ids (bounded walk). Unlike
@@ -1025,8 +1199,10 @@ export async function runEval({
       }
       return out;
     };
-    const iterByClass = (name: string, opts?: {type?: string}) =>
-      nodesFromIds(byClass(name, opts)).map(wrapNode);
+    const iterByClass = (
+      name: string,
+      opts?: {type?: string; instancesOnly?: boolean},
+    ) => nodesFromIds(byClass(name, opts)).map(wrapNode);
     // Same thing under the name people actually reach for. `byClass` returns
     // IDS, and not all of them resolve through `snapshot.getNodeById` — native
     // classes (AudioContext, OpusRecorder, Recorder) come back null, so the
@@ -1482,6 +1658,10 @@ export async function runEval({
       setElements,
       props,
       getProp,
+      ownProps,
+      shapeKeys,
+      hasShape,
+      rootPath,
       shapeSignature,
       byClass,
       byTypename,
@@ -1623,6 +1803,23 @@ export async function runEval({
       );
     }
     if (budget.exceeded) {
+      // A partial walk that also produced NO value is not a degraded answer, it
+      // is no answer — and it prints as a bare `undefined`, which is exactly
+      // what a legitimate empty census looks like. Refuse it instead: the
+      // accumulator is usually assigned after the loops, so this is the common
+      // shape of the failure, not an edge case.
+      const producedNothing =
+        sandbox.result === undefined || sandbox.result === null;
+      if (producedNothing) {
+        return errorResult(
+          `Walk aborted after ${formatNumber(budget.max)} node visits (max_nodes) and the code assigned no \`result\`. ` +
+            'Refusing to return the empty value: an aborted walk that produced nothing is indistinguishable from a genuine empty result, ' +
+            'and reads as "this pattern is not in the heap".\n\n' +
+            `This snapshot has ${formatNumber(getSnapshotMetadata()?.nodeCount ?? 0)} nodes, so the default budget allows ~6 full passes. ` +
+            'Either raise `max_nodes`, narrow the scan with an indexed helper (`helpers.byClass` / `byTypename` / `withProp`) instead of a full ' +
+            '`snapshot.nodes` walk, or assign to `result` incrementally so a partial answer is still meaningful — then re-run.',
+        );
+      }
       footer.push(
         `⚠️ Walk aborted after ${formatNumber(budget.max)} node visits (max_nodes). The value above is PARTIAL. ` +
           'Raise max_nodes, or narrow the scan with an indexed helper (`helpers.byClass` / `byTypename` / `withProp`) instead of a full `snapshot.nodes` walk.',
@@ -1765,7 +1962,9 @@ function describeEnv(): string {
     '',
     '## Collection / shape / index helpers (prefer these over hand-rolling)',
     '- `helpers.mapEntries(mapId, limit=1000) -> [{key, value}]` and `helpers.setElements(setId, limit=1000) -> [brief]` — CORRECT Map/Set/WeakMap enumeration. Handles browser `internal`-typed backing slots and SMI-value gaps (naive `type === "element"` filtering or positional `[i],[i+1]` pairing silently returns 0 / mispairs). Each brief is `{id, name, type, self_size, retained_size, string}`.',
-    "- `helpers.props(nodeOrId) -> {prop: scalar | {ref, name, type}}` and `helpers.getProp(nodeOrId, name)` — read an object's own properties without the `for (const e of n.references) …` boilerplate. Number-valued props surface as a ref to a `smi number`/`heap number` node; their actual numeric value is not in the snapshot format.",
+    "- `helpers.props(nodeOrId) -> {prop: scalar | {ref, name, type}}` and `helpers.getProp(nodeOrId, name)` — read an object's own properties without the `for (const e of n.references) …` boilerplate. Number-valued props surface as a ref to a `smi number`/`heap number` node; their actual numeric value is not in the snapshot format. ⚠️ **`props()` is for INSPECTION, not for SHAPE MATCHING** — on a node with no `property` edges it falls back to a named internal/shortcut/hidden edge walk and adds `length`/`map`/`__via`/`__note`, so a shape test written against `Object.keys(props(id))` returns ZERO matches on objects that plainly have the shape. Use the next line for that.",
+    '- `helpers.shapeKeys(nodeOrId) -> Set<string>`, `helpers.ownProps(nodeOrId) -> {…}`, `helpers.hasShape(nodeOrId, ["a","b"], {exact?, exclude?}) -> boolean` — own JS properties ONLY (`property` edges, no `__proto__`, no fallback, no provenance keys). **This is the correct way to ask "what shape is this object".** `hasShape(id, ["element","record"], {exact: true})` is the whole test.',
+    '- `helpers.rootPath(nodeOrId, {maxHops?}) -> [{id, name, type, edge}]` — the GC-root path for one node, root first, exactly as `memlab_retainer_trace` walks it. Saves hand-writing the `while (cur.hasPathEdge) cur = cur.pathEdge.fromNode` loop inside a larger eval (which gets rewritten, slightly differently, every time a probe needs to name an owner).',
     '- `helpers.shapeSignature(nodeOrId, {maxStringLen?}) -> string` — stable shallow content signature (sorted prop names + scalar values) for duplicate-record detection. Numeric values are NOT captured (see `memlab_duplicate_objects`), so records differing only in a number field hash the same.',
     '- `helpers.byClass(name, {type?}) -> ids[]`, `helpers.byTypename(name) -> ids[]`, `helpers.withProp(name) -> ids[]` — INDEXED id lookups. The class/typename index is built once per snapshot and memoized in a session scratch, so a follow-up call is index-speed, not another full `snapshot.nodes` scan. `byClass` indexes EVERY node type (closure, string, array, native, …), matching `memlab_find_nodes_by_class`; pass `{type: "object"}` to narrow. `byTypename` is object-only because `__typename` is a JS property. (See also the `memlab_duplicate_objects` tool for a ready-made dedup report.)',
     '- `helpers.nodesByClass(name, {type?}) -> node[]` (alias of `iterByClass`) — the same lookup returning NODE OBJECTS. Prefer it over `byClass`: ids from `byClass` are not all resolvable through `snapshot.getNodeById` — native classes such as `AudioContext` / `OpusRecorder` come back null — so the reflexive `byClass(x).map(id => getNodeById(id).referrers)` throws `Cannot read properties of null` and needs defensive `if (!n) continue` boilerplate on every native-touching eval.',

@@ -387,6 +387,77 @@ export function collectDevRoots(snapshot: IHeapSnapshot): DevRoots {
 }
 
 /**
+ * Size each Fast Refresh registry container together with its hash-table
+ * backing store, and report the table's OCCUPANCY.
+ *
+ * Occupancy is the part that is not obvious and not otherwise reported. V8 never
+ * shrinks an `EphemeronHashTable`, so a WeakMap that ever peaked large keeps
+ * that capacity for the lifetime of the isolate. Measured across one sweep, the
+ * same `allSignaturesByType` table read:
+ *
+ *   2,097,172 B / 262,144 slots / 2,989 live entries = 1.14% occupancy
+ *   8,388,628 B / 1,048,576 slots / 7,564 live entries = 0.72% occupancy
+ *
+ * i.e. it quadrupled while the live entry count only 2.5x'd. Printing bytes
+ * alone invites "the registry grew"; printing occupancy says "the table is
+ * stale capacity", which is the true statement and a different fix.
+ *
+ * A hash table's slot count is derived from the backing store's byte size
+ * (8 bytes per slot on 64-bit V8) rather than from `edge_count`, because
+ * `edge_count` counts only the non-hole entries — which is the numerator, not
+ * the denominator.
+ */
+function describeReactRefreshRegistries(
+  snapshot: IHeapSnapshot,
+  devRoots: DevRoots,
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<number>();
+  snapshot.nodes.forEach((node: IHeapNode) => {
+    if (node.id <= 3) return;
+    for (const edge of node.references) {
+      const eName = String(edge.name_or_index);
+      if (!REACT_REFRESH_REGISTRY_EDGE_NAMES.has(eName)) continue;
+      const container = edge.toNode;
+      if (container == null || container.id <= 3 || seen.has(container.id)) {
+        continue;
+      }
+      seen.add(container.id);
+      // The hash table hanging off the Map/Set/WeakMap.
+      let tableBytes = 0;
+      let liveSlots = 0;
+      for (const e2 of container.references) {
+        const t = e2.toNode;
+        if (t == null || t.type !== 'array') continue;
+        if (t.self_size > tableBytes) {
+          tableBytes = t.self_size;
+          liveSlots = t.edge_count;
+        }
+      }
+      const capacity = tableBytes > 0 ? Math.round(tableBytes / 8) : 0;
+      const occupancy =
+        capacity > 0 ? ((liveSlots / capacity) * 100).toFixed(2) : null;
+      out.push(
+        `\`${eName}\` (${container.name}) — table ${formatBytes(tableBytes)}` +
+          (capacity > 0
+            ? `, ~${formatNumber(capacity)} slots, ${formatNumber(liveSlots)} live` +
+              (occupancy != null ? ` (**${occupancy}% occupancy**)` : '')
+            : '') +
+          (occupancy != null && Number(occupancy) < 25
+            ? ' — mostly STALE CAPACITY: V8 never shrinks an EphemeronHashTable, so this is a high-water mark, not live data'
+            : ''),
+      );
+    }
+  });
+  if (out.length > 0 && devRoots.byId.size > 0) {
+    out.push(
+      '_These are dev-build only. If an `(unnamed array)` is one of the largest growers in a `memlab_leak_report` on this capture, check these byte figures before attributing it to the app._',
+    );
+  }
+  return out;
+}
+
+/**
  * Reachability from GC roots with every dev/automation root treated as a sink
  * (its outgoing edges are not followed). Returns a bitmap indexed by
  * `node.nodeIndex`: 1 = still reachable from a real GC root without passing
@@ -815,6 +886,26 @@ export function registerDevArtifacts(server: McpServer): void {
         ];
         if (breakdown.length > 0) {
           lines.push(`By source: ${breakdown.join(' · ')}`);
+        }
+        // Name the Fast Refresh registries and their BACKING STORES explicitly.
+        // The category rollup above already counts these bytes, but it counts
+        // them as a number, and the thing an operator actually needs is the
+        // sentence "the biggest `(unnamed array)` in your leak report is this".
+        // Without it the top grower gets hand-resolved every single round: it
+        // presents as an anonymous multi-MB array, `leak_report` can only say
+        // "50-70% dev-only" because the CLASS mixes Fast Refresh tables with
+        // real ones, and the operator ends up walking to the WeakMap by hand to
+        // find `{forceReset, ownKey, fullKey, getCustomHooks}` again.
+        const refreshTables = describeReactRefreshRegistries(
+          snapshot,
+          devRoots,
+        );
+        if (refreshTables.length > 0) {
+          lines.push(
+            '',
+            '**React Fast Refresh registries (dev-only) — including backing stores:**',
+            ...refreshTables.map(t => `- ${t}`),
+          );
         }
         lines.push(
           '_This total covers the whole heap and is NOT limited by `min_retained_size` — high-count/low-size artifacts (per-event log strings, one logged object per interaction) are included._',

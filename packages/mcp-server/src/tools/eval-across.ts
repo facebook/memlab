@@ -68,9 +68,8 @@ export function registerEvalAcross(server: McpServer): void {
         .int()
         .min(1)
         .optional()
-        .default(20000000)
         .describe(
-          'Per-snapshot node-visit budget for full-heap walks (default 20000000). On overrun that rung reports a partial result instead of failing the whole run.',
+          'Per-snapshot node-visit budget for full-heap walks. Defaults to a budget SCALED from each loaded graph (6 full passes, floored at 20,000,000). On overrun that rung reports a partial result instead of failing the whole run.',
         ),
       stop_on_error: z
         .boolean()

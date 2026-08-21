@@ -154,14 +154,52 @@ export function verdictFor(values: number[], fit: LinearFit): string {
     );
   }
   if (delta < 0) return 'shrank';
-  let monotonic = true;
+  // "grew every step" must mean STRICTLY increasing. Accepting non-decreasing
+  // let a step function claim steady growth: the series [924, 924, 1297, 1297]
+  // was reported as "grew every step (but not a clean line)" when two of its
+  // three steps were zero. That is the opposite diagnosis — one jump then a
+  // plateau is bounded first-mount allocation, not an unbounded per-cycle leak —
+  // and the wording sent a reader looking for a slope that is not there.
+  let nonDecreasing = true;
+  let strictlyIncreasing = true;
+  let risingSteps = 0;
+  let flatSteps = 0;
+  let firstJump = -1;
   for (let i = 1; i < n; i++) {
-    if (values[i] < values[i - 1]) monotonic = false;
+    if (values[i] < values[i - 1]) {
+      nonDecreasing = false;
+      strictlyIncreasing = false;
+    } else if (values[i] === values[i - 1]) {
+      strictlyIncreasing = false;
+      flatSteps++;
+    } else {
+      risingSteps++;
+      if (firstJump < 0) firstJump = i;
+    }
   }
-  if (monotonic && fit.r2 >= 0.98) {
+  if (strictlyIncreasing && fit.r2 >= 0.98) {
     return 'LINEAR — grew every step, r2 >= 0.98 (unbounded per-cycle shape)';
   }
-  if (monotonic) return 'grew every step (but not a clean line)';
+  if (strictlyIncreasing) return 'grew every step (but not a clean line)';
+  // Non-decreasing with at least one flat step. Name the shape instead of
+  // rounding it up to growth; a single jump is the classic bounded allocation.
+  if (nonDecreasing) {
+    if (risingSteps === 1) {
+      return (
+        `STEP FUNCTION — flat except for ONE jump at rung ${firstJump} ` +
+        `(${formatNumber(values[firstJump - 1])} → ${formatNumber(values[firstJump])}), ` +
+        'flat on the other ' +
+        `${flatSteps} step(s). NOT a per-cycle slope — this is the shape of a ` +
+        'bounded one-time allocation (e.g. first mount of a surface), so size ' +
+        'what it actually retains before treating it as a leak'
+      );
+    }
+    return (
+      `non-decreasing but NOT strictly increasing — ${risingSteps} rising step(s) ` +
+      `and ${flatSteps} flat step(s); read the per-rung deltas above rather than ` +
+      'the trend line, since flat steps mean growth is episodic, not per-cycle'
+    );
+  }
   return 'grew net, not monotonic — often GC/navigation noise';
 }
 
