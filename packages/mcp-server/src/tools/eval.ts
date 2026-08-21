@@ -27,6 +27,7 @@ import {
   getEvalScratch,
   getSnapshotMetadata,
 } from '../heap-state.js';
+import {formatEvalHints, hintsForEval} from '../eval-hints.js';
 import {
   abbreviateBlinkTypeName,
   errorResult,
@@ -1544,6 +1545,11 @@ export async function runEval({
     }
 
     const footer: string[] = [];
+    // Attached to the RESULT of the call that hand-rolled a built-in, because
+    // that is the one moment the caller is guaranteed to read. Never suppresses
+    // or alters the value above it.
+    const hintText = code != null ? formatEvalHints(hintsForEval(code)) : null;
+    if (hintText != null) footer.push(hintText);
     if (shrunk.truncated) {
       footer.push(
         `⚠️ truncated: true — the result exceeded ${formatNumber(budgetBytes)} bytes` +

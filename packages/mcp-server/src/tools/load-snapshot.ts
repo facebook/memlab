@@ -513,6 +513,19 @@ function nextStepMenu(): string[] {
     '- _Is X a leak?_ → `memlab_hypothesis`',
     '- _Who owns the growth?_ → `memlab_explain_delta` (needs a baseline loaded with `keep_previous:true`)',
     '- _What grew across the ladder?_ → `memlab_leak_report` / `memlab_sequence_analysis`',
+    // The five questions below are the ones people hand-write evals for. Each
+    // has had a dedicated tool for some time and each was still being answered
+    // by hand in a measured session, because nothing in the analysis path ever
+    // points at the catalogue: the flow starts at `leak_report` and the recipe
+    // names ~8 tools out of ~85. A pointer that only exists in a reference file
+    // is too weak to compete with just writing the eval.
+    '- _What is the rate of X, where X is MY population?_ → `memlab_ladder_probe` (any eval-expressible count across a ladder, with slope + r²) — not `memlab_eval` per rung',
+    '- _Did the detached/listener census change end to end?_ → `memlab_census_diff` (per-class, both rungs, one call)',
+    '- _How much of this is not the app?_ → `memlab_artifact_budget` (app vs bundle vs code vs dev vs JIT, and `app_delta` against a baseline)',
+    '- _How many listener records, by event or callback?_ → `memlab_event_registry`',
+    '- _Did this population change between two snapshots?_ → `memlab_population_diff`; _across a whole ladder?_ → `memlab_eval_across`',
+    '- _Is this collection growing?_ → `memlab_collection_trend`; _did my fix work?_ → `memlab_verify_fix`',
+    '- _Have we found this before?_ → `memlab_finding_index` (seed it with `action:"import"` first — an empty index answers NEW to everything)',
     '- _What does this object pin?_ → `memlab_dominator_chain`, then `memlab_dominator_attribution`',
     '- _Is it real or an artifact?_ → `memlab_dev_artifacts` (and `memlab_explain_delta` for JIT warmup, which it does not count)',
     '- _Something else_ → `memlab_tools` lists every tool grouped by the question it answers',
