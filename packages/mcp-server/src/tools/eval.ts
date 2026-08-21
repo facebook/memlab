@@ -28,6 +28,7 @@ import {
   getSnapshotMetadata,
 } from '../heap-state.js';
 import {
+  abbreviateBlinkTypeName,
   errorResult,
   toolResult,
   serializeNodeSummary,
@@ -51,7 +52,104 @@ const MAX_OUTPUT_SIZE = 50 * 1024; // 50KB
 
 function truncate(str: string, max: number): string {
   if (str.length <= max) return str;
-  return str.slice(0, max) + '\n... [truncated, output exceeded 50KB]';
+  return (
+    str.slice(0, max) +
+    `\n... [truncated, output exceeded ${Math.round(max / 1024)}KB]`
+  );
+}
+
+/**
+ * Wall-clock budget for one eval, scaled from the loaded graph.
+ *
+ * A fixed 60 s default is right for an indexed lookup and wrong for everything
+ * else: a full-heap walk on a 6M-node graph takes two to four minutes, so every
+ * large-snapshot eval aborted on its first attempt and had to be re-issued with
+ * an explicit `timeout_ms`. That is a guaranteed wasted call per question, and
+ * the node count needed to avoid it is already known.
+ *
+ * The floor stays at 60 s so small heaps behave exactly as before.
+ */
+export function scaledEvalTimeoutMs(): number {
+  const nodes = getSnapshotMetadata()?.nodeCount ?? 0;
+  return Math.max(60000, Math.ceil((nodes / 40000) * 1000));
+}
+
+/**
+ * Shorten a heap result STRUCTURALLY rather than mid-string.
+ *
+ * A census result is an array of rows or a `{key: count}` map, and cutting the
+ * JSON at a byte offset yields unparseable output plus a re-run with a
+ * hand-written limit — which is what actually happened to a detached-class
+ * census whose `blink::HeapVectorBacking<…>` keys blew the cap. Dropping whole
+ * entries keeps the value valid JSON and keeps the largest rows, which are the
+ * ones the question was about.
+ *
+ * Blink's C++ template names are elided first: they are frequently most of the
+ * payload and none of the information, and `abbreviateBlinkTypeName` is the same
+ * elision the table renderers already use.
+ */
+export function shrinkResult(
+  value: unknown,
+  maxBytes: number,
+): {value: unknown; truncated: boolean; droppedEntries: number} {
+  const size = (v: unknown): number => {
+    try {
+      return JSON.stringify(v)?.length ?? 0;
+    } catch {
+      return String(v).length;
+    }
+  };
+  if (size(value) <= maxBytes) {
+    return {value, truncated: false, droppedEntries: 0};
+  }
+
+  const abbreviate = (v: unknown): unknown => {
+    if (typeof v === 'string') return abbreviateBlinkTypeName(v);
+    if (Array.isArray(v)) return v.map(abbreviate);
+    if (v != null && typeof v === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+        out[abbreviateBlinkTypeName(k)] = abbreviate(val);
+      }
+      return out;
+    }
+    return v;
+  };
+  let shrunk = abbreviate(value);
+  if (size(shrunk) <= maxBytes) {
+    return {value: shrunk, truncated: false, droppedEntries: 0};
+  }
+
+  // Binary-search the entry count that fits, so a 40k-row result does not cost
+  // 40k serializations to trim.
+  const entriesOf = (
+    v: unknown,
+  ): {take: (n: number) => unknown; length: number} | null => {
+    if (Array.isArray(v)) {
+      return {length: v.length, take: n => v.slice(0, n)};
+    }
+    if (v != null && typeof v === 'object') {
+      const pairs = Object.entries(v as Record<string, unknown>);
+      return {
+        length: pairs.length,
+        take: n => Object.fromEntries(pairs.slice(0, n)),
+      };
+    }
+    return null;
+  };
+  const entries = entriesOf(shrunk);
+  if (entries == null || entries.length === 0) {
+    return {value: shrunk, truncated: true, droppedEntries: 0};
+  }
+  let lo = 0;
+  let hi = entries.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (size(entries.take(mid)) <= maxBytes) lo = mid;
+    else hi = mid - 1;
+  }
+  shrunk = entries.take(lo);
+  return {value: shrunk, truncated: true, droppedEntries: entries.length - lo};
 }
 
 /**
@@ -299,6 +397,7 @@ export function registerEval(server: McpServer): void {
             'pathBetween(fromId, toId, {maxNodes?})->{found,exhausted,path[]}, ' +
             'save(name, value) / load(name, {allowCrossSnapshot?}) / listSaved() (SESSION-scoped, survives loading another snapshot) }), ' +
             'and standard JS built-ins. ' +
+            'NOTE: `helpers.byClass()` returns IDS, and not every id resolves — `snapshot.getNodeById()` returns null for many native classes (AudioContext, OpusRecorder, …), so `byClass(x).map(id => getNodeById(id).referrers)` throws on the first try. Use `helpers.nodesByClass(name)` / `helpers.iterByClass(name)`, which return node objects and skip the unresolvable ones. `helpers.props()` on an unresolvable node now returns `{__unavailable: true}` rather than `{}`, so "no properties" and "could not read properties" are distinguishable. ' +
             'NOTE: `node.retainedSize` / `node.retained_size` THROW inside eval — they can read back ~0 for every node on some loads, so a silent wrong number is refused; use helpers.retainedSize(id). `node.self_size` is reliable. ' +
             'Node traversal: use node.references (outgoing) and node.referrers (incoming) with for-of. ' +
             'Edge properties: .name_or_index, .type, .toNode, .fromNode.',
@@ -306,9 +405,16 @@ export function registerEval(server: McpServer): void {
       timeout_ms: z
         .number()
         .optional()
-        .default(60000)
         .describe(
-          'Execution timeout in milliseconds (default 60000). Full-snapshot scans on large heaps may need 120000+.',
+          'Execution timeout in milliseconds. Defaults to a value SCALED from the loaded snapshot (60s floor, ~1s per 40k nodes), because a full-heap walk on a 6M-node graph takes minutes and a fixed 60s default made the first attempt abort on every large capture.',
+        ),
+      max_result_bytes: z
+        .number()
+        .int()
+        .min(1024)
+        .optional()
+        .describe(
+          'Byte budget for the serialized `result` (default 51200). Over budget, whole ENTRIES are dropped from the end of an array/object rather than the JSON being cut mid-string, and `truncated: true` is reported — so a large census stays valid and readable instead of needing a re-run with a hand-written limit.',
         ),
       save_as: z
         .string()
@@ -380,6 +486,7 @@ export async function runEval({
   save_as,
   max_nodes,
   dry_run,
+  max_result_bytes,
 }: {
   mode?: 'eval' | 'describe_env' | 'list_saved';
   code?: string;
@@ -387,11 +494,12 @@ export async function runEval({
   save_as?: string;
   max_nodes?: number;
   dry_run?: boolean;
+  max_result_bytes?: number;
 }): Promise<ReturnType<typeof toolResult>> {
   // Schema defaults are applied by the MCP layer for tool calls; a direct
   // caller (memlab_eval_across) gets them here so both paths behave alike.
   mode = mode ?? 'eval';
-  timeout_ms = timeout_ms ?? 60000;
+  timeout_ms = timeout_ms ?? scaledEvalTimeoutMs();
   max_nodes = max_nodes ?? 20000000;
   dry_run = dry_run ?? false;
   const budget: VisitBudget = {visited: 0, max: max_nodes, exceeded: false};
@@ -655,24 +763,60 @@ export async function runEval({
     // Read an object's own properties as a plain object: scalars inlined,
     // object-valued props as `{ref, name, type}`. Saves the repetitive
     // `for (const e of n.references) if (e.name_or_index === X)` boilerplate.
+    const describeTarget = (t: IHeapNode): unknown => {
+      if (t.isString) return t.toStringNode()?.stringValue ?? '';
+      if (t.name === 'true') return true;
+      if (t.name === 'false') return false;
+      if (t.name === 'null') return null;
+      if (t.name === 'undefined') return undefined;
+      return {ref: t.id, name: t.name, type: t.type};
+    };
+
     const props = (
       nodeOrId: number | {id: number},
     ): Record<string, unknown> => {
       const node = resolveNode(nodeOrId);
-      if (!node) return {};
+      // An empty object used to mean three different things — unresolvable
+      // node, no property edges, and properties held under a non-`property`
+      // edge type — and the caller could not tell which. Reading `{}` as "this
+      // object has no fields" when it plainly does is what makes shape
+      // inspection unreliable and sends people back to manual edge walks.
+      if (!node) {
+        return {
+          __unavailable: true,
+          __reason:
+            'node not resolvable in the active snapshot — ids from ' +
+            'helpers.byClass() are not all resolvable (natives especially); ' +
+            'use helpers.iterByClass() to get node objects directly',
+        };
+      }
       const out: Record<string, unknown> = {};
       for (const e of node.references) {
         if (e.type !== 'property') continue;
         const name = String(e.name_or_index);
         if (name === '__proto__') continue;
-        const t = e.toNode;
-        if (t.isString) out[name] = t.toStringNode()?.stringValue ?? '';
-        else if (t.name === 'true') out[name] = true;
-        else if (t.name === 'false') out[name] = false;
-        else if (t.name === 'null') out[name] = null;
-        else if (t.name === 'undefined') out[name] = undefined;
-        else out[name] = {ref: t.id, name: t.name, type: t.type};
+        out[name] = describeTarget(e.toNode);
       }
+      if (Object.keys(out).length > 0) return out;
+
+      // Fall back to a named-edge walk. Natives, closures and some internal
+      // objects carry their fields under `internal`/`shortcut`/`hidden` edges
+      // rather than `property`, so the fast path legitimately finds nothing on
+      // objects that visibly have state. Provenance is marked so a caller
+      // cannot mistake these for real own-properties.
+      let found = 0;
+      for (const e of node.references) {
+        if (e.type === 'element') continue;
+        const name = String(e.name_or_index);
+        if (name === '' || name === '__proto__' || /^\d+$/.test(name)) continue;
+        out[name] = describeTarget(e.toNode);
+        found++;
+      }
+      if (found === 0) return out;
+      out.__via = 'edge-walk';
+      out.__note =
+        'no `property` edges on this node; these are named non-property edges ' +
+        '(internal/shortcut/hidden) and are NOT own JS properties';
       return out;
     };
     const getProp = (nodeOrId: number | {id: number}, name: string) =>
@@ -827,6 +971,13 @@ export async function runEval({
     };
     const iterByClass = (name: string, opts?: {type?: string}) =>
       nodesFromIds(byClass(name, opts)).map(wrapNode);
+    // Same thing under the name people actually reach for. `byClass` returns
+    // IDS, and not all of them resolve through `snapshot.getNodeById` — native
+    // classes (AudioContext, OpusRecorder, Recorder) come back null, so the
+    // reflexive `byClass(x).map(id => getNodeById(id).referrers)` throws
+    // "Cannot read properties of null" on the first attempt, every time. This
+    // returns node objects and skips the unresolvable ones.
+    const nodesByClass = iterByClass;
     const iterByType = (type: string) =>
       nodesFromIds(buildTypeIndex().get(type) ?? []).map(wrapNode);
 
@@ -1282,6 +1433,7 @@ export async function runEval({
       aggregateRetained,
       isRealDetached,
       iterByClass,
+      nodesByClass,
       iterByType,
       classCounts,
       edgeTarget,
@@ -1369,14 +1521,19 @@ export async function runEval({
       setSavedResult(save_as, sandbox.result, currentHandle);
     }
 
+    const budgetBytes = max_result_bytes ?? MAX_OUTPUT_SIZE;
+    const shrunk = shrinkResult(sandbox.result, budgetBytes);
+
     let output: string;
     try {
-      output = JSON.stringify(sandbox.result, null, 2) ?? 'undefined';
+      output = JSON.stringify(shrunk.value, null, 2) ?? 'undefined';
     } catch {
-      output = String(sandbox.result);
+      output = String(shrunk.value);
     }
 
-    output = truncate(output, MAX_OUTPUT_SIZE);
+    // Pretty-printing adds indentation the byte budget above did not account
+    // for, so the string clamp stays as a backstop; it should rarely fire now.
+    output = truncate(output, budgetBytes * 2);
 
     if (consoleOutput.length > 0) {
       const consolePart = truncate(
@@ -1387,6 +1544,17 @@ export async function runEval({
     }
 
     const footer: string[] = [];
+    if (shrunk.truncated) {
+      footer.push(
+        `⚠️ truncated: true — the result exceeded ${formatNumber(budgetBytes)} bytes` +
+          (shrunk.droppedEntries > 0
+            ? `, so the last ${formatNumber(shrunk.droppedEntries)} entr${shrunk.droppedEntries === 1 ? 'y was' : 'ies were'} dropped. ` +
+              'Entries are dropped whole, so what is shown is still valid and still the leading rows — ' +
+              'sort your result before assigning it if the ones you want are not first.'
+            : '.') +
+          ' Raise `max_result_bytes`, or aggregate in the eval instead of returning raw rows.',
+      );
+    }
     if (budget.exceeded) {
       footer.push(
         `⚠️ Walk aborted after ${formatNumber(budget.max)} node visits (max_nodes). The value above is PARTIAL. ` +
@@ -1533,6 +1701,7 @@ function describeEnv(): string {
     "- `helpers.props(nodeOrId) -> {prop: scalar | {ref, name, type}}` and `helpers.getProp(nodeOrId, name)` — read an object's own properties without the `for (const e of n.references) …` boilerplate. Number-valued props surface as a ref to a `smi number`/`heap number` node; their actual numeric value is not in the snapshot format.",
     '- `helpers.shapeSignature(nodeOrId, {maxStringLen?}) -> string` — stable shallow content signature (sorted prop names + scalar values) for duplicate-record detection. Numeric values are NOT captured (see `memlab_duplicate_objects`), so records differing only in a number field hash the same.',
     '- `helpers.byClass(name, {type?}) -> ids[]`, `helpers.byTypename(name) -> ids[]`, `helpers.withProp(name) -> ids[]` — INDEXED id lookups. The class/typename index is built once per snapshot and memoized in a session scratch, so a follow-up call is index-speed, not another full `snapshot.nodes` scan. `byClass` indexes EVERY node type (closure, string, array, native, …), matching `memlab_find_nodes_by_class`; pass `{type: "object"}` to narrow. `byTypename` is object-only because `__typename` is a JS property. (See also the `memlab_duplicate_objects` tool for a ready-made dedup report.)',
+    '- `helpers.nodesByClass(name, {type?}) -> node[]` (alias of `iterByClass`) — the same lookup returning NODE OBJECTS. Prefer it over `byClass`: ids from `byClass` are not all resolvable through `snapshot.getNodeById` — native classes such as `AudioContext` / `OpusRecorder` come back null — so the reflexive `byClass(x).map(id => getNodeById(id).referrers)` throws `Cannot read properties of null` and needs defensive `if (!n) continue` boilerplate on every native-touching eval.',
     '- `helpers.iterByClass(name, {type?}) -> node[]` / `helpers.iterByType(type) -> node[]` — indexed iteration; no full scan, index built once per snapshot.',
     '- `helpers.classCounts({pattern?, type?, minCount?}) -> [{name, type, count, selfSize}]` — one-pass class histogram, cached; `pattern` is a case-insensitive regex (substring fallback).',
     '- `helpers.entries(nodeOrId) -> [{key, value}]` — generic container walk: Map/WeakMap (paired, SMI gaps handled), Set/WeakSet, Array (both direct `element` edges and the `(object elements)` backing store), plain object properties. Holes and `__proto__`/`map` are filtered.',

@@ -352,11 +352,32 @@ export function filterLargestObjects(
   filter: (node: IHeapNode) => boolean,
   limit: number,
 ): IHeapNode[] {
+  return filterLargestObjectsCounted(snapshot, filter, limit).nodes;
+}
+
+/**
+ * As `filterLargestObjects`, but also reports how many nodes MATCHED.
+ *
+ * The population size is not a nicety. A conclusion drawn from the top 5 of a
+ * matching population reads identically whether that population was 5 or 23,918,
+ * and the difference decides whether the conclusion is sound: one report stated
+ * "all 5 sampled instances share the same retainer pattern — likely a single
+ * root cause" where a full-population trace found 1,468 distinct paths, the
+ * largest covering 2.2%. The sample fraction has to reach the caller, so the
+ * walk that already visits every node returns it.
+ */
+export function filterLargestObjectsCounted(
+  snapshot: IHeapSnapshot,
+  filter: (node: IHeapNode) => boolean,
+  limit: number,
+): {nodes: IHeapNode[]; matched: number} {
   let result: IHeapNode[] = [];
+  let matched = 0;
   snapshot.nodes.forEach(node => {
     if (!filter(node)) {
       return;
     }
+    matched++;
     const size = node.retainedSize;
     let i: number;
     for (i = result.length - 1; i >= 0; --i) {
@@ -370,7 +391,7 @@ export function filterLargestObjects(
     }
     result = result.slice(0, limit);
   });
-  return result;
+  return {nodes: result, matched};
 }
 
 /**

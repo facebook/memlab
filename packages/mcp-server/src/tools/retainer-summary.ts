@@ -15,7 +15,7 @@ import {getSnapshot} from '../heap-state.js';
 import {resolveSavedNodeIds} from '../result-handles.js';
 import {
   collapseRepeatedLabels,
-  filterLargestObjects,
+  filterLargestObjectsCounted,
   formatBytes,
   truncateDomToTag,
   errorResult,
@@ -287,6 +287,10 @@ export function registerRetainerSummary(server: McpServer): void {
 
         let nodes: IHeapNode[];
         let label: string;
+        // How many nodes MATCHED, as opposed to how many were traced. Without
+        // it, a verdict drawn from the top 5 reads the same whether the
+        // population was 5 or 23,918.
+        let population = 0;
 
         // A saved result stands in for an explicit id list (see
         // result-handles.ts): same code path, ids never printed.
@@ -302,10 +306,12 @@ export function registerRetainerSummary(server: McpServer): void {
             const node = snapshot.getNodeById(id);
             if (node) nodes.push(node);
           }
+          // Explicit ids ARE the population; nothing was sampled away.
+          population = nodes.length;
           label = `${nodes.length} specified node(s)`;
         } else if (shape && shape.length > 0) {
           const requiredProps = new Set(shape);
-          nodes = filterLargestObjects(
+          ({nodes, matched: population} = filterLargestObjectsCounted(
             snapshot,
             node => {
               if (node.type !== 'object' || node.id <= 3) return false;
@@ -319,30 +325,30 @@ export function registerRetainerSummary(server: McpServer): void {
               return foundProps.size === requiredProps.size;
             },
             sample,
-          );
+          ));
           label = `shape {${shape.join(', ')}}`;
         } else if (name_prefix) {
-          nodes = filterLargestObjects(
+          ({nodes, matched: population} = filterLargestObjectsCounted(
             snapshot,
             node => node.name.startsWith(name_prefix),
             sample,
-          );
+          ));
           label = `prefix "${name_prefix}"`;
         } else if (class_name) {
           // Try exact match first
-          nodes = filterLargestObjects(
+          ({nodes, matched: population} = filterLargestObjectsCounted(
             snapshot,
             node => node.name === class_name,
             sample,
-          );
+          ));
           // Fall back to substring match (handles V8 detached DOM names
           // like "Detached <div>" which contain angle brackets)
           if (nodes.length === 0) {
-            nodes = filterLargestObjects(
+            ({nodes, matched: population} = filterLargestObjectsCounted(
               snapshot,
               node => node.name.includes(class_name),
               sample,
-            );
+            ));
           }
           label = `"${class_name}"`;
         } else {
@@ -436,8 +442,19 @@ export function registerRetainerSummary(server: McpServer): void {
         if (earlyStop) modifiers.push('early termination — high confidence');
         const modStr = modifiers.length > 0 ? `, ${modifiers.join(', ')}` : '';
 
+        // The fraction, not the count, is what licenses a conclusion. Below
+        // this the tool states what it saw and refuses to generalize from it.
+        const REPRESENTATIVE_FRACTION = 0.2;
+        const coverage = population > 0 ? totalSampled / population : 1;
+        const representative =
+          population <= totalSampled || coverage >= REPRESENTATIVE_FRACTION;
+        const ofPopulation =
+          population > totalSampled
+            ? ` of ${population} matching — ${(coverage * 100).toFixed(1)}% sampled`
+            : '';
+
         const lines = [
-          `Retainer summary for ${label} (${totalSampled} sampled${modStr})`,
+          `Retainer summary for ${label} (${totalSampled} sampled${ofPopulation}${modStr})`,
           '',
         ];
 
@@ -445,10 +462,28 @@ export function registerRetainerSummary(server: McpServer): void {
           const conf = earlyStop
             ? ' (early termination — all samples matched)'
             : '';
-          lines.push(
-            `**All ${sorted[0].count} sampled instances share the same retainer pattern** — likely a single root cause.${conf}`,
-            '',
-          );
+          if (representative) {
+            lines.push(
+              `**All ${sorted[0].count} sampled instances share the same retainer pattern** — likely a single root cause.${conf}`,
+              '',
+            );
+          } else {
+            // Refusing the "single root cause" phrasing here is the point. A
+            // measured case reported it from 5 samples where the full
+            // population held 1,468 distinct paths, the largest covering 2.2%
+            // — and a dismissal written from that verdict names the wrong
+            // artifact family.
+            lines.push(
+              `**All ${sorted[0].count} sampled instances share the same retainer pattern**, but they are ` +
+                `only ${(coverage * 100).toFixed(1)}% of the ${population} matching nodes.${conf}`,
+              '',
+              `> ⚠️ **This does NOT establish a single root cause.** The sample is picked by retained ` +
+                `size, so it is biased toward whichever subtree is largest, and a uniform top-${totalSampled} ` +
+                `is routine in populations that hold thousands of distinct paths. Run ` +
+                `\`memlab_trace_all\` over the full population before making that claim, or raise \`sample\`.`,
+              '',
+            );
+          }
         } else {
           // Filled in after the render-dedup pass below, so the count reflects
           // what is actually printed rather than the raw trace-key count.
@@ -553,7 +588,11 @@ export function registerRetainerSummary(server: McpServer): void {
               : '';
           lines[patternHeaderIndex] =
             merged.length === 1
-              ? `**All ${totalSampled} sampled instances share ONE retainer path** — a single root cause:${collapsedNote}`
+              ? representative
+                ? `**All ${totalSampled} sampled instances share ONE retainer path** — a single root cause:${collapsedNote}`
+                : `**All ${totalSampled} sampled instances share ONE retainer path**, but that is only ` +
+                  `${(coverage * 100).toFixed(1)}% of the ${population} matching nodes — NOT evidence of a ` +
+                  `single root cause. Confirm with \`memlab_trace_all\` over the full population.${collapsedNote}`
               : `**${merged.length} distinct retainer patterns found**${collapsedNote}`;
         }
 
