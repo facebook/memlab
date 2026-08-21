@@ -90,6 +90,12 @@ import {registerBatch} from './tools/batch.js';
 import {registerPopulationDiff} from './tools/population-diff.js';
 import {registerDominatorAttribution} from './tools/dominator-attribution.js';
 import {registerCollectionTrend} from './tools/collection-trend.js';
+import {registerCollectionDiff} from './tools/collection-diff.js';
+import {registerModuleAttribution} from './tools/module-attribution.js';
+import {registerScriptCensus} from './tools/script-census.js';
+import {registerAsyncCensus} from './tools/async-census.js';
+import {registerWeakRefCensus} from './tools/weakref-census.js';
+import {registerPropertyNames} from './tools/property-names.js';
 import {registerVerifyFix} from './tools/verify-fix.js';
 import {registerToolsIndex} from './tools/tools-index.js';
 import {registerAnalyzeRun} from './tools/analyze-run.js';
@@ -107,7 +113,7 @@ import {registerNextMeasurement} from './tools/next-measurement.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.63.0', // keep in sync with package.json
+  version: '2.64.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -186,6 +192,12 @@ registerBatch(server);
 registerPopulationDiff(server);
 registerDominatorAttribution(server);
 registerCollectionTrend(server);
+registerCollectionDiff(server);
+registerModuleAttribution(server);
+registerScriptCensus(server);
+registerAsyncCensus(server);
+registerWeakRefCensus(server);
+registerPropertyNames(server);
 registerVerifyFix(server);
 registerToolsIndex(server);
 registerAnalyzeRun(server);
