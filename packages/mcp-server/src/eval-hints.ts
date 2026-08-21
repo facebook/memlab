@@ -52,7 +52,15 @@ const RULES: HintRule[] = [
   {
     tool: 'memlab_event_registry',
     why: 'counts `{callback, context}` listener records by event and host directly',
-    all: [/\bcallback\b/, /\bcontext\b/],
+    // `callback` and `context` are two of the most common identifiers in
+    // JavaScript, so matching them alone fires on evals that have nothing to do
+    // with listeners. Require the SHAPE as well: both read as properties off
+    // the same record, and the eval is accumulating or iterating over them.
+    all: [
+      /[.[]['"]?callback\b|\bcallback\s*:/,
+      /[.[]['"]?context\b|\bcontext\s*:/,
+      /&&|\+\+|\+= ?1|\|\| ?0\) ?\+ ?1|\?\? ?0\) ?\+ ?1|\.push\(|\bfor\b/,
+    ],
     // Already going through the census tool, or bucketing something else.
     none: [/memlab_event_registry/],
   },
@@ -69,6 +77,7 @@ const RULES: HintRule[] = [
       /is_detached|isRealDetached|Detached </,
       /\bbaseline\b|\bbefore\b|\bprev\b/,
     ],
+    none: [/memlab_census_diff/],
   },
   {
     tool: 'memlab_class_histogram',
@@ -87,6 +96,7 @@ const RULES: HintRule[] = [
     tool: 'memlab_ladder_probe',
     why: 'runs ONE numeric probe across an ordered ladder and returns the series, the per-cycle rate and r² — loading one rung at a time, so it works on captures too large to hold simultaneously',
     all: [/helpers\.(save|load)\(|__rung|perRung|per_rung/],
+    none: [/memlab_ladder_probe/],
   },
   {
     tool: 'memlab_duplicate_objects',
@@ -95,10 +105,17 @@ const RULES: HintRule[] = [
     none: [/memlab_duplicate_objects/],
   },
   {
-    tool: 'memlab_map_entries / memlab_weakmap_entries',
-    why: 'enumerate collection entries without the backing-store walk',
+    // One canonical tool name per hint. The pair used to be crammed into this
+    // single field, which rendered as one backticked identifier containing a
+    // slash and spaces — not a name any caller or renderer can resolve. The
+    // sibling tool goes in `why`, as prose, where it belongs.
+    tool: 'memlab_map_entries',
+    why: 'enumerates collection entries without the backing-store walk (see `memlab_weakmap_entries` for WeakMaps)',
     all: [/table|backing/i, /\bMap\b|\bWeakMap\b/],
-    none: [/helpers\.mapEntries|helpers\.weakmapEntries|memlab_map_entries/],
+    none: [
+      /helpers\.mapEntries|helpers\.weakmapEntries/,
+      /memlab_map_entries|memlab_weakmap_entries/,
+    ],
   },
   {
     tool: 'memlab_retainer_trace',

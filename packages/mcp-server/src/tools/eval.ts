@@ -27,6 +27,7 @@ import {
   getEvalScratch,
   getSnapshotMetadata,
 } from '../heap-state.js';
+import {beginAnalysisBudget} from '../analysis-budget.js';
 import {formatEvalHints, hintsForEval} from '../eval-hints.js';
 import {
   abbreviateBlinkTypeName,
@@ -92,7 +93,12 @@ export function scaledEvalTimeoutMs(): number {
 export function shrinkResult(
   value: unknown,
   maxBytes: number,
-): {value: unknown; truncated: boolean; droppedEntries: number} {
+): {
+  value: unknown;
+  truncated: boolean;
+  droppedEntries: number;
+  keptEntries: number;
+} {
   const size = (v: unknown): number => {
     try {
       return JSON.stringify(v)?.length ?? 0;
@@ -101,24 +107,42 @@ export function shrinkResult(
     }
   };
   if (size(value) <= maxBytes) {
-    return {value, truncated: false, droppedEntries: 0};
+    return {value, truncated: false, droppedEntries: 0, keptEntries: -1};
   }
 
+  // Abbreviate VALUES freely, but keys only where it cannot lose data.
+  //
+  // `abbreviateBlinkTypeName` collapses everything between the first `<` and
+  // the last `>`, so `blink::HeapVectorBacking<Foo>` and
+  // `blink::HeapVectorBacking<Bar>` abbreviate to the SAME string. On a census
+  // map — `{className: count}`, the exact shape this exists to shrink — the
+  // second entry would overwrite the first and the count would silently
+  // disappear before any trimming happened. So a key is only shortened when the
+  // shortened form is still unique within its object; otherwise the full key is
+  // kept, because a longer result is recoverable and a wrong one is not.
   const abbreviate = (v: unknown): unknown => {
     if (typeof v === 'string') return abbreviateBlinkTypeName(v);
     if (Array.isArray(v)) return v.map(abbreviate);
     if (v != null && typeof v === 'object') {
+      const entries = Object.entries(v as Record<string, unknown>);
+      const shortened = entries.map(([k]) => abbreviateBlinkTypeName(k));
+      const collides = new Set(shortened).size !== shortened.length;
       const out: Record<string, unknown> = {};
-      for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-        out[abbreviateBlinkTypeName(k)] = abbreviate(val);
-      }
+      entries.forEach(([k, val], i) => {
+        out[collides ? k : shortened[i]] = abbreviate(val);
+      });
       return out;
     }
     return v;
   };
   let shrunk = abbreviate(value);
   if (size(shrunk) <= maxBytes) {
-    return {value: shrunk, truncated: false, droppedEntries: 0};
+    return {
+      value: shrunk,
+      truncated: false,
+      droppedEntries: 0,
+      keptEntries: -1,
+    };
   }
 
   // Binary-search the entry count that fits, so a 40k-row result does not cost
@@ -140,7 +164,7 @@ export function shrinkResult(
   };
   const entries = entriesOf(shrunk);
   if (entries == null || entries.length === 0) {
-    return {value: shrunk, truncated: true, droppedEntries: 0};
+    return {value: shrunk, truncated: true, droppedEntries: 0, keptEntries: -1};
   }
   let lo = 0;
   let hi = entries.length;
@@ -150,7 +174,12 @@ export function shrinkResult(
     else hi = mid - 1;
   }
   shrunk = entries.take(lo);
-  return {value: shrunk, truncated: true, droppedEntries: entries.length - lo};
+  return {
+    value: shrunk,
+    truncated: true,
+    droppedEntries: entries.length - lo,
+    keptEntries: lo,
+  };
 }
 
 /**
@@ -415,7 +444,7 @@ export function registerEval(server: McpServer): void {
         .min(1024)
         .optional()
         .describe(
-          'Byte budget for the serialized `result` (default 51200). Over budget, whole ENTRIES are dropped from the end of an array/object rather than the JSON being cut mid-string, and `truncated: true` is reported — so a large census stays valid and readable instead of needing a re-run with a hand-written limit.',
+          `Byte budget for the serialized \`result\` (default ${MAX_OUTPUT_SIZE}). Over budget, whole ENTRIES are dropped from the end of an array/object rather than the JSON being cut mid-string, and \`truncated: true\` is reported — so a large census stays valid and readable instead of needing a re-run with a hand-written limit.`,
         ),
       save_as: z
         .string()
@@ -441,7 +470,7 @@ export function registerEval(server: McpServer): void {
           'Abort a `snapshot.nodes.forEach` walk after this many node visits (default 20000000, i.e. effectively unlimited). On abort the partial `result` is returned with a note instead of failing, so a broad exploratory scan can be attempted safely. Reported back as `nodes_visited` on every call.',
         ),
     },
-    async args => runEval(args),
+    async args => runEval({...args, ownsScanBudget: true}),
   );
 }
 
@@ -488,6 +517,7 @@ export async function runEval({
   max_nodes,
   dry_run,
   max_result_bytes,
+  ownsScanBudget,
 }: {
   mode?: 'eval' | 'describe_env' | 'list_saved';
   code?: string;
@@ -496,11 +526,36 @@ export async function runEval({
   max_nodes?: number;
   dry_run?: boolean;
   max_result_bytes?: number;
+  /**
+   * True only for a direct `memlab_eval` MCP call, which owns the scan budget
+   * the guardrail armed for it and may therefore re-arm it to a scaled value.
+   * Left false by every in-process caller — `memlab_eval_across`,
+   * `memlab_ladder_probe`, `memlab_batch` — because those run MANY evals inside
+   * ONE MCP call and each re-arm would reset the shared wall clock.
+   */
+  ownsScanBudget?: boolean;
 }): Promise<ReturnType<typeof toolResult>> {
   // Schema defaults are applied by the MCP layer for tool calls; a direct
   // caller (memlab_eval_across) gets them here so both paths behave alike.
   mode = mode ?? 'eval';
-  timeout_ms = timeout_ms ?? scaledEvalTimeoutMs();
+  const scaledTimeout = timeout_ms ?? scaledEvalTimeoutMs();
+  if (ownsScanBudget === true && timeout_ms == null && scaledTimeout > 0) {
+    // Raising only the VM script timeout is not enough, and the half-fix is
+    // worse than none because it looks like it worked. `guardrail.ts` arms the
+    // whole-heap scan budget from the tool's INCOMING `timeout_ms` before this
+    // handler runs; with no explicit value it arms the 90s default, so a scaled
+    // 150s eval on a 6M-node graph is still killed at 90s — the exact failure
+    // the scaling exists to remove. Re-arm the scan budget to match.
+    //
+    // Gated on `ownsScanBudget` because `beginAnalysisBudget` RESETS the clock
+    // rather than extending it, and the registry's invariant is exactly one
+    // budget per MCP call. `memlab_eval_across` runs one eval per rung inside a
+    // single call, so an ungated re-arm would hand every rung a fresh budget
+    // and leave the batch's total wall clock effectively unbounded — the guard
+    // the budget exists to be.
+    beginAnalysisBudget(scaledTimeout);
+  }
+  timeout_ms = scaledTimeout;
   max_nodes = max_nodes ?? 20000000;
   dry_run = dry_run ?? false;
   const budget: VisitBudget = {visited: 0, max: max_nodes, exceeded: false};
@@ -1551,13 +1606,19 @@ export async function runEval({
     const hintText = code != null ? formatEvalHints(hintsForEval(code)) : null;
     if (hintText != null) footer.push(hintText);
     if (shrunk.truncated) {
+      const nothingFit = shrunk.keptEntries === 0 && shrunk.droppedEntries > 0;
       footer.push(
         `⚠️ truncated: true — the result exceeded ${formatNumber(budgetBytes)} bytes` +
-          (shrunk.droppedEntries > 0
-            ? `, so the last ${formatNumber(shrunk.droppedEntries)} entr${shrunk.droppedEntries === 1 ? 'y was' : 'ies were'} dropped. ` +
-              'Entries are dropped whole, so what is shown is still valid and still the leading rows — ' +
-              'sort your result before assigning it if the ones you want are not first.'
-            : '.') +
+          (nothingFit
+            ? `, and NOT EVEN ONE of the ${formatNumber(shrunk.droppedEntries)} entries fit inside it, ` +
+              'so the value above is EMPTY. Nothing was kept — do not read it as a leading subset. ' +
+              'A single entry is larger than the whole budget, so raise `max_result_bytes` ' +
+              'substantially or return less per entry.'
+            : shrunk.droppedEntries > 0
+              ? `, so the last ${formatNumber(shrunk.droppedEntries)} entr${shrunk.droppedEntries === 1 ? 'y was' : 'ies were'} dropped. ` +
+                'Entries are dropped whole, so what is shown is still valid and still the leading rows — ' +
+                'sort your result before assigning it if the ones you want are not first.'
+              : '.') +
           ' Raise `max_result_bytes`, or aggregate in the eval instead of returning raw rows.',
       );
     }
