@@ -27,6 +27,7 @@ interface CacheEntry {
   collectionType: string;
   entryCount: number;
   tableSlots: number;
+  capacitySlots: number;
   retainedSize: number;
   selfSize: number;
   ownerName: string;
@@ -233,7 +234,28 @@ function approxEntryCount(node: IHeapNode): number {
   return node.edge_count;
 }
 
-function countEntries(node: IHeapNode): {entries: number; tableSlots: number} {
+/**
+ * Entry and slot counts, plus the table's allocated CAPACITY in slots.
+ *
+ * Capacity comes from the backing store's BYTE SIZE (8 bytes per slot on 64-bit
+ * V8), not from its edge count — the edge count is the number of live entries,
+ * i.e. the numerator. The distinction matters because V8 never shrinks a hash
+ * table: `EphemeronHashTable` in particular keeps whatever capacity it ever
+ * reached for the lifetime of the isolate, so a table can be mostly empty and
+ * still be one of the largest objects in the heap.
+ *
+ * Measured on one app, the same WeakMap across two rounds:
+ *   2,097,172 B / 262,144 slots / 2,989 live = 1.14% occupancy
+ *   8,388,628 B / 1,048,576 slots / 7,564 live = 0.72% occupancy
+ * It quadrupled in bytes while live entries only 2.5x'd. Reporting bytes alone
+ * invites "the cache grew"; reporting occupancy says "this is stale capacity",
+ * which is a different and cheaper fix.
+ */
+function countEntries(node: IHeapNode): {
+  entries: number;
+  tableSlots: number;
+  capacitySlots: number;
+} {
   if (node.name === 'Map' || node.name === 'Set') {
     for (const edge of node.references) {
       const eName = String(edge.name_or_index);
@@ -242,6 +264,7 @@ function countEntries(node: IHeapNode): {entries: number; tableSlots: number} {
         (edge.toNode.type === 'array' || edge.toNode.type === 'hidden')
       ) {
         const tableNode = edge.toNode;
+        const capacitySlots = Math.round((tableNode.self_size ?? 0) / 8);
         let filledSlots = 0;
         let totalSlots = 0;
         for (const e of tableNode.references) {
@@ -259,7 +282,7 @@ function countEntries(node: IHeapNode): {entries: number; tableSlots: number} {
         }
         const entries =
           node.name === 'Map' ? Math.floor(filledSlots / 2) : filledSlots;
-        return {entries, tableSlots: filledSlots};
+        return {entries, tableSlots: filledSlots, capacitySlots};
       }
     }
     // Fallback: count non-internal outgoing edges as a proxy for entries
@@ -272,13 +295,13 @@ function countEntries(node: IHeapNode): {entries: number; tableSlots: number} {
     if (propertyCount > 0) {
       const entries =
         node.name === 'Map' ? Math.floor(propertyCount / 2) : propertyCount;
-      return {entries, tableSlots: propertyCount};
+      return {entries, tableSlots: propertyCount, capacitySlots: propertyCount};
     }
-    return {entries: 0, tableSlots: 0};
+    return {entries: 0, tableSlots: 0, capacitySlots: 0};
   }
 
   const count = node.edge_count;
-  return {entries: count, tableSlots: count};
+  return {entries: count, tableSlots: count, capacitySlots: count};
 }
 
 function hasWeakRefEntries(node: IHeapNode): boolean {
@@ -475,7 +498,11 @@ export function registerCacheAnalysis(server: McpServer): void {
           const bigEnough = node.retainedSize >= min_retained_size;
           if (!bigEnough && approxEntryCount(node) < min_entries) return;
 
-          const {entries: entryCount, tableSlots} = countEntries(node);
+          const {
+            entries: entryCount,
+            tableSlots,
+            capacitySlots,
+          } = countEntries(node);
           if (entryCount < min_entries) return;
           if (!bigEnough) {
             // Long but cheap. Reported in its own section rather than mixed into
@@ -497,6 +524,7 @@ export function registerCacheAnalysis(server: McpServer): void {
             collectionType: node.name,
             entryCount,
             tableSlots,
+            capacitySlots,
             retainedSize: node.retainedSize,
             selfSize: node.self_size,
             ownerName: owner.name,
@@ -637,6 +665,10 @@ export function registerCacheAnalysis(server: McpServer): void {
               collectionType: cacheType,
               entryCount: dataEntryCount,
               tableSlots: dataEntryCount,
+              // Ad-hoc object caches have no hash table; capacity == entries so
+              // the occupancy column stays quiet for them rather than reporting
+              // a meaningless 100%.
+              capacitySlots: dataEntryCount,
               retainedSize: node.retainedSize,
               selfSize: node.self_size,
               ownerName: owner.name,
@@ -676,6 +708,7 @@ export function registerCacheAnalysis(server: McpServer): void {
                 collectionType: 'Global registry',
                 entryCount: target.edge_count,
                 tableSlots: target.edge_count,
+                capacitySlots: target.edge_count,
                 retainedSize: target.retainedSize,
                 selfSize: target.self_size,
                 ownerName: node.name,
@@ -740,12 +773,27 @@ export function registerCacheAnalysis(server: McpServer): void {
         const hasSlotDifference = caches.some(
           c => c.tableSlots !== c.entryCount,
         );
+        // Occupancy is only meaningful when the table's allocated capacity is
+        // actually known and bigger than what is live in it.
+        const occupancyOf = (c: CacheEntry): number | null =>
+          c.capacitySlots > 0 && c.capacitySlots >= c.tableSlots
+            ? c.tableSlots / c.capacitySlots
+            : null;
+        const hasOccupancy = caches.some(c => {
+          const o = occupancyOf(c);
+          return o != null && o < 0.9;
+        });
+        const staleCapacity = caches.filter(c => {
+          const o = occupancyOf(c);
+          return o != null && o < 0.25 && c.retainedSize >= 262144;
+        });
         const headers = [
           'ID',
           'Type',
           'Kind',
           'Entries',
           ...(hasSlotDifference ? ['Table Slots'] : []),
+          ...(hasOccupancy ? ['Capacity', 'Occupancy'] : []),
           'Retained',
           '% Heap',
           'Owner',
@@ -753,9 +801,13 @@ export function registerCacheAnalysis(server: McpServer): void {
           'Weak?',
           ...(hasAnyFramework ? ['Framework'] : []),
         ];
-        const rightCols = hasSlotDifference
-          ? new Set([3, 4, 5, 6])
-          : new Set([3, 4, 5]);
+        const numericFrom = 3;
+        const numericCount =
+          1 + (hasSlotDifference ? 1 : 0) + (hasOccupancy ? 2 : 0) + 2;
+        const rightCols = new Set<number>();
+        for (let i = numericFrom; i < numericFrom + numericCount; i++) {
+          rightCols.add(i);
+        }
         const rows = caches.map(c => {
           const pct =
             totalSize > 0
@@ -767,6 +819,15 @@ export function registerCacheAnalysis(server: McpServer): void {
             c.classification,
             formatNumber(c.entryCount),
             ...(hasSlotDifference ? [formatNumber(c.tableSlots)] : []),
+            ...(hasOccupancy
+              ? [
+                  c.capacitySlots > 0 ? formatNumber(c.capacitySlots) : '—',
+                  (() => {
+                    const o = occupancyOf(c);
+                    return o == null ? '—' : `${(o * 100).toFixed(1)}%`;
+                  })(),
+                ]
+              : []),
             formatBytes(c.retainedSize),
             pct,
             c.ownerName,
@@ -801,6 +862,20 @@ export function registerCacheAnalysis(server: McpServer): void {
           '',
           markdownTable(headers, rows, rightCols),
           '',
+          ...(staleCapacity.length > 0
+            ? [
+                `⚠ **${staleCapacity.length} table(s) below 25% occupancy — this is STALE CAPACITY, not live data.** ` +
+                  'V8 never shrinks a hash table: an `EphemeronHashTable` (WeakMap/WeakSet) in particular keeps whatever capacity it ever reached for the lifetime of the isolate, so a table that once peaked large stays large after its entries die. ' +
+                  'The fix is not eviction (the entries are already gone) — it is to stop the peak happening, or to rebuild the collection so the table is reallocated at its real size:',
+                ...staleCapacity
+                  .slice(0, 6)
+                  .map(
+                    c =>
+                      `- \`@${c.nodeId}\` ${c.ownerName}.${c.ownerEdge} — ${formatBytes(c.retainedSize)} holding ${formatNumber(c.tableSlots)} of ~${formatNumber(c.capacitySlots)} slots`,
+                  ),
+                '',
+              ]
+            : []),
           '**Kind:**',
           '- **cache-like** — named like a cache, owned by a cache class, or carrying TTL/maxSize config. Missing eviction here is a likely leak.',
           '- **collection** — a plain large Map/Set/Array or per-request working set. Large is not the same as leaking; confirm it is actually retained across requests before treating it as a leak.',

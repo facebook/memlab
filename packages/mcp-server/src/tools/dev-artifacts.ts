@@ -766,9 +766,9 @@ export function registerDevArtifacts(server: McpServer): void {
       summary_only: z
         .boolean()
         .optional()
-        .default(false)
+        .default(true)
         .describe(
-          'Headline totals and the per-source breakdown ONLY — no per-object classification table and no below-threshold aggregation (default false). This is the largest single output of any tool here, and after the first call in a session the tables are usually re-read for a number that is already in the headline.',
+          'Headline totals and the per-source breakdown ONLY (DEFAULT TRUE). This is the largest single output of any tool here and the ranked table is re-read for a number that is already in the headline; pass false for the per-object classification table and the below-threshold aggregation',
         ),
     },
     async ({
