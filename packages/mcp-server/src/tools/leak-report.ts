@@ -75,6 +75,26 @@ function displayName(row: {name: string; type: string}): string {
   return row.name.length > 0 ? row.name : `(unnamed ${row.type})`;
 }
 
+/**
+ * `displayName` for PROSE, where a class name is interpolated into a sentence.
+ *
+ * The table truncates its own cells; the suggestion trailers did not, and for a
+ * string-typed row the "class name" IS the string's content. A single measured
+ * `**Next:**` line carried a whole multi-line `Error: [ProxyState] …` value
+ * including three full bundle URLs with query strings — several hundred tokens
+ * of payload inside a line whose only job is to name the next tool to run. The
+ * newline collapse matters as much as the length cap: an embedded newline also
+ * breaks out of the markdown bullet it was sitting in.
+ */
+const PROSE_NAME_MAX = 80;
+
+function proseName(row: {name: string; type: string}): string {
+  const flat = displayName(row).replace(/\s+/g, ' ').trim();
+  return flat.length > PROSE_NAME_MAX
+    ? `${flat.slice(0, PROSE_NAME_MAX - 1)}…`
+    : flat;
+}
+
 function modalRetainer(nodes: readonly IHeapNode[]): {
   label: string;
   votes: number;
@@ -430,7 +450,7 @@ export function registerLeakReport(server: McpServer): void {
             if (r.artifact != null) continue;
             for (const {key, per} of integerRatios(r.netCount, content)) {
               hits.push(
-                `- \`${displayName(r)}\` grew by **${formatNumber(per)} per ${key}** ` +
+                `- \`${proseName(r)}\` grew by **${formatNumber(per)} per ${key}** ` +
                   `(${formatNumber(r.netCount)} / ${formatNumber(content[key])}).`,
               );
             }
@@ -498,7 +518,7 @@ export function registerLeakReport(server: McpServer): void {
           const example = ev.example as IHeapNode;
           lines.push(
             '',
-            `**Next:** confirm the top candidate before reporting it — \`memlab_retainer_trace({node_id: ${example.id}})\` on the largest traceable \`${displayName(strongest)}\` instance in the final rung, then \`memlab_dominator_chain\` on whatever owns it. Counts alone cannot distinguish a leak from a cache that grew and will be evicted.`,
+            `**Next:** confirm the top candidate before reporting it — \`memlab_retainer_trace({node_id: ${example.id}})\` on the largest traceable \`${proseName(strongest)}\` instance in the final rung, then \`memlab_dominator_chain\` on whatever owns it. Counts alone cannot distinguish a leak from a cache that grew and will be evicted.`,
           );
         }
 

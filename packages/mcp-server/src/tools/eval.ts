@@ -210,6 +210,10 @@ export function shrinkResult(
  * wall-clock timeout with nothing to show, which pushes callers to pre-narrow.
  */
 interface VisitBudget {
+  /** 1 = visit every node. N = visit every Nth (see the `sample` parameter). */
+  sampleEvery?: number;
+  /** Nodes CONSIDERED, including those skipped by sampling. */
+  seen?: number;
   visited: number;
   max: number;
   exceeded: boolean;
@@ -340,7 +344,14 @@ function wrapSnapshot(snapshot: unknown, budget: VisitBudget): unknown {
                 nodesTarget as Record<string, (...args: unknown[]) => unknown>
               ).forEach.bind(nodesTarget);
               return (cb: (node: unknown) => unknown) => {
+                const stride = budget.sampleEvery ?? 1;
                 origForEach((node: unknown) => {
+                  // Sampling is a STRIDE, not a random draw: two calls over the
+                  // same snapshot visit the same nodes, so a follow-up question
+                  // lands on the objects the first answer described.
+                  const idx = budget.seen ?? 0;
+                  budget.seen = idx + 1;
+                  if (stride > 1 && idx % stride !== 0) return undefined;
                   if (++budget.visited > budget.max) {
                     budget.exceeded = true;
                     throw new BudgetExceeded(budget.max);
@@ -482,6 +493,15 @@ export function registerEval(server: McpServer): void {
         .describe(
           'Report what the code WOULD scan and stop, without running it (default false). Returns the snapshot size, whether the code contains a full-heap walk, and the effective max_nodes budget. Use it before an exploratory scan on a multi-million-node heap, where the difference between an indexed lookup and a full walk is the difference between milliseconds and minutes.',
         ),
+      sample: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .default(1)
+        .describe(
+          'TRIAGE MODE: visit only every Nth node in a `snapshot.nodes.forEach` walk (1 = every node, the default). A full-heap walk on a multi-million-node graph takes 1-2 minutes, which is enough friction that most exploratory ideas never get run at all; `sample: 200` answers "is there anything here?" in about a second, and you pay for the exact walk only once an idea looks worth it. The stride is deterministic, not random, so a follow-up question lands on the same objects. COUNTS COME BACK ~N TIMES LOW and the result is labelled an ESTIMATE — never record a sampled number as a measurement, and never conclude ABSENCE from one (a population of 50 is easily missed at stride 200).',
+        ),
       max_nodes: z
         .number()
         .int()
@@ -536,6 +556,7 @@ export async function runEval({
   timeout_ms,
   save_as,
   max_nodes,
+  sample,
   dry_run,
   max_result_bytes,
   ownsScanBudget,
@@ -545,6 +566,8 @@ export async function runEval({
   timeout_ms?: number;
   save_as?: string;
   max_nodes?: number;
+  /** Visit every Nth node in a full-heap walk. 1/undefined = every node. */
+  sample?: number;
   dry_run?: boolean;
   max_result_bytes?: number;
   /**
@@ -595,7 +618,13 @@ export async function runEval({
   // is worse than one that is simply large.
   max_nodes = max_nodes ?? scaledWalkBudget();
   dry_run = dry_run ?? false;
-  const budget: VisitBudget = {visited: 0, max: max_nodes, exceeded: false};
+  const budget: VisitBudget = {
+    visited: 0,
+    max: max_nodes,
+    exceeded: false,
+    sampleEvery: sample != null && sample > 1 ? Math.floor(sample) : 1,
+    seen: 0,
+  };
   try {
     if (mode === 'describe_env') {
       return toolResult(describeEnv());
@@ -1970,6 +1999,17 @@ export async function runEval({
       }
     } else if (budget.visited > 0) {
       footer.push(`nodes_visited: ${formatNumber(budget.visited)}`);
+      const stride = budget.sampleEvery ?? 1;
+      if (stride > 1) {
+        footer.push(
+          `⚠️ ESTIMATE — sampled 1-in-${formatNumber(stride)}: the walk considered ` +
+            `${formatNumber(budget.seen ?? 0)} nodes and ran your callback on ` +
+            `${formatNumber(budget.visited)} of them. **Counts above are roughly ` +
+            `${formatNumber(stride)}x low**; multiply to estimate, and re-run with ` +
+            '`sample: 1` before recording any number. A ZERO here is not absence — ' +
+            `a population smaller than ~${formatNumber(stride)} is easily missed entirely.`,
+        );
+      }
       // A whole-heap walk that matched NOTHING is reported as a confident
       // negative — "there are no closures with captured scopes" — when the
       // overwhelmingly likelier cause is a predicate that cannot match.
@@ -1980,6 +2020,7 @@ export async function runEval({
       // returns a clean 0 with no error. That silent zero is worse than a
       // throw, because nothing in the output suggests re-checking the filter.
       if (
+        (budget.sampleEvery ?? 1) === 1 &&
         budget.visited >= ZERO_MATCH_WALK_THRESHOLD &&
         isEmptyCensusResult(sandbox.result)
       ) {

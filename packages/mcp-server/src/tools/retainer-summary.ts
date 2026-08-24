@@ -14,12 +14,13 @@ import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
 import {resolveSavedNodeIds} from '../result-handles.js';
 import {
+  abbreviateBlinkTypeName,
   collapseRepeatedLabels,
+  errorResult,
   filterLargestObjectsCounted,
   formatBytes,
-  truncateDomToTag,
-  errorResult,
   toolResult,
+  truncateDomToTag,
 } from '../utils.js';
 
 export interface TraceStep {
@@ -115,19 +116,49 @@ export function traceToKey(
     .join(' ');
 }
 
-function shortenPath(name: string): string {
+/**
+ * Hard ceiling on ONE hop's label.
+ *
+ * Blink template names are the reason this exists. A single Oilpan collection
+ * node renders as ~600 characters of nested template arguments and write-barrier
+ * policies, e.g.
+ * `blink::HeapHashTableBacking<blink::HashTable<cppgc::internal::BasicMember<
+ * blink::SVGSVGElement, cppgc::internal::StrongMemberTag, …>>>`. A sampled
+ * summary is dozens of hops across dozens of paths, so this is not a cosmetic
+ * problem: `memlab_retainer_summary` at `sample: 8, compact: true` produced
+ * **86,700 characters** and exceeded the tool-result limit outright, i.e. the
+ * tool could not be used at the sample size it is meant for.
+ */
+const MAX_STEP_NAME_LEN = 90;
+
+/**
+ * Shorten one hop's label without changing which node it names.
+ *
+ * Order matters: elide C++ template arguments FIRST (that is where the bytes
+ * are and the elision is information-preserving about the outer type), and only
+ * then fall back to a blunt truncation.
+ */
+export function shortenPath(name: string): string {
   const isDomLike =
     name.includes('class="') ||
     name.includes('aria-') ||
     name.startsWith('<') ||
     name.startsWith('Detached <');
   if (isDomLike) return truncateDomToTag(name);
-  if (name.length <= 40) return name;
-  const parts = name.split('/');
-  if (parts.length <= 2) return name;
-  const fileName = parts[parts.length - 1];
-  const dir = parts[parts.length - 2];
-  return `…/${dir}/${fileName}`;
+  const abbreviated = abbreviateBlinkTypeName(name);
+  if (abbreviated.length <= 40) return abbreviated;
+  const parts = abbreviated.split('/');
+  if (parts.length > 2) {
+    const fileName = parts[parts.length - 1];
+    const dir = parts[parts.length - 2];
+    const short = `…/${dir}/${fileName}`;
+    return short.length <= MAX_STEP_NAME_LEN
+      ? short
+      : `${short.slice(0, MAX_STEP_NAME_LEN)}…`;
+  }
+  return abbreviated.length <= MAX_STEP_NAME_LEN
+    ? abbreviated
+    : `${abbreviated.slice(0, MAX_STEP_NAME_LEN)}…`;
 }
 
 export function formatTraceChain(steps: TraceStep[]): string {
@@ -139,7 +170,10 @@ export function formatTraceChain(steps: TraceStep[]): string {
     const s = steps[i];
     const edge =
       s.edgeName != null && i < steps.length - 1 ? ` --${s.edgeName}--> ` : '';
-    hops.push(`${s.name} (${s.type})${edge}`);
+    // Same ceiling as the compact formatter: the full chain is the FATTER of
+    // the two renderings, so leaving it unbounded means the non-compact path
+    // blows the result limit even sooner than the compact one did.
+    hops.push(`${shortenPath(s.name)} (${s.type})${edge}`);
   }
   return collapseRepeatedLabels(hops).join('');
 }

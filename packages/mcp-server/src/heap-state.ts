@@ -151,6 +151,16 @@ function dropEvalScratch(handle: string | null): void {
  *   once per loaded snapshot instead of on every tool result.
  * - `suppressSuggestions`: when true, tools omit their "Suggested next steps"
  *   trailers.
+ *
+ * `quietHeader` DEFAULTS ON. The header is worth exactly one printing per
+ * snapshot — after that it is the same line on every call, and an investigation
+ * makes dozens. Measured over one session: ~30 loads and far more tool calls,
+ * all repeating a line the caller already knew. Opting back in is
+ * `memlab_snapshots({quiet_header: false})`.
+ *
+ * Note this only governs the SESSION header. A tool that read snapshots by path
+ * passes its own header explicitly (see `pathsHeader`), and that is a per-call
+ * fact rather than boilerplate, so it is never suppressed by this.
  */
 export interface SessionConfig {
   quietHeader: boolean;
@@ -158,7 +168,7 @@ export interface SessionConfig {
 }
 
 const sessionConfig: SessionConfig = {
-  quietHeader: false,
+  quietHeader: true,
   suppressSuggestions: false,
 };
 
