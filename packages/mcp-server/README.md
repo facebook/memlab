@@ -96,7 +96,11 @@ To auto-approve the read-only tools while keeping the two code-execution tools o
 
 ## How It Works
 
-The server holds a loaded `IHeapSnapshot` in memory across tool calls (loading is expensive for large heaps). Only one snapshot can be loaded at a time. All tools are read-only — they analyze the heap but never modify it.
+The server holds loaded `IHeapSnapshot` graphs in memory across tool calls (loading is
+expensive for large heaps). Several snapshots can be resident at once (`keep_previous: true`);
+tools read the active one, which `memlab_snapshots` switches. When a load's projected working
+set exceeds the free old-space budget, the least-recently-used resident snapshot is evicted
+before the load is refused. All tools are read-only — they analyze the heap but never modify it.
 
 ## Getting a Heap Snapshot
 
@@ -120,11 +124,14 @@ console.log(`Heap snapshot written to ${snapshot}`);
 ### `memlab_load_snapshot`
 
 Load and parse a `.heapsnapshot` file. Builds indexes, computes the dominator tree, and calculates retained sizes. `file_path` may be a local absolute path, a `manifold://bucket/key` URL, or a bare snapshot filename (resolved against the `nest_server_nodejs_heap_snapshots` bucket and fetched via `manifold get`). Pass `keep_previous: true` to keep earlier snapshots resident for diffing/comparison (each gets a handle; manage with `memlab_snapshots`). `quiet` / `suppress_suggestions` set session-wide output controls to trim repeated boilerplate.
+Pass `light: true` for a count-only load that skips the dominator / retained-size /
+shortest-path pass; tools needing retained sizes, dominators or retainer paths then return an
+error naming the light-safe tools instead of reporting zeros.
 
 ```
 Input:  { file_path: "snap.heapsnapshot" | "/abs/path" | "manifold://bucket/key",
           alias?: "before", keep_previous?: false, quiet?: false,
-          suppress_suggestions?: false, max_file_size_mb?: 900 }
+          suppress_suggestions?: false, light?: false, max_file_size_mb?: 900 }
 Output: { status, file_path, node_count, edge_count, total_size, handle }
 ```
 
@@ -146,6 +153,19 @@ Manage the multi-snapshot session and session output controls.
 Input:  { action?: "list"|"switch"|"unload", handle?: "before",
           quiet?: bool, suppress_suggestions?: bool }
 Output: resident snapshots (active one marked), or switch/unload result
+```
+
+### `memlab_batch`
+
+Run several tools against ONE snapshot load and return all their outputs together, instead of
+re-paying the multi-minute parse on every call. Steps run in order against the resident snapshot
+and see each other's side effects. An unknown tool name is rejected before any step runs, and by
+default a failing step is recorded and the batch continues.
+
+```
+Input:  { load?: { ...memlab_load_snapshot args }, steps: [{ tool, args? }],
+          stop_on_error?: false }
+Output: a per-step output block for each step, headed by a run/failed step count
 ```
 
 ### `memlab_property_distribution`
