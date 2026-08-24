@@ -2320,10 +2320,22 @@ function getLeakTracePathLength(path: LeakTracePathItem): number {
   return len;
 }
 
+// note: this sorts `arr` in place to avoid allocating a copy
 function getNumberAtPercentile(arr: number[], percentile: number): number {
+  if (arr.length === 0) {
+    return 0;
+  }
   arr.sort(function (a, b) {
     return a - b;
   });
+  // clamp out-of-range percentiles, so that callers doing arithmetic on the
+  // result (e.g. Math.max) never silently get undefined or NaN
+  if (Number.isNaN(percentile) || percentile <= 0) {
+    return arr[0];
+  }
+  if (percentile >= 100) {
+    return arr[arr.length - 1];
+  }
   const index = (percentile / 100) * arr.length;
   const indexInt = Math.floor(index);
   if (indexInt === index) {

@@ -50,6 +50,18 @@ test('Check getReadableBytes', async () => {
   expect(utils.getReadableBytes(5432212312313)).toBe('5.4TB');
 });
 
+test('Check getNumberAtPercentile', async () => {
+  expect(utils.getNumberAtPercentile([], 80)).toBe(0);
+  expect(utils.getNumberAtPercentile([10, 20, 30, 40, 50], 100)).toBe(50);
+  expect(utils.getNumberAtPercentile([7], 100)).toBe(7);
+  expect(utils.getNumberAtPercentile([10, 20, 30, 40, 50], 0)).toBe(10);
+  expect(utils.getNumberAtPercentile([10, 20, 30, 40, 50], 80)).toBe(50);
+  expect(utils.getNumberAtPercentile([5, 3, 1, 4, 2], 50)).toBe(3.5);
+  // out-of-range percentiles are clamped rather than returning undefined/NaN
+  expect(utils.getNumberAtPercentile([10, 20, 30, 40, 50], -10)).toBe(10);
+  expect(utils.getNumberAtPercentile([10, 20, 30, 40, 50], 120)).toBe(50);
+});
+
 test('Check isStackTraceFrame', async () => {
   expect(utils.isStackTraceFrame(strackTraceFrameNodeMock)).toBe(true);
   expect(utils.isStackTraceFrame(oddBallNodeMock)).toBe(false);
