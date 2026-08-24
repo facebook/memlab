@@ -11,6 +11,7 @@
 import type {MemLabConfig} from '../../Config';
 import type {IHeapEdge, IHeapNode, IHeapSnapshot, Nullable} from '../../Types';
 import {LeakDecision, LeakObjectFilterRuleBase} from '../BaseLeakFilter.rule';
+import utils from '../../Utils';
 
 /**
  * leaked objects that are tagged by user code
@@ -51,11 +52,22 @@ export class FilterUserTaggedLeaksRule extends LeakObjectFilterRuleBase {
         const node = edge.toNode
           .getReferenceNode('taggedObjects')
           ?.getReferenceNode('table', 'internal');
-        // traverse all weak edges in
-        // trackedItem.taggedObjects.table
+        // traverse all entries in trackedItem.taggedObjects.table
         node?.forEachReference((edge: IHeapEdge) => {
+          // V8 used to emit one weak edge per WeakSet key
           if (edge.type === 'weak') {
             this._taggedNodeIds.add(edge.toNode.id);
+            return;
+          }
+          // newer V8 versions emit a single internal edge per entry, which
+          // points to the value; the key is only encoded in the edge name
+          // (e.g. `1 / part of key (Object @7) -> value (true @3) pair in
+          // WeakMap (table @9)`)
+          if (utils.isWeakMapEdge(edge)) {
+            const keyNodeId = utils.getWeakMapEdgeKeyId(edge);
+            if (keyNodeId > 0) {
+              this._taggedNodeIds.add(keyNodeId);
+            }
           }
         });
       });
