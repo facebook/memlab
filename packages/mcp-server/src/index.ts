@@ -112,10 +112,11 @@ import {registerIdentityDiff} from './tools/identity-diff.js';
 import {registerNextMeasurement} from './tools/next-measurement.js';
 import {registerReplicate} from './tools/replicate.js';
 import {registerRoundAudit} from './tools/round-audit.js';
+import {registerDomAudit} from './tools/dom-audit.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.69.0', // keep in sync with package.json
+  version: '2.70.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -216,6 +217,7 @@ registerIdentityDiff(server);
 registerNextMeasurement(server);
 registerReplicate(server);
 registerRoundAudit(server);
+registerDomAudit(server);
 
 async function main() {
   const transport = new StdioServerTransport();
