@@ -115,7 +115,7 @@ import {registerRoundAudit} from './tools/round-audit.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.68.0', // keep in sync with package.json
+  version: '2.69.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call

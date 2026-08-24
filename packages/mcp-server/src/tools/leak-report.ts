@@ -167,7 +167,14 @@ function growthRetainer(ev: Evidence): {
  * different severity and a different fix from "grows over time". That division
  * was done by eye, and only because someone happened to know the chat count.
  *
- * `tolerance` is fractional distance from the nearest integer >= 1.
+ * `tolerance` is an ABSOLUTE distance from the nearest integer, and has to be:
+ * scaling it by the ratio makes every large ratio trivially "integer", which is
+ * the difference between a signal and noise dressed as one. Measured against a
+ * real 3-rung ladder with a 2%-of-ratio tolerance, EVERY candidate row reported
+ * a clean whole number — `16,825 / 50 = 336.5` was announced as "337 per cycle"
+ * because 0.5 is comfortably inside 2% of 337. With an absolute 0.02 the same
+ * row is correctly rejected and only a ratio that really does land on an
+ * integer survives.
  */
 export function integerRatios(
   netCount: number,
@@ -180,7 +187,7 @@ export function integerRatios(
     const ratio = netCount / count;
     if (ratio < 1) continue;
     const nearest = Math.round(ratio);
-    if (nearest >= 1 && Math.abs(ratio - nearest) <= tolerance * nearest) {
+    if (nearest >= 1 && Math.abs(ratio - nearest) <= tolerance) {
       out.push({key, per: nearest});
     }
   }

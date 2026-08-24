@@ -301,6 +301,41 @@ export function builtinSeedFindings(): ImportedFinding[] {
   ];
 }
 
+/**
+ * Known entries that share a growing class with the candidate.
+ *
+ * The fingerprint is an EXACT match on signature + class set, which is right for
+ * "have we filed this before" and useless for "is this population a known
+ * artifact". Measured against a freshly-seeded index: a realistic check —
+ * retainer path `(GC roots) > (Global handles) > Object.allSignaturesByType`,
+ * growing class `allSignaturesByType` — returned NEW, even though the React Fast
+ * Refresh registry entry naming that exact class was sitting in the index. A
+ * caller has to reproduce the seeded signature string verbatim to get a hit,
+ * which nobody will ever do, so without this the seeding is decorative.
+ *
+ * Reported ALONGSIDE the NEW verdict rather than replacing it: a class overlap
+ * is a lead, not an identification, and silently converting NEW to KNOWN on one
+ * shared class name would suppress real findings.
+ */
+export function relatedByClass(
+  index: FindingIndex,
+  classes: readonly string[],
+  excludeFingerprint: string,
+): Finding[] {
+  if (classes.length === 0) return [];
+  const wanted = new Set(classes);
+  return Object.values(index.findings)
+    .filter(f => f.fingerprint !== excludeFingerprint)
+    .map(f => ({
+      f,
+      shared: f.growing_classes.filter(c => wanted.has(c)),
+    }))
+    .filter(x => x.shared.length > 0)
+    .sort((a, b) => b.shared.length - a.shared.length)
+    .slice(0, 5)
+    .map(x => x.f);
+}
+
 export function registerFindingIndex(server: McpServer): void {
   server.tool(
     'memlab_finding_index',
@@ -536,6 +571,25 @@ export function registerFindingIndex(server: McpServer): void {
                       '`action: "import"` before treating a NEW here as evidence of anything.',
                   ]
                 : [];
+            const related = relatedByClass(index, growing_classes, fingerprint);
+            const relatedLines =
+              related.length === 0
+                ? []
+                : [
+                    '',
+                    `### ⚠️ ${related.length} known entr${related.length === 1 ? 'y shares' : 'ies share'} a growing class with this`,
+                    '',
+                    ...related.map(
+                      f =>
+                        `- **${f.signature}** (${f.first_seen_round}, ${f.status})` +
+                        ` — shares \`${f.growing_classes.filter(c => growing_classes.includes(c)).join('`, `')}\`` +
+                        (f.note ? `. ${f.note}` : ''),
+                    ),
+                    '',
+                    'A shared class is a LEAD, not an identification — the fingerprint above really is new. ' +
+                      'But if one of these is an artifact family, the population you are looking at is ' +
+                      'probably not app memory, and that is worth settling before spending the round on it.',
+                  ];
             return toolResult(
               [
                 `## NEW finding — fingerprint \`${fingerprint}\``,
@@ -546,6 +600,7 @@ export function registerFindingIndex(server: McpServer): void {
                 `No previous round in this index (${formatNumber(indexSize)} finding(s)) recorded this ` +
                   'retainer path with this class set. Confirm it, then `action: "record"` so the next ' +
                   'round recognizes it.',
+                ...relatedLines,
               ].join('\n'),
             );
           }
