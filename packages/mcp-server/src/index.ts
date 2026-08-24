@@ -110,10 +110,12 @@ import {registerRetainerDiff} from './tools/retainer-diff.js';
 import {registerAppConfig} from './tools/app-config.js';
 import {registerIdentityDiff} from './tools/identity-diff.js';
 import {registerNextMeasurement} from './tools/next-measurement.js';
+import {registerReplicate} from './tools/replicate.js';
+import {registerRoundAudit} from './tools/round-audit.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.66.0', // keep in sync with package.json
+  version: '2.67.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -212,6 +214,8 @@ registerRetainerDiff(server);
 registerAppConfig(server);
 registerIdentityDiff(server);
 registerNextMeasurement(server);
+registerReplicate(server);
+registerRoundAudit(server);
 
 async function main() {
   const transport = new StdioServerTransport();

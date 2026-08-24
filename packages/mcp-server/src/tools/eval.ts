@@ -1172,6 +1172,141 @@ export async function runEval({
       return n.is_detached || n.name.startsWith('Detached ');
     };
 
+    /**
+     * The scope object a closure captured, or null if it captured nothing.
+     *
+     * Exists because the hand-written version is wrong in a way that returns a
+     * clean zero: the hop is an `internal` edge NAMED `context`, not a
+     * `context`-TYPED edge (that type only appears on the edges INSIDE the
+     * scope). Filtering on `e.type === 'context'` matches nothing on any heap.
+     */
+    const contextOf = (nodeOrId: number | {id: number}): unknown => {
+      const n = resolveNode(nodeOrId);
+      if (n == null) return null;
+      for (const e of n.references) {
+        if (String(e.name_or_index) === 'context' && e.type === 'internal') {
+          return wrapNode(e.toNode);
+        }
+      }
+      return null;
+    };
+
+    /**
+     * Every closure class, with how many of them captured a scope.
+     *
+     * A per-name count alone does not separate "1,000 copies of a function" from
+     * "1,000 copies each pinning a distinct scope", and only the second is a
+     * retention story. Cached, since it is a full pass.
+     */
+    const closureCensus = (opts?: {
+      minCount?: number;
+      pattern?: string;
+    }): Array<{name: string; count: number; withScope: number}> => {
+      const key = '__closureCensus';
+      let all = scratch[key] as
+        Array<{name: string; count: number; withScope: number}> | undefined;
+      if (!all) {
+        const acc = new Map<string, {count: number; withScope: number}>();
+        snapshot.nodes.forEach((node: IHeapNode) => {
+          if (node.id <= 3 || node.type !== 'closure') return;
+          let rec = acc.get(node.name);
+          if (!rec) {
+            rec = {count: 0, withScope: 0};
+            acc.set(node.name, rec);
+          }
+          rec.count++;
+          for (const e of node.references) {
+            if (
+              String(e.name_or_index) === 'context' &&
+              e.type === 'internal'
+            ) {
+              rec.withScope++;
+              break;
+            }
+          }
+        });
+        all = [...acc.entries()]
+          .map(([name, r]) => ({name, ...r}))
+          .sort((a, b) => b.count - a.count);
+        scratch[key] = all;
+      }
+      const minCount = opts?.minCount ?? 1;
+      const re =
+        opts?.pattern != null ? makeNamePatternTest(opts.pattern) : null;
+      return all.filter(r => r.count >= minCount && (re == null || re(r.name)));
+    };
+
+    /**
+     * Objects shaped like an event-listener record — carrying BOTH a
+     * callback-ish and a context-ish property.
+     *
+     * This walk gets rewritten by hand almost every round, slightly differently
+     * each time, which makes two rounds' numbers incomparable for reasons that
+     * have nothing to do with the app. `callbackNamed` narrows to records whose
+     * callback is a specific closure class, which is the form the question is
+     * actually asked in ("how many `subscribe_$0` records are held?").
+     */
+    const listenerRecords = (
+      callbackNamed?: string,
+    ): Array<{id: number; callback: string; context: string}> => {
+      const key = '__listenerRecords';
+      let all = scratch[key] as
+        Array<{id: number; callback: string; context: string}> | undefined;
+      if (!all) {
+        const found: Array<{id: number; callback: string; context: string}> =
+          [];
+        snapshot.nodes.forEach((node: IHeapNode) => {
+          if (node.id <= 3 || node.type !== 'object') return;
+          let cb: IHeapNode | null = null;
+          let ctx: IHeapNode | null = null;
+          for (const e of node.references) {
+            if (e.type !== 'property') continue;
+            const p = String(e.name_or_index);
+            if (cb == null && LISTENER_CALLBACK_PROPS.has(p)) cb = e.toNode;
+            else if (ctx == null && LISTENER_CONTEXT_PROPS.has(p))
+              ctx = e.toNode;
+            if (cb != null && ctx != null) break;
+          }
+          if (cb != null && ctx != null) {
+            found.push({id: node.id, callback: cb.name, context: ctx.name});
+          }
+        });
+        all = found;
+        scratch[key] = all;
+      }
+      return callbackNamed == null
+        ? all
+        : all.filter(r => r.callback === callbackNamed);
+    };
+
+    /**
+     * Detached nodes whose CLASS NAME contains `needle`.
+     *
+     * Note what this cannot do, because the reflexive attempt returns a clean
+     * zero: a detached node's `name` is its element or Blink class — `Detached
+     * EventListener`, `Detached blink::RegisteredEventListener`, `Detached
+     * HTMLDivElement` — and never a `data-testid`. Measured on a real capture:
+     * 908 detached nodes, whose top names were `Detached EventListener` (148),
+     * `Detached blink::RegisteredEventListener` (148) and `Detached
+     * V8EventListener` (146). Filtering these for an app-level testid matches
+     * nothing on any heap. For "which UI element leaked", go through the
+     * retainer path (`memlab_detached_dom` groups by nearest non-detached
+     * dominator) rather than the node name.
+     */
+    const detachedNamed = (
+      needle: string,
+    ): Array<{id: number; name: string}> => {
+      const lowered = needle.toLowerCase();
+      const out: Array<{id: number; name: string}> = [];
+      snapshot.nodes.forEach((node: IHeapNode) => {
+        if (node.id <= 3) return;
+        if (!node.is_detached && !node.name.startsWith('Detached ')) return;
+        if (!node.name.toLowerCase().includes(lowered)) return;
+        out.push({id: node.id, name: node.name});
+      });
+      return out;
+    };
+
     // Cached type -> ids index, mirroring the class index above, so a
     // second pass over "every closure" does not re-walk the heap.
     const buildTypeIndex = (): Map<string, number[]> => {
@@ -1667,6 +1802,10 @@ export async function runEval({
       byTypename,
       withProp,
       aggregateRetained,
+      contextOf,
+      closureCensus,
+      listenerRecords,
+      detachedNamed,
       isRealDetached,
       iterByClass,
       nodesByClass,
@@ -1992,6 +2131,25 @@ export function isEmptyCensusResult(v: unknown): boolean {
  */
 const ZERO_MATCH_WALK_THRESHOLD = 100000;
 
+/**
+ * Property names that make an object look like an event-listener record. Kept
+ * identical to `stale-collections.ts` on purpose: two tools disagreeing about
+ * what a listener record IS produces two incomparable counts of the same thing.
+ */
+const LISTENER_CALLBACK_PROPS = new Set([
+  'callback',
+  'fn',
+  'handler',
+  'listener',
+]);
+const LISTENER_CONTEXT_PROPS = new Set([
+  'context',
+  'ctx',
+  'this',
+  'target',
+  'scope',
+]);
+
 function describeEnv(): string {
   return [
     '# memlab_eval environment',
@@ -2028,6 +2186,13 @@ function describeEnv(): string {
     '- `helpers.pathBetween(fromId, toId, {maxNodes?}) -> {found, exhausted, path[]}` — BFS over outgoing edges; `exhausted:true` means the budget ran out, which is NOT the same as "no path".',
     '- `helpers.save(name, value)` / `helpers.load(name, {allowCrossSnapshot?})` / `helpers.listSaved()` — named result sets, SESSION-scoped: they survive loading another snapshot, which is what makes a baseline-vs-final comparison possible. The snapshot each was saved against is recorded, and a cross-snapshot read is refused unless you opt in — node ids are per-capture and mean nothing in another snapshot.',
     '- `helpers.aggregateRetained(ids[]) -> {retained, exact}` — dominator-deduped retained size for a SET of ids (does not double-count when one id dominates another); `exact:false` means the bounded walk was truncated (upper bound).',
+    '',
+    '## Populations that get hand-rolled every round (use these instead)',
+    "Each of these was rewritten by hand in round after round, slightly differently each time — which makes two rounds' numbers incomparable for reasons that have nothing to do with the app, and in one case (the edge filter) returns a confident zero.",
+    '- `helpers.detachedNamed(substr) -> [{id, name}]` — detached nodes whose CLASS NAME contains `substr`, with the same oddball/root filtering the detached-DOM tools apply. ⚠️ A detached node\'s name is its element or Blink class (`Detached EventListener`, `Detached blink::RegisteredEventListener`, `Detached HTMLDivElement`) and **never a `data-testid`** — filtering these for an app-level testid matches nothing on any heap. For "which UI element leaked", use `memlab_detached_dom`, which groups by nearest non-detached dominator.',
+    '- `helpers.listenerRecords(callbackName?) -> [{id, callback, context}]` — objects carrying BOTH a callback-ish and a context-ish property, i.e. event-listener records. Optionally narrowed to one callback class, which is how the question is actually asked ("how many `subscribe_$0` records are held?"). Cached; the definition matches `memlab_stale_collections` exactly.',
+    '- `helpers.contextOf(nodeOrId) -> node | null` — the scope a closure captured, e.g. `system / Context / scope @767271`. **Do not hand-roll this**: the hop is an `internal` edge NAMED `context`, not a `context`-TYPED edge, so the reflexive filter returns null on every closure in the heap (see the edge-type section below). Returns null for a non-closure — note `helpers.byClass`/`nodesByClass` also match the class-NAME STRING node, so filter on `type === "closure"` before asking for a scope.',
+    '- `helpers.closureCensus({minCount?, pattern?}) -> [{name, count, withScope}]` — closure classes with how many instances captured a scope. `count` alone cannot separate "1,000 copies of a function" from "1,000 copies each pinning a distinct scope", and only the second is a retention story. Cached.',
     '',
     '## Named result sets (multi-step exploration)',
     'Keep intermediate sets SERVER-SIDE instead of round-tripping them through the transcript — the ids never have to be printed, so a long investigation costs a fraction of the tokens.',

@@ -137,6 +137,36 @@ function growthRetainer(ev: Evidence): {
   };
 }
 
+/**
+ * Ratios that land on a whole number, and what they mean.
+ *
+ * Turning a delta into a mechanism is usually one division. The breakthrough on
+ * one investigation was noticing that a population grew by 19 rows per cycle on
+ * an account with exactly 19 chats: the leaked unit was one whole chat list, so
+ * the cost scaled with the USER'S data rather than with elapsed time — a
+ * different severity and a different fix from "grows over time". That division
+ * was done by eye, and only because someone happened to know the chat count.
+ *
+ * `tolerance` is fractional distance from the nearest integer >= 1.
+ */
+export function integerRatios(
+  netCount: number,
+  content: Record<string, number>,
+  tolerance = 0.02,
+): Array<{key: string; per: number}> {
+  const out: Array<{key: string; per: number}> = [];
+  for (const [key, count] of Object.entries(content)) {
+    if (!Number.isFinite(count) || count <= 0) continue;
+    const ratio = netCount / count;
+    if (ratio < 1) continue;
+    const nearest = Math.round(ratio);
+    if (nearest >= 1 && Math.abs(ratio - nearest) <= tolerance * nearest) {
+      out.push({key, per: nearest});
+    }
+  }
+  return out;
+}
+
 export function registerLeakReport(server: McpServer): void {
   server.tool(
     'memlab_leak_report',
@@ -156,6 +186,12 @@ export function registerLeakReport(server: McpServer): void {
         .optional()
         .describe(
           'Number of interaction cycles driven between the FIRST and LAST snapshot. When provided, a "Δ/cycle" column is reported — a per-cycle rate is what says whether growth scales with interaction, which a total cannot.',
+        ),
+      content: z
+        .record(z.number())
+        .optional()
+        .describe(
+          'Counts of the CONTENT the driven surface contains — e.g. {"chats": 19, "messages": 40}. When given, each grower\'s net delta is also divided by these, and any ratio landing on a whole number is called out. This is what turns a number into a mechanism: a class growing by exactly one unit per chat is leaking a whole chat list per cycle, and scales with the user\'s data rather than with time.',
         ),
       limit: z
         .number()
@@ -196,6 +232,7 @@ export function registerLeakReport(server: McpServer): void {
       {
         paths,
         cycles,
+        content,
         limit,
         min_growth_count,
         monotonic_only,
@@ -386,6 +423,32 @@ export function registerLeakReport(server: McpServer): void {
           ];
         });
         lines.push(markdownTable(headers, tableRows, rightCols));
+
+        if (content != null && Object.keys(content).length > 0) {
+          const hits: string[] = [];
+          for (const r of candidates) {
+            if (r.artifact != null) continue;
+            for (const {key, per} of integerRatios(r.netCount, content)) {
+              hits.push(
+                `- \`${displayName(r)}\` grew by **${formatNumber(per)} per ${key}** ` +
+                  `(${formatNumber(r.netCount)} / ${formatNumber(content[key])}).`,
+              );
+            }
+          }
+          if (hits.length > 0) {
+            lines.push(
+              '',
+              '### Growth that lands on a whole number per unit of content',
+              '',
+              ...hits,
+              '',
+              '_A clean integer ratio names the leaked UNIT, which a total cannot. It also changes the severity: ' +
+                'a population that scales with the content the user already has grows with their data, not merely ' +
+                'with how long they keep the tab open. Confirm by re-driving against an account with a different ' +
+                'content count — the ratio should hold and the absolute number should not._',
+            );
+          }
+        }
 
         lines.push(
           '',

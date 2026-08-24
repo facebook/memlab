@@ -120,7 +120,13 @@ function loadIndex(indexPath: string): FindingIndex {
       // Best effort; a failed rename must not block the hunt either.
     }
   }
-  return {version: 1, findings: {}, combos_driven: {}};
+  // A brand-new index is seeded with the artifact families rather than left
+  // empty, so the very first `check` can answer KNOWN for a population that is
+  // documented and is not app memory. Seeding on CREATION (not on every load)
+  // means a caller who deliberately removes one keeps it removed.
+  const fresh: FindingIndex = {version: 1, findings: {}, combos_driven: {}};
+  importFindings(fresh, builtinSeedFindings());
+  return fresh;
 }
 
 function saveIndex(indexPath: string, idx: FindingIndex): void {
@@ -219,13 +225,89 @@ export function fingerprintOf(signature: string, classes: string[]): string {
   return crypto.createHash('sha1').update(material).digest('hex').slice(0, 12);
 }
 
+/**
+ * Artifact families every hunt re-derives, seeded into a fresh index.
+ *
+ * An empty index answers NEW to everything — including populations that are
+ * documented, well understood, and not app memory at all. That makes the first
+ * `check` of a workstream actively misleading rather than merely unhelpful, and
+ * hand-seeding never happens because it is a step nobody is prompted to take.
+ *
+ * These entries are deliberately the GENERIC, tool-detectable families (the
+ * same taxonomy `artifact-classes.ts` classifies, plus the two dev-build
+ * registries `dev_artifacts` detects). They are marked `known` rather than
+ * `fixed`: they are not defects to be fixed, they are populations a hunt must
+ * subtract. Anything app-specific belongs in a real `action: "import"`.
+ */
+export function builtinSeedFindings(): ImportedFinding[] {
+  const seed = (
+    signature: string,
+    growing_classes: string[],
+    note: string,
+  ): ImportedFinding => ({
+    signature,
+    growing_classes,
+    round: 'builtin',
+    status: 'known',
+    note,
+  });
+  return [
+    seed(
+      'V8 JIT/compile warmup structures',
+      [
+        'Code',
+        'BytecodeArray',
+        'FeedbackVector',
+        'ScopeInfo',
+        'InstructionStream',
+      ],
+      'Exercising new code paths during a hunt JIT-compiles them, so this family climbs every step without being an app leak. Not a finding.',
+    ),
+    seed(
+      'Blink accessibility cache inflated by automation',
+      ['AXObjectCacheImpl', 'AXNodeObject', 'AXDirtyObject'],
+      'CDP-driven automation builds the a11y tree. These co-retain detached DOM, so retainer traces can route through them and mislead.',
+    ),
+    seed(
+      'CDP inspector network log',
+      ['NetworkResourcesData', 'XHRReplayData', 'PerformanceResourceTiming'],
+      'Every request made while CDP is attached is retained by the DevToolsSession for the session. A dev build that polls grows this forever. Not app memory.',
+    ),
+    seed(
+      'CDP inspector performance timeline',
+      ['PerformanceLongTaskTiming', 'PerformanceScriptTiming', 'LayoutShift'],
+      'Accumulates because something is observing it, not because the app leaks.',
+    ),
+    seed(
+      'CDP inspector console retention',
+      ['ConsoleMessage'],
+      'Console-retained memory scales with how much the app logs, not with what it holds. A dev build logging per cycle produces a clean linear "leak" that does not exist in production.',
+    ),
+    seed(
+      'Captured Error stacks (React DEV owner stacks)',
+      ['StackFrameInfo', 'ErrorStackData'],
+      'Usually React DEV `_debugStack` or dev-build logging capturing a stack per record. Dev-build only, but a production build can legitimately grow these — check before dismissing.',
+    ),
+    seed(
+      'React Fast Refresh registries (dev-only)',
+      ['allFamiliesByID', 'allFamiliesByType', 'allSignaturesByType'],
+      'Dev-only hot-reload bookkeeping. The backing tables are large and sparse and V8 never shrinks an EphemeronHashTable, so they present as a big anonymous array at the top of a leak report.',
+    ),
+    seed(
+      'Automation/tool bridge bundle',
+      ['(concatenated string)', '(string)'],
+      'The browser-automation bridge is re-evaluated per call and its source is retained per copy. Presents as many megabytes of duplicated script text that no production user ever loads.',
+    ),
+  ];
+}
+
 export function registerFindingIndex(server: McpServer): void {
   server.tool(
     'memlab_finding_index',
     'Fingerprint a leak finding by its retainer path and check it against findings from previous rounds, so a hunt does not spend itself re-discovering a known or already-fixed leak. ' +
       'This is the highest-cost failure a leak hunt has: a measured round produced three findings that were all already known — two already fixed behind gates — which is an entire round spent re-deriving history. Class names cannot detect that (`Object` and `Array` top every heap); the retainer PATH can, so the fingerprint is a normalized path signature with node ids, array indices and per-capture scope ids stripped. ' +
       'Actions: "check" fingerprints a candidate and reports NEW / KNOWN / KNOWN-AND-FIXED; "record" adds it; "import" bootstraps history in bulk from a team doc or a JSON file; "list" prints the index; "cover" records which combos a round drove, so the "do not repeat covered combos" rule stops depending on someone remembering.\n\n' +
-      'IMPORTANT: a verdict of NEW is only as good as the index behind it. An empty index answers NEW for everything, including findings that are documented and already fixed — so seed it with `action: "import"` before trusting the first `check` of a workstream. Set `MEMLAB_FINDINGS_INDEX` to a checked-in path to share the index across hosts and operators instead of keeping it in a per-machine home directory.',
+      'IMPORTANT: a verdict of NEW is only as good as the index behind it. A newly-created index is pre-seeded with the generic ARTIFACT families (JIT warmup, CDP network/perf/console retention, a11y caches, React Fast Refresh registries, captured Error stacks, the automation bridge bundle), so the first `check` can already answer KNOWN for a population that is documented and is not app memory — but it knows nothing about YOUR app. Seed that with `action: "import"` before trusting the first `check` of a workstream. Set `MEMLAB_FINDINGS_INDEX` to a checked-in path to share the index across hosts and operators instead of keeping it in a per-machine home directory.',
     {
       action: z
         .enum(['check', 'record', 'list', 'cover', 'import'])

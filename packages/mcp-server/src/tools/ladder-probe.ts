@@ -211,33 +211,62 @@ interface Rung {
   error: string | null;
 }
 
-async function probeOne(
+type ProbeOutcome = {value: number | null; error: string | null};
+
+/**
+ * Run EVERY metric against one rung, inside a single load of that rung.
+ *
+ * The load is what costs: a 300 MB capture takes far longer to parse and build
+ * dominators for than any probe takes to run against it. Measured usage of this
+ * tool is a dozen calls over the same ladder, each asking a one-line question —
+ * `helpers.byClass(X).length` — and each re-loading every rung. Batching the
+ * metrics collapses that to one pass over the ladder.
+ */
+export async function probeRung(
   localPath: string,
-  code: string,
+  metrics: Array<{name: string; code: string}>,
   timeoutMs: number,
   maxNodes: number,
-): Promise<{value: number | null; error: string | null}> {
+): Promise<Map<string, ProbeOutcome>> {
+  const out = new Map<string, ProbeOutcome>();
   try {
-    return await withSnapshotAt(localPath, async () => {
-      const out = await runEval({
-        mode: 'eval',
-        code,
-        timeout_ms: timeoutMs,
-        max_nodes: maxNodes,
-      });
-      const text = textOf(out);
-      const value = extractNumber(text);
-      if (value == null) {
-        return {
-          value: null,
-          error: `probe did not yield a number (got: ${text.slice(0, 120) || 'empty'})`,
-        };
+    await withSnapshotAt(localPath, async () => {
+      for (const metric of metrics) {
+        try {
+          const res = await runEval({
+            mode: 'eval',
+            code: metric.code,
+            timeout_ms: timeoutMs,
+            max_nodes: maxNodes,
+          });
+          const text = textOf(res);
+          const value = extractNumber(text);
+          out.set(
+            metric.name,
+            value == null
+              ? {
+                  value: null,
+                  error: `probe did not yield a number (got: ${text.slice(0, 120) || 'empty'})`,
+                }
+              : {value, error: null},
+          );
+        } catch (e) {
+          // One metric failing must not cost the others their rung: the whole
+          // point of batching is that they share an expensive load.
+          out.set(metric.name, {
+            value: null,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
       }
-      return {value, error: null};
     });
   } catch (e) {
-    return {value: null, error: e instanceof Error ? e.message : String(e)};
+    const error = e instanceof Error ? e.message : String(e);
+    for (const metric of metrics) {
+      if (!out.has(metric.name)) out.set(metric.name, {value: null, error});
+    }
   }
+  return out;
 }
 
 export function registerLadderProbe(server: McpServer): void {
@@ -266,8 +295,15 @@ export function registerLadderProbe(server: McpServer): void {
         ),
       code: z
         .string()
+        .optional()
         .describe(
-          'JavaScript run against each rung, exactly as in memlab_eval, which must assign a NUMBER to `result` — e.g. `result = helpers.byClass("OpusRecorder").length`. A one-key object such as {count: n} is also accepted.',
+          'JavaScript run against each rung, exactly as in memlab_eval, which must assign a NUMBER to `result` — e.g. `result = helpers.byClass("OpusRecorder").length`. A one-key object such as {count: n} is also accepted. Provide this OR `metrics`.',
+        ),
+      metrics: z
+        .record(z.string())
+        .optional()
+        .describe(
+          'SEVERAL named probes measured in ONE pass over the ladder: {"detached_rows": "result = …", "listener_records": "result = …"}. Strongly preferred over calling this tool once per question — the snapshot LOAD dominates the cost, so N metrics in one call costs roughly the same as one, where N separate calls costs N times as much. Each value follows the same rules as `code`; one metric failing does not cost the others their rung.',
         ),
       cycles: z
         .number()
@@ -306,6 +342,7 @@ export function registerLadderProbe(server: McpServer): void {
     async ({
       paths,
       code,
+      metrics,
       cycles,
       cycles_per_rung,
       label,
@@ -333,111 +370,176 @@ export function registerLadderProbe(server: McpServer): void {
           );
         }
 
+        // `code` and `metrics` are the same feature at different arities; one
+        // pass over the ladder answers either.
+        const metricList: Array<{name: string; code: string}> = [];
+        if (code != null && code.trim() !== '') {
+          metricList.push({name: label ?? 'probe', code});
+        }
+        for (const [name, mCode] of Object.entries(metrics ?? {})) {
+          metricList.push({name, code: mCode});
+        }
+        if (metricList.length === 0) {
+          return errorResult(
+            new Error(
+              'Pass `code` for a single probe, or `metrics` for several measured in one pass over the ladder.',
+            ),
+          );
+        }
+
         const {rungs: locals, largestMB} = resolveRungs(
           resolved,
           max_file_size_mb,
         );
         const effectiveTimeout = scaledTimeoutMs(largestMB, timeout_ms);
 
-        const rungs: Rung[] = [];
+        // Parallel to metricList by INDEX rather than keyed by name: a name is
+        // not guaranteed unique (a `label` can collide with a `metrics` key),
+        // and a keyed map would silently merge two series into one.
+        const perMetric: Rung[][] = metricList.map(() => []);
         for (const {label: rungLabel, localPath} of locals) {
           // Per rung, not once: the budget is a wall clock, so a six-rung
           // ladder would otherwise spend rung 1's allowance and starve rung 6.
           armScanBudgetFor(effectiveTimeout);
-          const {value, error} = await probeOne(
+          const outcomes = await probeRung(
             localPath,
-            code,
+            metricList,
             effectiveTimeout,
             max_nodes,
           );
-          rungs.push({label: rungLabel, localPath, value, error});
+          metricList.forEach((m, mi) => {
+            const o = outcomes.get(m.name) ?? {
+              value: null,
+              error: 'metric not measured',
+            };
+            perMetric[mi].push({
+              label: rungLabel,
+              localPath,
+              value: o.value,
+              error: o.error,
+            });
+          });
         }
 
-        const usable = rungs.filter(
-          (r): r is Rung & {value: number} => r.value != null,
+        const xsFor = (n: number): number[] =>
+          Array.from({length: n}, (_, i) => {
+            if (cycles_per_rung != null) return cycles_per_rung[i];
+            if (cycles != null) return (cycles * i) / (n - 1);
+            return i;
+          });
+        const perCycleKnown = cycles != null || cycles_per_rung != null;
+
+        const lines: string[] = [];
+        const multi = metricList.length > 1;
+        lines.push(
+          multi
+            ? `## Ladder probe — ${metricList.length} metrics over ${locals.length} rungs`
+            : `## Ladder probe — \`${metricList[0].name}\``,
         );
-        if (usable.length < 2) {
-          const errs = rungs
-            .filter(r => r.error != null)
-            .map(r => `  ${r.label}: ${r.error}`)
-            .join('\n');
+        lines.push('');
+        if (multi) {
+          lines.push(
+            `_All ${metricList.length} metrics were measured in a single pass over the ladder — each rung was loaded once._`,
+          );
+          lines.push('');
+        }
+
+        let anyUsable = false;
+        for (let mi = 0; mi < metricList.length; mi++) {
+          const m = metricList[mi];
+          const rungs = perMetric[mi];
+          const xs = xsFor(rungs.length);
+          const usable = rungs.filter(
+            (r): r is Rung & {value: number} => r.value != null,
+          );
+          if (multi) {
+            lines.push(`### \`${m.name}\``);
+            lines.push('');
+          }
+          if (usable.length < 2) {
+            const errs = rungs
+              .filter(r => r.error != null)
+              .map(r => `- ${r.label}: ${r.error}`)
+              .join('\n');
+            lines.push(
+              `**UNMEASURED** — only ${usable.length} rung(s) produced a number, so no rate can be computed. The probe must assign a NUMBER to \`result\`.`,
+            );
+            if (errs) lines.push('', errs);
+            lines.push('');
+            continue;
+          }
+          anyUsable = true;
+
+          const usableXs: number[] = [];
+          const usableYs: number[] = [];
+          rungs.forEach((r, i) => {
+            if (r.value != null) {
+              usableXs.push(xs[i]);
+              usableYs.push(r.value);
+            }
+          });
+          const fit = linearFit(usableXs, usableYs);
+          const first = usableYs[0];
+          const last = usableYs[usableYs.length - 1];
+          const delta = last - first;
+
+          const rows = rungs.map((r, i) => [
+            r.label,
+            perCycleKnown ? formatNumber(xs[i]) : String(i),
+            r.value != null
+              ? formatNumber(r.value)
+              : `(${r.error ?? 'no value'})`,
+            r.value != null && i > 0 && rungs[i - 1].value != null
+              ? formatNumber(r.value - (rungs[i - 1].value as number))
+              : '',
+          ]);
+          lines.push(
+            markdownTable(
+              [
+                'Rung',
+                perCycleKnown ? 'Cycles' : 'Index',
+                'Value',
+                'Δ vs prev',
+              ],
+              rows,
+            ),
+          );
+          lines.push('');
+          lines.push(
+            `**${formatNumber(first)} → ${formatNumber(last)}** (Δ ${delta >= 0 ? '+' : ''}${formatNumber(delta)}) across ${usable.length} usable rung(s).`,
+          );
+          if (perCycleKnown) {
+            lines.push(
+              `**Rate: ${fit.slope >= 0 ? '+' : ''}${fit.slope.toFixed(3)} per cycle**, r2 = ${fit.r2.toFixed(4)}.`,
+            );
+          } else {
+            lines.push(
+              `**Slope: ${fit.slope >= 0 ? '+' : ''}${fit.slope.toFixed(3)} per rung**, r2 = ${fit.r2.toFixed(4)}. ` +
+                'Pass `cycles` or `cycles_per_rung` to get a per-cycle rate, which is the unit a leak is quoted in.',
+            );
+          }
+          lines.push('');
+          lines.push(`**Verdict:** ${verdictFor(usableYs, fit)}`);
+
+          const failed = rungs.filter(r => r.error != null);
+          if (failed.length > 0) {
+            lines.push('');
+            lines.push(
+              `_${failed.length} rung(s) produced no value and were excluded from the fit:_`,
+            );
+            for (const f of failed) lines.push(`- ${f.label}: ${f.error}`);
+          }
+          lines.push('');
+        }
+
+        if (!anyUsable) {
           return errorResult(
             new Error(
-              `Only ${usable.length} rung(s) produced a number, so no rate can be computed.\n${errs}\n` +
-                'The probe must assign a NUMBER to `result`.',
+              `No metric produced two usable rungs, so nothing can be fitted. See the per-metric errors above; the probe must assign a NUMBER to \`result\`.`,
             ),
           );
         }
 
-        const xs: number[] = rungs.map((_, i) => {
-          if (cycles_per_rung != null) return cycles_per_rung[i];
-          if (cycles != null) {
-            return (cycles * i) / (rungs.length - 1);
-          }
-          return i;
-        });
-        const usableXs: number[] = [];
-        const usableYs: number[] = [];
-        rungs.forEach((r, i) => {
-          if (r.value != null) {
-            usableXs.push(xs[i]);
-            usableYs.push(r.value);
-          }
-        });
-        const fit = linearFit(usableXs, usableYs);
-        const perCycleKnown = cycles != null || cycles_per_rung != null;
-
-        const first = usableYs[0];
-        const last = usableYs[usableYs.length - 1];
-        const delta = last - first;
-
-        const header = label != null ? `\`${label}\`` : 'probe';
-        const lines: string[] = [];
-        lines.push(`## Ladder probe — ${header}`);
-        lines.push('');
-
-        const rows = rungs.map((r, i) => [
-          r.label,
-          perCycleKnown ? formatNumber(xs[i]) : String(i),
-          r.value != null
-            ? formatNumber(r.value)
-            : `(${r.error ?? 'no value'})`,
-          r.value != null && i > 0 && rungs[i - 1].value != null
-            ? formatNumber(r.value - (rungs[i - 1].value as number))
-            : '',
-        ]);
-        lines.push(
-          markdownTable(
-            ['Rung', perCycleKnown ? 'Cycles' : 'Index', 'Value', 'Δ vs prev'],
-            rows,
-          ),
-        );
-        lines.push('');
-        lines.push(
-          `**${formatNumber(first)} → ${formatNumber(last)}** (Δ ${delta >= 0 ? '+' : ''}${formatNumber(delta)}) across ${usable.length} usable rung(s).`,
-        );
-        if (perCycleKnown) {
-          lines.push(
-            `**Rate: ${fit.slope >= 0 ? '+' : ''}${fit.slope.toFixed(3)} per cycle**, r2 = ${fit.r2.toFixed(4)}.`,
-          );
-        } else {
-          lines.push(
-            `**Slope: ${fit.slope >= 0 ? '+' : ''}${fit.slope.toFixed(3)} per rung**, r2 = ${fit.r2.toFixed(4)}. ` +
-              'Pass `cycles` or `cycles_per_rung` to get a per-cycle rate, which is the unit a leak is quoted in.',
-          );
-        }
-        lines.push('');
-        lines.push(`**Verdict:** ${verdictFor(usableYs, fit)}`);
-
-        const failed = rungs.filter(r => r.error != null);
-        if (failed.length > 0) {
-          lines.push('');
-          lines.push(
-            `_${failed.length} rung(s) produced no value and were excluded from the fit:_`,
-          );
-          for (const f of failed) lines.push(`- ${f.label}: ${f.error}`);
-        }
-        lines.push('');
         lines.push(
           '_A rate is not a cause. Confirm the population with `memlab_retainer_trace` / `memlab_retainer_layers` ' +
             'on a sample before calling it a leak — and check `memlab_dev_artifacts`, since a dev-only population ' +
