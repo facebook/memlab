@@ -393,9 +393,9 @@ function getConfigFromRunOptions(options: RunOptions): MemLabConfig {
   if ('webWorker' in options) {
     config.isAnalyzingMainThread = false;
     const value = options.webWorker;
-    if (typeof value === 'string') {
-      config.targetWorkerTitle = value;
-    }
+    // config is a singleton shared by all API calls in the process, so the
+    // title has to be cleared when this run targets any web worker
+    config.targetWorkerTitle = typeof value === 'string' ? value : null;
   } else {
     config.isAnalyzingMainThread = true;
   }

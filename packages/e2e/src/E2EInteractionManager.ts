@@ -96,12 +96,19 @@ export default class E2EInteractionManager {
       // neither 'service_worker' nor 'shared_worker'
       const isWorker = targetType === TargetType.OTHER;
       const targetUnknown = target as unknown as {
-        _getTargetInfo: () => {title: string};
+        _getTargetInfo: () => {title: string; type?: string};
       };
       if (typeof targetUnknown?._getTargetInfo !== 'function') {
         return false;
       }
-      const title = targetUnknown?._getTargetInfo().title;
+      const targetInfo = targetUnknown._getTargetInfo();
+      // puppeteer also maps the browser's own WebUI targets (CDP target type
+      // `browser_ui`, e.g. `chrome://omnibox-popup.top-chrome`) to
+      // TargetType.OTHER, so the CDP target type is what tells them apart
+      if (targetInfo.type != null && targetInfo.type !== 'worker') {
+        return false;
+      }
+      const title = targetInfo.title;
       let isTitleMatch = true;
       if (config.targetWorkerTitle != null) {
         isTitleMatch = title === config.targetWorkerTitle;
