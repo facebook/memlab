@@ -223,7 +223,7 @@ export async function takeSnapshots(
 ): Promise<BrowserInteractionResultReader> {
   const config = getConfigFromRunOptions(options);
   const state = stateManager.getAndUpdateState(config, options);
-  const testPlanner = new TestPlanner();
+  const testPlanner = new TestPlanner({config});
   const {evalInBrowserAfterInitLoad} = options;
   await testInBrowser({testPlanner, config, evalInBrowserAfterInitLoad});
   const ret = BrowserInteractionResultReader.from(config.workDir);
