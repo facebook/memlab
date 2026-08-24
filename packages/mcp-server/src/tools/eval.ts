@@ -1831,6 +1831,28 @@ export async function runEval({
       }
     } else if (budget.visited > 0) {
       footer.push(`nodes_visited: ${formatNumber(budget.visited)}`);
+      // A whole-heap walk that matched NOTHING is reported as a confident
+      // negative — "there are no closures with captured scopes" — when the
+      // overwhelmingly likelier cause is a predicate that cannot match.
+      //
+      // The edge-type filter is the canonical way to get here: a JSFunction's
+      // hop to its Context is an `internal` edge NAMED `context`, so the
+      // reflexive `e.type === 'context'` matches zero edges on every heap and
+      // returns a clean 0 with no error. That silent zero is worse than a
+      // throw, because nothing in the output suggests re-checking the filter.
+      if (
+        budget.visited >= ZERO_MATCH_WALK_THRESHOLD &&
+        isEmptyCensusResult(sandbox.result)
+      ) {
+        footer.push(
+          `⚠️ ZERO matches over ${formatNumber(budget.visited)} node visits. This may be a real negative — ` +
+            'but a whole-heap walk that matches nothing is more often a predicate that cannot match. ' +
+            'Check the edge-type filter first: a closure→scope hop is an `internal` edge NAMED `context` ' +
+            "(`e.name_or_index === 'context'`), NOT `e.type === 'context'`; `props()` adds provenance keys so " +
+            'shape tests must use `helpers.shapeKeys`/`hasShape`; and `byClass` needs the exact class name. ' +
+            'Confirm with a deliberately broad version of the same predicate before recording this as "not present".',
+        );
+      }
     }
     if (save_as != null && !budget.exceeded) {
       footer.push(
@@ -1945,6 +1967,31 @@ function describeSaved(): string {
   ].join('\n');
 }
 
+/**
+ * A result that says "none of them" — 0, `[]`, `{}`, or an empty Map/Set.
+ *
+ * `undefined`/`null` are deliberately NOT included: those mean "the code
+ * assigned nothing", which is a different failure and is already handled.
+ */
+export function isEmptyCensusResult(v: unknown): boolean {
+  if (v === 0) return true;
+  if (Array.isArray(v)) return v.length === 0;
+  if (v instanceof Map || v instanceof Set) return v.size === 0;
+  if (v != null && typeof v === 'object') {
+    return Object.keys(v as Record<string, unknown>).length === 0;
+  }
+  return false;
+}
+
+/**
+ * How many node visits make a zero result worth questioning.
+ *
+ * Below this the caller probably scanned an indexed subset and legitimately
+ * found nothing; above it they walked the whole graph and got no match, which
+ * is far more often a wrong predicate than an empty heap.
+ */
+const ZERO_MATCH_WALK_THRESHOLD = 100000;
+
 function describeEnv(): string {
   return [
     '# memlab_eval environment',
@@ -2002,6 +2049,15 @@ function describeEnv(): string {
     '',
     '## IHeapEdge API',
     '`.name_or_index`, `.type` (property/element/context/internal/hidden/shortcut), `.toNode`, `.fromNode`.',
+    '',
+    '### Edge TYPE vs edge NAME — the silent-zero trap',
+    'These are different fields and the reflexive guess is wrong for the most-asked question. A closure and its captured scope are linked like this:',
+    '```',
+    "closure --(type: 'internal', name_or_index: 'context')--> 'system / Context / scope @<id>'",
+    "'system / Context / scope @<id>' --(type: 'context', name_or_index: '<varName>')--> captured value",
+    '```',
+    "So the hop FROM a function TO its scope is an **`internal` edge named `context`** — filtering a function's `.references` on `e.type === 'context'` matches **zero edges on every heap** and returns a clean `0`. The `context` TYPE only appears on the edges INSIDE the scope object, one per captured variable. (Measured on a 2.9M-node browser capture: 37,791 `context`-NAMED edges out of closures, every one of them `internal`, and not a single `context`-TYPED edge among the 255,084 edges leaving closures; the scope objects they point at emit 60,513 `context`-typed edges between them.) Rule of thumb: match `e.name_or_index` for a specific named hop, `e.type` only for a category.",
+    'The same shape bites elsewhere: array backing stores hang off an `internal` edge named `elements`, and Map/Set contents live behind `internal` `table` — which is why `helpers.entries` / `mapEntries` exist.',
     '',
     '## Runnable example',
     '```',

@@ -20,6 +20,7 @@ import {
   errorResult,
   formatNumber,
   markdownTable,
+  pathsHeader,
   toolResult,
 } from '../utils.js';
 import {runEval} from './eval.js';
@@ -443,7 +444,10 @@ export function registerLadderProbe(server: McpServer): void {
             'grows just as linearly as a real one._',
         );
 
-        return toolResult(lines.join('\n'));
+        return toolResult(
+          lines.join('\n'),
+          pathsHeader(locals.map(r => r.label)),
+        );
       } catch (e) {
         return errorResult(e instanceof Error ? e : new Error(String(e)));
       }

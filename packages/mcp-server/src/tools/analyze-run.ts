@@ -33,6 +33,7 @@ import {
   formatBytes,
   formatNumber,
   markdownTable,
+  pathsHeader,
   toolResult,
 } from '../utils.js';
 import {computeSequenceTrends} from './sequence-analysis.js';
@@ -523,7 +524,10 @@ export function registerAnalyzeRun(server: McpServer): void {
             `_Resident snapshots: ${resident}. Follow up on a specific object with \`memlab_dominator_chain\` / \`memlab_retainer_trace\`, or unload them with \`memlab_snapshots\`._`,
           );
         }
-        return toolResult(out.join('\n'));
+        return toolResult(
+          out.join('\n'),
+          pathsHeader(paths.map(p => p.replace(/^.*\//, ''))),
+        );
       } catch (err) {
         return errorResult(err);
       }

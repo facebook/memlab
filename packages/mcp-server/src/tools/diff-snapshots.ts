@@ -23,10 +23,11 @@ import {
   setCurrentSnapshot,
 } from '../heap-state.js';
 import {
+  errorResult,
   formatBytes,
   formatNumber,
   markdownTable,
-  errorResult,
+  pathsHeader,
   toolResult,
 } from '../utils.js';
 
@@ -516,7 +517,10 @@ export function registerDiffSnapshots(server: McpServer): void {
             : `\n*Active snapshot left unchanged${activeHandle ? ` (handle: ${activeHandle})` : ''} (set_active:false).*`,
         );
 
-        return toolResult(lines.join('\n'));
+        return toolResult(
+          lines.join('\n'),
+          pathsHeader([beforeArg, afterArg].map(a => a.replace(/^.*\//, ''))),
+        );
       } catch (err) {
         return errorResult(err);
       }

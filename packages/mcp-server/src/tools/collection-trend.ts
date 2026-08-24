@@ -19,6 +19,7 @@ import {
   errorResult,
   formatNumber,
   markdownTable,
+  pathsHeader,
   toolResult,
 } from '../utils.js';
 import {resolveLadderPaths} from './ladder.js';
@@ -401,7 +402,7 @@ export function registerCollectionTrend(server: McpServer): void {
             ? `**${formatNumber(growers.length)} collection(s) grew at EVERY rung** (${growers.map(g => `\`${g.raw}\``).join(', ')}) — monotonic growth under a repeated interaction is the signature of an unbounded collection. Confirm the entries are distinct (not one object re-added) with \`memlab_map_entries\`, then \`memlab_retainer_trace\` the owner.`
             : '**No collection grew at every rung.** Net growth without monotonicity is usually a cache filling toward its cap; re-run with more rungs, or check `memlab_cache_analysis` for the cap.',
         );
-        return toolResult(lines.join('\n'));
+        return toolResult(lines.join('\n'), pathsHeader(labels));
       } catch (err) {
         return errorResult(err);
       }

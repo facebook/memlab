@@ -193,6 +193,7 @@ export function registerLadder(server: McpServer): void {
           if (names.length === 0) {
             return toolResult(
               'No ladders registered. Save one with memlab_ladder({action:"save", name, paths:[…]}), then pass `["ladder:<name>"]` as `paths` to memlab_sequence_analysis / memlab_leak_report / memlab_hypothesis.',
+              null,
             );
           }
           return toolResult(
@@ -217,6 +218,7 @@ export function registerLadder(server: McpServer): void {
               '',
               '_Use as `paths: ["ladder:<name>"]`._',
             ].join('\n'),
+            null,
           );
         }
 
@@ -229,7 +231,7 @@ export function registerLadder(server: McpServer): void {
             return errorResult(`No ladder named "${name}".`);
           delete reg[name];
           saveRegistry(reg);
-          return toolResult(`Deleted ladder "${name}".`);
+          return toolResult(`Deleted ladder "${name}".`, null);
         }
 
         if (action === 'save') {
@@ -282,6 +284,7 @@ export function registerLadder(server: McpServer): void {
             ]
               .filter(Boolean)
               .join('\n'),
+            null,
           );
         }
 
@@ -322,6 +325,7 @@ export function registerLadder(server: McpServer): void {
           ]
             .filter(Boolean)
             .join('\n'),
+          null,
         );
       } catch (err) {
         return errorResult(err);

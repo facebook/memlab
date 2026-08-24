@@ -172,6 +172,33 @@ interface CollectionStat {
   stale_reason: string;
 }
 
+/**
+ * What to say when the scan surfaced nothing.
+ *
+ * A scan that ran out of budget found nothing YET. Emitting "No stale
+ * collections found" over a partial scan states a negative the tool never
+ * established — and the verdict is the line a reader keeps, so the PARTIAL
+ * warning printed above it does not undo the impression. Measured output that
+ * prompted this:
+ *
+ *     ⚠ Scan hit the 45,000ms time budget after 22,528 entries — results are PARTIAL.
+ *     No stale collections found.
+ *
+ * The two lines contradict each other. This is precisely the UNANALYZED-vs-
+ * no-leak distinction the analysis protocol exists to enforce, so the tool must
+ * not blur it in its own output.
+ */
+export function emptyScanVerdict(timedOut: boolean, scanned: number): string {
+  if (!timedOut) return 'No stale collections found.';
+  return (
+    `**INCONCLUSIVE — the scan did not finish.** ${formatNumber(scanned)} entries were ` +
+    'examined before the budget ran out, and no stale collection was found *in that prefix*. ' +
+    'This is NOT evidence that none exists, and must not be recorded as a clean negative.\n\n' +
+    'To turn it into one, re-run with a higher `timeout_ms`, a narrower `detect_modes`, ' +
+    'or a higher `min_stale_count` — and check that the re-run reports no PARTIAL warning.'
+  );
+}
+
 export function registerStaleCollections(server: McpServer): void {
   server.tool(
     'memlab_stale_collections',
@@ -386,6 +413,9 @@ export function registerStaleCollections(server: McpServer): void {
           scanNotes.length > 0 ? scanNotes.join('\n') + '\n\n' : '';
 
         if (topResults.length === 0) {
+          if (timedOut) {
+            return toolResult(scanNote + emptyScanVerdict(true, scanned));
+          }
           const env = getSnapshotEnv();
           if (env === 'node') {
             return toolResult(

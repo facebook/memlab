@@ -17,6 +17,7 @@ import {
   errorResult,
   formatNumber,
   markdownTable,
+  pathsHeader,
   toolResult,
 } from '../utils.js';
 import {countEntries, parseLocator, resolvePath} from './collection-trend.js';
@@ -193,6 +194,13 @@ export function registerVerifyFix(server: McpServer): void {
       try {
         const before = resolveLadderPaths(before_paths).paths;
         const after = resolveLadderPaths(after_paths).paths;
+        // Name BOTH arms: this tool never reads the resident snapshot, and a
+        // fix-validation result labelled with an unrelated capture is the
+        // worst place to leave a reader guessing which build was measured.
+        const armsHeader = pathsHeader([
+          ...before.map(p => `before:${p.replace(/^.*\//, '')}`),
+          ...after.map(p => `after:${p.replace(/^.*\//, '')}`),
+        ]);
         for (const [label, arm] of [
           ['before_paths', before],
           ['after_paths', after],
@@ -266,7 +274,7 @@ export function registerVerifyFix(server: McpServer): void {
           lines.push(
             `⚠ **Inconclusive — the BEFORE arm does not grow** (rate ${fmtRate(beforeRate)}/cycle). There is nothing for the fix to reduce, so this run cannot validate it. The unfixed arm has to reproduce the leak first: check the metric and locator, drive more cycles, or confirm the arm really is running the unfixed build.`,
           );
-          return toolResult(lines.join('\n'));
+          return toolResult(lines.join('\n'), armsHeader);
         }
 
         const reduction = (beforeRate - afterRate) / beforeRate;
@@ -282,7 +290,7 @@ export function registerVerifyFix(server: McpServer): void {
           '',
           `_Both arms must have been driven with the same interaction and the same ${formatNumber(cycles)} cycles between rungs; nothing in a .heapsnapshot records that, so it is the caller's to guarantee — record it with \`memlab_ladder\`. Two rungs per arm give a two-point slope: add rungs if the before-arm series is not monotonic, since a single noisy pair can produce either verdict._`,
         );
-        return toolResult(lines.join('\n'));
+        return toolResult(lines.join('\n'), armsHeader);
       } catch (err) {
         return errorResult(err);
       }

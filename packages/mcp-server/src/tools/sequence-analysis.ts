@@ -23,10 +23,11 @@ import {
   resolveSnapshotPath,
 } from './load-snapshot.js';
 import {
+  errorResult,
   formatBytes,
   formatNumber,
   markdownTable,
-  errorResult,
+  pathsHeader,
   toolResult,
 } from '../utils.js';
 import {resolveLadderPaths} from './ladder.js';
@@ -470,7 +471,10 @@ export function registerSequenceAnalysis(server: McpServer): void {
           lines.push(
             `No classes grew by >= ${formatNumber(min_growth_count)} instances across the sequence. Heap looks flat-to-shrinking — no unbounded-growth signal.`,
           );
-          return toolResult(lines.join('\n'));
+          return toolResult(
+            lines.join('\n'),
+            pathsHeader(steps.map(s => s.label)),
+          );
         }
 
         lines.push('### Growing classes', '');
@@ -642,7 +646,10 @@ export function registerSequenceAnalysis(server: McpServer): void {
           '⏳ **No settle rung.** Every growth figure above was measured while the app was active, so in-flight work is indistinguishable from retention here. Capture one more snapshot after ~30-60s idle with a forced GC and run `memlab_settle_check(busy_handle, settled_handle)`: classes that return to baseline were backlog, not leaks.',
         );
 
-        return toolResult(lines.join('\n'));
+        return toolResult(
+          lines.join('\n'),
+          pathsHeader(steps.map(s => s.label)),
+        );
       } catch (err) {
         return errorResult(err);
       }

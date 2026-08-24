@@ -17,6 +17,7 @@ import {
   errorResult,
   formatNumber,
   markdownTable,
+  pathsHeader,
   toolResult,
 } from '../utils.js';
 import {countEntries} from './collection-trend.js';
@@ -337,7 +338,7 @@ export function registerCollectionDiff(server: McpServer): void {
             '',
             '_That is a real negative for unbounded-collection growth specifically — it does not cover detached DOM, listener records, string accumulation or retained-size growth with a flat entry count. Lower `min_growth` to see smaller movers._',
           );
-          return toolResult(lines.join('\n'));
+          return toolResult(lines.join('\n'), pathsHeader(labels));
         }
 
         const headers = [
@@ -390,7 +391,7 @@ export function registerCollectionDiff(server: McpServer): void {
           '_Instances is the count of DISTINCT collections sharing a signature. When instances grow but the largest single collection does not, the OWNERS are accumulating, not the collection — a different fix (stop minting owners) from bounding one container._',
           '_Signatures are structural, not identities: two unrelated collections bound to the same-named field of the same-named class share a row. The `Instances` column is what exposes that._',
         );
-        return toolResult(lines.join('\n'));
+        return toolResult(lines.join('\n'), pathsHeader(labels));
       } catch (error) {
         return errorResult(
           `Failed to diff collections: ${error instanceof Error ? error.message : String(error)}`,

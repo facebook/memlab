@@ -14,10 +14,11 @@ import {z} from 'zod';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
 const {getFullHeapFromFile} = memlabHeapAnalysis;
 import {
+  errorResult,
   formatBytes,
   formatNumber,
   markdownTable,
-  errorResult,
+  pathsHeader,
   toolResult,
 } from '../utils.js';
 import {artifactLabel} from '../artifact-classes.js';
@@ -242,7 +243,10 @@ export function registerLeakReport(server: McpServer): void {
               `> 🧹 ${formatNumber(artifactRows.length)} growing class(es) were known measurement artifacts (pass \`include_artifacts: true\` to see them).`,
             );
           }
-          return toolResult(lines.join('\n'));
+          return toolResult(
+            lines.join('\n'),
+            pathsHeader(steps.map(s => s.label)),
+          );
         }
 
         // Evidence pass. The trend loop drops each graph before loading the
@@ -435,7 +439,10 @@ export function registerLeakReport(server: McpServer): void {
           );
         }
 
-        return toolResult(lines.join('\n'));
+        return toolResult(
+          lines.join('\n'),
+          pathsHeader(steps.map(s => s.label)),
+        );
       } catch (err) {
         return errorResult(err);
       }

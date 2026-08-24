@@ -1209,12 +1209,46 @@ export function snapshotHeader(): string {
   return `> Snapshot: ${meta.fileName} (${formatBytes(meta.totalSize)}, ${formatNumber(meta.nodeCount)} nodes, ${envLabel})`;
 }
 
+/**
+ * The header for a tool that read snapshots given as PATHS.
+ *
+ * `snapshotHeader()` can only ever describe the RESIDENT snapshot, because that
+ * is the only one the session knows about. For a path-taking tool that is the
+ * wrong file by construction whenever the caller has something else loaded —
+ * and these tools restore the caller's active snapshot before they build their
+ * result (see `withSnapshotAt`), so by the time the header is rendered the
+ * snapshot it names is never the one that was measured.
+ *
+ * Measured across a 12-round investigation: every path-based call printed a
+ * header naming a capture from an earlier round. A ladder result labelled with
+ * another round's rung is a cross-round misattribution hazard in exactly the
+ * workflow these tools exist for, so name what was actually read.
+ */
+export function pathsHeader(labels: readonly string[]): string {
+  const seen = labels.filter(l => l.length > 0);
+  if (seen.length === 0) return '';
+  if (seen.length === 1) return `> Snapshot: ${seen[0]}`;
+  if (seen.length === 2) return `> Snapshots: ${seen[0]} → ${seen[1]}`;
+  return `> Snapshots: ${seen.length} rungs, ${seen[0]} … ${seen[seen.length - 1]}`;
+}
+
 export function textResult(text: string) {
   return {content: [{type: 'text' as const, text}]};
 }
 
-export function toolResult(text: string) {
-  const header = shouldEmitHeader() ? snapshotHeader() : '';
+/**
+ * @param headerOverride Pass `pathsHeader([...])` when the tool read snapshots
+ * by PATH rather than operating on the resident one. Passing `null` suppresses
+ * the header entirely. Omitting it keeps the session-header behaviour, which is
+ * correct only for tools that genuinely act on the active snapshot.
+ */
+export function toolResult(text: string, headerOverride?: string | null) {
+  const header =
+    headerOverride !== undefined
+      ? (headerOverride ?? '')
+      : shouldEmitHeader()
+        ? snapshotHeader()
+        : '';
   const body = header ? `${header}\n\n${text}` : text;
   return {content: [{type: 'text' as const, text: body}]};
 }

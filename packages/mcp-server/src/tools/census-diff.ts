@@ -22,6 +22,7 @@ import {
   errorResult,
   formatNumber,
   markdownTable,
+  pathsHeader,
   toolResult,
 } from '../utils.js';
 import {
@@ -306,7 +307,10 @@ export function registerCensusDiff(server: McpServer): void {
                 'strongest cheap evidence that a suspected leak is not in the DOM or listener population at all._',
         );
 
-        return toolResult(lines.join('\n'));
+        return toolResult(
+          lines.join('\n'),
+          pathsHeader(rungs.map(r => r.label)),
+        );
       } catch (e) {
         return errorResult(e instanceof Error ? e : new Error(String(e)));
       }

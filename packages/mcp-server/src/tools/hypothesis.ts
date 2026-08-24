@@ -18,10 +18,11 @@ const {getFullHeapFromFile} = memlabHeapAnalysis;
 import {resolveSnapshotPath} from './load-snapshot.js';
 import {resolveLadderPaths} from './ladder.js';
 import {
+  errorResult,
   formatBytes,
   formatNumber,
   markdownTable,
-  errorResult,
+  pathsHeader,
   toolResult,
 } from '../utils.js';
 
@@ -376,7 +377,10 @@ export function registerHypothesis(server: McpServer): void {
           }
         }
 
-        return toolResult(lines.join('\n'));
+        return toolResult(
+          lines.join('\n'),
+          pathsHeader(rungPaths.map(p => p.replace(/^.*\//, ''))),
+        );
       } catch (err) {
         return errorResult(err);
       }

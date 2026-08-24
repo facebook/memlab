@@ -24,6 +24,7 @@ import {
   formatBytes,
   formatNumber,
   markdownTable,
+  pathsHeader,
   toolResult,
 } from '../utils.js';
 
@@ -271,7 +272,10 @@ export function registerArtifactBudget(server: McpServer): void {
             'specific bucket explaining why it is not app memory. Retained sizes overlap and would not sum._',
         );
 
-        return toolResult(lines.join('\n'));
+        return toolResult(
+          lines.join('\n'),
+          pathsHeader(rungs.map(r => r.label)),
+        );
       } catch (e) {
         return errorResult(e instanceof Error ? e : new Error(String(e)));
       }
