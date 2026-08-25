@@ -77,9 +77,14 @@ function readValue(
   if (node.type === 'number') {
     const smi = decodeSmi(node);
     if (smi != null) {
+      // When the calibration failed, the decode is wrong often enough that
+      // printing it is worse than printing nothing: a bogus id is
+      // indistinguishable from a real one and gets quoted downstream. Suppress
+      // the value and keep the note. Booleans and strings are read directly and
+      // stay trustworthy either way.
       return smiTrusted
         ? {value: smi}
-        : {value: smi, note: 'SMI decode unverified in this capture'};
+        : {value: null, note: 'SMI decode unverified in this capture'};
     }
     // A heap number's value is not stored in the snapshot at all.
     return {
@@ -187,7 +192,12 @@ export function registerAppConfig(server: McpServer): void {
           }
           if (hits.length === 0) {
             return toolResult(
-              `No key matching \`${key}\` in the ${formatNumber(registries.length)} registry/registries found (${formatNumber(registries.reduce((a, r) => a + r.entries.length, 0))} keys total). The flag may be held under a different name, or read once and never stored.`,
+              `No key matching \`${key}\` in the ${formatNumber(registries.length)} registry/registries found (${formatNumber(registries.reduce((a, r) => a + r.entries.length, 0))} keys total). The flag may be held under a different name, or read once and never stored.\n\n` +
+                'IMPORTANT: this tool discovers config REGISTRIES — objects holding many flag entries. ' +
+                'A gate read through a per-call API that keeps no registry (a Gatekeeper-style `gk(name)` lookup, ' +
+                'a function that returns a value without storing it) is structurally invisible here and will ALWAYS miss. ' +
+                'A miss is therefore not evidence that the gate was off; it is not evidence of anything. ' +
+                'Confirm the gate state from the code path or the experiment console instead.',
             );
           }
           const rows = hits

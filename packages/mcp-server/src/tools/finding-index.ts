@@ -336,6 +336,106 @@ export function relatedByClass(
     .map(x => x.f);
 }
 
+/**
+ * Does the index hold anything beyond the generic built-in artifact families?
+ *
+ * `loadIndex` seeds a fresh index with those families, so a plain
+ * `Object.keys(findings).length === 0` is never true and every "is this index
+ * usable" guard built on it silently never fires. The question that actually
+ * matters is whether the index carries history for THIS app; built-in entries
+ * are stamped `first_seen_round: 'builtin'` and say nothing about it.
+ */
+export function hasAppHistory(index: {
+  findings: Record<string, {first_seen_round: string}>;
+}): boolean {
+  return Object.values(index.findings).some(
+    f => f.first_seen_round !== 'builtin',
+  );
+}
+
+/**
+ * Fingerprint a candidate and look it up, for callers that are not the
+ * `memlab_finding_index` tool itself.
+ *
+ * Exists because the index only prevents re-discovery if somebody remembers to
+ * consult it, and in practice nobody does: a measured session produced three
+ * findings that were all already fixed behind gates, and never called `check`
+ * once. The tools that actually surface findings — `auto_investigate`,
+ * `leak_report` — now annotate inline instead of relying on that recall.
+ *
+ * Returns `indexEmpty` so the caller can say the verdict means nothing rather
+ * than printing a confident NEW from an index that has never been seeded.
+ */
+export type FindingLookup = {
+  verdict: 'NEW' | 'KNOWN' | 'KNOWN-AND-FIXED';
+  fixedBehind?: string;
+  note?: string;
+  round?: string;
+  related: string[];
+  indexEmpty: boolean;
+  indexPath: string;
+};
+
+export function lookupFinding(
+  retainerPath: string,
+  classes: readonly string[],
+  workstream?: string,
+): FindingLookup {
+  const indexPath = resolveIndexPath(workstream);
+  const index = loadIndex(indexPath);
+  const signature = normalizeRetainerPath(retainerPath);
+  const classList = [...classes];
+  const fingerprint = fingerprintOf(signature, classList);
+  const hit = index.findings[fingerprint];
+  const indexEmpty = !hasAppHistory(index);
+  if (hit) {
+    return {
+      verdict: hit.status === 'fixed' ? 'KNOWN-AND-FIXED' : 'KNOWN',
+      fixedBehind: hit.fixed_behind,
+      note: hit.note,
+      round: hit.first_seen_round,
+      related: [],
+      indexEmpty,
+      indexPath,
+    };
+  }
+  return {
+    verdict: 'NEW',
+    related: relatedByClass(index, classList, fingerprint).map(
+      f =>
+        `${f.growing_classes.join(', ')}${f.fixed_behind ? ` (fixed behind ${f.fixed_behind})` : ''}`,
+    ),
+    indexEmpty,
+    indexPath,
+  };
+}
+
+/** One-line renderer for an inline verdict badge. */
+export function renderFindingVerdict(l: FindingLookup): string {
+  if (l.verdict === 'KNOWN-AND-FIXED') {
+    return `\`KNOWN-AND-FIXED\`${l.fixedBehind ? ` — fixed behind \`${l.fixedBehind}\`; confirm the gate is ON in this capture before treating it as a finding` : ''}`;
+  }
+  if (l.verdict === 'KNOWN') {
+    return `\`KNOWN\`${l.round ? ` — first seen ${l.round}` : ''}${l.note ? `: ${l.note}` : ''}`;
+  }
+  const related =
+    l.related.length > 0
+      ? ` (but shares a growing class with: ${l.related.slice(0, 2).join('; ')} — a lead, not an identification)`
+      : '';
+  return `\`NEW\`${related}`;
+}
+
+/**
+ * The banner to print once per report when the index cannot support a verdict.
+ */
+export function findingIndexEmptyBanner(indexPath: string): string {
+  return (
+    `> ⚠️ **The findings index at \`${indexPath}\` is EMPTY, so every \`NEW\` below means "not in an empty list" and carries no information.** ` +
+    'Seed it with `memlab_finding_index({action: "import"})` before trusting any verdict here. ' +
+    'An unseeded index is how a round spends itself re-deriving a finding that was already filed and already fixed.'
+  );
+}
+
 export function registerFindingIndex(server: McpServer): void {
   server.tool(
     'memlab_finding_index',
@@ -485,7 +585,7 @@ export function registerFindingIndex(server: McpServer): void {
 
         if (action === 'list') {
           const all = Object.values(index.findings);
-          if (all.length === 0) {
+          if (!hasAppHistory(index)) {
             return toolResult(
               `The findings index at \`${indexPath}\` is **empty**, so every \`check\` in this ` +
                 'session will answer NEW — including for findings that are already documented ' +
@@ -562,15 +662,14 @@ export function registerFindingIndex(server: McpServer): void {
             // to a real one, and it has already sent a round off to re-derive a
             // documented, already-fixed finding. Say so at the point of use.
             const indexSize = Object.keys(index.findings).length;
-            const unreliable =
-              indexSize === 0
-                ? [
-                    '',
-                    `> ⚠️ **The index at \`${indexPath}\` is EMPTY, so this verdict carries no information.** ` +
-                      'Every candidate reads as NEW. Seed the workstream history with ' +
-                      '`action: "import"` before treating a NEW here as evidence of anything.',
-                  ]
-                : [];
+            const unreliable = !hasAppHistory(index)
+              ? [
+                  '',
+                  `> ⚠️ **The index at \`${indexPath}\` is EMPTY, so this verdict carries no information.** ` +
+                    'Every candidate reads as NEW. Seed the workstream history with ' +
+                    '`action: "import"` before treating a NEW here as evidence of anything.',
+                ]
+              : [];
             const related = relatedByClass(index, growing_classes, fingerprint);
             const relatedLines =
               related.length === 0
