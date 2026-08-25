@@ -520,6 +520,22 @@ export function registerLadderProbe(server: McpServer): void {
           }
           lines.push('');
           lines.push(`**Verdict:** ${verdictFor(usableYs, fit)}`);
+          if (usable.length === 2) {
+            // A line through two points fits them perfectly, so r2 is 1.0000 by
+            // construction and "grew every step" is the same statement as "grew".
+            // Measured: a 2-rung probe reported detached DOM as
+            // "LINEAR, r2 = 1.0000, +0.927/cycle" on the same population a
+            // 4-rung probe had just reported FLAT at 880 -> 880. The verdict
+            // wording is exactly as confident in both cases, which is what makes
+            // it dangerous. `memlab_leak_report` already warns at n=2; this did not.
+            lines.push(
+              '',
+              '> ⚠️ **Only 2 rungs: r2 is 1.0000 by construction** and the verdict above carries no more ' +
+                'information than the sign of the delta. A line through two points always fits. Add a third ' +
+                'rung before treating this as a rate — and if a longer ladder of the same population ' +
+                'disagreed, believe the longer one.',
+            );
+          }
 
           const failed = rungs.filter(r => r.error != null);
           if (failed.length > 0) {
