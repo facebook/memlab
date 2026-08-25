@@ -165,11 +165,20 @@ function dropEvalScratch(handle: string | null): void {
 export interface SessionConfig {
   quietHeader: boolean;
   suppressSuggestions: boolean;
+  /**
+   * Trim the high-volume, low-decision sections of a report.
+   *
+   * The per-tool flags (`summary_only`, `show_breakdown`, ...) each cover one
+   * tool and are spelled differently in each, so trimming a whole round means
+   * remembering N names. This is one switch for the session.
+   */
+  terse: boolean;
 }
 
 const sessionConfig: SessionConfig = {
   quietHeader: true,
   suppressSuggestions: false,
+  terse: false,
 };
 
 // Tracks whether the header has been emitted since the current snapshot was
@@ -185,6 +194,7 @@ export function setSessionConfig(patch: Partial<SessionConfig>): SessionConfig {
   if (patch.suppressSuggestions != null) {
     sessionConfig.suppressSuggestions = patch.suppressSuggestions;
   }
+  if (patch.terse != null) sessionConfig.terse = patch.terse;
   return sessionConfig;
 }
 
@@ -456,4 +466,9 @@ export function removeSnapshot(handle: string): boolean {
     headerEmitted = false;
   }
   return existed;
+}
+
+/** Is the session asking for trimmed, decision-only output? */
+export function isTerse(): boolean {
+  return sessionConfig.terse;
 }

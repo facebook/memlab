@@ -92,8 +92,14 @@ export function registerBatch(server: McpServer): void {
         .describe(
           'Stop at the first failing step (default false: record the error and continue).',
         ),
+      timeout_ms: z
+        .number()
+        .optional()
+        .describe(
+          'Wall-clock budget for the WHOLE batch (load plus every step). When it is exhausted the remaining steps are skipped and reported as such, rather than the batch running unbounded. Omit for no budget. Size it for the plan: a large load plus several whole-heap scans wants 600000+.',
+        ),
     },
-    async ({load, steps, stop_on_error}) => {
+    async ({load, steps, stop_on_error, timeout_ms}) => {
       try {
         const plan: Array<{tool: string; args: Record<string, unknown>}> = [];
         if (load != null) {
@@ -170,9 +176,25 @@ export function registerBatch(server: McpServer): void {
         }
 
         const results: StepResult[] = [];
+        // The budget is checked BETWEEN steps rather than enforced inside one:
+        // a whole-heap pass is a single synchronous block that nothing can
+        // interrupt, so the honest guarantee is "no NEW step starts past the
+        // deadline", and saying that is better than implying a hard cutoff.
+        const deadline =
+          timeout_ms != null && timeout_ms > 0 ? Date.now() + timeout_ms : null;
+        let skippedForBudget = 0;
         for (const {tool, parsed} of planned) {
           const entry = getRegisteredTool(tool);
           if (entry == null) continue;
+          if (deadline != null && Date.now() > deadline) {
+            skippedForBudget++;
+            results.push({
+              tool,
+              ok: false,
+              text: `SKIPPED: the batch's ${timeout_ms} ms budget was exhausted before this step started.`,
+            });
+            continue;
+          }
           try {
             const res = await entry.handler(parsed, {});
             const ok = !isErrorResult(res);
@@ -185,13 +207,22 @@ export function registerBatch(server: McpServer): void {
           }
         }
 
-        const failed = results.filter(r => !r.ok).length;
+        // A budget-skipped step is recorded as a result so it is reported, but
+        // it neither ran nor failed — counting it as both is how "4 step(s)
+        // run, 4 failed" gets printed for a batch that executed one step.
+        const ran = results.length - skippedForBudget;
+        const failed = results.filter(r => !r.ok).length - skippedForBudget;
+        const budgetNote =
+          skippedForBudget > 0
+            ? `\n\n> ⚠ ${skippedForBudget} step(s) never ran: the ${timeout_ms} ms batch budget was exhausted. Raise \`timeout_ms\` or split the plan — a skipped step is not a passing step.`
+            : '';
         const header =
-          `# Batch: ${results.length} step(s) run` +
+          `# Batch: ${ran} of ${plan.length} step(s) run` +
           (failed > 0 ? `, ${failed} failed` : '') +
           (results.length < plan.length
             ? ` (stopped early; ${plan.length - results.length} not run)`
-            : '');
+            : '') +
+          budgetNote;
 
         const body = results
           .map(

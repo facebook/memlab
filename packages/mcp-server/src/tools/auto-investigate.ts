@@ -13,7 +13,7 @@ import type {IHeapNode, IHeapEdge, IHeapSnapshot} from '@memlab/core';
 import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
 import {z} from 'zod';
-import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
+import {getSnapshot, getSnapshotMetadata, isTerse} from '../heap-state.js';
 import {
   filterLargestObjects,
   isNodeWorthInspecting,
@@ -2060,10 +2060,14 @@ export function registerAutoInvestigate(server: McpServer): void {
             lines.push('');
             lines.push('Property value analysis across large object shapes:');
             lines.push('');
-            lines.push(...columnAlerts.slice(0, COLUMN_ALERT_CAP));
-            if (columnAlerts.length > COLUMN_ALERT_CAP) {
+            // The full list runs to dozens of rows and is read for at most a
+            // couple of them, so a terse session gets the count and the top
+            // few rather than the whole census.
+            const columnCap = isTerse() ? 3 : COLUMN_ALERT_CAP;
+            lines.push(...columnAlerts.slice(0, columnCap));
+            if (columnAlerts.length > columnCap) {
               lines.push(
-                `- … and ${columnAlerts.length - COLUMN_ALERT_CAP} more column(s). Use \`memlab_property_distribution\` to drill into a specific property.`,
+                `- … and ${columnAlerts.length - columnCap} more column(s). Use \`memlab_property_distribution\` to drill into a specific property.`,
               );
             }
             lines.push(

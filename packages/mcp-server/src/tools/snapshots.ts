@@ -54,16 +54,23 @@ export function registerSnapshots(server: McpServer): void {
         .describe(
           'When set, toggles whether tools omit their "Suggested next steps" trailers.',
         ),
+      terse: z
+        .boolean()
+        .optional()
+        .describe(
+          "When set, toggles session-wide terse output: high-volume, low-decision sections (long per-property censuses and the like) are cut to a count plus the top few rows. One switch instead of remembering each tool's own summary flag, which is spelled differently in each.",
+        ),
     },
-    async ({action, handle, quiet, suppress_suggestions}) => {
+    async ({action, handle, quiet, suppress_suggestions, terse}) => {
       try {
         const configChanges: string[] = [];
-        if (quiet != null || suppress_suggestions != null) {
+        if (quiet != null || suppress_suggestions != null || terse != null) {
           setSessionConfig({
             ...(quiet != null ? {quietHeader: quiet} : {}),
             ...(suppress_suggestions != null
               ? {suppressSuggestions: suppress_suggestions}
               : {}),
+            ...(terse != null ? {terse} : {}),
           });
           // Explicitly turning suppression OFF means "I want the trailers
           // back", which has to also clear the automatic budget — otherwise the
@@ -71,7 +78,7 @@ export function registerSnapshots(server: McpServer): void {
           if (suppress_suggestions === false) resetSuggestionBudget();
           const cfg = getSessionConfig();
           configChanges.push(
-            `Output config: quietHeader=${cfg.quietHeader}, suppressSuggestions=${cfg.suppressSuggestions}`,
+            `Output config: quietHeader=${cfg.quietHeader}, suppressSuggestions=${cfg.suppressSuggestions}, terse=${cfg.terse}`,
           );
         }
 
