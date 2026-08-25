@@ -29,9 +29,11 @@ import {
   suggestionsSuppressed,
 } from '../utils.js';
 import type {RetainerTreeStep} from '../utils.js';
+import type {LoadedFindingIndex} from './finding-index.js';
 import {
   findingIndexEmptyBanner,
-  lookupFinding,
+  loadFindingIndex,
+  lookupFindingIn,
   renderFindingVerdict,
 } from './finding-index.js';
 
@@ -1610,6 +1612,18 @@ export function registerAutoInvestigate(server: McpServer): void {
         const lines: string[] = [`# Auto-Investigation Report`, ''];
         let emptyIndexWarned = false;
         let emptyIndexPath = '';
+        // Read the index once for the whole report rather than once per
+        // finding. A corrupt or unreadable index degrades to no annotation,
+        // but says so on stderr instead of vanishing.
+        let loadedFindingIndex: LoadedFindingIndex | null = null;
+        try {
+          loadedFindingIndex = loadFindingIndex();
+        } catch (err: unknown) {
+          console.error(
+            'memlab: findings index unreadable, skipping annotations:',
+            err,
+          );
+        }
 
         const focusLabel = focus === 'all' ? '' : ` (focus: ${focus})`;
         lines.push(`## Top ${findings.length} Retained Objects${focusLabel}`);
@@ -1733,19 +1747,29 @@ export function registerAutoInvestigate(server: McpServer): void {
           // Consult the findings index here rather than leaving it to the
           // reader. A retained-object report that does not say "we have filed
           // this before" is how a round re-derives an already-fixed leak.
-          try {
-            const pathForFingerprint = f.trace
-              .map(step => `${step.edgeName ?? ''} ${step.name}`.trim())
-              .join(' > ');
-            const verdict = lookupFinding(pathForFingerprint, [f.node.name]);
-            lines.push(`**Findings index:** ${renderFindingVerdict(verdict)}`);
-            if (verdict.indexEmpty && !emptyIndexWarned) {
-              emptyIndexWarned = true;
-              emptyIndexPath = verdict.indexPath;
+          if (loadedFindingIndex != null) {
+            try {
+              const pathForFingerprint = f.trace
+                .map(step => `${step.edgeName ?? ''} ${step.name}`.trim())
+                .join(' > ');
+              const verdict = lookupFindingIn(
+                loadedFindingIndex,
+                pathForFingerprint,
+                [f.node.name],
+              );
+              lines.push(
+                `**Findings index:** ${renderFindingVerdict(verdict)}`,
+              );
+              if (verdict.indexEmpty && !emptyIndexWarned) {
+                emptyIndexWarned = true;
+                emptyIndexPath = verdict.indexPath;
+              }
+            } catch (err: unknown) {
+              // The index is an aid, never a gate: a bad lookup must not take
+              // the whole investigation down with it. It is still reported,
+              // because silence here hid regressions in the renderer itself.
+              console.error('memlab: findings-index lookup failed:', err);
             }
-          } catch {
-            // The index is an aid, never a gate: a corrupt or unreadable index
-            // must not take the whole investigation down with it.
           }
           const instrNote = instrumentationRetainerNote(f.trace);
           if (instrNote) {

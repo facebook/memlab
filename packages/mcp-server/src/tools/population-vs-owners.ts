@@ -146,7 +146,13 @@ export function registerPopulationVsOwners(server: McpServer): void {
       }
 
       const distinctOwners = perOwner.size;
-      const ratio = liveOwners > 0 ? records / liveOwners : NaN;
+      // Records with no owner edge are excluded from the numerator, which is
+      // what the footnote below tells the reader. Counting them inflates
+      // "records per live owner" and can push a structural population over the
+      // ACCUMULATING threshold on the strength of records that have no owner
+      // at all.
+      const recordsWithOwner = records - recordsWithoutOwner;
+      const ratio = liveOwners > 0 ? recordsWithOwner / liveOwners : NaN;
       // A ratio far BELOW 1.0 is not a mild version of "structural" — it means
       // most live owners hold no record at all, which in practice means the
       // filter selected something other than the intended population. Reporting
@@ -162,7 +168,7 @@ export function registerPopulationVsOwners(server: McpServer): void {
       const verdict = !Number.isFinite(ratio)
         ? 'UNKNOWN — could not count live owners'
         : underMatched
-          ? `UNDER-MATCHED — only ${formatNumber(records)} record(s) against ${formatNumber(liveOwners)} live owner(s), so most owners hold none. Treat this as a filter that missed, NOT as evidence of "not a leak": re-check \`record_shape\`/\`record_class\` against \`memlab_shape_histogram\`, and \`owner_edge\` against \`memlab_object_shape\` on one record.`
+          ? `UNDER-MATCHED — only ${formatNumber(recordsWithOwner)} owned record(s) against ${formatNumber(liveOwners)} live owner(s), so most owners hold none. Treat this as a filter that missed, NOT as evidence of "not a leak": re-check \`record_shape\`/\`record_class\` against \`memlab_shape_histogram\`, and \`owner_edge\` against \`memlab_object_shape\` on one record.`
           : ratio <= 1.25
             ? 'STRUCTURAL — about one record per live owner. This is a standing O(owners) cost, not accumulation: it scales with user data, not with time. A fix should remove the per-owner cost; do not describe it as a leak.'
             : ratio >= 2

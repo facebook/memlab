@@ -525,7 +525,7 @@ export function registerEventListenerLeaks(server: McpServer): void {
           `## Event Listener Leak Detection`,
           `Found ${accumulations.length} object(s) with potential listener accumulation`,
           '',
-          '_"Duplicates" = the same callback instance bound to the same context, registered more than once (by node id, not by name/shape). One listener per distinct model/host is structural, not a leak._',
+          '_"Duplicates" = the same callback instance bound to the same context, registered more than once (by node id, not by name/shape). One listener per distinct model/host is structural, not a leak. A `-` means the population carries no emitter grouping, so duplicates are not determinable — not that there are none._',
           '',
         ];
 
@@ -545,7 +545,12 @@ export function registerEventListenerLeaks(server: McpServer): void {
           a.eventPropertyName,
           formatNumber(a.totalListeners),
           check_zombies ? formatNumber(a.zombieCount) : '-',
-          formatNumber(a.duplicateCallbackCount),
+          // "0" here would read as "checked, found none". For a shape-derived
+          // population duplicates cannot be determined at all, and only the
+          // top few rows carry the narrative that says so.
+          a.duplicatesUnavailable
+            ? '-'
+            : formatNumber(a.duplicateCallbackCount),
           formatBytes(a.totalRetainedSize),
         ]);
 

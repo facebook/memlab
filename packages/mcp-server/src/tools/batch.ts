@@ -17,6 +17,10 @@ interface StepResult {
   tool: string;
   ok: boolean;
   text: string;
+  // A step that never started. Distinct from ok=false: it did not run, so it
+  // is neither a pass nor a failure, and rendering it as FAILED reports an
+  // error the batch never encountered.
+  skipped?: boolean;
 }
 
 /**
@@ -191,6 +195,7 @@ export function registerBatch(server: McpServer): void {
             results.push({
               tool,
               ok: false,
+              skipped: true,
               text: `SKIPPED: the batch's ${timeout_ms} ms budget was exhausted before this step started.`,
             });
             continue;
@@ -210,8 +215,8 @@ export function registerBatch(server: McpServer): void {
         // A budget-skipped step is recorded as a result so it is reported, but
         // it neither ran nor failed — counting it as both is how "4 step(s)
         // run, 4 failed" gets printed for a batch that executed one step.
-        const ran = results.length - skippedForBudget;
-        const failed = results.filter(r => !r.ok).length - skippedForBudget;
+        const ran = results.filter(r => r.skipped !== true).length;
+        const failed = results.filter(r => !r.ok && r.skipped !== true).length;
         const budgetNote =
           skippedForBudget > 0
             ? `\n\n> ⚠ ${skippedForBudget} step(s) never ran: the ${timeout_ms} ms batch budget was exhausted. Raise \`timeout_ms\` or split the plan — a skipped step is not a passing step.`
@@ -227,7 +232,7 @@ export function registerBatch(server: McpServer): void {
         const body = results
           .map(
             (r, i) =>
-              `\n---\n\n## Step ${i + 1}/${plan.length}: \`${r.tool}\`${r.ok ? '' : ' — FAILED'}\n\n${r.text}`,
+              `\n---\n\n## Step ${i + 1}/${plan.length}: \`${r.tool}\`${r.skipped === true ? ' — SKIPPED' : r.ok ? '' : ' — FAILED'}\n\n${r.text}`,
           )
           .join('\n');
 

@@ -29,7 +29,7 @@ import {
 export function registerSnapshots(server: McpServer): void {
   server.tool(
     'memlab_snapshots',
-    'Manage the multi-snapshot session: list resident snapshots, switch the active one, or unload one to free memory. Also toggles session-level output controls (quiet header, suppress suggestions) to trim repeated boilerplate tokens. Load several snapshots with memlab_load_snapshot({keep_previous:true}) then switch between them by handle. Node ids are only valid within the snapshot they came from.',
+    'Manage the multi-snapshot session: list resident snapshots, switch the active one, or unload one to free memory. Also toggles session-level output controls (quiet header, suppress suggestions, terse) to trim repeated boilerplate tokens. Load several snapshots with memlab_load_snapshot({keep_previous:true}) then switch between them by handle. Node ids are only valid within the snapshot they came from.',
     {
       action: z
         .enum(['list', 'switch', 'unload'])

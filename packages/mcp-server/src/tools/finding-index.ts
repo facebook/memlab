@@ -376,13 +376,37 @@ export type FindingLookup = {
   indexPath: string;
 };
 
+/**
+ * The index, read once, for callers that look up many candidates in a row.
+ *
+ * `lookupFinding` reads and parses the index file on every call, which is
+ * fine for a one-off check and wasteful inside a report loop that annotates
+ * every finding — that turns one read into N reads of the same file.
+ */
+export type LoadedFindingIndex = {
+  index: FindingIndex;
+  indexPath: string;
+};
+
+export function loadFindingIndex(workstream?: string): LoadedFindingIndex {
+  const indexPath = resolveIndexPath(workstream);
+  return {index: loadIndex(indexPath), indexPath};
+}
+
 export function lookupFinding(
   retainerPath: string,
   classes: readonly string[],
   workstream?: string,
 ): FindingLookup {
-  const indexPath = resolveIndexPath(workstream);
-  const index = loadIndex(indexPath);
+  return lookupFindingIn(loadFindingIndex(workstream), retainerPath, classes);
+}
+
+export function lookupFindingIn(
+  loaded: LoadedFindingIndex,
+  retainerPath: string,
+  classes: readonly string[],
+): FindingLookup {
+  const {index, indexPath} = loaded;
   const signature = normalizeRetainerPath(retainerPath);
   const classList = [...classes];
   const fingerprint = fingerprintOf(signature, classList);

@@ -119,7 +119,6 @@ interface ReachabilitySplit {
   noPathRetained: number;
   pinnedIds: number[];
   browserOwnedCount: number;
-  browserOwnedRetained: number;
   browserOwnedIds: number[];
 }
 
@@ -131,7 +130,6 @@ function emptySplit(): ReachabilitySplit {
     noPathRetained: 0,
     pinnedIds: [],
     browserOwnedCount: 0,
-    browserOwnedRetained: 0,
     browserOwnedIds: [],
   };
 }
@@ -416,7 +414,6 @@ export function registerDetachedDom(server: McpServer): void {
               split.pinnedIds.push(node.id);
               if (isBrowserOwned(node, browserContexts)) {
                 split.browserOwnedCount++;
-                split.browserOwnedRetained += node.retainedSize;
                 split.browserOwnedIds.push(node.id);
               }
             } else {
@@ -656,7 +653,6 @@ export function registerDetachedDom(server: McpServer): void {
             split.pinnedIds.push(node.id);
             if (isBrowserOwned(node, browserContexts2)) {
               split.browserOwnedCount++;
-              split.browserOwnedRetained += node.retainedSize;
               split.browserOwnedIds.push(node.id);
             }
           } else {
