@@ -51,6 +51,64 @@ export function isPinned(node: IHeapNode): boolean {
   return Boolean(node.hasPathEdge);
 }
 
+/**
+ * Detached browsing contexts (iframes) that no application object references.
+ *
+ * A detached `Window` / `HTMLDocument` / `NativeContext` whose only referrers
+ * are other detached natives is retained by Blink's own binding layer — on one
+ * measured capture the only path to a GC root ran
+ * `Window -> History -> History.prototype -> get state (FunctionTemplateInfo)
+ * -> WeakMap -> History -> .context -> Detached NativeContext -> Detached
+ * Window -> Detached HTMLDocument`, with zero application referrers anywhere.
+ *
+ * These satisfy `isPinned` and were therefore reported as "actionable leak",
+ * which on that capture was 274,935 of 330,334 detached nodes and roughly half
+ * the reclaimable bytes. No application change can free them, so counting them
+ * in a leak total overstates it by however many stale iframes the page has.
+ */
+const BROWSING_CONTEXT_NAMES = [
+  'Detached Window',
+  'Detached HTMLDocument',
+  'Detached system / NativeContext',
+];
+
+function findBrowserOwnedContexts(snapshot: IHeapSnapshot): Set<number> {
+  const roots = new Set<number>();
+  snapshot.nodes.forEach(node => {
+    if (!BROWSING_CONTEXT_NAMES.some(n => node.name.startsWith(n))) return;
+    // "No application referrer" is the whole test: if app code holds it, the
+    // app can let go of it and it is a real leak.
+    let appReferrer = false;
+    for (const ref of node.referrers) {
+      const from = ref.fromNode;
+      // `system / …` nodes are V8/Blink bookkeeping, not application
+      // ownership; counting them as an app referrer would suppress the bucket
+      // for exactly the contexts it exists to find.
+      if (
+        !from.name.startsWith('Detached ') &&
+        !from.name.startsWith('system /') &&
+        from.type !== 'synthetic'
+      ) {
+        appReferrer = true;
+        break;
+      }
+    }
+    if (!appReferrer) roots.add(node.id);
+  });
+  return roots;
+}
+
+/** Is this node inside one of those contexts? Bounded dominator walk. */
+function isBrowserOwned(node: IHeapNode, roots: Set<number>): boolean {
+  if (roots.size === 0) return false;
+  let cur: IHeapNode | null = node;
+  for (let i = 0; i < 30 && cur; i++) {
+    if (roots.has(cur.id)) return true;
+    cur = cur.dominatorNode ?? null;
+  }
+  return false;
+}
+
 interface ReachabilitySplit {
   pinnedCount: number;
   // Plain sum of per-node retained size. Nested detached subtrees are counted
@@ -60,6 +118,9 @@ interface ReachabilitySplit {
   noPathCount: number;
   noPathRetained: number;
   pinnedIds: number[];
+  browserOwnedCount: number;
+  browserOwnedRetained: number;
+  browserOwnedIds: number[];
 }
 
 function emptySplit(): ReachabilitySplit {
@@ -69,6 +130,9 @@ function emptySplit(): ReachabilitySplit {
     noPathCount: 0,
     noPathRetained: 0,
     pinnedIds: [],
+    browserOwnedCount: 0,
+    browserOwnedRetained: 0,
+    browserOwnedIds: [],
   };
 }
 
@@ -87,10 +151,19 @@ function formatReachabilitySplit(
     snapshot,
   );
   const bound = deduped.exact ? '' : ' (upper bound; deep dominator chain)';
+  const browserOwnedDeduped = boundedDominatorRetainedSize(
+    new NumericSet(split.browserOwnedIds),
+    snapshot,
+  );
   return [
     `- Pinned (retainer path to a GC root — actionable leak): ${formatNumber(split.pinnedCount)} nodes, **${formatBytes(deduped.retained)} reclaimable**${bound} (dominator-deduped)`,
     `  - sum over nodes: ${formatBytes(split.pinnedRetained)} — double-counts nested detached subtrees; do NOT quote this as the size of the leak`,
     `- No retainer path found (likely GC-eligible / weak-only — exclude from leak totals): ${formatNumber(split.noPathCount)} nodes, ${formatBytes(split.noPathRetained)}`,
+    ...(split.browserOwnedCount > 0
+      ? [
+          `- **Of the pinned nodes, ${formatNumber(split.browserOwnedCount)} (${formatBytes(browserOwnedDeduped.retained)} dominator-deduped) sit inside DETACHED BROWSING CONTEXTS with no application referrer** — stale iframes held by Blink's binding layer. No application change frees these; subtract them before quoting a leak total. The app-attributable figure is therefore **${formatBytes(Math.max(0, deduped.retained - browserOwnedDeduped.retained))}**.`,
+        ]
+      : []),
   ];
 }
 
@@ -330,6 +403,7 @@ export function registerDetachedDom(server: McpServer): void {
           let totalRetainedAll = 0;
           let devOnlyRetained = 0;
           const split: ReachabilitySplit = emptySplit();
+          const browserContexts = findBrowserOwnedContexts(snapshot);
 
           snapshot.nodes.forEach(node => {
             if (!isDetachedDOMNode(node)) return;
@@ -340,6 +414,11 @@ export function registerDetachedDom(server: McpServer): void {
               split.pinnedCount++;
               split.pinnedRetained += node.retainedSize;
               split.pinnedIds.push(node.id);
+              if (isBrowserOwned(node, browserContexts)) {
+                split.browserOwnedCount++;
+                split.browserOwnedRetained += node.retainedSize;
+                split.browserOwnedIds.push(node.id);
+              }
             } else {
               split.noPathCount++;
               split.noPathRetained += node.retainedSize;
@@ -568,12 +647,18 @@ export function registerDetachedDom(server: McpServer): void {
         }
 
         const split: ReachabilitySplit = emptySplit();
+        const browserContexts2 = findBrowserOwnedContexts(snapshot);
         snapshot.nodes.forEach(node => {
           if (!isDetachedDOMNode(node)) return;
           if (isPinned(node)) {
             split.pinnedCount++;
             split.pinnedRetained += node.retainedSize;
             split.pinnedIds.push(node.id);
+            if (isBrowserOwned(node, browserContexts2)) {
+              split.browserOwnedCount++;
+              split.browserOwnedRetained += node.retainedSize;
+              split.browserOwnedIds.push(node.id);
+            }
           } else {
             split.noPathCount++;
             split.noPathRetained += node.retainedSize;

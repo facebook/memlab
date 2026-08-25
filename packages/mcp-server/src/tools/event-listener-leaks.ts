@@ -64,6 +64,8 @@ interface EventAccumulation {
   }>;
   zombieCount: number;
   duplicateCallbackCount: number;
+  /** Set when the population carries no emitter grouping, so duplicates are not answerable. */
+  duplicatesUnavailable?: boolean;
   totalRetainedSize: number;
   contextDistribution?: ContextDistribution;
 }
@@ -217,16 +219,28 @@ function analyzeContextDistribution(
 // merely share a name across different hosts as "duplicates", which produced
 // wildly inflated counts (e.g. 99.95%) on per-model registries that are really
 // structural, one-listener-per-model (Feedback §8).
-function countDuplicateCallbacks(listeners: ListenerEntry[]): number {
-  const pairs = new Map<string, number>();
-  for (const l of listeners) {
-    if (l.callbackId <= 0) continue;
-    const key = `${l.callbackId}\0${l.contextId ?? 0}`;
-    pairs.set(key, (pairs.get(key) ?? 0) + 1);
-  }
+function countDuplicateCallbacks(groups: ListenerEntry[][]): number {
+  // Counted WITHIN a single (emitter, event) list, never across lists. The same
+  // callback+context appearing on two different emitters — or on two different
+  // events of one emitter — is one subscriber wired up twice on purpose, which
+  // is ordinary. Only a repeat inside one list is a double-registration.
+  //
+  // Flattening first is what produced the headline figure this fixes: a
+  // measured capture reported "639,981 duplicate callbacks — classic
+  // mount/unmount leak" for a population whose per-emitter repeat factor was
+  // 1.0 at every emitter, and where `memlab_event_registry` independently
+  // reported zero duplicates on the same heap.
   let duplicates = 0;
-  for (const count of pairs.values()) {
-    if (count > 1) duplicates += count - 1;
+  for (const listeners of groups) {
+    const pairs = new Map<string, number>();
+    for (const l of listeners) {
+      if (l.callbackId <= 0) continue;
+      const key = `${l.callbackId}\0${l.contextId ?? 0}`;
+      pairs.set(key, (pairs.get(key) ?? 0) + 1);
+    }
+    for (const count of pairs.values()) {
+      if (count > 1) duplicates += count - 1;
+    }
   }
   return duplicates;
 }
@@ -328,8 +342,9 @@ export function registerEventListenerLeaks(server: McpServer): void {
             const zombieCount = check_zombies
               ? countZombies(allListeners, snapshot)
               : 0;
-            const duplicateCallbackCount =
-              countDuplicateCallbacks(allListeners);
+            const duplicateCallbackCount = countDuplicateCallbacks(
+              events.map(e => e.listeners),
+            );
 
             const contextDist = analyze_contexts
               ? analyzeContextDistribution(allListeners, snapshot)
@@ -475,9 +490,12 @@ export function registerEventListenerLeaks(server: McpServer): void {
                 },
               ],
               zombieCount: 0,
-              duplicateCallbackCount: countDuplicateCallbacks(
-                shape.allListeners,
-              ),
+              // A shape-derived population is collected across the whole heap
+              // and carries no emitter grouping, so "registered twice on one
+              // emitter" is not answerable from it. Report nothing rather than
+              // a cross-emitter count that reads as a leak.
+              duplicateCallbackCount: 0,
+              duplicatesUnavailable: true,
               totalRetainedSize: shape.totalRetained,
               contextDistribution: contextDist,
             };
@@ -546,9 +564,13 @@ export function registerEventListenerLeaks(server: McpServer): void {
             );
             lines.push('');
           }
-          if (a.duplicateCallbackCount > 0) {
+          if (a.duplicatesUnavailable) {
             lines.push(
-              `**${formatNumber(a.duplicateCallbackCount)} duplicate callback(s)** — the same callback *instance* bound to the same context registered more than once (classic mount/unmount leak). One listener per distinct model is structural, not a duplicate.`,
+              '**Duplicates: not determinable for this population.** It was collected by object shape across the whole heap, so it carries no emitter grouping, and "the same callback registered twice on one emitter" cannot be answered from it. Use `memlab_event_registry`, which walks real registries, if you need that verdict.',
+            );
+          } else if (a.duplicateCallbackCount > 0) {
+            lines.push(
+              `**${formatNumber(a.duplicateCallbackCount)} duplicate callback(s)** — the same callback *instance* bound to the same context, registered more than once ON THE SAME EMITTER AND EVENT (a genuine double-registration). Counted within each event's own list: the same pair on two different emitters, or on two events of one emitter, is ordinary wiring and is not counted. One listener per distinct model is structural, not a duplicate.`,
             );
             lines.push('');
           }
