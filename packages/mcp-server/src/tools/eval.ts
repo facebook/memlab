@@ -1433,6 +1433,88 @@ export async function runEval({
       );
     };
 
+    // Walk a dotted path of edges, reporting WHERE it stopped.
+    //
+    // The one-level-off mistake is the most common way an eval produces a
+    // clean-looking wrong answer: a probe tested `_PSD` on an LRU wrapper when
+    // the field lived on `wrapper.value`, got 0 across 300 samples, and the
+    // zero was reported before the level was rechecked. `edgeTarget` chained by
+    // hand hides that, because a null halfway looks the same as a null at the
+    // end.
+    const derefPath = (nodeOrId: unknown, path: string): unknown => {
+      let cur =
+        typeof nodeOrId === 'number'
+          ? snapshot.getNodeById(nodeOrId)
+          : (unwrapNode(nodeOrId) as IHeapNode | null);
+      if (cur == null) return {found: false, stoppedAt: '(start)', node: null};
+      const parts = path.split('.').filter(Boolean);
+      const walked: string[] = [];
+      for (const part of parts) {
+        let next: IHeapNode | null = null;
+        const node: IHeapNode = cur;
+        for (const e of node.references) {
+          if (e.type === 'hidden') continue;
+          if (String(e.name_or_index) === part) {
+            next = e.toNode;
+            break;
+          }
+        }
+        if (next == null) {
+          return {
+            found: false,
+            stoppedAt: walked.length > 0 ? walked.join('.') : '(start)',
+            missingEdge: part,
+            node: null,
+            available: [...node.references]
+              .filter(e => e.type === 'property')
+              .slice(0, 20)
+              .map(e => String(e.name_or_index)),
+          };
+        }
+        walked.push(part);
+        cur = next;
+      }
+      return {found: true, stoppedAt: walked.join('.'), node: wrapNode(cur)};
+    };
+
+    // "Is there anything matching this within N hops?" — answers the question
+    // derefPath needs you to already know the answer to.
+    const findWithin = (
+      nodeOrId: unknown,
+      edgeName: string,
+      opts?: {maxDepth?: number},
+    ): unknown => {
+      const start =
+        typeof nodeOrId === 'number'
+          ? snapshot.getNodeById(nodeOrId)
+          : (unwrapNode(nodeOrId) as IHeapNode | null);
+      if (start == null) return [];
+      const maxDepth = Math.max(1, Math.min(opts?.maxDepth ?? 3, 6));
+      const seen = new Set<number>([start.id]);
+      const hits: Array<{path: string; id: number; name: string}> = [];
+      const queue: Array<{node: IHeapNode; path: string; depth: number}> = [
+        {node: start, path: '', depth: 0},
+      ];
+      while (queue.length > 0 && hits.length < 25) {
+        const item = queue.shift();
+        if (!item) break;
+        for (const e of item.node.references) {
+          if (e.type === 'hidden') continue;
+          const name = String(e.name_or_index);
+          const path = item.path ? `${item.path}.${name}` : name;
+          if (name === edgeName) {
+            hits.push({path, id: e.toNode.id, name: e.toNode.name});
+            if (hits.length >= 25) break;
+          }
+          if (item.depth + 1 < maxDepth && !seen.has(e.toNode.id)) {
+            seen.add(e.toNode.id);
+            queue.push({node: e.toNode, path, depth: item.depth + 1});
+          }
+        }
+      }
+      return hits;
+    };
+
     // The node behind a named edge. Written from scratch in four separate
     // evals because `props()` returns {ref,name,type} wrappers, which are
     // awkward exactly when the node itself is what you need.
@@ -1841,6 +1923,8 @@ export async function runEval({
       iterByType,
       classCounts,
       edgeTarget,
+      derefPath,
+      findWithin,
       entries,
       dominates,
       owner,
@@ -2217,6 +2301,8 @@ function describeEnv(): string {
     '- `helpers.iterByClass(name, {type?}) -> node[]` / `helpers.iterByType(type) -> node[]` — indexed iteration; no full scan, index built once per snapshot.',
     '- `helpers.classCounts({pattern?, type?, minCount?}) -> [{name, type, count, selfSize}]` — one-pass class histogram, cached; `pattern` is a case-insensitive regex (substring fallback).',
     '- `helpers.entries(nodeOrId) -> [{key, value}]` — generic container walk: Map/WeakMap (paired, SMI gaps handled), Set/WeakSet, Array (both direct `element` edges and the `(object elements)` backing store), plain object properties. Holes and `__proto__`/`map` are filtered.',
+    '- `helpers.derefPath(nodeOrId, "value._PSD.trans") -> {found, stoppedAt, missingEdge?, available?, node}` — walk a dotted edge path and, on failure, say WHICH hop failed and what was there instead. Use this instead of chaining edgeTarget: a null halfway looks identical to a null at the end, which is how a probe tests the wrong level and reports a confident zero.',
+    '- `helpers.findWithin(nodeOrId, edgeName, {maxDepth}) -> [{path,id,name}]` — is this property anywhere within N hops, and at what path? Answers "which level is it on?" in one call.',
     '- `helpers.edgeTarget(nodeOrId, edgeName) -> node | null` — the node behind a named edge, when you need the node and not the `{ref,name,type}` wrapper `props()` returns.',
     '- `helpers.isRealDetached(node) -> boolean` — the oddball/root filtering the detached-DOM tools apply internally, so hand-written eval counts the same set they do.',
     '- `helpers.dominates(id, {population?, limit?}) -> {count, selfSize, ids, truncated}` — what this node actually owns (bounded 500-hop dominator walk). `population` is a predicate over nodes.',

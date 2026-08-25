@@ -11,6 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
+import {withAnonymizedBanner} from '../anonymized-snapshot.js';
 import {
   formatBytes,
   formatNumber,
@@ -190,7 +191,7 @@ export function registerSlicedStrings(server: McpServer): void {
           }
         }
 
-        return toolResult(lines.join('\n'));
+        return toolResult(withAnonymizedBanner(snapshot, lines.join('\n')));
       } catch (err) {
         return errorResult(err);
       }

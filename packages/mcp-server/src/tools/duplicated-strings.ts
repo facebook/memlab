@@ -11,6 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
+import {withAnonymizedBanner} from '../anonymized-snapshot.js';
 import {
   formatBytes,
   errorResult,
@@ -249,9 +250,12 @@ export function registerDuplicatedStrings(server: McpServer): void {
 
         const body = `Duplicated strings (${summaryLine}):\n\n${lines.join('\n')}\n\n**Total interning savings: ${formatBytes(totalSavings)}** (if each string were stored only once, harness content excluded)${harnessNote}${suggestionsSuppressed() ? '' : relatedNote}`;
         return toolResult(
-          suggestions.length > 0
-            ? `${body}\n\n---\n\n${suggestions.join('\n')}`
-            : body,
+          withAnonymizedBanner(
+            snapshot,
+            suggestions.length > 0
+              ? `${body}\n\n---\n\n${suggestions.join('\n')}`
+              : body,
+          ),
         );
       } catch (err) {
         return errorResult(err);

@@ -83,6 +83,8 @@ import {registerFindingIndex} from './tools/finding-index.js';
 import {registerAppHeap} from './tools/app-heap.js';
 import {registerHuntReport} from './tools/hunt-report.js';
 import {registerEventRegistry} from './tools/event-registry.js';
+import {registerChainWalk} from './tools/chain-walk.js';
+import {registerPopulationVsOwners} from './tools/population-vs-owners.js';
 import {registerDominatorChain} from './tools/dominator-chain.js';
 import {registerDuplicateObjects} from './tools/duplicate-objects.js';
 import {registerRetainerLayers} from './tools/retainer-layers.js';
@@ -116,7 +118,7 @@ import {registerDomAudit} from './tools/dom-audit.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.73.0', // keep in sync with package.json
+  version: '2.74.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -188,6 +190,8 @@ registerFindingIndex(server);
 registerAppHeap(server);
 registerHuntReport(server);
 registerEventRegistry(server);
+registerChainWalk(server);
+registerPopulationVsOwners(server);
 registerDominatorChain(server);
 registerDuplicateObjects(server);
 registerRetainerLayers(server);

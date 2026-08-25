@@ -16,6 +16,7 @@ import {
   getSnapshotMetadata,
   getSessionConfig,
 } from '../heap-state.js';
+import {withAnonymizedBanner} from '../anonymized-snapshot.js';
 import {
   formatBytes,
   formatNumber,
@@ -720,7 +721,7 @@ export function registerInternOpportunities(server: McpServer): void {
               totalDup,
             )} total) but were NOT surfaced as property groups above. This is expected when they are held as ARRAY ELEMENTS / columnar rows (e.g. a string[][] query-result buffer) rather than object properties — but it can also happen when their property groups fell below the min_copies / min_savings thresholds. If they are array elements, interning at the array-construction (parse) site collapses them; if they are properties, lower the thresholds to surface the group. Top:\n${top}\nUse memlab_search_strings to locate where each is built and confirm how it is held.`;
           }
-          return toolResult(msg);
+          return toolResult(withAnonymizedBanner(snapshot, msg));
         }
 
         // Detect partial interning patterns (Feedback #3) and, while we're here,
@@ -1118,7 +1119,7 @@ export function registerInternOpportunities(server: McpServer): void {
               `- ⚠ \`.${g.propertyName}\` on \`${shape}\` — ${formatBytes(g.savingsIfInterned)} co-retained via **${g.coRetainedVia ?? 'another structure'}**`,
             );
           }
-          return toolResult(lines.join('\n'));
+          return toolResult(withAnonymizedBanner(snapshot, lines.join('\n')));
         }
 
         // Co-retained groups: interning the property frees ~0 (Feedback round 4 §1).
@@ -1210,7 +1211,7 @@ export function registerInternOpportunities(server: McpServer): void {
           );
         }
 
-        return toolResult(lines.join('\n'));
+        return toolResult(withAnonymizedBanner(snapshot, lines.join('\n')));
       } catch (err) {
         return errorResult(err);
       }

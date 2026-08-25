@@ -11,6 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {getSnapshot, isLightSnapshot} from '../heap-state.js';
+import {withAnonymizedBanner} from '../anonymized-snapshot.js';
 import {
   formatBytes,
   formatNumber,
@@ -146,7 +147,10 @@ export function registerStringPatterns(server: McpServer): void {
         });
 
         return toolResult(
-          `String patterns (prefix_length=${prefix_length}, ${formatNumber(filtered.length)} groups matching filters, showing ${rows.length})\n\n${markdownTable(headers, rows, rightCols)}`,
+          withAnonymizedBanner(
+            snapshot,
+            `String patterns (prefix_length=${prefix_length}, ${formatNumber(filtered.length)} groups matching filters, showing ${rows.length})\n\n${markdownTable(headers, rows, rightCols)}`,
+          ),
         );
       } catch (err) {
         return errorResult(err);
