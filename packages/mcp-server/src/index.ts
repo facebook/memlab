@@ -118,7 +118,7 @@ import {registerDomAudit} from './tools/dom-audit.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.76.0', // keep in sync with package.json
+  version: '2.77.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
