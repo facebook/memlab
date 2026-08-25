@@ -36,6 +36,7 @@ import {
 } from '../heap-state.js';
 import {makeProgressReporter} from '../progress.js';
 import type {SnapshotEnv} from '../heap-state.js';
+import {detectAnonymizedStrings} from '../anonymized-snapshot.js';
 import {
   formatBytes,
   formatNumber,
@@ -461,13 +462,23 @@ function quickDiagnosis(
   // non-numeric content to be worth flagging.
   const isNoisyDupKey = (s: string): boolean =>
     s.length < 8 || /^[\s\d.,:+-]*$/.test(s);
-  const highDups = [...stringCounts.entries()]
-    .filter(([val, count]) => count >= 1000 && !isNoisyDupKey(val))
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3);
-  for (const [val, count] of highDups) {
-    const display = val.length > 40 ? val.slice(0, 40) + '…' : val;
-    warnings.push(`⚠ "${display}" duplicated ${formatNumber(count)} times`);
+  // On an anonymised capture every string of a given length collapses to the
+  // same value, so this list reports the anonymiser rather than the app — and
+  // it is the first thing printed, before any tool has had a chance to warn.
+  const anonymized = detectAnonymizedStrings(snapshot).anonymized;
+  if (anonymized) {
+    warnings.push(
+      '⚠ Strings look ANONYMISED (content replaced, length preserved) — duplicate-string counts are collapsed by the anonymiser and are not app figures. Duplication/interning output is suppressed here and banner-flagged in the string tools.',
+    );
+  } else {
+    const highDups = [...stringCounts.entries()]
+      .filter(([val, count]) => count >= 1000 && !isNoisyDupKey(val))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+    for (const [val, count] of highDups) {
+      const display = val.length > 40 ? val.slice(0, 40) + '…' : val;
+      warnings.push(`⚠ "${display}" duplicated ${formatNumber(count)} times`);
+    }
   }
 
   // Skipped on a light load: `findLargestObject` ranks by retainedSize, which

@@ -14,6 +14,8 @@ import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
 import {z} from 'zod';
 import {getSnapshot, getSnapshotMetadata, isTerse} from '../heap-state.js';
+import {singleSnapshotCaveat} from './next-measurement.js';
+import {withAnonymizedBanner} from '../anonymized-snapshot.js';
 import {
   filterLargestObjects,
   isNodeWorthInspecting,
@@ -2264,7 +2266,11 @@ export function registerAutoInvestigate(server: McpServer): void {
           lines.push('');
           lines.push(findingIndexEmptyBanner(emptyIndexPath));
         }
-        return toolResult(lines.join('\n'));
+        const caveat = singleSnapshotCaveat();
+        if (caveat != null) {
+          lines.push('', caveat);
+        }
+        return toolResult(withAnonymizedBanner(snapshot, lines.join('\n')));
       } catch (err) {
         return errorResult(err);
       }

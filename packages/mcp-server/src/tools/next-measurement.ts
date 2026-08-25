@@ -177,3 +177,28 @@ export function registerNextMeasurement(server: McpServer): void {
     },
   );
 }
+
+/**
+ * The one-line warning a report should carry when it rests on a single capture.
+ *
+ * `memlab_next_measurement` answers "what can this evidence support" well, and
+ * nothing ever called it: no other tool's output says "you are one snapshot
+ * short of being able to claim that", so the limitation is invisible at exactly
+ * the moment a finding gets written down. A session that analysed one supplied
+ * capture reported three findings as leaks; all three were standing sizes, and
+ * two were structural costs that a rate would have separated immediately.
+ *
+ * Returns null when more than one snapshot is resident, so a real ladder is not
+ * nagged.
+ */
+export function singleSnapshotCaveat(): string | null {
+  if (listSnapshots().length > 1) return null;
+  return (
+    '> ⚠️ **One snapshot is resident, so everything above is a STANDING SIZE, not a rate.** ' +
+    'A single capture cannot separate a leak from a structural O(owners) cost, cannot show a trend, and cannot verify a fix — ' +
+    'a population that is large because the account is large looks identical to one that grows every cycle. ' +
+    'Before calling anything here a leak, either capture a ladder (`memlab_leak_report` / `memlab_ladder_probe` over >=3 rungs) ' +
+    'or establish the ratio with `memlab_population_vs_owners`, which answers structural-vs-accumulating from one capture. ' +
+    'Run `memlab_next_measurement` for the full list of what this evidence base can and cannot support.'
+  );
+}
