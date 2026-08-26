@@ -90,7 +90,7 @@ const RING_CAPACITY_PROP_RE =
  * Biased towards under-detection: a missed ring is a false leak candidate the
  * caller can dismiss, while a wrongly-detected one drops a real leak silently.
  */
-function looksLikeRingBuffer(owner: IHeapNode | null): boolean {
+export function looksLikeRingBuffer(owner: IHeapNode | null): boolean {
   if (!owner) return false;
   let hasAmbiguousCursor = false;
   let hasCapacity = false;

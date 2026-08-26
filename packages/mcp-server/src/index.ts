@@ -115,10 +115,11 @@ import {registerNextMeasurement} from './tools/next-measurement.js';
 import {registerReplicate} from './tools/replicate.js';
 import {registerRoundAudit} from './tools/round-audit.js';
 import {registerDomAudit} from './tools/dom-audit.js';
+import {registerSparseElements} from './tools/sparse-elements.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.77.1', // keep in sync with package.json
+  version: '2.78.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call
@@ -222,6 +223,7 @@ registerNextMeasurement(server);
 registerReplicate(server);
 registerRoundAudit(server);
 registerDomAudit(server);
+registerSparseElements(server);
 
 async function main() {
   const transport = new StdioServerTransport();

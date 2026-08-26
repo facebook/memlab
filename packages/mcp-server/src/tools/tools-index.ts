@@ -215,6 +215,10 @@ const GROUPS: Group[] = [
         'Unbounded or oversized caches in one snapshot.',
       ],
       [
+        'memlab_sparse_elements',
+        'Integer-keyed objects and arrays whose elements backing store is mostly holes — waste charged to no class, so a histogram cannot see it.',
+      ],
+      [
         'memlab_stale_collections',
         'Collections holding entries nothing else references.',
       ],
