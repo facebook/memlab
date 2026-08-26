@@ -102,7 +102,7 @@ async function testIncorrectUseage(
   const analysis = new ShapeUnboundGrowthAnalysis();
   expect(
     async () => await analysis.analyzeSnapshotFromFile(snapshotFile),
-  ).rejects.toThrowError();
+  ).rejects.toThrow();
 }
 
 async function testAnalysisWithSpecifiedWorkDir(

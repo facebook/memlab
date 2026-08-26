@@ -55,7 +55,7 @@ test(
     analysis = new StringAnalysis();
     expect(
       async () => await analysis.analyzeSnapshotsInDirectory(snapshotDir),
-    ).rejects.toThrowError();
+    ).rejects.toThrow();
   },
   testTimeout,
 );

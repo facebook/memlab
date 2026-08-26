@@ -49,9 +49,9 @@ function checkResultReader(result: BrowserInteractionResultReader): void {
 
   result.cleanup();
   expect(fs.existsSync(workDir)).toBe(false);
-  expect(() => result.getRootDirectory()).toThrowError();
-  expect(() => result.getSnapshotFileDir()).toThrowError();
-  expect(() => result.getSnapshotFiles()).toThrowError();
+  expect(() => result.getRootDirectory()).toThrow();
+  expect(() => result.getSnapshotFileDir()).toThrow();
+  expect(() => result.getSnapshotFiles()).toThrow();
 }
 
 test(
