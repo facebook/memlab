@@ -216,6 +216,8 @@ interface VisitBudget {
   sampleEvery?: number;
   /** Nodes CONSIDERED, including those skipped by sampling. */
   seen?: number;
+  /** When set, `nodes.forEach` visits only these ids (see `restrict_to_ids`). */
+  restrictTo?: Set<number>;
   visited: number;
   max: number;
   exceeded: boolean;
@@ -347,7 +349,19 @@ function wrapSnapshot(snapshot: unknown, budget: VisitBudget): unknown {
               ).forEach.bind(nodesTarget);
               return (cb: (node: unknown) => unknown) => {
                 const stride = budget.sampleEvery ?? 1;
+                const only = budget.restrictTo;
                 origForEach((node: unknown) => {
+                  // `restrict_to_ids` promotes a cheap triage pass to an exact
+                  // one without re-walking the graph blind: the same code runs,
+                  // but only over the candidates the triage pass surfaced.
+                  // Filtering here rather than in user code means the budget and
+                  // the reported `nodes_visited` describe the real work.
+                  if (
+                    only != null &&
+                    !only.has((node as {id?: number}).id ?? -1)
+                  ) {
+                    return undefined;
+                  }
                   // Sampling is a STRIDE, not a random draw: two calls over the
                   // same snapshot visit the same nodes, so a follow-up question
                   // lands on the objects the first answer described.
@@ -503,6 +517,138 @@ function implausibleByteFields(
   return hits;
 }
 
+/**
+ * Deepest nesting of a `.references` / `.referrers` traversal inside another
+ * loop, by brace depth.
+ *
+ * Textual, like the full-walk check next to it — the honest limit of a
+ * pre-flight, and the alternative is parsing the code. It exists because
+ * `max_nodes` bounds the OUTER loop and nothing warns that the inner one turns
+ * a 7M-node pass into a 41M-edge one. A measured probe with two nested
+ * traversals ran for ten minutes and returned nothing.
+ */
+function maxTraversalNesting(code: string): number {
+  const TRAVERSAL = /\.\s*(?:references|referrers)\b/g;
+  const LOOP =
+    /\b(?:for\s*\(|while\s*\(|\.forEach\s*\(|\.map\s*\(|\.filter\s*\(|\.flatMap\s*\()/g;
+
+  // Character-based, not line-based. The first version tested one line at a
+  // time and scored `nodes.forEach(n => { for (const e of n.references) ... })`
+  // as depth 0, because the loop it is nested in opens on the same line — which
+  // is how this gets written most of the time.
+  /**
+   * Whether the construct whose opening paren ends at `from` will actually open
+   * a brace body.
+   *
+   * A brace-less callback — `nodes.map(n => n.name)` — never does, and counting
+   * it as pending made the NEXT unrelated `{` in the source (an `if` block, an
+   * object literal) read as that loop's body, so every traversal after it was
+   * reported one level deeper than it is. Scan from the paren: a `{` before the
+   * parens balance is a callback body, a `{` immediately after they balance is
+   * a `for`/`while` body, and anything else means there is no body to wait for.
+   */
+  const opensBraceBody = (from: number): boolean => {
+    let parens = 1;
+    for (let i = from; i < code.length; i++) {
+      const c = code[i];
+      if (c === '{') return true;
+      if (c === '(') {
+        parens++;
+      } else if (c === ')') {
+        parens--;
+        if (parens === 0) {
+          let j = i + 1;
+          while (j < code.length && /\s/.test(code[j])) j++;
+          return code[j] === '{';
+        }
+      }
+    }
+    return false;
+  };
+
+  type Event = {pos: number; kind: 'loop' | 'traversal'};
+  const events: Event[] = [];
+  for (const m of code.matchAll(LOOP)) {
+    const pos = m.index ?? 0;
+    // Every LOOP alternative ends with its opening paren.
+    if (opensBraceBody(pos + m[0].length)) {
+      events.push({pos, kind: 'loop'});
+    }
+  }
+  for (const m of code.matchAll(TRAVERSAL)) {
+    events.push({pos: m.index ?? 0, kind: 'traversal'});
+  }
+  events.sort((a, b) => a.pos - b.pos);
+
+  const loopDepths: number[] = [];
+  let depth = 0;
+  let pendingLoops = 0;
+  let deepest = 0;
+  let next = 0;
+  for (let i = 0; i < code.length; i++) {
+    while (next < events.length && events[next].pos === i) {
+      const ev = events[next++];
+      if (ev.kind === 'loop') {
+        pendingLoops++;
+      } else {
+        deepest = Math.max(deepest, loopDepths.length);
+      }
+    }
+    const ch = code[i];
+    if (ch === '{') {
+      // The first `{` after a loop header opens that loop's body.
+      if (pendingLoops > 0) {
+        loopDepths.push(depth);
+        pendingLoops--;
+      }
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      while (
+        loopDepths.length > 0 &&
+        loopDepths[loopDepths.length - 1] >= depth
+      ) {
+        loopDepths.pop();
+      }
+    }
+  }
+  return deepest;
+}
+
+/**
+ * The helper names from the most recent eval build in this process.
+ *
+ * `mode: "lint"` runs WITHOUT a snapshot, so it cannot construct the helpers
+ * object to read its keys. Recording them here keeps the lint check honest:
+ * when the list is unknown (a fresh server that has not run an eval yet) the
+ * check is SKIPPED and said to be skipped, rather than reporting every real
+ * helper as unknown.
+ */
+let lastKnownHelperNames: string[] | null = null;
+
+/** True when `a` and `b` are within `max` single-character edits. Cheap bail-out. */
+function editDistanceWithin(a: string, b: string, max: number): boolean {
+  if (Math.abs(a.length - b.length) > max) return false;
+  const prev = new Array<number>(b.length + 1);
+  const cur = new Array<number>(b.length + 1);
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    cur[0] = i;
+    let best = cur[0];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(
+        prev[j] + 1,
+        cur[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+      if (cur[j] < best) best = cur[j];
+    }
+    if (best > max) return false;
+    for (let j = 0; j <= b.length; j++) prev[j] = cur[j];
+  }
+  return prev[b.length] <= max;
+}
+
 export function registerEval(server: McpServer): void {
   server.tool(
     'memlab_eval',
@@ -538,11 +684,11 @@ export function registerEval(server: McpServer): void {
       'Pass `max_nodes` to bound a full-heap walk — on overrun the partial `result` is returned with a warning instead of failing, so a broad scan is safe to attempt. Every call reports `nodes_visited`.',
     {
       mode: z
-        .enum(['eval', 'describe_env', 'list_saved'])
+        .enum(['eval', 'describe_env', 'list_saved', 'lint'])
         .optional()
         .default('eval')
         .describe(
-          '"eval" (default) runs `code`. "describe_env" ignores `code` and returns the in-scope globals, the IHeapNode/IHeapEdge API, and the required calling conventions (`result =`, `.forEach`) so you can self-correct before running. "list_saved" ignores `code` and lists the named result sets saved so far for this snapshot.',
+          '"eval" (default) runs `code`. "describe_env" ignores `code` and returns the in-scope globals, the IHeapNode/IHeapEdge API, and the required calling conventions (`result =`, `.forEach`) so you can self-correct before running — narrow it with `section` to avoid paying for all ~10 KB. "lint" syntax-checks `code`, lists the helpers it references and flags unknown ones, and estimates traversal nesting — all WITHOUT a snapshot, so a typo in a 40-line eval costs seconds instead of a 2-4 minute load. "list_saved" ignores `code` and lists the named result sets saved so far for this snapshot.',
         ),
       code: z
         .string()
@@ -616,6 +762,18 @@ export function registerEval(server: McpServer): void {
         .describe(
           'TRIAGE MODE: visit only every Nth node in a `snapshot.nodes.forEach` walk (1 = every node, the default). A full-heap walk on a multi-million-node graph takes 1-2 minutes, which is enough friction that most exploratory ideas never get run at all; `sample: 200` answers "is there anything here?" in about a second, and you pay for the exact walk only once an idea looks worth it. The stride is deterministic, not random, so a follow-up question lands on the same objects. COUNTS COME BACK ~N TIMES LOW and the result is labelled an ESTIMATE — never record a sampled number as a measurement, and never conclude ABSENCE from one (a population of 50 is easily missed at stride 200).',
         ),
+      section: z
+        .string()
+        .optional()
+        .describe(
+          'For mode:"describe_env" only — return just the section(s) whose heading matches this text (case-insensitive substring), e.g. "collection", "populations", "traversal", "IHeapNode". The calling conventions and the section list are always included. The full document is ~10 KB of tokens and is usually read to write one eval.',
+        ),
+      restrict_to_ids: z
+        .array(z.number())
+        .optional()
+        .describe(
+          'Restrict `snapshot.nodes.forEach` to these node ids, so the SAME code runs over a candidate set instead of the whole graph. This is how a `sample`-based triage pass is promoted to an exact answer without paying for a second blind full walk: run `sample: 200` with `save_as: "candidates"` collecting ids, then re-run with `restrict_to_ids: helpers.load("candidates")` and `sample: 1`. Filtering happens inside the walk, so `nodes_visited` reports the real work.',
+        ),
       max_nodes: z
         .number()
         .int()
@@ -667,21 +825,26 @@ function writeEvalStore(store: Record<string, unknown>): void {
 export async function runEval({
   mode,
   code,
+  section,
   timeout_ms,
   save_as,
   max_nodes,
   sample,
+  restrict_to_ids,
   dry_run,
   max_result_bytes,
   ownsScanBudget,
 }: {
-  mode?: 'eval' | 'describe_env' | 'list_saved';
+  mode?: 'eval' | 'describe_env' | 'list_saved' | 'lint';
   code?: string;
+  section?: string;
   timeout_ms?: number;
   save_as?: string;
   max_nodes?: number;
   /** Visit every Nth node in a full-heap walk. 1/undefined = every node. */
   sample?: number;
+  /** Restrict `snapshot.nodes.forEach` to these node ids. */
+  restrict_to_ids?: number[];
   dry_run?: boolean;
   max_result_bytes?: number;
   /**
@@ -738,10 +901,17 @@ export async function runEval({
     exceeded: false,
     sampleEvery: sample != null && sample > 1 ? Math.floor(sample) : 1,
     seen: 0,
+    restrictTo:
+      restrict_to_ids != null && restrict_to_ids.length > 0
+        ? new Set(restrict_to_ids)
+        : undefined,
   };
   try {
+    if (mode === 'lint') {
+      return toolResult(lintEval(code ?? '', lastKnownHelperNames));
+    }
     if (mode === 'describe_env') {
-      return toolResult(describeEnv());
+      return toolResult(describeEnv(section));
     }
     if (mode === 'list_saved') {
       return toolResult(describeSaved());
@@ -787,9 +957,21 @@ export async function runEval({
       const fullWalk = /\b(?:snapshot\.)?(?:nodes|edges)\s*\.\s*forEach/.test(
         code,
       );
-      const indexed = /helpers\.(byClass|byTypename|withProp|getNode)/.test(
-        code,
-      );
+      const indexed =
+        /helpers\.(byClass|byTypename|withProp|byReferrerEdge|getNode)/.test(
+          code,
+        );
+      const nestingDepth = maxTraversalNesting(code);
+      const meanOutDegree =
+        (meta?.edgeCount ?? 0) / Math.max(1, meta?.nodeCount ?? 1);
+      // A nested `.references` walk inside a full-heap walk costs EDGE visits,
+      // not node visits, and the difference is the difference between seconds
+      // and "the probe died at 600s having produced nothing". `max_nodes`
+      // bounds the outer loop only, so nothing else warns about this.
+      const estimatedVisits =
+        fullWalk && nestingDepth > 0
+          ? (meta?.nodeCount ?? 0) * Math.pow(meanOutDegree, nestingDepth)
+          : null;
       return toolResult(
         [
           '## Dry run — nothing was executed',
@@ -798,10 +980,13 @@ export async function runEval({
           `Walk budget (\`max_nodes\`): ${formatNumber(budget.max)}.`,
           '',
           fullWalk
-            ? `⚠ The code contains a full-heap walk, so it will visit up to ${formatNumber(Math.min(budget.max, meta?.nodeCount ?? 0))} nodes. On a heap this size that is seconds to minutes.${indexed ? '' : ' `helpers.byClass` / `byTypename` / `withProp` are indexed and avoid the walk when you know what you are looking for.'}`
+            ? `⚠ The code contains a full-heap walk, so it will visit up to ${formatNumber(Math.min(budget.max, meta?.nodeCount ?? 0))} nodes. On a heap this size that is seconds to minutes.${indexed ? '' : ' `helpers.byClass` / `byTypename` / `withProp` / `byReferrerEdge` are indexed and avoid the walk when you know what you are looking for.'}`
             : indexed
               ? 'No full-heap walk detected; the code uses the indexed helpers, which do not scan the heap.'
               : 'No full-heap walk detected by text match. This is a textual check, not an analysis — a walk reached indirectly will not be seen here.',
+          estimatedVisits != null && nestingDepth >= 1
+            ? `⚠ NESTED TRAVERSAL, depth ${nestingDepth}: the walk iterates \`.references\`/\`.referrers\` inside the outer loop, so the real cost is EDGE visits — roughly ${formatNumber(Math.round(estimatedVisits))} (${formatNumber(meta?.nodeCount ?? 0)} nodes x mean out-degree ${meanOutDegree.toFixed(1)}^${nestingDepth}). \`max_nodes\` bounds the OUTER loop only and will not stop this.${nestingDepth >= 2 ? ' At depth 2 or more, expect minutes: hoist the inner lookup, or collect candidate ids in a cheap pass and re-run with `restrict_to_ids`.' : ''}`
+            : '',
           '',
           '_Re-run without `dry_run` to execute._',
         ].join('\n'),
@@ -2106,7 +2291,7 @@ export async function runEval({
       return out;
     };
 
-    const helpers = {
+    const helpersImpl = {
       serializeNodeSummary: (n: unknown) =>
         blankRetentionOnLight(serializeNodeSummary(unwrapNode(n) as IHeapNode)),
       serializeNodeDetail: (n: unknown) =>
@@ -2198,6 +2383,37 @@ export async function runEval({
       sample,
     };
 
+    /**
+     * A mistyped helper name used to fail as `helpers.foo is not a function`,
+     * with no clue what the right name was. The surface is 40+ helpers and
+     * `describe_env` is a separate round trip that costs ~10 KB of tokens, so
+     * the cheapest fix is to answer the question at the point it is asked.
+     */
+    const helperNames = Object.keys(helpersImpl).sort();
+    lastKnownHelperNames = helperNames;
+    const helpers = new Proxy(helpersImpl, {
+      get(target, prop, receiver) {
+        if (typeof prop === 'string' && !(prop in target)) {
+          const lower = prop.toLowerCase();
+          const near = helperNames.filter(
+            n =>
+              n.toLowerCase().includes(lower) ||
+              lower.includes(n.toLowerCase()) ||
+              editDistanceWithin(n.toLowerCase(), lower, 2),
+          );
+          throw new Error(
+            `helpers.${prop} does not exist.` +
+              (near.length > 0
+                ? ` Did you mean: ${near.slice(0, 5).join(', ')}?`
+                : '') +
+              ` All helpers: ${helperNames.join(', ')}.` +
+              ' Use mode:"describe_env" for signatures.',
+          );
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+
     const sandbox = {
       snapshot: wrapSnapshot(snapshot, budget),
       utils,
@@ -2235,13 +2451,25 @@ export async function runEval({
     const script = new vm.Script(code, {filename: 'memlab_eval'});
     // A budget abort is a controlled stop, not a failure: whatever the code
     // had already assigned to `result` is still returned, annotated below.
+    let wallClockTimedOut = false;
     try {
       script.runInContext(context, {timeout: timeout_ms});
     } catch (err) {
-      // Keyed on the error itself, never on `budget.exceeded`: code that
-      // catches the abort and then throws for an unrelated reason must
-      // still surface that error.
-      if (!(err instanceof BudgetExceeded)) throw err;
+      // A wall-clock timeout used to discard everything and return only
+      // "Execution timed out", while a `max_nodes` overrun returned the partial
+      // value with a warning. That asymmetry is the expensive one: a probe that
+      // ran 120s, was backgrounded and died at 600s produced ZERO information,
+      // which is a strong argument against ever writing an ambitious eval
+      // again. V8 terminates the script but the sandbox keeps whatever was
+      // already assigned, so the partial value is right there.
+      if (isScriptTimeout(err) && sandbox.result !== undefined) {
+        wallClockTimedOut = true;
+      } else if (!(err instanceof BudgetExceeded)) {
+        // Keyed on the error itself, never on `budget.exceeded`: code that
+        // catches the abort and then throws for an unrelated reason must
+        // still surface that error.
+        throw err;
+      }
     }
 
     // Actionable hint when nothing was assigned to `result` (the #1 user
@@ -2265,7 +2493,12 @@ export async function runEval({
     // cause is the "never assigned to `result`" mistake — which the hint
     // above only catches when the run produced no console output.
     const nothingToSave = sandbox.result === undefined;
-    if (save_as != null && !budget.exceeded && !nothingToSave) {
+    if (
+      save_as != null &&
+      !budget.exceeded &&
+      !wallClockTimedOut &&
+      !nothingToSave
+    ) {
       setSavedResult(save_as, sandbox.result, currentHandle);
     }
 
@@ -2329,6 +2562,20 @@ export async function runEval({
               : '.') +
           ' Raise `max_result_bytes`, or aggregate in the eval instead of returning raw rows.',
       );
+    }
+    if (wallClockTimedOut) {
+      footer.push(
+        `⚠️ WALL-CLOCK TIMEOUT after ${formatNumber(timeout_ms)}ms — the value above is PARTIAL. ` +
+          'It is whatever your code had assigned to `result` when the script was terminated, so treat every count in ' +
+          'it as a FLOOR, not a measurement. Raise `timeout_ms`, narrow the scan with an indexed helper ' +
+          '(`helpers.byClass` / `byTypename` / `withProp` / `byReferrerEdge`), or run `dry_run: true` first — a nested ' +
+          'walk over `.references` inside a `nodes.forEach` costs edge-visits, not node-visits.',
+      );
+      if (save_as != null) {
+        footer.push(
+          `Not saved as "${save_as}" — a partial result would be indistinguishable from a complete one on reload.`,
+        );
+      }
     }
     if (budget.exceeded) {
       // A partial walk that also produced NO value is not a degraded answer, it
@@ -2411,11 +2658,36 @@ export async function runEval({
   }
 }
 
+/**
+ * True for the `vm` module's wall-clock timeout.
+ *
+ * Keyed on `err.code`, which is a documented Node error code, with the message
+ * text only as a fallback. Matching the prose alone couples salvaging a partial
+ * result to V8's exact wording: a reworded message would silently stop matching
+ * and quietly revert to throwing away the partial value, which is the behaviour
+ * this branch exists to prevent.
+ */
+function isScriptTimeout(err: unknown): boolean {
+  // Deliberately NOT `err instanceof Error`. `vm` raises this from the script's
+  // OWN realm, whose `Error` is a different constructor, so a cross-realm
+  // instanceof is false — measured, not assumed. Gating on it made the salvage
+  // below unreachable: every wall-clock timeout fell through to `throw err` and
+  // the partial `result` was discarded, which is the exact behaviour this
+  // branch was written to end.
+  if (err == null || typeof err !== 'object') return false;
+  const e = err as {code?: unknown; message?: unknown};
+  if (e.code === 'ERR_SCRIPT_EXECUTION_TIMEOUT') return true;
+  return (
+    typeof e.message === 'string' &&
+    e.message.includes('Script execution timed out')
+  );
+}
+
 // Map the opaque VM errors that the documented calling-convention mistakes
 // produce into actionable guidance (Feedback §3).
 function actionableEvalError(err: unknown, code: string | undefined): string {
   const msg = err instanceof Error ? err.message : String(err);
-  if (msg.includes('Script execution timed out')) {
+  if (isScriptTimeout(err)) {
     return `Execution timed out. Increase timeout_ms, or narrow the scan (filter earlier, use a dedicated tool like memlab_find_by_property/memlab_property_distribution instead of a full snapshot.nodes walk).`;
   }
   if (msg.includes('Illegal return statement')) {
@@ -2551,7 +2823,192 @@ const LISTENER_CONTEXT_PROPS = new Set([
   'scope',
 ]);
 
-function describeEnv(): string {
+/** Helper names mentioned as `helpers.x(` anywhere in the describe_env text. */
+function documentedHelperNames(): string[] {
+  const doc = describeEnvLines().join('\n');
+  return [
+    ...new Set(
+      [...doc.matchAll(/helpers\.([A-Za-z_][A-Za-z0-9_]*)/g)].map(m => m[1]),
+    ),
+  ].sort();
+}
+
+/**
+ * Syntax-check an eval and report what it references — WITHOUT a snapshot.
+ *
+ * The only way to discover a typo in a 40-line eval used to be to pay a 2–4
+ * minute snapshot load first, which is enough friction that most exploratory
+ * ideas were never written down. Everything here is decidable from the source
+ * text alone, so the cost of a wrong guess drops from minutes to seconds.
+ */
+function lintEval(code: string, knownHelpers: string[] | null): string {
+  const lines: string[] = ['## memlab_eval lint — nothing was executed', ''];
+  if (code.trim() === '') {
+    return 'Pass `code` to lint. Nothing to check.';
+  }
+
+  let syntaxOk = true;
+  try {
+    // Compiling does not run anything; it is the same parse the real call does.
+    new vm.Script(code, {filename: 'memlab_eval_lint'});
+    lines.push('- **Syntax:** parses cleanly.');
+  } catch (err) {
+    syntaxOk = false;
+    lines.push(
+      `- **Syntax ERROR:** ${err instanceof Error ? err.message : String(err)}`,
+    );
+    if (
+      err instanceof SyntaxError &&
+      /Illegal return/.test(err.message ?? '')
+    ) {
+      lines.push('  Assign to `result` instead of using a top-level `return`.');
+    }
+  }
+
+  if (!/\bresult\s*=/.test(code)) {
+    lines.push(
+      '- ⚠ **No assignment to `result`** — the call will run and return nothing. This is the single most common eval mistake.',
+    );
+  }
+
+  const referenced = [
+    ...new Set(
+      [...code.matchAll(/helpers\.([A-Za-z_][A-Za-z0-9_]*)/g)].map(m => m[1]),
+    ),
+  ].sort();
+  if (referenced.length > 0) {
+    lines.push(`- **Helpers referenced:** ${referenced.join(', ')}.`);
+    // On a fresh server the live table has not been built yet (it needs a
+    // snapshot). The documented list is the next best source and is always
+    // available — worded as "not documented" so an undocumented-but-real helper
+    // is not reported as a typo.
+    const documented = documentedHelperNames();
+    const table = knownHelpers ?? documented;
+    const authoritative = knownHelpers != null;
+    {
+      const unknown = referenced.filter(n => !table.includes(n));
+      if (unknown.length === 0) {
+        lines.push(
+          authoritative
+            ? '  All exist.'
+            : '  All are documented (checked against `describe_env`; this server has not built the live helper table yet).',
+        );
+      } else {
+        for (const name of unknown) {
+          const lower = name.toLowerCase();
+          const near = table.filter(
+            n =>
+              n.toLowerCase().includes(lower) ||
+              lower.includes(n.toLowerCase()) ||
+              editDistanceWithin(n.toLowerCase(), lower, 2),
+          );
+          lines.push(
+            `  - ❌ \`helpers.${name}\` does not exist.` +
+              (near.length > 0
+                ? ` Did you mean ${near.slice(0, 4).join(', ')}?`
+                : ''),
+          );
+        }
+      }
+    }
+  }
+
+  const fullWalk = /\b(?:snapshot\.)?(?:nodes|edges)\s*\.\s*forEach/.test(code);
+  const nesting = maxTraversalNesting(code);
+  if (fullWalk) {
+    lines.push(
+      `- **Full-heap walk:** yes${nesting > 0 ? `, with a nested \`.references\`/\`.referrers\` traversal at depth ${nesting}` : ''}.` +
+        (nesting >= 2
+          ? ' At depth 2 or more the cost is edge-visits and typically runs for minutes — run `dry_run: true` against the loaded snapshot for a concrete estimate.'
+          : ''),
+    );
+  } else {
+    lines.push('- **Full-heap walk:** none detected by text match.');
+  }
+
+  if (/for\s*\(\s*const\s+\w+\s+of\s+snapshot\.nodes/.test(code)) {
+    lines.push(
+      '- ❌ `snapshot.nodes` is NOT for-of iterable. Use `snapshot.nodes.forEach(node => { ... })`.',
+    );
+  }
+  if (
+    /\.\s*retained_?[Ss]ize\b/.test(code) &&
+    !/helpers\.retainedSize/.test(code)
+  ) {
+    lines.push(
+      '- ⚠ `node.retainedSize` / `node.retained_size` THROW inside eval (they read back ~0 on some loads). Use `helpers.retainedSize(id)` / `helpers.retainedSizes([ids])` / `helpers.aggregateRetained([ids])`.',
+    );
+  }
+
+  lines.push(
+    '',
+    syntaxOk
+      ? '_Re-run with `mode:"eval"` (the default) to execute._'
+      : '_Fix the syntax error first._',
+  );
+  return lines.join('\n');
+}
+
+function describeEnv(section?: string): string {
+  const all = describeEnvLines();
+  if (section == null || section.trim() === '') return all.join('\n');
+  const wanted = section.trim().toLowerCase();
+  // Split on `## ` headings and keep the ones that match. The calling
+  // conventions always travel with the answer: they are what an eval gets wrong
+  // when it is written from a partial read of this document.
+  const blocks: string[][] = [];
+  let current: string[] = [];
+  for (const line of all) {
+    if (line.startsWith('## ')) {
+      if (current.length > 0) blocks.push(current);
+      current = [line];
+    } else {
+      current.push(line);
+    }
+  }
+  if (current.length > 0) blocks.push(current);
+  const headings = blocks
+    .map(b => b[0])
+    .filter(h => h.startsWith('## '))
+    .map(h => h.slice(3));
+  const isConventions = (heading: string): boolean =>
+    heading.toLowerCase().includes('calling convention');
+  const required = blocks.filter(b => isConventions(b[0]));
+  const matched = blocks.filter(
+    b =>
+      b[0].startsWith('## ') &&
+      b[0].toLowerCase().includes(wanted) &&
+      !isConventions(b[0]),
+  );
+  // Naming the calling conventions is not a miss. That block is kept out of
+  // `matched` only because `required` always emits it, so treating it as
+  // unmatched answered `section: "calling"` — or "convention", or the
+  // "(REQUIRED)" in its own heading — with `no section matches`, for the one
+  // section guaranteed to be in every reply.
+  const wantedConventions = required.some(b =>
+    b[0].toLowerCase().includes(wanted),
+  );
+  if (matched.length === 0 && !wantedConventions) {
+    return [
+      `# memlab_eval environment — no section matches "${section}"`,
+      '',
+      `Sections: ${headings.map(h => `"${h}"`).join(', ')}.`,
+      'Omit `section` for the whole document.',
+    ].join('\n');
+  }
+  return [
+    '# memlab_eval environment (filtered)',
+    '',
+    ...required.flatMap(b => [...b, '']),
+    ...matched.flatMap(b => [...b, '']),
+    `_Other sections: ${headings
+      .filter(h => !isConventions(h) && !matched.some(b => b[0].slice(3) === h))
+      .map(h => `"${h}"`)
+      .join(', ')}. Omit \`section\` for all of them._`,
+  ].join('\n');
+}
+
+function describeEnvLines(): string[] {
   return [
     '# memlab_eval environment',
     '',
@@ -2634,5 +3091,5 @@ function describeEnv(): string {
     'snapshot.nodes.forEach(node => { counts[node.type] = (counts[node.type] || 0) + 1; });',
     'result = counts;',
     '```',
-  ].join('\n');
+  ];
 }

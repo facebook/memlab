@@ -9,24 +9,27 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
+import {SERVER_VERSION} from '../server-version.js';
 import {listSnapshots, getCurrentHandle} from '../heap-state.js';
 import {formatBytes, formatNumber, errorResult, textResult} from '../utils.js';
 
 export function registerServerStatus(server: McpServer): void {
   server.tool(
     'memlab_server_status',
-    'Cheap liveness/health check: returns instantly with the server process RSS, uptime, and the resident snapshots. Use it to confirm the server is responsive (vs. stuck behind a heavy scan) and to watch RSS against the snapshot-size ceiling. Scan tools are time-budgeted (timeout_ms) so a heavy scan returns cleanly instead of wedging the server; if a call ever seems hung, this check should still answer immediately.',
+    'Cheap liveness/health check: returns instantly with the server VERSION, process RSS, uptime, and the resident snapshots. The version answers "is the attached server actually my local build?" — a running server keeps old code in memory after a rebuild, and the only previous way to tell was a hand-rolled JSON-RPC initialize handshake. Use it to confirm the server is responsive (vs. stuck behind a heavy scan) and to watch RSS against the snapshot-size ceiling. Scan tools are time-budgeted (timeout_ms) so a heavy scan returns cleanly instead of wedging the server; if a call ever seems hung, this check should still answer immediately.',
     {},
     async () => {
       try {
         const mem = process.memoryUsage();
         const uptimeS = Math.round(process.uptime());
+        const version = SERVER_VERSION;
         const all = listSnapshots();
         const cur = getCurrentHandle();
         const lines = [
           '## memlab server status',
           '',
           `- Status: ready`,
+          `- Server version: **${version}**`,
           `- Uptime: ${uptimeS}s`,
           `- Process RSS: ${formatBytes(mem.rss)} (heapUsed ${formatBytes(mem.heapUsed)} / heapTotal ${formatBytes(mem.heapTotal)})`,
           `- Resident snapshots: ${all.length}`,
