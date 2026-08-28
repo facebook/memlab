@@ -38,6 +38,13 @@ interface RunManifest {
   ladder_splits_after_rung?: number[];
   mutates_content_per_cycle?: string[];
   gating_verified?: Record<string, unknown>;
+  /** {declared, verified, absent, absent_props} written by hunt_runner. */
+  gating_summary?: {
+    declared?: number;
+    verified?: number;
+    absent?: number;
+    absent_props?: string[];
+  };
   caveats?: string[];
   stop_reason?: string;
 }
@@ -175,21 +182,45 @@ export function auditManifest(m: RunManifest): {
 
   const gating = m.gating_verified ?? {};
   const gateKeys = Object.keys(gating);
-  checks.push(
-    gateKeys.length === 0
-      ? {
-          name: 'gating',
-          status: 'caveat',
-          detail:
-            'No verified gating recorded. If the round depends on a flag being on or off, ' +
-            'nothing here shows it actually was.',
-        }
-      : {
-          name: 'gating',
-          status: 'ok',
-          detail: `${gateKeys.length} gating value(s) verified in-page.`,
-        },
-  );
+  // Prefer the runner's own summary. Counting read-back entries here while the
+  // runner counted declared-minus-absent produced two different fractions for
+  // the same bring-up ("16 verified" vs "14/16"), and both were quoted.
+  const summary = m.gating_summary;
+  // `declared === 0` is NOT a verified round. Taking the summary branch for it
+  // reported "0/0 prop(s) verified in-page. The round ran with every declared
+  // prop applied and read back." at status `ok` — a clean bill for a round that
+  // gated nothing. It belongs with the no-summary case below, which says so.
+  if (summary?.declared != null && summary.declared > 0) {
+    const verified = summary.verified ?? 0;
+    const absent = summary.absent ?? 0;
+    checks.push({
+      name: 'gating',
+      status: absent > 0 ? 'caveat' : 'ok',
+      detail:
+        `${verified}/${summary.declared} prop(s) verified in-page` +
+        (absent > 0
+          ? `, ${absent} absent from this build's registry (${(summary.absent_props ?? []).join(', ')}). ` +
+            'Absent is not failed — the prop does not exist in this build — but a round compared against ' +
+            'one where it did exist is not comparing the same configuration.'
+          : '. The round ran with every declared prop applied and read back.'),
+    });
+  } else {
+    checks.push(
+      gateKeys.length === 0
+        ? {
+            name: 'gating',
+            status: 'caveat',
+            detail:
+              'No verified gating recorded. If the round depends on a flag being on or off, ' +
+              'nothing here shows it actually was.',
+          }
+        : {
+            name: 'gating',
+            status: 'ok',
+            detail: `${gateKeys.length} gating value(s) verified in-page — a count of read-back entries, not of declared props. A runner new enough to write \`gating_summary\` reports the declared/verified/absent split instead.`,
+          },
+    );
+  }
 
   const totals = m.totals ?? {};
   const cycles = totals.cycles ?? 0;

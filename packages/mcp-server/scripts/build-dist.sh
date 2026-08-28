@@ -60,10 +60,45 @@ rsync -a --include='*/' --include='*.js' --include='*.d.ts' --exclude='*' \
   "$BUILD_DIR/" "$PKG_DIR/dist/"
 
 echo "Smoke-testing the published entry point ..."
+HANDSHAKE_ERR="$(mktemp)"
+trap 'rm -rf "$BUILD_DIR" "$HANDSHAKE_ERR"' EXIT
 if ! printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"build-dist","version":"1"}}}' |
-  node "$PKG_DIR/bin/memlab-mcp.js" 2>/dev/null | head -n1 | grep -q '"serverInfo"'; then
+  node "$PKG_DIR/bin/memlab-mcp.js" 2>"$HANDSHAKE_ERR" | head -n1 | grep -q '"serverInfo"'; then
+  # In an fbsource checkout node_modules/@memlab/core is a symlink to the
+  # SIBLING SOURCE package, whose own runtime deps (fs-extra, ...) are not
+  # installed — so the entry point cannot start from here no matter how good
+  # dist/ is. Reporting that as "the built dist/ is broken" is a false alarm
+  # every single time, and it trains people to ignore the check.
+  #
+  # Deliberately ANY missing module, not just fs-extra: the sibling source
+  # package's uninstalled dependency set is not a fixed list, so naming one
+  # would let the next one through as a false "dist/ is broken". The
+  # `packages/core` conjunct is what keeps this from swallowing unrelated
+  # failures — it requires the resolution to have failed inside that package.
+  # (The previous pattern spelled this `'(fs-extra|[^'"'"']*)'`, an alternation
+  # whose second branch already matched everything, so it read as specific
+  # while behaving exactly like this one.)
+  if grep -q "Cannot find module '" "$HANDSHAKE_ERR" &&
+    grep -q "packages/core" "$HANDSHAKE_ERR"; then
+    echo ""
+    echo "NOTE: the handshake could not run FROM THIS CHECKOUT." >&2
+    echo "  node_modules/@memlab/core here is a symlink to the sibling SOURCE" >&2
+    echo "  package, whose runtime deps are not installed, so bin/memlab-mcp.js" >&2
+    echo "  cannot start. This says nothing about dist/, which is already" >&2
+    echo "  installed above." >&2
+    echo "" >&2
+    echo "  To verify for real, run the same handshake against the built dist/" >&2
+    echo "  from a directory that HAS the deps (the plugin install dir):" >&2
+    echo "    cp -r $PKG_DIR/dist \$HOME/.memlab-mcp/dist" >&2
+    echo "    node \$HOME/.memlab-mcp/dist/index.js   # then send an initialize frame" >&2
+    echo "" >&2
+    echo "dist/ rebuilt; entry-point handshake SKIPPED (deps unavailable here)."
+    exit 0
+  fi
   echo "ERROR: bin/memlab-mcp.js did not answer an initialize handshake." >&2
   echo "The built dist/ is broken; not a publishable artifact." >&2
+  echo "--- stderr from the attempt ---" >&2
+  cat "$HANDSHAKE_ERR" >&2
   exit 1
 fi
 
