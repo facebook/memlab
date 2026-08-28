@@ -28,10 +28,34 @@ trap 'rm -rf "$BUILD_DIR"' EXIT
 
 cd "$PKG_DIR"
 
+# Resolve a compiler without going near the registry. `npx tsc` in a checkout
+# that has no local typescript does not fail — it tries to *fetch* one, and in
+# a network-restricted shell that surfaces as a wall of npm ENOTFOUND lines
+# about `registry.npmjs.org/tsc`, which reads as a broken build rather than a
+# missing dev dependency.
+find_tsc() {
+  if [ -n "${MEMLAB_TSC:-}" ]; then echo "$MEMLAB_TSC"; return; fi
+  local d="$PKG_DIR"
+  while [ "$d" != "/" ]; do
+    [ -f "$d/node_modules/typescript/bin/tsc" ] && {
+      echo "$d/node_modules/typescript/bin/tsc"; return; }
+    d="$(dirname "$d")"
+  done
+  echo ""
+}
+
+TSC="$(find_tsc)"
+if [ -z "$TSC" ]; then
+  echo "No typescript found in any node_modules above $PKG_DIR." >&2
+  echo "Install the dev dependencies (npm install) or point MEMLAB_TSC at a tsc." >&2
+  exit 1
+fi
+
 echo "Compiling to $BUILD_DIR ..."
+echo "  using $TSC"
 # A separate tsbuildinfo: the committed one makes an incremental build think
 # the (deleted) scratch output is still up to date and emit nothing.
-npx tsc -p tsconfig.json --outDir "$BUILD_DIR" --tsBuildInfoFile "$BUILD_DIR/.tsbuildinfo"
+node "$TSC" -p tsconfig.json --outDir "$BUILD_DIR" --tsBuildInfoFile "$BUILD_DIR/.tsbuildinfo"
 
 echo "Removing source maps ..."
 find "$BUILD_DIR" -name '*.map' -delete
