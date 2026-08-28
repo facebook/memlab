@@ -46,6 +46,12 @@ interface RunRung {
   cycles: number;
   post_gc_heap_mb: number;
   reason?: string;
+  /**
+   * The page reloaded before this rung, so it belongs to a NEW V8 isolate.
+   * hunt_runner detects this from the longtask counter going backwards (the
+   * observer lives on the page and resets with it) and records it here.
+   */
+  isolate_restarted?: boolean;
 }
 
 interface RunManifest {
@@ -53,6 +59,8 @@ interface RunManifest {
   config?: {combos?: string[]; target_cycles?: number; url_filter?: string};
   totals?: {cycles?: number; ok?: number; fail?: number};
   rungs?: RunRung[];
+  /** Rung indices after which the page reloaded — see RunRung.isolate_restarted. */
+  ladder_splits_after_rung?: number[];
   gating_verified?: Record<string, unknown>;
   caveats?: string[];
   stop_reason?: string | null;
@@ -283,35 +291,93 @@ export function registerAnalyzeRun(server: McpServer): void {
           );
         }
 
-        const paths = rungs.map(r => r.path);
-        const first = rungs[0];
-        const last = rungs[rungs.length - 1];
+        // A mid-run page reload starts a NEW V8 isolate, so deltas ACROSS the
+        // split compare two unrelated heaps. hunt_runner already detects this
+        // and records it; nothing downstream was reading it, so the trend was
+        // fitted straight through the discontinuity. On one measured round that
+        // turned a real +2.1 MB into a reported -3.6 MB — the sign flipped.
+        // Analyse the longest unbroken SEGMENT instead, and say so.
+        const allRungs = rungs;
+        const segments: RunRung[][] = [];
+        for (const rung of allRungs) {
+          if (segments.length === 0 || rung.isolate_restarted) {
+            segments.push([rung]);
+          } else {
+            segments[segments.length - 1].push(rung);
+          }
+        }
+        const longest = segments.reduce(
+          (best, seg) => (seg.length > best.length ? seg : best),
+          segments[0] ?? [],
+        );
+        const ladderSplit = segments.length > 1;
+        if (ladderSplit && longest.length < 2) {
+          return errorResult(
+            `The page reloaded ${segments.length - 1} time(s) during this run, and no unbroken segment has 2 or more rungs. ` +
+              'Every delta would compare two different V8 isolates, so there is nothing here to fit a trend to. ' +
+              'Re-drive the round without the reload — a positive control that COLLAPSES across a split is a corrupted ladder, not a failed control.',
+          );
+        }
+        const analysed = ladderSplit ? longest : allRungs;
+
+        const paths = analysed.map(r => r.path);
+        const first = analysed[0];
+        const last = analysed[analysed.length - 1];
         const perRungCycles =
           cycles_between_rungs ??
-          (rungs.length > 1
-            ? Math.round((last.cycles - first.cycles) / (rungs.length - 1))
+          (analysed.length > 1
+            ? Math.round((last.cycles - first.cycles) / (analysed.length - 1))
             : 0);
 
         const out: string[] = [
           `# Leak-hunt analysis — ${manifest.run_id ?? path.basename(path.dirname(manifestPath))}`,
           '',
-          `Combos: ${(manifest.config?.combos ?? []).join(', ') || '(unrecorded)'} · cycles driven: ${formatNumber(manifest.totals?.cycles ?? last.cycles)} (ok ${formatNumber(manifest.totals?.ok ?? 0)} / fail ${formatNumber(manifest.totals?.fail ?? 0)}) · ${rungs.length} rungs · ~${formatNumber(perRungCycles)} cycles between rungs`,
+          `Combos: ${(manifest.config?.combos ?? []).join(', ') || '(unrecorded)'} · cycles driven: ${formatNumber(manifest.totals?.cycles ?? last.cycles)} (ok ${formatNumber(manifest.totals?.ok ?? 0)} / fail ${formatNumber(manifest.totals?.fail ?? 0)}) · ${analysed.length} rungs analysed${ladderSplit ? ` of ${allRungs.length} captured` : ''} · ~${formatNumber(perRungCycles)} cycles between rungs`,
           manifest.stop_reason ? `Stop reason: ${manifest.stop_reason}` : '',
           '',
           '## Ladder',
           '',
           markdownTable(
-            ['Rung', 'Cycles', 'Post-GC heap', 'Reason'],
-            rungs.map(r => [
-              String(r.index),
-              formatNumber(r.cycles),
-              `${r.post_gc_heap_mb.toFixed(1)} MB`,
-              r.reason ?? '',
-            ]),
+            // The exclusion column only exists when something was excluded.
+            // Emitting it unconditionally left an unnamed, empty fifth column
+            // on every unsplit ladder — which is most of them.
+            ladderSplit
+              ? ['Rung', 'Cycles', 'Post-GC heap', 'Reason', 'Analysed?']
+              : ['Rung', 'Cycles', 'Post-GC heap', 'Reason'],
+            allRungs.map(r => {
+              const row = [
+                String(r.index),
+                formatNumber(r.cycles),
+                `${r.post_gc_heap_mb.toFixed(1)} MB`,
+                r.reason ?? '',
+              ];
+              if (ladderSplit) {
+                row.push(
+                  analysed.includes(r)
+                    ? 'yes'
+                    : r.isolate_restarted
+                      ? 'no — reload, new isolate'
+                      : 'no — other segment',
+                );
+              }
+              return row;
+            }),
             new Set([0, 1, 2]),
           ),
           '',
         ].filter(Boolean);
+
+        if (ladderSplit) {
+          out.push(
+            `> ⚠️ **LADDER SPLIT — the page reloaded ${segments.length - 1} time(s) mid-run.** A reload starts a new V8 ` +
+              `isolate, so any delta spanning the split compares two unrelated heaps. This analysis uses only the ` +
+              `longest unbroken segment (rungs ${longest[0].index}–${longest[longest.length - 1].index}, ` +
+              `${longest.length} of ${allRungs.length}); the other rungs are excluded above. ` +
+              `Segment lengths: ${segments.map(seg => seg.length).join(', ')}. ` +
+              `If a positive control COLLAPSED in this round, read that as a corrupted ladder rather than a failed control.`,
+            '',
+          );
+        }
 
         const heapDelta = last.post_gc_heap_mb - first.post_gc_heap_mb;
         out.push(
@@ -366,7 +432,7 @@ export function registerAnalyzeRun(server: McpServer): void {
                   perRungCycles > 0
                     ? (
                         g.netCount /
-                        (perRungCycles * (rungs.length - 1))
+                        (perRungCycles * (analysed.length - 1))
                       ).toFixed(2)
                     : '—',
                   `${g.netSize >= 0 ? '+' : ''}${formatBytes(g.netSize)}`,

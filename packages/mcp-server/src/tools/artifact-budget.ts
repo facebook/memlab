@@ -184,11 +184,31 @@ export function registerArtifactBudget(server: McpServer): void {
           const sameDirection =
             (appDelta >= 0 && totalDelta > 0) ||
             (appDelta <= 0 && totalDelta < 0);
+          // Same direction is not enough. A share above 100% is arithmetically
+          // fine and semantically nonsense: one measured round printed
+          // "app_delta: +2.6 MB — 693% of the +386.5 KB total" because
+          // code/bytecode shrank 8.5 MB underneath a growing app. "693% of the
+          // total" is not a share of anything, and a reader who takes it as one
+          // concludes the app is 7x the heap. Same cause as the inversion
+          // below — a bucket moving the other way — so it gets the same
+          // treatment rather than a number.
+          const shareIsMeaningful =
+            sameDirection && Math.abs(appDelta) <= Math.abs(totalDelta);
           const share =
-            totalDelta !== 0 && sameDirection
+            totalDelta !== 0 && shareIsMeaningful
               ? ` — ${Math.abs((appDelta / totalDelta) * 100).toFixed(0)}% of the ${signed(totalDelta)} total`
               : '';
           lines.push(`**app_delta: ${signed(appDelta)}**${share}.`);
+          if (totalDelta !== 0 && sameDirection && !shareIsMeaningful) {
+            lines.push('');
+            lines.push(
+              `> ⚠️ **The app moved MORE than the total**: the app ` +
+                `${appDelta >= 0 ? 'grew' : 'shrank'} ${formatBytes(Math.abs(appDelta))} while the total only ` +
+                `${totalDelta >= 0 ? 'grew' : 'fell'} ${formatBytes(Math.abs(totalDelta))}, so another bucket ` +
+                `moved the opposite way and no share of the total is meaningful. Quote ` +
+                `**${signed(appDelta)}** and read the per-bucket table for what offset it.`,
+            );
+          }
           if (totalDelta !== 0 && !sameDirection) {
             lines.push('');
             lines.push(

@@ -11,6 +11,12 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
+import {
+  readRawElements,
+  describeElements,
+  getSlotBytes,
+  FORGIVEN_TAIL_SLOTS,
+} from '../heap-shapes.js';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {
   formatBytes,
@@ -248,9 +254,42 @@ export function registerObjectCostBreakdown(server: McpServer): void {
         let inSetCount = 0;
         let inArrayCount = 0;
 
+        // Elements backing stores. An integer-keyed object's bytes live on a
+        // `(object elements)` FixedArray that belongs to no class, so they are
+        // invisible to self_size, to a class histogram, and — until now — to
+        // this breakdown. On one capture that was 31.3 MB for a single class,
+        // 23.0 MB of it unused capacity.
+        const slotBytes = getSlotBytes(snapshot);
+        let elementsInstances = 0;
+        let elementsBytes = 0;
+        let elementsCapacity = 0;
+        let elementsUsed = 0;
+        let elementsWasteSlots = 0;
+        let elementsUnmeasurable = 0;
+        let elementsDictionary = 0;
+
         const sampled = instances.slice(0, sample_size);
         for (const node of sampled) {
           totalRetainedSize += node.retainedSize;
+
+          const raw = readRawElements(node);
+          const els = raw ? describeElements(raw, slotBytes) : null;
+          if (els) {
+            elementsInstances++;
+            elementsBytes += els.storeBytes;
+            if (els.mode === 'dictionary') {
+              elementsDictionary++;
+            } else if (!els.measurable) {
+              // All holes or all small integers — a snapshot cannot tell those
+              // apart, so counting it either way would be a guess.
+              elementsUnmeasurable++;
+            } else {
+              elementsCapacity += els.capacity;
+              elementsUsed += els.used;
+              elementsWasteSlots +=
+                els.holes + Math.max(0, els.slack - FORGIVEN_TAIL_SLOTS);
+            }
+          }
 
           let ownProps = 0;
           for (const edge of node.references) {
@@ -455,6 +494,29 @@ export function registerObjectCostBreakdown(server: McpServer): void {
           ]);
         }
 
+        if (elementsInstances > 0) {
+          const perInstanceElements = elementsBytes / count;
+          const wasteBytes = elementsWasteSlots * slotBytes;
+          const occupancy =
+            elementsCapacity > 0
+              ? `${Math.round((elementsUsed / elementsCapacity) * 100)}% full`
+              : 'occupancy not readable';
+          costRows.push([
+            'Elements store',
+            String(Math.round(perInstanceElements)),
+            `${elementsInstances}/${count} sampled instance(s) carry one — ${occupancy}` +
+              (wasteBytes > 0
+                ? `, ${formatBytes(wasteBytes / count)}/instance of it unused`
+                : '') +
+              (elementsUnmeasurable > 0
+                ? `; ${elementsUnmeasurable} unmeasurable (all-SMI or all-hole)`
+                : '') +
+              (elementsDictionary > 0
+                ? `; ${elementsDictionary} dictionary-mode`
+                : ''),
+          ]);
+        }
+
         costRows.push([
           '**Modeled per instance**',
           `**${Math.round(totalPerInstance)}**`,
@@ -560,6 +622,19 @@ export function registerObjectCostBreakdown(server: McpServer): void {
         if (instances.length > 10000) {
           lines.push(
             `- **Columnar layout:** For ${formatNumber(instances.length)} instances, consider struct-of-arrays instead of array-of-structs to eliminate per-object overhead.`,
+          );
+        }
+        if (
+          elementsCapacity > 0 &&
+          elementsUsed / elementsCapacity < 0.5 &&
+          elementsWasteSlots * slotBytes > 1024
+        ) {
+          lines.push(
+            `- **Sparse elements:** the elements stores are only ` +
+              `${Math.round((elementsUsed / elementsCapacity) * 100)}% full, wasting ` +
+              `${formatBytes(elementsWasteSlots * slotBytes)} across the sampled instances. ` +
+              `Run \`memlab_sparse_elements\` for the per-owner breakdown and whether the ` +
+              `cause is sparse keys or over-allocation — they need different fixes.`,
           );
         }
         if (collectionOverhead > V8_OBJECT_HEADER) {

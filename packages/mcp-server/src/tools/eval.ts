@@ -389,6 +389,118 @@ const RETENTION_IDENTIFIERS = [
   'filterLargestObjects',
 ];
 
+/**
+ * Words that make a bare `size` mean BYTES rather than a count of things.
+ *
+ * `size` on its own is ambiguous and mostly is not bytes: `sample_size`,
+ * `arraySize`, `queueSize`, `mapSize` and `chainSize` all count items, and any
+ * of them can legitimately exceed the heap's byte total on a small snapshot —
+ * which would publish a confident "exceeds the whole snapshot" warning about a
+ * field that was never measured in bytes. The warning below is only ever a
+ * warning, so missing one is cheap and crying wolf is not; `size` therefore
+ * needs corroboration from elsewhere in the key.
+ */
+const BYTE_CONTEXT_WORDS = new Set([
+  'alloc',
+  'allocated',
+  'byte',
+  'bytes',
+  'footprint',
+  'heap',
+  'mem',
+  'memory',
+  'retained',
+  'self',
+  'store',
+]);
+
+/**
+ * Scale factor for a key that names a byte quantity, or null if it names
+ * something else.
+ *
+ * The unit is read from the key's last WORD rather than from a suffix match.
+ * `mb`, `kb` and `gb` are two letters that also end ordinary English words, so
+ * a suffix test rescales `numb`, `dumb`, `thumb` and `climb` by 1024^n — enough
+ * to trip the implausibility warning below on a field holding no bytes at all.
+ * Splitting on `_` and camelCase boundaries makes `heap_mb` and `heapMB` units
+ * while leaving `dumb` a word.
+ */
+function byteUnitScale(key: string): number | null {
+  const words = key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map(w => w.toLowerCase());
+  switch (words[words.length - 1]) {
+    case 'gb':
+      return 1024 ** 3;
+    case 'mb':
+      return 1024 ** 2;
+    case 'kb':
+      return 1024;
+    case 'byte':
+    case 'bytes':
+      return 1;
+    case 'size':
+      // `retainedSize` and `self_size` are the fields this guard was written
+      // for; `arraySize` is not. See BYTE_CONTEXT_WORDS.
+      return words.some(w => BYTE_CONTEXT_WORDS.has(w)) ? 1 : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Flag a numeric field that claims more bytes than the whole heap contains.
+ *
+ * A total larger than the snapshot is not a rounding error, it is a
+ * double-count, and it is the easiest way for an eval to publish a confident
+ * wrong number. Measured case: a verification walk over 820 Map backing tables
+ * reported 7,005 MB of backing stores in a 425 MB heap — a Map's `table` yields
+ * KEYS as well as values, and the key objects were members of every one of the
+ * 820 tables, so each store was counted a few hundred times. It was caught only
+ * because 7 GB in a 425 MB heap is absurd; a 1.4x error would have shipped.
+ *
+ * A warning, never an error: summing `retainedSize` over an arbitrary set
+ * legitimately exceeds the heap (subtrees overlap), which is a real thing to
+ * measure — `helpers.aggregateRetained` exists for the deduplicated version.
+ */
+function implausibleByteFields(
+  value: unknown,
+  heapBytes: number,
+): Array<{path: string; bytes: number}> {
+  if (heapBytes <= 0) return [];
+  const hits: Array<{path: string; bytes: number}> = [];
+  const seen = new Set<unknown>();
+  const visit = (node: unknown, path: string, depth: number): void => {
+    if (hits.length >= 4 || depth > 6 || node == null) return;
+    if (typeof node === 'object') {
+      if (seen.has(node)) return;
+      seen.add(node);
+      if (Array.isArray(node)) {
+        // Only a bounded prefix: a 10k-row census would otherwise be walked in
+        // full to warn about at most four fields.
+        for (let i = 0; i < Math.min(node.length, 200); i++) {
+          visit(node[i], `${path}[${i}]`, depth + 1);
+        }
+        return;
+      }
+      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+        if (typeof v === 'number') {
+          const scale = byteUnitScale(k);
+          if (scale != null && v * scale > heapBytes) {
+            hits.push({path: path ? `${path}.${k}` : k, bytes: v * scale});
+          }
+        } else {
+          visit(v, path ? `${path}.${k}` : k, depth + 1);
+        }
+      }
+    }
+  };
+  visit(value, '', 0);
+  return hits;
+}
+
 export function registerEval(server: McpServer): void {
   server.tool(
     'memlab_eval',
@@ -451,7 +563,7 @@ export function registerEval(server: McpServer): void {
             'iterByClass(name, {type?, instancesOnly?})->nodes[] & iterByType(type)->nodes[] (INDEXED iteration — no full scan; instancesOnly defaults TRUE and drops the constructor closure, the `Foo (prototype)` object and `system/SharedFunctionInfo/Foo`, which otherwise come back as class members whose only "properties" are length/map and make a per-instance loop produce garbage), ' +
             'classCounts({pattern?, type?, minCount?})->[{name,type,count,selfSize}] (one-pass histogram, cached), ' +
             'entries(nodeOrId)->[{key,value}] (generic Map/Set/WeakMap/Array/object walk, holes filtered), ' +
-            'edgeTarget(nodeOrId, edgeName)->node|null, isRealDetached(node)->boolean (same filtering the tools apply internally), ' +
+            'edgeTarget(nodeOrId, edgeName)->node|null, walkChain(startOrNode, edgeName, {maxHops?, collectIds?})->{length, terminated:"cycle"|"end"|"cap", truncated} (USE THIS instead of a hand-written `while` over `.next` — a hand-rolled loop cannot tell a circular list from its own hop cap, and reports the cap as if it were the length), isRealDetached(node)->boolean (same filtering the tools apply internally), ' +
             'dominates(id, {population?, limit?})->{count,selfSize,ids,truncated}, ' +
             'remember(name, value)/recall(name?) (persist ACROSS sessions), ' +
             'sample(items, n) (deterministic, evenly spaced), ' +
@@ -1532,6 +1644,64 @@ export async function runEval({
       return null;
     };
 
+    // Walk a repeated linked structure and say HOW it ended.
+    //
+    // Hand-written versions of this loop are the single most reliable way to
+    // publish a wrong number from an eval. React's `queue.pending` is CIRCULAR,
+    // so `while (next && next.id !== start)` with a `hops < 800` guard reported
+    // `longestNextChain: 800` — the cap, presented as a measurement. The true
+    // length was 2,066, and nothing in the output distinguished "the list ended"
+    // from "I stopped counting". The discriminator is the point of this helper:
+    // `terminated: 'cap'` means the number is a floor, not a length.
+    const walkChain = (
+      startOrNode: unknown,
+      edgeName: string,
+      opts?: {maxHops?: number; collectIds?: boolean},
+    ): {
+      length: number;
+      terminated: 'cycle' | 'end' | 'cap';
+      truncated: boolean;
+      ids?: number[];
+    } => {
+      const maxHops = Math.max(1, opts?.maxHops ?? 100000);
+      const start =
+        typeof startOrNode === 'number'
+          ? snapshot.getNodeById(startOrNode)
+          : (unwrapNode(startOrNode) as IHeapNode | null);
+      if (start == null) {
+        throw new Error(`walkChain: start node not found`);
+      }
+      const seen = new Set<number>();
+      const ids: number[] = [];
+      let cur: IHeapNode | null = start;
+      let terminated: 'cycle' | 'end' | 'cap' = 'end';
+      while (cur != null) {
+        if (seen.has(cur.id)) {
+          terminated = 'cycle';
+          break;
+        }
+        if (seen.size >= maxHops) {
+          terminated = 'cap';
+          break;
+        }
+        seen.add(cur.id);
+        if (opts?.collectIds) ids.push(cur.id);
+        let nextNode: IHeapNode | null = null;
+        for (const e of cur.references) {
+          if (String(e.name_or_index) !== edgeName) continue;
+          nextNode = e.toNode.id > 3 ? e.toNode : null;
+          break;
+        }
+        cur = nextNode;
+      }
+      return {
+        length: seen.size,
+        terminated,
+        truncated: terminated === 'cap',
+        ...(opts?.collectIds ? {ids} : {}),
+      };
+    };
+
     // Generic container walk. `mapEntries` / `setElements` cover Map and
     // Set; WeakMap tables and plain arrays needed a manual `references`
     // walk with hole filtering every time.
@@ -1923,6 +2093,7 @@ export async function runEval({
       iterByType,
       classCounts,
       edgeTarget,
+      walkChain,
       derefPath,
       findWithin,
       entries,
@@ -2032,6 +2203,22 @@ export async function runEval({
     }
 
     const footer: string[] = [];
+    const heapBytes = getSnapshotMetadata()?.totalSize ?? 0;
+    const implausible = implausibleByteFields(sandbox.result, heapBytes);
+    if (implausible.length > 0) {
+      footer.push(
+        `⚠️ IMPLAUSIBLE TOTAL — ${implausible
+          .map(h => `\`${h.path}\` = ${formatBytes(h.bytes)}`)
+          .join(
+            ', ',
+          )} exceeds the whole snapshot (${formatBytes(heapBytes)}). ` +
+          'A byte total larger than the heap is a DOUBLE-COUNT, not a big number. The usual cause is walking a ' +
+          'Map/Set backing `table`, which yields KEYS as well as values and whose members are frequently shared ' +
+          'across many containers, so the same node is measured once per container. Deduplicate by node id ' +
+          '(`const seen = new Set()`) and re-run. If you meant to sum overlapping retained subtrees, use ' +
+          '`helpers.aggregateRetained(ids)` for the dominator-deduplicated figure.',
+      );
+    }
     // Attached to the RESULT of the call that hand-rolled a built-in, because
     // that is the one moment the caller is guaranteed to read. Never suppresses
     // or alters the value above it.
@@ -2304,6 +2491,7 @@ function describeEnv(): string {
     '- `helpers.derefPath(nodeOrId, "value._PSD.trans") -> {found, stoppedAt, missingEdge?, available?, node}` — walk a dotted edge path and, on failure, say WHICH hop failed and what was there instead. Use this instead of chaining edgeTarget: a null halfway looks identical to a null at the end, which is how a probe tests the wrong level and reports a confident zero.',
     '- `helpers.findWithin(nodeOrId, edgeName, {maxDepth}) -> [{path,id,name}]` — is this property anywhere within N hops, and at what path? Answers "which level is it on?" in one call.',
     '- `helpers.edgeTarget(nodeOrId, edgeName) -> node | null` — the node behind a named edge, when you need the node and not the `{ref,name,type}` wrapper `props()` returns.',
+    '- `helpers.walkChain(startOrNode, edgeName, {maxHops?, collectIds?}) -> {length, terminated: "cycle" | "end" | "cap", truncated}` — walk a linked structure (`.next` update queues, `.prev` closure chains, LRU lists) and report HOW it ended. Use this rather than a hand-written loop: React update queues are CIRCULAR, and a hand-rolled `while (next && next.id !== start)` with a hop guard reports the guard as the length. A measured case printed 800 for a chain of 2,066. `terminated: "cap"` means the length is a floor. For the full per-link report (what each link captures, distinct vs repeated) use the `memlab_chain_walk` tool.',
     '- `helpers.isRealDetached(node) -> boolean` — the oddball/root filtering the detached-DOM tools apply internally, so hand-written eval counts the same set they do.',
     '- `helpers.dominates(id, {population?, limit?}) -> {count, selfSize, ids, truncated}` — what this node actually owns (bounded 500-hop dominator walk). `population` is a predicate over nodes.',
     '- `helpers.owner(idOrNode, {maxHops?}) -> {id, name, type, hops, selfSize, named} | null` — nearest dominator carrying a class identity, skipping V8 containers (`Object`, `Array`, `system / …`, `(closure)`). Minified single-letter names are KEPT: in a production bundle they are the only identity there is — pair with `memlab_identify`. `named:false` means the walk found only containers and is reporting the furthest node reached.',

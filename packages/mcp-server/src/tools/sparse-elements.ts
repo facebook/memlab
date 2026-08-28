@@ -24,24 +24,14 @@ import {
 // one shape that is indistinguishable from an unbounded cache by size alone,
 // and a second copy of that heuristic would drift from the first.
 import {looksLikeRingBuffer} from './cache-analysis.js';
-
-/**
- * Bytes of the FixedArray header that precede the first slot. Same on a
- * pointer-compressed and an uncompressed heap (map + length), so only the slot
- * width has to be calibrated.
- */
-const STORE_HEADER_BYTES = 8;
-
-/**
- * V8 grows an elements backing store to `n + (n >> 1) + kMinAddedElementsCapacity`
- * with `kMinAddedElementsCapacity == 16`, so EVERY array that was built by
- * `push` carries up to 16 slots of tail slack no application change can remove.
- * Charging it as waste turns a one-element array into a "94% empty" finding and
- * buries the real ones, so it is forgiven per instance.
- *
- * https://github.com/v8/v8/blob/main/src/objects/js-objects.h — JSObject::kMinAddedElementsCapacity
- */
-const FORGIVEN_TAIL_SLOTS = 16;
+// The elements-store facts live in one module so cost_breakdown, this tool and
+// `helpers.elements` cannot disagree about the same object's capacity.
+import {
+  STORE_HEADER_BYTES,
+  FORGIVEN_TAIL_SLOTS,
+  readRawElements,
+  calibrateSlotBytes,
+} from '../heap-shapes.js';
 
 interface Group {
   key: string;
@@ -68,56 +58,6 @@ interface Group {
    * ring is still worth seeing — but never described as something to trim.
    */
   ring: boolean;
-}
-
-/**
- * Read a node's elements backing store plus the occupancy of that store.
- *
- * Occupancy has to be read from BOTH ends because V8's snapshot writer splits
- * it: a plain `Object` with integer keys emits an `element` edge per non-hole
- * slot on the owner (SMI values included, pointing at a shared `smi number`
- * node), while a `JSArray` frequently emits nothing on the owner and instead
- * emits `internal` numeric edges on the store — but only for slots holding a
- * heap object, so an all-SMI array looks empty from there. Neither side alone
- * is the occupancy; the owner's set is a superset of the store's whenever both
- * are non-empty, so the max is exact in every shape observed.
- *
- * When both are zero the occupancy is genuinely UNKNOWABLE from the snapshot
- * (an array of 34 timestamps and a `new Array(34)` of holes are byte-identical
- * here). Those are reported as a separate unmeasurable count rather than as
- * 100%-wasted findings — an earlier revision of this scan ranked 4,301
- * all-SMI `Trie._indices` arrays as its second-largest finding.
- */
-function readElements(
-  node: IHeapNode,
-): {store: IHeapNode; used: number; maxIndex: number} | null {
-  let store: IHeapNode | null = null;
-  let ownerSlots = 0;
-  let maxIndex = -1;
-  for (const edge of node.references) {
-    if (edge.type === 'element') {
-      ownerSlots++;
-      const index = Number(edge.name_or_index);
-      if (index > maxIndex) maxIndex = index;
-    } else if (
-      edge.type === 'internal' &&
-      String(edge.name_or_index) === 'elements'
-    ) {
-      store = edge.toNode;
-    }
-  }
-  if (!store) return null;
-  let storeSlots = 0;
-  for (const edge of store.references) {
-    const name = String(edge.name_or_index);
-    // Numeric edge names on the store are slot indices; `map` and friends are
-    // header fields, not contents.
-    if (!/^\d+$/.test(name)) continue;
-    storeSlots++;
-    const index = Number(name);
-    if (index > maxIndex) maxIndex = index;
-  }
-  return {store, used: Math.max(ownerSlots, storeSlots), maxIndex};
 }
 
 /**
@@ -270,7 +210,7 @@ export function registerSparseElements(server: McpServer): void {
           ) {
             return;
           }
-          const read = readElements(node);
+          const read = readRawElements(node);
           if (!read) return;
           const storeBytes = read.store.self_size;
           if (storeBytes <= STORE_HEADER_BYTES) return;
@@ -282,25 +222,11 @@ export function registerSparseElements(server: McpServer): void {
           });
         });
 
-        // Slot width: 4 bytes under pointer compression (every browser heap,
-        // and Node below the 4 GB cage), 8 otherwise. Getting it wrong by 2x
-        // either invents slack that does not exist or classifies every dense
-        // store as a dictionary, so it is measured rather than assumed. A store
-        // whose largest written index fits in `(size - 8) / 4` slots but NOT in
-        // `(size - 8) / 8` can only be 4-byte-slotted; dictionary-mode stores
-        // overflow both, so they cannot fake the signal.
-        let onlyAt4 = 0;
-        for (const raw of raws) {
-          const slots = raw.maxIndex + 1;
-          if (slots <= 0) continue;
-          const at8 = (raw.storeBytes - STORE_HEADER_BYTES) / 8;
-          const at4 = (raw.storeBytes - STORE_HEADER_BYTES) / 4;
-          if (slots > at8 && slots <= at4) onlyAt4++;
-        }
-        // Default to 4: every browser capture is pointer-compressed, and a heap
-        // with too few dense stores to calibrate from is also one where the
-        // difference cannot change any ranking.
-        const slotBytes = onlyAt4 > 0 ? 4 : 8;
+        // Slot width is measured, not assumed — see heap-shapes.ts for why and
+        // how. Calibrating from the raws already collected costs nothing extra.
+        const slotBytes = calibrateSlotBytes(
+          raws.map(r => ({storeBytes: r.storeBytes, maxIndex: r.maxIndex})),
+        );
 
         const groups = new Map<string, Group>();
         let unmeasurable = 0;

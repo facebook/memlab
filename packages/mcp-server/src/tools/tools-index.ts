@@ -39,6 +39,18 @@ const GROUPS: Group[] = [
     question: 'What is this heap actually made of?',
     tools: [
       [
+        'memlab_script_census',
+        'How much of the heap is retained JS SOURCE TEXT — and whether the same bundle is retained twice.',
+      ],
+      [
+        'memlab_property_names',
+        'Which property names exist at all; the cheapest way to confirm a field is present before probing for it.',
+      ],
+      [
+        'memlab_async_census',
+        'Pending async work: scheduler task queues (live vs cancelled), timer closures, unsettled Promises.',
+      ],
+      [
         'memlab_app_heap',
         'START HERE on an unfamiliar app: splits the heap into application data vs bundle source vs V8 machinery. On one app this showed ~55% of the heap was JS bundle source, which reframed every number that followed.',
       ],
@@ -105,6 +117,14 @@ const GROUPS: Group[] = [
     question: 'Is anything growing — and is it a leak?',
     tools: [
       [
+        'memlab_ladder_probe',
+        'ONE numeric probe across an ordered ladder, with the per-cycle rate and a linear fit — the cheapest way to test a metric, since each rung loads once for all probes.',
+      ],
+      [
+        'memlab_census_diff',
+        'Detached-DOM and listener census at TWO rungs, diffed per class and per callback in one call.',
+      ],
+      [
         'memlab_leak_report',
         'The ladder verdict: per-class growth across an ordered set of snapshots.',
       ],
@@ -138,7 +158,7 @@ const GROUPS: Group[] = [
       ],
       [
         'memlab_verify_fix',
-        'Did the fix work? Compares per-cycle growth RATES between a before ladder and an after ladder.',
+        'Did the fix work? Compares per-cycle growth RATES between a before ladder and an after ladder — from two sets of snapshot FILES, so no runtime gate is needed and an ungated or build-only fix is verified the same way.',
       ],
       [
         'memlab_ladder',
@@ -149,6 +169,18 @@ const GROUPS: Group[] = [
   {
     question: 'Who owns the growth / why is X retained?',
     tools: [
+      [
+        'memlab_population_vs_owners',
+        'STRUCTURAL or ACCUMULATING? One record per live owner is a baseline; many records per owner is a leak.',
+      ],
+      [
+        'memlab_chain_walk',
+        'Walk a repeated linked structure (`.next` update queues, `.prev` closure chains, LRU lists) and report how deep it goes — use this instead of a hand-written loop, which cannot tell a cycle from a hop cap.',
+      ],
+      [
+        'memlab_module_attribution',
+        'Attribute bytes to the MODULE that owns them, by walking dominators up to the nearest module-registry export.',
+      ],
       [
         'memlab_explain_delta',
         'WHERE a heap grew, attributed to the object that owns the new bytes rather than to what they are.',
@@ -183,6 +215,14 @@ const GROUPS: Group[] = [
     question: 'Is it real, or a measurement artifact?',
     tools: [
       [
+        'memlab_artifact_budget',
+        'ONE number for how much of the heap is not the application — and, with a baseline, how much of the GROWTH was the app. `app_delta` is the number that should lead a report.',
+      ],
+      [
+        'memlab_replicate',
+        'Does the effect REPRODUCE across independently-driven runs? Refuses to call it real until it does — the guard against filing a one-off.',
+      ],
+      [
         'memlab_dev_artifacts',
         'Memory retained ONLY by dev/automation roots — DevTools, extensions, React Fast Refresh, the a11y cache. Run before calling anything a production leak.',
       ],
@@ -200,6 +240,10 @@ const GROUPS: Group[] = [
     question: 'Detached DOM and event listeners',
     tools: [
       [
+        'memlab_dom_audit',
+        'Budget the ATTACHED DOM and rank surfaces worth virtualizing. An OPTIMIZATION tool — these elements are correctly retained, there are simply too many.',
+      ],
+      [
         'memlab_detached_dom',
         'Detached nodes, with a pinned-vs-GC-eligible split; `group_by:"dominator"` groups by what a fix would actually free.',
       ],
@@ -210,6 +254,14 @@ const GROUPS: Group[] = [
   {
     question: 'Collections and caches',
     tools: [
+      [
+        'memlab_collection_diff',
+        'WHICH collections grew across a ladder, without being told their names — censuses every Map/Set/Array and keys each by a stable `<Owner>.<property>` signature.',
+      ],
+      [
+        'memlab_weakref_census',
+        'Every WeakRef, split LIVE vs EMPTY, grouped by the shape of the holder.',
+      ],
       [
         'memlab_cache_analysis',
         'Unbounded or oversized caches in one snapshot.',
@@ -312,6 +364,10 @@ const GROUPS: Group[] = [
   {
     question: 'Session, batching and write-ups',
     tools: [
+      [
+        'memlab_round_audit',
+        'Read a round’s run.json BEFORE analysing it, so a broken bring-up is caught before its numbers travel into a write-up.',
+      ],
       [
         'memlab_load_snapshot',
         'Load a local path, a manifold:// URL, or a bare Nest filename.',

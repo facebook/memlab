@@ -828,6 +828,59 @@ export function instrumentationRetainerNote(
   return null;
 }
 
+/**
+ * V8 emits a WeakMap entry as one synthetic edge on the backing table:
+ *
+ *   `26 / part of key (Foo @644221) -> value (Bar @644219) pair in WeakMap (table @3212981)`
+ *
+ * A retainer path that ENDS on such an edge proves nothing. The WeakMap holds
+ * the value only for as long as something else holds the KEY, and V8 collects
+ * value→key cycles, so "retained by a WeakMap" is not a reason an object is
+ * alive — the reason is whatever retains the key. Acting on the path as printed
+ * produces a fix for a leak that is not there.
+ */
+const EPHEMERON_EDGE_RE =
+  /part of key \(([^@()]*)@(\d+)\)\s*->\s*value \(([^@()]*)@(\d+)\) pair in WeakMap/;
+
+export interface EphemeronEdge {
+  keyName: string;
+  keyId: number;
+  valueName: string;
+  valueId: number;
+}
+
+/** Parse a WeakMap ephemeron edge name, or `null` if it is an ordinary edge. */
+export function parseEphemeronEdge(
+  edgeName: string | undefined | null,
+): EphemeronEdge | null {
+  if (edgeName == null) return null;
+  const m = EPHEMERON_EDGE_RE.exec(edgeName);
+  if (!m) return null;
+  return {
+    keyName: m[1].trim(),
+    keyId: Number(m[2]),
+    valueName: m[3].trim(),
+    valueId: Number(m[4]),
+  };
+}
+
+/**
+ * The caveat to print when a path traverses an ephemeron edge. `atTarget` marks
+ * the case where it is the LAST hop, which is the one that invalidates the
+ * conclusion outright rather than merely complicating it.
+ */
+export function ephemeronCaveat(eph: EphemeronEdge, atTarget: boolean): string {
+  return (
+    `⚠ **This path crosses a WeakMap key→value pair${atTarget ? ' as its FINAL hop' : ''}, so it does not explain retention.** ` +
+    `A WeakMap holds \`${eph.valueName || 'the value'}\` only while something else holds the KEY ` +
+    `\`${eph.keyName || 'key'}\` @${eph.keyId}, and V8 collects value→key cycles — so "retained by a WeakMap" is never the reason an object is alive. ` +
+    `Re-trace from the key to find the real retainer: \`memlab_retainer_trace({node_id: ${eph.keyId}})\`.` +
+    (atTarget
+      ? ' Until you do, treat this object as UNEXPLAINED, not as a confirmed leak.'
+      : '')
+  );
+}
+
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return 'N/A';
   if (bytes < 1024) return `${bytes} B`;

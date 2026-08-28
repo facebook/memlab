@@ -137,6 +137,7 @@ export function registerVerifyFix(server: McpServer): void {
   server.tool(
     'memlab_verify_fix',
     'Decide whether a fix actually worked, by comparing the per-cycle growth RATE of one metric between a before ladder and an after ladder. hunt_runner --ab drives both arms but nothing analyses them, which is why fix write-ups stall at "A/B pending". ' +
+      'NO RUNTIME GATE IS REQUIRED: the two arms are two sets of snapshot files passed as `before_paths` and `after_paths`, so a fix that cannot be put behind a flag — a build-only change, a local patch, a reverted commit — is verified exactly the same way. One session concluded this tool was unusable for an ungated fix and skipped A/B entirely; it is not. ' +
       'Metrics: "collection_length" (entries under "<OwnerClass>.<property>"), "class_count" (instances of a class), "pending_chain" (total length of the linked lists hanging off "<OwnerClass>.<property>", following `next` — the React update-queue shape). ' +
       'Compares RATES, not levels: a build difference, a warmer cache or a longer session all shift the absolute level, and only the slope per interaction says whether the thing still accumulates. Each arm therefore needs at least 2 rungs — a single snapshot per arm is refused rather than compared, because that comparison is confounded. ' +
       'Returns both series, both rates, the reduction, and a PASS/FAIL against expected_reduction. Loads rungs transiently in LIGHT mode, one graph at a time.',

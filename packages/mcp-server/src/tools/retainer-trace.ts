@@ -21,6 +21,8 @@ import {
   instrumentationRetainerNote,
   errorResult,
   toolResult,
+  parseEphemeronEdge,
+  ephemeronCaveat,
 } from '../utils.js';
 import type {RetainerTreeStep} from '../utils.js';
 
@@ -266,6 +268,16 @@ export function registerRetainerTrace(server: McpServer): void {
         );
         if (instrNote) {
           lines.push(`⚠ ${instrNote}`, '');
+        }
+
+        // A hop through a WeakMap key→value pair does not explain retention.
+        // Checked from the TARGET end backwards, because the last hop is the
+        // one that invalidates the conclusion outright.
+        for (let i = reverseItems.length - 1; i >= 0; i--) {
+          const eph = parseEphemeronEdge(reverseItems[i].edgeName);
+          if (!eph) continue;
+          lines.push(ephemeronCaveat(eph, i === reverseItems.length - 1), '');
+          break;
         }
 
         if (show_sizes) {
