@@ -62,40 +62,94 @@ function resolveManifestPath(input: string): string | null {
 }
 
 /**
- * Rows of `<metric>: <rate> (r2)` lifted out of an analysis text file.
+ * The verdict rows of an analysis file.
  *
- * The analysis files are markdown written for a human; this reads only the
- * lines that carry a verdict. Tolerant by design — a line it cannot parse is
- * skipped rather than guessed at, and the count of skipped lines is reported so
- * "the digest found nothing" is never mistaken for "the round found nothing".
+ * `memlab_analyze_run` writes markdown for a human, and the shape that carries
+ * the verdict is its per-class trend table:
+ *
+ *   | Class | Type | Δ count | Δ/cycle | Δ size | Adjudication |
+ *
+ * Parsed structurally — split on `|`, then find the column that holds an
+ * adjudication — rather than by one big regex over the whole row. The first
+ * version of this WAS one big regex, written against a hand-made example
+ * rather than real output, and it matched nothing at all on the first genuine
+ * analysis file: 48 table lines skipped, zero rows. It failed safe (it said so)
+ * but it was useless, which is the same thing from the caller's side.
  */
 interface MetricRow {
   metric: string;
+  delta: string;
   rate: string;
-  fit: string;
+  size: string;
   verdict: string;
 }
 
-const RATE_LINE =
-  /^\s*\|\s*`?([A-Za-z0-9_.$<> -]+?)`?\s*\|\s*([+\-0-9.,]+(?:\s*\/\s*cycle)?)\s*\|\s*(r²?\s*=?\s*[0-9.]+|—|-)\s*\|\s*([A-Z_ ]+)\s*\|/;
+/** Words `analyze_run` uses in an adjudication cell. */
+const VERDICT_RE =
+  /LEAK CANDIDATE|LEAK|STEP FUNCTION|LINEAR|FLAT|ARTIFACT|NOISE|SHRANK|BOUNDED|NOT A LEAK|CANDIDATE|↑|↓/i;
+
+/** Split a markdown row into trimmed cells, dropping the empty outer pair. */
+function cells(line: string): string[] {
+  const parts = line.split('|').map(c => c.trim());
+  if (parts.length > 0 && parts[0] === '') parts.shift();
+  if (parts.length > 0 && parts[parts.length - 1] === '') parts.pop();
+  return parts;
+}
 
 function parseAnalysis(text: string): {rows: MetricRow[]; skipped: number} {
   const rows: MetricRow[] = [];
   let skipped = 0;
+  let header: string[] | null = null;
+  let verdictCol = -1;
+
   for (const line of text.split('\n')) {
-    if (!line.trimStart().startsWith('|')) continue;
-    if (/^\s*\|\s*[-: ]+\|/.test(line)) continue; // separator
-    const m = RATE_LINE.exec(line);
-    if (m) {
-      rows.push({
-        metric: m[1].trim(),
-        rate: m[2].trim(),
-        fit: m[3].trim(),
-        verdict: m[4].trim(),
-      });
-    } else {
-      skipped++;
+    const trimmed = line.trimStart();
+    if (!trimmed.startsWith('|')) {
+      // A blank line or prose ends the current table, so a header cannot leak
+      // into the next one.
+      if (trimmed === '') {
+        header = null;
+        verdictCol = -1;
+      }
+      continue;
     }
+    if (/^\s*\|[\s:|-]+\|?\s*$/.test(line)) continue; // separator
+    const cs = cells(line);
+    if (cs.length < 2) continue;
+
+    if (header == null) {
+      header = cs.map(c => c.toLowerCase());
+      verdictCol = header.findIndex(
+        h => h.includes('adjudication') || h.includes('verdict'),
+      );
+      continue;
+    }
+    if (verdictCol < 0 || verdictCol >= cs.length) {
+      // A table with no verdict column (the ladder, the owner breakdown) is
+      // not a failure to parse — it simply is not what this reads.
+      continue;
+    }
+    const verdict = cs[verdictCol];
+    if (!VERDICT_RE.test(verdict)) {
+      skipped++;
+      continue;
+    }
+    // Column names vary between analysis sections; find each by heading rather
+    // than by position, and leave a cell blank when the table does not have it.
+    const at = (...names: string[]): string => {
+      for (const n of names) {
+        const i = header?.findIndex(h => h.includes(n)) ?? -1;
+        if (i >= 0 && i < cs.length) return cs[i];
+      }
+      return '';
+    };
+    rows.push({
+      metric: cs[0].replace(/^`|`$/g, ''),
+      delta: at('δ count', 'count', 'delta'),
+      rate: at('δ/cycle', '/cycle', 'rate'),
+      size: at('δ size', 'size'),
+      verdict,
+    });
   }
   return {rows, skipped};
 }
@@ -210,11 +264,11 @@ export function registerRoundDigest(server: McpServer): void {
             }
             lines.push(
               markdownTable(
-                ['Metric', 'Rate', 'Fit', 'Verdict'],
+                ['Metric', 'Δ count', 'Δ/cycle', 'Δ size', 'Verdict'],
                 rows
                   .slice(0, max_metrics)
-                  .map(r => [r.metric, r.rate, r.fit, r.verdict]),
-                new Set([1, 2]),
+                  .map(r => [r.metric, r.delta, r.rate, r.size, r.verdict]),
+                new Set([1, 2, 3]),
               ),
               '',
             );
