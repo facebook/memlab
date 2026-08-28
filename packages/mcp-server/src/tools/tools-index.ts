@@ -141,6 +141,10 @@ const GROUPS: Group[] = [
         'Whether two snapshots hold the same POPULATION or just the same count — equal totals are not identity.',
       ],
       [
+        'memlab_react_update_queues',
+        'The React eager-bailout family in one call: queue BREADTH vs chain LENGTH vs owning component. The breadth/length split is what separates a leak from "more hooks mounted".',
+      ],
+      [
         'memlab_settle_check',
         'Backlog or leak? Compares a busy rung against one captured after idle + GC — growth that comes back was work in flight.',
       ],
@@ -169,6 +173,10 @@ const GROUPS: Group[] = [
   {
     question: 'Who owns the growth / why is X retained?',
     tools: [
+      [
+        'memlab_react_owners',
+        'Name the React COMPONENT behind a population of plain `Object`s. Fibers and hooks are all `Object` in a production bundle, so every class-name heuristic — including `helpers.owner` — walks past them.',
+      ],
       [
         'memlab_population_vs_owners',
         'STRUCTURAL or ACCUMULATING? One record per live owner is a baseline; many records per owner is a leak.',
@@ -269,6 +277,10 @@ const GROUPS: Group[] = [
       [
         'memlab_sparse_elements',
         'Integer-keyed objects and arrays whose elements backing store is mostly holes — waste charged to no class, so a histogram cannot see it.',
+      ],
+      [
+        'memlab_id_space_audit',
+        'Separate integer-keyed structures indexed by the SAME sparse id space — several small sparse findings that are really one re-keying fix.',
       ],
       [
         'memlab_stale_collections',

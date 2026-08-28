@@ -117,6 +117,9 @@ import {registerRoundAudit} from './tools/round-audit.js';
 import {registerDomAudit} from './tools/dom-audit.js';
 import {registerSparseElements} from './tools/sparse-elements.js';
 import {registerRoundDigest} from './tools/round-digest.js';
+import {registerReactOwners} from './tools/react-owners.js';
+import {registerReactUpdateQueues} from './tools/react-update-queues.js';
+import {registerIdSpaceAudit} from './tools/id-space-audit.js';
 import {SERVER_VERSION} from './server-version.js';
 
 const server = new McpServer({
@@ -227,6 +230,9 @@ registerRoundAudit(server);
 registerDomAudit(server);
 registerSparseElements(server);
 registerRoundDigest(server);
+registerReactOwners(server);
+registerReactUpdateQueues(server);
+registerIdSpaceAudit(server);
 
 async function main() {
   const transport = new StdioServerTransport();
