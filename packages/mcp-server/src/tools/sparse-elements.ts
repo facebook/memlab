@@ -9,9 +9,8 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
-import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
-import {getSnapshot} from '../heap-state.js';
+import {getSnapshot, shouldEmitNote} from '../heap-state.js';
 import {
   errorResult,
   toolResult,
@@ -30,8 +29,7 @@ import {looksLikeRingBuffer} from './cache-analysis.js';
 import {
   STORE_HEADER_BYTES,
   FORGIVEN_TAIL_SLOTS,
-  readRawElements,
-  calibrateSlotBytes,
+  getElementsIndex,
 } from '../heap-shapes.js';
 
 interface Group {
@@ -122,41 +120,11 @@ export function registerSparseElements(server: McpServer): void {
       try {
         const snapshot = getSnapshot();
 
-        // Pass 1: collect every node that owns an elements store, recording the
-        // raw store size so the slot width can be calibrated before any
-        // capacity is derived from it.
-        interface Raw {
-          node: IHeapNode;
-          storeBytes: number;
-          used: number;
-          maxIndex: number;
-        }
-        const raws: Raw[] = [];
-        snapshot.nodes.forEach(node => {
-          if (
-            node.type !== 'object' &&
-            node.type !== 'array' &&
-            node.type !== 'hidden'
-          ) {
-            return;
-          }
-          const read = readRawElements(node);
-          if (!read) return;
-          const storeBytes = read.store.self_size;
-          if (storeBytes <= STORE_HEADER_BYTES) return;
-          raws.push({
-            node,
-            storeBytes,
-            used: read.used,
-            maxIndex: read.maxIndex,
-          });
-        });
-
-        // Slot width is measured, not assumed — see heap-shapes.ts for why and
-        // how. Calibrating from the raws already collected costs nothing extra.
-        const slotBytes = calibrateSlotBytes(
-          raws.map(r => ({storeBytes: r.storeBytes, maxIndex: r.maxIndex})),
-        );
+        // The structural pass is memoized per snapshot (see heap-shapes.ts):
+        // repeated calls while tuning min_capacity / max_occupancy — the normal
+        // way this tool is used — cost one full walk, not one per call.
+        const index = getElementsIndex(snapshot);
+        const slotBytes = index.slotBytes;
 
         const groups = new Map<string, Group>();
         let unmeasurable = 0;
@@ -164,11 +132,13 @@ export function registerSparseElements(server: McpServer): void {
         let dictionaries = 0;
         let examined = 0;
 
-        for (const raw of raws) {
+        for (let i = 0; i < index.count; i++) {
+          const storeBytes = index.storeBytes[i];
+          const rawUsed = index.used[i];
           const capacity = Math.floor(
-            (raw.storeBytes - STORE_HEADER_BYTES) / slotBytes,
+            (storeBytes - STORE_HEADER_BYTES) / slotBytes,
           );
-          const span = raw.maxIndex + 1;
+          const span = index.maxIndex[i] + 1;
           if (span > capacity) {
             // Keys reach past the dense capacity: this is a NumberDictionary,
             // where a hole costs nothing and "waste" is not defined.
@@ -177,43 +147,47 @@ export function registerSparseElements(server: McpServer): void {
           }
           if (capacity < min_capacity) continue;
           examined++;
-          if (raw.used === 0) {
+          if (rawUsed === 0) {
             unmeasurable++;
-            unmeasurableBytes += raw.storeBytes;
+            unmeasurableBytes += storeBytes;
             continue;
           }
-          if (raw.used / capacity > max_occupancy) continue;
+          if (rawUsed / capacity > max_occupancy) continue;
 
-          const holeSlots = span - raw.used;
+          const holeSlots = span - rawUsed;
           const slackSlots = Math.max(0, capacity - span - FORGIVEN_TAIL_SLOTS);
           if (holeSlots + slackSlots === 0) continue;
 
-          const attributed = nearestNamedOwner(raw.node, {maxHops: max_hops});
+          // Resolving the node is deferred to here on purpose: attribution is
+          // the expensive part and only the survivors of the filters need it.
+          const node = snapshot.getNodeById(index.ownerIds[i]);
+          if (node == null) continue;
+          const attributed = nearestNamedOwner(node, {maxHops: max_hops});
           const key = attributed
             ? attributed.label
-            : `(unattributed) ${raw.node.name}`;
+            : `(unattributed) ${node.name}`;
           let group = groups.get(key);
           if (!group) {
             group = {
               key,
-              className: raw.node.name,
+              className: node.name,
               count: 0,
               capacity: 0,
               used: 0,
               holeSlots: 0,
               slackSlots: 0,
-              exampleId: raw.node.id,
+              exampleId: node.id,
               exampleCapacity: capacity,
-              exampleUsed: raw.used,
+              exampleUsed: rawUsed,
               exampleSpan: span,
               ring: looksLikeRingBuffer(attributed?.ownerNode ?? null),
             };
             groups.set(key, group);
           }
-          if (group.className !== raw.node.name) group.className = 'mixed';
+          if (group.className !== node.name) group.className = 'mixed';
           group.count++;
           group.capacity += capacity;
-          group.used += raw.used;
+          group.used += rawUsed;
           group.holeSlots += holeSlots;
           group.slackSlots += slackSlots;
           // Keep the worst instance as the example so a follow-up trace lands
@@ -227,9 +201,9 @@ export function registerSparseElements(server: McpServer): void {
               group.exampleCapacity - group.exampleSpan - FORGIVEN_TAIL_SLOTS,
             );
           if (waste > exampleWaste) {
-            group.exampleId = raw.node.id;
+            group.exampleId = node.id;
             group.exampleCapacity = capacity;
-            group.exampleUsed = raw.used;
+            group.exampleUsed = rawUsed;
             group.exampleSpan = span;
           }
         }
@@ -245,7 +219,7 @@ export function registerSparseElements(server: McpServer): void {
         const lines: string[] = [
           '## Sparse elements backing stores',
           '',
-          `Scanned ${formatNumber(raws.length)} objects with an elements store; ${formatNumber(examined)} were dense and at least ${formatNumber(min_capacity)} slots. Slot width calibrated to **${slotBytes} bytes** (${slotBytes === 4 ? 'pointer-compressed' : 'uncompressed'} heap).`,
+          `Scanned ${formatNumber(index.count)} objects with an elements store; ${formatNumber(examined)} were dense and at least ${formatNumber(min_capacity)} slots. Slot width calibrated to **${slotBytes} bytes** (${slotBytes === 4 ? 'pointer-compressed' : 'uncompressed'} heap).`,
           '',
         ];
 
@@ -289,14 +263,30 @@ export function registerSparseElements(server: McpServer): void {
           }
         }
 
+        // The per-call NUMBERS stay; the standing EXPLANATION of what
+        // "unmeasurable" and "dictionary-mode" mean is the same paragraph every
+        // call and is a third of this tool's output. Printed in full once per
+        // session, then pointed at (memlab_snapshots({repeat_notes:true})
+        // brings it back).
+        const longCaveats = shouldEmitNote('sparse-elements:caveats');
         lines.push(
           '',
           '### Coverage and caveats',
           '',
-          `- ${formatNumber(unmeasurable)} store(s) holding ${formatBytes(unmeasurableBytes)} were skipped as UNMEASURABLE: a slot holding a small integer emits no edge a snapshot can see, so an array of numbers and an array of holes are indistinguishable. Anything storing only numbers is therefore invisible to this tool — not absent from it.`,
-          `- ${formatNumber(dictionaries)} store(s) were dictionary-mode (keys past the dense capacity), where holes cost nothing and are correctly not reported.`,
-          `- Occupancy is a LOWER bound and waste an UPPER bound for the same reason: a store mixing numbers and objects reads as emptier than it is.`,
-          `- Up to ${formatNumber(FORGIVEN_TAIL_SLOTS)} tail slots per instance are forgiven — that is V8’s minimum growth increment, not something the application can give back.`,
+          longCaveats
+            ? `- ${formatNumber(unmeasurable)} store(s) holding ${formatBytes(unmeasurableBytes)} were skipped as UNMEASURABLE: a slot holding a small integer emits no edge a snapshot can see, so an array of numbers and an array of holes are indistinguishable. Anything storing only numbers is therefore invisible to this tool — not absent from it.`
+            : `- UNMEASURABLE (all-SMI or all-hole): ${formatNumber(unmeasurable)} store(s), ${formatBytes(unmeasurableBytes)}.`,
+          longCaveats
+            ? `- ${formatNumber(dictionaries)} store(s) were dictionary-mode (keys past the dense capacity), where holes cost nothing and are correctly not reported.`
+            : `- Dictionary-mode (excluded): ${formatNumber(dictionaries)} store(s).`,
+          ...(longCaveats
+            ? [
+                `- Occupancy is a LOWER bound and waste an UPPER bound for the same reason: a store mixing numbers and objects reads as emptier than it is.`,
+                `- Up to ${formatNumber(FORGIVEN_TAIL_SLOTS)} tail slots per instance are forgiven — that is V8’s minimum growth increment, not something the application can give back.`,
+              ]
+            : [
+                `- Occupancy is a lower bound; ${formatNumber(FORGIVEN_TAIL_SLOTS)} tail slots per instance are forgiven. _(Full explanation printed once per session — memlab_snapshots({repeat_notes: true}) to see it again.)_`,
+              ]),
         );
 
         if (!suggestionsSuppressed() && shown.length > 0) {

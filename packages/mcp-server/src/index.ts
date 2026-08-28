@@ -116,6 +116,7 @@ import {registerReplicate} from './tools/replicate.js';
 import {registerRoundAudit} from './tools/round-audit.js';
 import {registerDomAudit} from './tools/dom-audit.js';
 import {registerSparseElements} from './tools/sparse-elements.js';
+import {registerRoundDigest} from './tools/round-digest.js';
 import {SERVER_VERSION} from './server-version.js';
 
 const server = new McpServer({
@@ -225,6 +226,7 @@ registerReplicate(server);
 registerRoundAudit(server);
 registerDomAudit(server);
 registerSparseElements(server);
+registerRoundDigest(server);
 
 async function main() {
   const transport = new StdioServerTransport();

@@ -895,6 +895,15 @@ export function registerLoadSnapshot(server: McpServer): void {
           `parsing ${formatBytes(fileStat.size)} — this phase is synchronous and emits no further updates until it completes`,
         );
 
+        // Baseline for the predicted-vs-actual calibration below, taken HERE
+        // rather than before the eviction loop. Evictions FREE memory while the
+        // load consumes it, so a baseline captured ahead of them measures the
+        // net of the two: the reported "actually consumed" understates the load
+        // by whatever was shed, and a correct estimate lands in the `< 0.5`
+        // branch that calls the guard over-conservative — the opposite of what
+        // this calibration point is for.
+        const headroomBeforeMB = getHeapHeadroomMB();
+
         let snapshot;
         try {
           if (light) {
@@ -986,7 +995,7 @@ export function registerLoadSnapshot(server: McpServer): void {
         const lines: string[] = [];
         if (previousMeta && !keep_previous) {
           lines.push(
-            `⚠ Replacing previously loaded snapshot "${previousMeta.fileName}"`,
+            `⚠ Replacing previously loaded snapshot "${previousMeta.fileName}" — pass \`keep_previous: true\` to hold BOTH resident and diff them (memlab_diff_snapshots, memlab_explain_delta, memlab_identity_diff, memlab_population_diff all need two). An A/B that evicts its own baseline pays for a second full load of it.`,
           );
         }
         if (fetchedFrom) {
@@ -1014,6 +1023,37 @@ export function registerLoadSnapshot(server: McpServer): void {
           lines.push(
             `Memory: ~${formatNumber(headroomAfterMB)} MB of the ~${formatNumber(limitMB)} MB old-space limit still free after this load.`,
           );
+          // Report PREDICTED vs ACTUAL. The ceilings and the file-size floor are
+          // all sized off `estimateLoadHeapMB`, so when it is wrong a loadable
+          // capture gets refused and the caller reaches for `force` — but it is
+          // fitted to a single measurement and nothing since has checked it.
+          // Every load is a free calibration point; recalibrating the constants
+          // on guesswork would be the wrong way to fix a safety guard.
+          if (
+            estimateMB != null &&
+            headroomBeforeMB != null &&
+            estimateMB > 0
+          ) {
+            // A headroom delta is a LOWER BOUND on what the load cost, not a
+            // peak: a major GC during the parse returns transient allocation
+            // before the second reading, and the guard is sized against peak.
+            // Taking the baseline after any evictions removes the one bias that
+            // could be removed; this one cannot be, without sampling the parse,
+            // and the parse is a single uninterruptible block. So the low side
+            // is reported as "at least", and only the HIGH side — the dangerous
+            // direction, which GC cannot manufacture — is stated as a fact.
+            const atLeastMB = Math.max(0, headroomBeforeMB - headroomAfterMB);
+            const ratio = atLeastMB / estimateMB;
+            if (atLeastMB > 0 && (ratio > 1.5 || ratio < 0.5)) {
+              lines.push(
+                `_Load-cost model: predicted ~${formatNumber(estimateMB)} MB, measured at least ~${formatNumber(atLeastMB)} MB (${ratio.toFixed(1)}x). ` +
+                  (ratio < 0.5
+                    ? 'That is a floor, not a peak — a GC during the parse hides transient allocation — so read it as "the guard MAY be over-conservative for this shape of graph", and confirm across a few loads before retuning.'
+                    : 'The guard UNDER-estimated this load, which is the dangerous direction — and since this figure is a floor, the real cost was at least this much. Treat the remaining headroom as smaller than it looks.') +
+                  ' `LOAD_BYTES_PER_NODE` / `LOAD_BYTES_PER_EDGE` in load-snapshot.ts are where this is fitted._',
+              );
+            }
+          }
         }
         const captured = extractCaptureTime(fileName);
         if (captured) {

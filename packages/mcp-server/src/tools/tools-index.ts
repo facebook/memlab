@@ -365,6 +365,10 @@ const GROUPS: Group[] = [
     question: 'Session, batching and write-ups',
     tools: [
       [
+        'memlab_round_digest',
+        'The verdict table for a finished round and nothing else — the audit verdict, the ladder shape, and the per-metric rate/fit/verdict rows, without the ~30 KB of prose.',
+      ],
+      [
         'memlab_round_audit',
         'Read a round’s run.json BEFORE analysing it, so a broken bring-up is caught before its numbers travel into a write-up.',
       ],

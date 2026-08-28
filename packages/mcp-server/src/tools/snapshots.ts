@@ -17,6 +17,7 @@ import {
   removeSnapshot,
   setSessionConfig,
   getSessionConfig,
+  resetEmittedNotes,
 } from '../heap-state.js';
 import {
   formatBytes,
@@ -29,7 +30,7 @@ import {
 export function registerSnapshots(server: McpServer): void {
   server.tool(
     'memlab_snapshots',
-    'Manage the multi-snapshot session: list resident snapshots, switch the active one, or unload one to free memory. Also toggles session-level output controls (quiet header, suppress suggestions, terse) to trim repeated boilerplate tokens. Load several snapshots with memlab_load_snapshot({keep_previous:true}) then switch between them by handle. Node ids are only valid within the snapshot they came from.',
+    'Manage the multi-snapshot session: list resident snapshots, switch the active one, or unload one to free memory. Also toggles session-level output controls (quiet header, suppress suggestions, terse) to trim repeated boilerplate tokens. Load several snapshots with memlab_load_snapshot({keep_previous:true}) then switch between them by handle. Node ids are only valid within the snapshot they came from. `repeat_notes` reprints the standing explanatory notes that tools print once per session.',
     {
       action: z
         .enum(['list', 'switch', 'unload'])
@@ -60,10 +61,29 @@ export function registerSnapshots(server: McpServer): void {
         .describe(
           "When set, toggles session-wide terse output: high-volume, low-decision sections (long per-property censuses and the like) are cut to a count plus the top few rows. One switch instead of remembering each tool's own summary flag, which is spelled differently in each.",
         ),
+      repeat_notes: z
+        .boolean()
+        .optional()
+        .describe(
+          'Print the standing explanatory notes in full again. Several tools state a long caveat the first time it applies in a session and a one-line pointer afterwards; this clears that memory, which is what you want after a context reset or when handing the transcript to someone else.',
+        ),
     },
-    async ({action, handle, quiet, suppress_suggestions, terse}) => {
+    async ({
+      action,
+      handle,
+      quiet,
+      suppress_suggestions,
+      terse,
+      repeat_notes,
+    }) => {
       try {
         const configChanges: string[] = [];
+        if (repeat_notes === true) {
+          resetEmittedNotes();
+          configChanges.push(
+            'Standing notes reset — the next tool that has one will print it in full.',
+          );
+        }
         if (quiet != null || suppress_suggestions != null || terse != null) {
           setSessionConfig({
             ...(quiet != null ? {quietHeader: quiet} : {}),

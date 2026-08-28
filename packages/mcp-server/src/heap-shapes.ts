@@ -206,6 +206,97 @@ export function describeElements(
   };
 }
 
+/**
+ * Every node that owns an elements store, as parallel typed arrays.
+ *
+ * Built once per snapshot and memoized. Four tools ask the same structural
+ * questions of the same nodes (does this own an elements store? how many
+ * element edges? what is the largest index? how big is the store?), and each
+ * was paying its own full pass — on a 7.1M-node / 41.7M-edge capture that is
+ * the dominant cost of the call, and tuning one tool's parameters re-pays it
+ * every time.
+ *
+ * Typed arrays rather than objects: on the capture above this is ~370k entries,
+ * which is 6 MB as four typed arrays and several times that as objects. The
+ * index is keyed by the snapshot, so a `keep_previous` A/B keeps one per arm and
+ * both are released when the snapshot is.
+ */
+export interface ElementsIndex {
+  /**
+   * Node ids that own an elements store, ascending by scan order.
+   *
+   * Unsigned: ids, byte counts and occupancies cannot be negative, and a
+   * signed 32-bit lane wraps anything past 2^31-1 to a negative number. For
+   * `ownerIds` that failure is silent rather than loud — `getNodeById(-…)`
+   * returns null, so the entry is skipped by every consumer instead of
+   * throwing. `maxIndex` stays signed because -1 is its "the store holds no
+   * numeric slot" sentinel, and a real element index above 2^31-1 would need a
+   * sparse array indexed past two billion.
+   *
+   * The unsigned lanes have their own ceiling at 2^32-1, and it is assumed
+   * rather than checked: V8 hands out snapshot node ids by increment, so
+   * exceeding it means one isolate allocated over four billion objects — far
+   * past the point where the snapshot itself is loadable here. A capture that
+   * did would truncate an id and quietly drop that entry, so if this ever needs
+   * to hold arbitrarily large captures, widen to `Float64Array` (ids stay exact
+   * to 2^53) rather than adding a guard.
+   */
+  ownerIds: Uint32Array;
+  storeBytes: Uint32Array;
+  used: Uint32Array;
+  maxIndex: Int32Array;
+  slotBytes: SlotBytes;
+  count: number;
+}
+
+const elementsIndexBySnapshot = new WeakMap<IHeapSnapshot, ElementsIndex>();
+
+export function getElementsIndex(snapshot: IHeapSnapshot): ElementsIndex {
+  const cached = elementsIndexBySnapshot.get(snapshot);
+  if (cached != null) return cached;
+
+  const ownerIds: number[] = [];
+  const storeBytes: number[] = [];
+  const used: number[] = [];
+  const maxIndex: number[] = [];
+  snapshot.nodes.forEach(node => {
+    if (
+      node.type !== 'object' &&
+      node.type !== 'array' &&
+      node.type !== 'hidden'
+    ) {
+      return;
+    }
+    const raw = readRawElements(node);
+    if (!raw) return;
+    const bytes = raw.store.self_size;
+    if (bytes <= STORE_HEADER_BYTES) return;
+    ownerIds.push(node.id);
+    storeBytes.push(bytes);
+    used.push(raw.used);
+    maxIndex.push(raw.maxIndex);
+  });
+
+  const index: ElementsIndex = {
+    ownerIds: Uint32Array.from(ownerIds),
+    storeBytes: Uint32Array.from(storeBytes),
+    used: Uint32Array.from(used),
+    maxIndex: Int32Array.from(maxIndex),
+    // Calibrating from the entries just collected costs nothing extra and is
+    // strictly better evidence than the early-exit prefix scan.
+    slotBytes: calibrateSlotBytes(
+      ownerIds.map((_, i) => ({
+        storeBytes: storeBytes[i],
+        maxIndex: maxIndex[i],
+      })),
+    ),
+    count: ownerIds.length,
+  };
+  elementsIndexBySnapshot.set(snapshot, index);
+  slotBytesBySnapshot.set(snapshot, index.slotBytes);
+  return index;
+}
+
 /** One-shot read for a single node, calibrating the snapshot if needed. */
 export function readElements(
   snapshot: IHeapSnapshot,
