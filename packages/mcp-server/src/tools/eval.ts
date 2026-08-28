@@ -17,6 +17,8 @@ import path from 'path';
 import vm from 'node:vm';
 import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
+import {nearestFiber, fiberComponentName} from '../react-shapes.js';
+import {readElements as readElementsInfo} from '../heap-shapes.js';
 import {
   getCurrentHandle,
   getSavedResult,
@@ -1260,30 +1262,63 @@ export async function runEval({
      */
     const rootPath = (
       nodeOrId: number | {id: number},
-      opts?: {maxHops?: number},
-    ): Array<{id: number; name: string; type: string; edge: string | null}> => {
+      opts?: {maxHops?: number; collapseRepeatedEdges?: boolean},
+    ): Array<{
+      id: number;
+      name: string;
+      type: string;
+      edge: string | null;
+      repeated?: number;
+    }> => {
       const maxHops = opts?.maxHops ?? 24;
+      // Collapsing is ON by default. Inside a linked-list leak — React update
+      // queues, LRU chains, intrusive `.prev` lists — every hop is the SAME
+      // edge, so the whole budget is spent walking the leak instead of escaping
+      // it. Measured: 114 of 120 sampled update records returned
+      // `Object.next -> Object.next -> ... (18 hops, no root)`, which
+      // attributes nothing and then dominates the "top root paths" histogram
+      // with an artifact of the walk.
+      const collapse = opts?.collapseRepeatedEdges ?? true;
       let cur = resolveNode(nodeOrId);
       const out: Array<{
         id: number;
         name: string;
         type: string;
         edge: string | null;
+        repeated?: number;
       }> = [];
       const seen = new Set<number>();
-      let hops = 0;
-      while (cur != null && hops < maxHops && !seen.has(cur.id)) {
+      let distinctHops = 0;
+      let lastEdgeKey: string | null = null;
+      let runLength = 0;
+      while (cur != null && distinctHops < maxHops && !seen.has(cur.id)) {
         seen.add(cur.id);
         const edge = cur.hasPathEdge && cur.pathEdge ? cur.pathEdge : null;
-        out.push({
-          id: cur.id,
-          name: cur.name,
-          type: cur.type,
-          edge: edge ? `${String(edge.name_or_index)} [${edge.type}]` : null,
-        });
+        const edgeStr = edge
+          ? `${String(edge.name_or_index)} [${edge.type}]`
+          : null;
+        // A run is the same edge name arriving at the same class — that is the
+        // shape a chain makes, and it keeps two unrelated `.value` hops apart.
+        const edgeKey = edgeStr == null ? null : `${cur.name}\u0000${edgeStr}`;
+        if (collapse && edgeKey != null && edgeKey === lastEdgeKey) {
+          runLength++;
+          const prev = out[out.length - 1];
+          prev.repeated = runLength + 1;
+        } else {
+          out.push({
+            id: cur.id,
+            name: cur.name,
+            type: cur.type,
+            edge: edgeStr,
+          });
+          lastEdgeKey = edgeKey;
+          runLength = 0;
+          // Only a DISTINCT hop spends budget; a 2,000-link chain should cost
+          // one, so the remaining hops can reach the actual owner.
+          distinctHops++;
+        }
         if (!edge) break;
         cur = edge.fromNode as IHeapNode | null;
-        hops++;
       }
       return out.reverse();
     };
@@ -1845,6 +1880,24 @@ export async function runEval({
         cur = next;
         hops++;
       }
+      // React fallback. Hooks, update queues and fibers are all plain `Object`,
+      // so the container filter above walks straight past every one of them and
+      // reports nothing: on one population `recordsByOwner` came back
+      // `[["(none)", 1645]]` for 100% of the records. A fiber is recognisable
+      // by its own fields rather than by its class name, and its component name
+      // is the answer the caller actually wanted.
+      const fiber = nearestFiber(start, maxHops);
+      if (fiber != null) {
+        const componentName = fiberComponentName(fiber);
+        return {
+          id: fiber.id,
+          name: componentName ?? fiber.name,
+          type: fiber.type,
+          hops: 0,
+          selfSize: fiber.self_size,
+          named: componentName != null,
+        };
+      }
       // Nothing but containers all the way up is itself the answer — report
       // the furthest node reached with named:false rather than null, which
       // would be indistinguishable from "no such node".
@@ -1857,6 +1910,40 @@ export async function runEval({
         selfSize: last.self_size,
         named: false,
       };
+    };
+
+    // Elements backing store, read correctly. Five separate facts are needed
+    // (owner-vs-store edge split, SMI invisibility, unmeasurability, slot-width
+    // calibration, dictionary detection) and every one of them was got wrong
+    // once before it was got right — see src/heap-shapes.ts. Hand-deriving this
+    // in an eval is how an all-SMI array reads as 100% wasted.
+    const elements = (nodeOrId: number | {id: number}): unknown => {
+      const n =
+        typeof nodeOrId === 'number'
+          ? snapshot.getNodeById(nodeOrId)
+          : (unwrapNode(nodeOrId) as IHeapNode | null);
+      if (n == null) return null;
+      return readElementsInfo(snapshot, n);
+    };
+
+    // DISTINCT nodes pointed at by an edge with this name — the mirror of
+    // `withProp`, which finds nodes that HAVE the property. Asking "what is
+    // stored under `.logs` anywhere in the heap" previously needed a full scan.
+    //
+    // Deduplicated because a shared target reached from N referrers is one
+    // storage site, not N: the obvious use ("how many distinct places hold a
+    // `.logs`") would otherwise multiply-count every shared array, and nothing
+    // in the returned ids says which of them were duplicates.
+    const byReferrerEdge = (edgeName: string): number[] => {
+      const hits = new Set<number>();
+      snapshot.nodes.forEach(node => {
+        for (const e of node.references) {
+          if (String(e.name_or_index) !== edgeName) continue;
+          if (e.toNode.id > 3) hits.add(e.toNode.id);
+          break;
+        }
+      });
+      return [...hits];
     };
 
     // Group-and-count over ids. The single most-rewritten block in ad-hoc eval
@@ -2094,6 +2181,8 @@ export async function runEval({
       classCounts,
       edgeTarget,
       walkChain,
+      elements,
+      byReferrerEdge,
       derefPath,
       findWithin,
       entries,

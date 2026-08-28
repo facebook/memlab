@@ -119,7 +119,7 @@ import {registerSparseElements} from './tools/sparse-elements.js';
 
 const server = new McpServer({
   name: 'memlab',
-  version: '2.79.0', // keep in sync with package.json
+  version: '2.80.0', // keep in sync with package.json
 });
 
 // Wrap every tool with a wall-clock guardrail (default 90s, override per-call

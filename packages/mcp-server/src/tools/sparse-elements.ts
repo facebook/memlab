@@ -19,6 +19,7 @@ import {
   formatNumber,
   markdownTable,
   suggestionsSuppressed,
+  nearestNamedOwner,
 } from '../utils.js';
 // Shared with memlab_cache_analysis on purpose: a pre-sized ring buffer is the
 // one shape that is indistinguishable from an unbounded cache by size alone,
@@ -58,77 +59,6 @@ interface Group {
    * ring is still worth seeing — but never described as something to trim.
    */
   ring: boolean;
-}
-
-/**
- * Describe how the store's owner hangs off the anchor, from the edge that
- * points AT it. `null` means the anchor is the object itself.
- *
- * Without this the label lies for 40% of candidates. Measured on one 432 MB
- * capture: of 3,009 candidate stores only 1,815 hang directly off a named
- * property; 1,084 are entries inside a Map or array and 105 are variables
- * captured in a closure. `Owner.prop` reads as "the store IS Owner.prop" in all
- * three cases, and for the closure ones it also DISCARDS the local name — which
- * is the single most greppable thing about them (`EMOJI_LIST`, `fbTop50Emojis`,
- * `specialTags` were all reported as an unrelated sibling's property name).
- */
-function describeRelation(edge: {
-  type: string;
-  name_or_index: string | number;
-}): string | null {
-  const name = String(edge.name_or_index);
-  if (edge.type === 'property' && !/^\d+$/.test(name)) return null;
-  // A captured variable keeps its source name even after minification.
-  if (edge.type === 'context') return `closure var ${name}`;
-  if (/^\d+$/.test(name)) return 'entry';
-  return name;
-}
-
-/**
- * Walk up referrers to the nearest owner reachable by a NAMED property and
- * label the group `Owner.prop`, plus how the store sits under it.
- *
- * Grouping by the immediate referrer edge does not work: the getter caches that
- * motivated this tool hang off a `Map`, so their referrer edge is the numeric
- * slot index in the map's backing table and 552 identical objects fragment into
- * 552 groups of one. Grouping by class name does not work either — they are all
- * called `Object`. The nearest named property up the chain is what a reader can
- * actually search the codebase for; the relation suffix keeps that anchor from
- * being read as the store's own address.
- */
-function attributeOwner(
-  node: IHeapNode,
-  maxHops: number,
-): {label: string; owner: IHeapNode} | null {
-  let relation: string | null = null;
-  let current = node;
-  for (let hop = 0; hop < maxHops; hop++) {
-    // A named property wins over any other referrer at the same hop: it is the
-    // only edge that names the object rather than merely containing it.
-    let chosen = null;
-    for (const edge of current.referrers) {
-      const name = String(edge.name_or_index);
-      if (edge.type === 'property' && !/^\d+$/.test(name)) {
-        chosen = edge;
-        break;
-      }
-      if (!chosen) chosen = edge;
-    }
-    if (!chosen) return null;
-    // Only the FIRST hop describes how the store itself is held; hops above it
-    // are the anchor's own retention and not the caller's concern.
-    if (hop === 0) relation = describeRelation(chosen);
-    const name = String(chosen.name_or_index);
-    if (chosen.type === 'property' && !/^\d+$/.test(name)) {
-      const anchor = `${chosen.fromNode.name}.${name}`;
-      return {
-        label: relation == null ? anchor : `${anchor} ▸ ${relation}`,
-        owner: chosen.fromNode,
-      };
-    }
-    current = chosen.fromNode;
-  }
-  return null;
 }
 
 /** What a reader should DO about the group, from which half of the waste dominates. */
@@ -258,7 +188,7 @@ export function registerSparseElements(server: McpServer): void {
           const slackSlots = Math.max(0, capacity - span - FORGIVEN_TAIL_SLOTS);
           if (holeSlots + slackSlots === 0) continue;
 
-          const attributed = attributeOwner(raw.node, max_hops);
+          const attributed = nearestNamedOwner(raw.node, {maxHops: max_hops});
           const key = attributed
             ? attributed.label
             : `(unattributed) ${raw.node.name}`;
@@ -276,7 +206,7 @@ export function registerSparseElements(server: McpServer): void {
               exampleCapacity: capacity,
               exampleUsed: raw.used,
               exampleSpan: span,
-              ring: looksLikeRingBuffer(attributed?.owner ?? null),
+              ring: looksLikeRingBuffer(attributed?.ownerNode ?? null),
             };
             groups.set(key, group);
           }

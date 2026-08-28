@@ -16,7 +16,9 @@ import {
   getMetadataByHandle,
   getCurrentHandle,
   listSnapshots,
+  findResidentByPath,
 } from '../heap-state.js';
+import {getRegisteredTool} from '../tool-registry.js';
 import {
   formatBytes,
   formatNumber,
@@ -77,6 +79,33 @@ function attributeByOwner(snapshot: IHeapSnapshot): {
   return {byOwner, totalSelf};
 }
 
+/**
+ * Resolve a `baseline` that turned out to be a file path by loading it into the
+ * session (keeping whatever is already resident), and return its handle.
+ *
+ * Dispatches to the registered `memlab_load_snapshot` handler rather than
+ * duplicating its guards — the ceilings, the memory-headroom check and the
+ * already-resident fast path all still apply.
+ */
+async function loadSnapshotByPath(filePath: string): Promise<string | null> {
+  const already = findResidentByPath(filePath);
+  if (already != null) return already.handle;
+  const entry = getRegisteredTool('memlab_load_snapshot');
+  if (entry == null) return null;
+  try {
+    const args =
+      entry.shape != null
+        ? z
+            .object(entry.shape as never)
+            .parse({file_path: filePath, keep_previous: true})
+        : {file_path: filePath, keep_previous: true};
+    await entry.handler(args, {});
+  } catch {
+    return null;
+  }
+  return findResidentByPath(filePath)?.handle ?? null;
+}
+
 export function registerExplainDelta(server: McpServer): void {
   server.tool(
     'memlab_explain_delta',
@@ -86,8 +115,15 @@ export function registerExplainDelta(server: McpServer): void {
     {
       baseline_handle: z
         .string()
+        .optional()
         .describe(
-          'Handle of the earlier snapshot (memlab_snapshots lists them).',
+          'Handle of the earlier snapshot (memlab_snapshots lists them). Its siblings memlab_artifact_budget and memlab_census_diff take a `baseline` PATH instead, so `baseline` is accepted here as an alias — a batch authored against the recipe used to fail argument validation on this one parameter alone.',
+        ),
+      baseline: z
+        .string()
+        .optional()
+        .describe(
+          'Alias for `baseline_handle`. Accepts a resident handle, or a file path — which is auto-loaded with keep_previous so the whole batch does not have to be re-authored.',
         ),
       target_handle: z
         .string()
@@ -117,32 +153,56 @@ export function registerExplainDelta(server: McpServer): void {
     },
     async ({
       baseline_handle,
+      baseline: baselineAlias,
       target_handle,
       limit,
       min_delta_bytes,
       include_artifacts,
     }) => {
       try {
+        let baselineRef = baseline_handle ?? baselineAlias;
+        if (baselineRef == null) {
+          return errorResult(
+            'Pass `baseline_handle` (a resident snapshot handle) or `baseline` (a handle or a file path).',
+          );
+        }
+        // A path where a handle was expected is the documented sibling spelling,
+        // not a mistake: `artifact_budget` and `census_diff` both take paths.
+        // Loading it is exactly what the "must be resident" error tells the
+        // caller to go and do by hand, and a re-authored batch costs a reload of
+        // every rung.
+        if (
+          getSnapshotByHandle(baselineRef) == null &&
+          /[/\\.]/.test(baselineRef)
+        ) {
+          const loaded = await loadSnapshotByPath(baselineRef);
+          if (loaded == null) {
+            return errorResult(
+              `\`baseline\` "${baselineRef}" is neither a resident handle nor a readable snapshot file.`,
+            );
+          }
+          baselineRef = loaded;
+        }
         const targetHandle = target_handle ?? getCurrentHandle();
         if (targetHandle == null) {
           return errorResult('No current snapshot; pass target_handle.');
         }
-        if (targetHandle === baseline_handle) {
+        if (targetHandle === baselineRef) {
           return errorResult(
             'baseline_handle and target_handle are the same snapshot.',
           );
         }
-        const baseline = getSnapshotByHandle(baseline_handle);
+        const baselineSnapshot = getSnapshotByHandle(baselineRef);
         const target = getSnapshotByHandle(targetHandle);
-        if (baseline == null || target == null) {
+        if (baselineSnapshot == null || target == null) {
           const available = listSnapshots()
             .map(m => m.handle)
             .join(', ');
           return errorResult(
-            `Both snapshots must be resident. Missing: ${baseline == null ? baseline_handle : targetHandle}. Resident: ${available || '(none)'}. Load with memlab_load_snapshot({file_path, keep_previous: true}).`,
+            `Both snapshots must be resident. Missing: ${baselineSnapshot == null ? baselineRef : targetHandle}. Resident: ${available || '(none)'}. Load with memlab_load_snapshot({file_path, keep_previous: true}).`,
           );
         }
-        for (const h of [baseline_handle, targetHandle]) {
+        for (const h of [baselineRef, targetHandle]) {
           if (getMetadataByHandle(h)?.light) {
             return errorResult(
               `Snapshot "${h}" was loaded in LIGHT mode and has no dominator tree, which this attribution requires. Reload it without light.`,
@@ -150,7 +210,7 @@ export function registerExplainDelta(server: McpServer): void {
           }
         }
 
-        const a = attributeByOwner(baseline);
+        const a = attributeByOwner(baselineSnapshot);
         const b = attributeByOwner(target);
 
         interface Row {
@@ -180,7 +240,7 @@ export function registerExplainDelta(server: McpServer): void {
 
         const totalDelta = b.totalSelf - a.totalSelf;
         const lines: string[] = [
-          `## Heap delta by owner: "${baseline_handle}" → "${targetHandle}"`,
+          `## Heap delta by owner: "${baselineRef}" → "${targetHandle}"`,
           '',
           `Total self size ${totalDelta >= 0 ? 'grew' : 'shrank'} by **${formatBytes(Math.abs(totalDelta))}** (${formatBytes(a.totalSelf)} → ${formatBytes(b.totalSelf)}).`,
           '',

@@ -829,6 +829,88 @@ export function instrumentationRetainerNote(
 }
 
 /**
+ * The nearest owner reachable by a NAMED property, plus HOW the target hangs
+ * off it. `Owner.prop` alone is not an address — the anchor is frequently an
+ * ancestor, and reading it as the object's own location is wrong for a large
+ * fraction of a real heap.
+ *
+ * Measured over 3,009 candidate objects on one browser capture: 1,815 hung
+ * directly off a named property, 1,084 were entries inside a Map or array, and
+ * 105 were variables captured in a closure. For the closure cases the bare
+ * anchor also DISCARDED the local variable name — `EMOJI_LIST`,
+ * `fbTop50Emojis`, `specialTags` were each reported under an unrelated
+ * sibling's property name, which is the single most greppable thing about them.
+ *
+ * Grouping by the immediate referrer edge does not work either: objects held in
+ * a Map are keyed by a numeric slot index in the backing table, so 552
+ * identical objects fragment into 552 groups of one. And in a minified bundle
+ * the class name is `Object` for all of them.
+ */
+export interface NamedOwner {
+  /** `<OwnerClass>.<property>` — the greppable part. */
+  anchor: string;
+  /**
+   * `null` when the anchor IS the target's own property slot; otherwise how the
+   * target sits under it (`entry`, `closure var caches`, ...).
+   */
+  relation: string | null;
+  /** `anchor`, or `anchor ▸ relation` — what to show a reader. */
+  label: string;
+  ownerNode: IHeapNode;
+  hops: number;
+}
+
+/** Describe a non-property edge in the terms a reader can act on. */
+function describeOwnerRelation(edge: IHeapEdge): string | null {
+  const name = String(edge.name_or_index);
+  if (edge.type === 'property' && !/^\d+$/.test(name)) return null;
+  // A captured variable keeps its source name even after minification, which
+  // makes it more useful than the anchor it hangs under.
+  if (edge.type === 'context') return `closure var ${name}`;
+  if (/^\d+$/.test(name)) return 'entry';
+  return name;
+}
+
+export function nearestNamedOwner(
+  node: IHeapNode,
+  opts?: {maxHops?: number},
+): NamedOwner | null {
+  const maxHops = opts?.maxHops ?? 6;
+  let relation: string | null = null;
+  let current = node;
+  for (let hop = 0; hop < maxHops; hop++) {
+    // A named property wins over any other referrer at the same hop: it is the
+    // only edge that names the object rather than merely containing it.
+    let chosen: IHeapEdge | null = null;
+    for (const edge of current.referrers) {
+      const name = String(edge.name_or_index);
+      if (edge.type === 'property' && !/^\d+$/.test(name)) {
+        chosen = edge;
+        break;
+      }
+      if (!chosen) chosen = edge;
+    }
+    if (!chosen) return null;
+    // Only the FIRST hop describes how the target itself is held; hops above it
+    // are the anchor's own retention and not the caller's concern.
+    if (hop === 0) relation = describeOwnerRelation(chosen);
+    const name = String(chosen.name_or_index);
+    if (chosen.type === 'property' && !/^\d+$/.test(name)) {
+      const anchor = `${chosen.fromNode.name}.${name}`;
+      return {
+        anchor,
+        relation,
+        label: relation == null ? anchor : `${anchor} ▸ ${relation}`,
+        ownerNode: chosen.fromNode,
+        hops: hop + 1,
+      };
+    }
+    current = chosen.fromNode;
+  }
+  return null;
+}
+
+/**
  * V8 emits a WeakMap entry as one synthetic edge on the backing table:
  *
  *   `26 / part of key (Foo @644221) -> value (Bar @644219) pair in WeakMap (table @3212981)`
