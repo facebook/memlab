@@ -11,6 +11,10 @@
 import {constant, setInternalValue} from '@memlab/core';
 
 const optionNames = {
+  ANONYMIZE_AUDIT_ONLY: 'audit-only',
+  ANONYMIZE_MODE: 'anonymize-mode',
+  ANONYMIZE_OUTPUT: 'output',
+  ANONYMIZE_SALT: 'anonymize-salt',
   APP: 'app',
   BASELINE: 'baseline',
   CLEAN_UP_SNAPSHOT: 'clean-up-snapshot',
