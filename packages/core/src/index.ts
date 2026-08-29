@@ -13,6 +13,25 @@ import {PackageInfoLoader} from './lib/PackageInfoLoader';
 
 export * from './lib/Types';
 export * from './lib/NodeHeap';
+export {
+  serializeHeapSnapshot,
+  serializeRawHeapSnapshot,
+} from './lib/HeapSerializer';
+export {
+  anonymizeHeapSnapshot,
+  anonymizeHeapSnapshotFile,
+  anonymizeRawHeapSnapshot,
+  auditHeapSnapshotFile,
+  resolveForComparison,
+} from './lib/HeapAnonymizer';
+export type {
+  AnonymizationMode,
+  AnonymizeOptions,
+  AnonymizeReport,
+  AnonymizeRuleCount,
+  RedactionContext,
+  UnclassifiedLabelFamily,
+} from './lib/HeapAnonymizer';
 
 /** @internal */
 export async function registerPackage(): Promise<void> {
