@@ -11,28 +11,58 @@
 import type {IHeapSnapshot} from '@memlab/core';
 
 /**
- * Is this capture anonymised — every string character replaced by a filler?
+ * Has this capture had its string content replaced — and if so, in a way that
+ * corrupts the duplication numbers, or not?
  *
- * Anonymisers replace string CONTENT while preserving LENGTH, which collapses
- * every distinct string of the same length into the same value. Every
- * string-duplication analysis then measures the anonymiser instead of the app,
- * and reports enormous savings that do not exist.
+ * Anonymisers replace string CONTENT while preserving LENGTH. Whether that
+ * matters to an analysis depends entirely on which kind you are looking at, so
+ * this reports three states rather than a boolean:
  *
- * Measured on one such capture: `memlab_quick_diagnosis` reported
- * **"Total interning savings: 47.4 MB"** and `memlab_duplicated_strings`
- * reported a single 5.2 KB string duplicated 939 times for 42.1 MB. Both
- * figures were pure artifact. Nothing in the tooling flagged it; it was caught
- * only because the sample values rendered visibly as runs of `?`.
+ * - `uniform` — every character replaced by ONE filler character. Every
+ *   distinct string of a given length collapses into the same value, so every
+ *   string-duplication analysis measures the anonymiser instead of the app.
+ *   Measured on one such capture: `memlab_quick_diagnosis` reported **"Total
+ *   interning savings: 47.4 MB"** and `memlab_duplicated_strings` reported a
+ *   single 5.2 KB string duplicated 939 times for 42.1 MB. Both were pure
+ *   artifact. Nothing flagged it; it was caught only because the sample values
+ *   rendered visibly as runs of `?`.
+ * - `stable` — replaced by a value-derived token, so distinctness survives
+ *   along with length. Duplication and interning figures are as true as on the
+ *   original capture, and warning about them would make readers discard
+ *   correct findings. Only the content is unreadable.
+ * - `none` — an ordinary capture.
  *
- * The test is deliberately cheap and deliberately conservative: sample strings,
- * and only call it anonymised when a large majority are a single character
- * repeated. A normal heap has plenty of short repeated-character strings
- * ("  ", "----"), so the length floor matters more than the ratio.
+ * Both tests are deliberately cheap and deliberately conservative: sample
+ * strings, and only classify when a large majority match. A normal heap has
+ * plenty of short repeated-character strings ("  ", "----") and plenty of short
+ * lowercase words, so the length floor matters more than the ratio for either.
  */
+export type AnonymizationKind =
+  /** ordinary capture */
+  | 'none'
+  /**
+   * every character replaced by one filler character. Length survives, so
+   * distinct values of equal length collapse into one and duplication figures
+   * become fiction.
+   */
+  | 'uniform'
+  /**
+   * replaced by a value-derived token. Length AND distinctness survive, so
+   * duplication figures stay true; only the content is gone.
+   */
+  | 'stable';
+
 export interface AnonymizationCheck {
+  kind: AnonymizationKind;
+  /**
+   * true only for `uniform`, which is the kind that corrupts duplication
+   * numbers. Existing call sites read this to decide whether to warn, and a
+   * `stable` capture must NOT trip them — its numbers are trustworthy.
+   */
   anonymized: boolean;
   sampled: number;
   singleCharRuns: number;
+  tokenRuns: number;
   exampleChar?: string;
 }
 
@@ -45,6 +75,7 @@ export function detectAnonymizedStrings(
 ): AnonymizationCheck {
   let sampled = 0;
   let singleCharRuns = 0;
+  let tokenRuns = 0;
   let exampleChar: string | undefined;
   let visited = 0;
 
@@ -70,19 +101,48 @@ export function detectAnonymizedStrings(
     if (uniform) {
       singleCharRuns++;
       exampleChar ??= first;
+      return;
+    }
+    // `stable` fill is a run of lowercase letters and nothing else. Real string
+    // values of this length essentially always carry a space, digit, capital or
+    // punctuation mark somewhere, so a heap where most of them are bare
+    // lowercase runs has been rewritten.
+    if (/^[a-z]+$/.test(value)) {
+      tokenRuns++;
     }
   });
 
+  const uniformRatio = sampled >= 20 ? singleCharRuns / sampled : 0;
+  const tokenRatio = sampled >= 20 ? tokenRuns / sampled : 0;
+  const kind: AnonymizationKind =
+    uniformRatio >= RATIO ? 'uniform' : tokenRatio >= RATIO ? 'stable' : 'none';
+
   return {
-    anonymized: sampled >= 20 && singleCharRuns / sampled >= RATIO,
+    kind,
+    anonymized: kind === 'uniform',
     sampled,
     singleCharRuns,
+    tokenRuns,
     exampleChar,
   };
 }
 
 /** The banner every string-content tool prints when the capture is anonymised. */
 export function anonymizedStringsBanner(check: AnonymizationCheck): string {
+  if (check.kind === 'stable') {
+    // Deliberately NOT a warning about the numbers. `stable` anonymization
+    // preserves distinctness, so duplication and interning figures are exactly
+    // as true as on the original capture — saying otherwise here would make
+    // readers discard correct findings.
+    const pct = check.sampled
+      ? Math.round((check.tokenRuns / check.sampled) * 100)
+      : 0;
+    return (
+      `> ℹ️ **This capture is ANONYMISED (value-stable) — ${pct}% of sampled string values are opaque tokens.** ` +
+      'String CONTENT has been replaced, but lengths and distinctness were preserved, so counts, sizes, duplication and interning figures below are accurate. ' +
+      'What you cannot do is read the strings: a sample value tells you nothing about the real data, so identify records by property shape rather than by value.'
+    );
+  }
   const pct = check.sampled
     ? Math.round((check.singleCharRuns / check.sampled) * 100)
     : 0;
@@ -105,6 +165,6 @@ export function withAnonymizedBanner(
   text: string,
 ): string {
   const check = detectAnonymizedStrings(snapshot);
-  if (!check.anonymized) return text;
+  if (check.kind === 'none') return text;
   return `${anonymizedStringsBanner(check)}\n\n${text}`;
 }

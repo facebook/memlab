@@ -374,6 +374,15 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    question: 'Sharing a capture outside its trust boundary',
+    tools: [
+      [
+        'memlab_anonymize_snapshot',
+        'Rewrite a capture so it can be attached to a task or handed to a model, keeping it analyzable — and reporting the identifier-shaped text it could NOT classify. Also audits a capture someone else anonymized: one such file still carried 26,303 account handles as property names.',
+      ],
+    ],
+  },
+  {
     question: 'Session, batching and write-ups',
     tools: [
       [
