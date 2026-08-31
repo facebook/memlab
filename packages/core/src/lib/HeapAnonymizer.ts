@@ -830,6 +830,27 @@ export function anonymizeRawHeapSnapshot(
  *
  * @internal
  */
+/**
+ * The three phases {@link anonymizeHeapSnapshotFile} moves through. Reading is
+ * the slow one on a large capture — a multi-hundred-MB `.heapsnapshot` spends
+ * most of its wall clock in the parse, before anything is redacted.
+ */
+export type AnonymizePhase = 'read' | 'anonymize' | 'write';
+
+/**
+ * Called as each phase STARTS, so a caller can show which one is running.
+ *
+ * Phase-level rather than byte-level on purpose: the parse is a single
+ * `JSON.parse` over the non-typed-array remainder, so there is no honest
+ * intermediate percentage to report from inside it. Saying "reading" and
+ * meaning it beats a bar that fabricates progress.
+ */
+export type AnonymizeProgressCallback = (
+  phase: AnonymizePhase,
+  step: number,
+  totalSteps: number,
+) => void;
+
 export async function readRawHeapSnapshot(
   file: string,
 ): Promise<RawHeapSnapshot> {
@@ -885,6 +906,7 @@ export async function anonymizeHeapSnapshotFile(
   inputFile: string,
   outputFile: string,
   options: AnonymizeOptions = {},
+  onProgress?: AnonymizeProgressCallback,
 ): Promise<AnonymizeReport> {
   if (resolveForComparison(inputFile) === resolveForComparison(outputFile)) {
     throw new Error(
@@ -893,8 +915,11 @@ export async function anonymizeHeapSnapshotFile(
         `unredacted copy of the capture.`,
     );
   }
+  onProgress?.('read', 1, 3);
   const raw = await readRawHeapSnapshot(inputFile);
+  onProgress?.('anonymize', 2, 3);
   const report = anonymizeRawHeapSnapshot(raw, options);
+  onProgress?.('write', 3, 3);
   serializeRawHeapSnapshot(raw, outputFile);
   return report;
 }
@@ -927,8 +952,11 @@ export async function anonymizeHeapSnapshotFile(
 export async function auditHeapSnapshotFile(
   inputFile: string,
   options: AnonymizeOptions = {},
+  onProgress?: AnonymizeProgressCallback,
 ): Promise<AnonymizeReport> {
+  onProgress?.('read', 1, 2);
   const raw = await readRawHeapSnapshot(inputFile);
+  onProgress?.('anonymize', 2, 2);
   return anonymizeRawHeapSnapshot(raw, options);
 }
 

@@ -49,6 +49,9 @@ const TABLE_MAX_WIDTH = 50;
 const LOG_BUFFER_LENGTH = 100;
 const prevLine = '\x1b[F';
 const eraseLine = '\x1b[K';
+/** Assumed terminal width when stdout is not a TTY and reports no columns. */
+const DEFAULT_PROGRESS_COLUMNS = 80;
+
 const barComplete = chalk.green('\u2588');
 const barIncomplete = chalk.grey('\u2591');
 
@@ -265,7 +268,13 @@ class MemLabConsole {
     if (!section || section.msgs.length === 0) {
       return;
     }
-    if (!this.config.muteConsole) {
+    // Only when a terminal is actually there to interpret it. `eraseLine` is a
+    // control sequence; written into a pipe or a redirect it is not invisible,
+    // it is literal `ESC[K` garbage in the middle of the captured output — and
+    // captured output is exactly what ends up pasted into a bug report. The
+    // bookkeeping pop below still happens either way, so the two paths stay in
+    // agreement about what has been printed.
+    if (!this.config.muteConsole && this.outStream.isTTY) {
       this.outStream.write(eraseLine);
     }
     const msg = section.msgs.pop();
@@ -558,7 +567,14 @@ class MemLabConsole {
     total: number,
     options: {message?: string} = {},
   ): void {
-    let width = Math.floor(this.outStream.columns * 0.8);
+    // `columns` is undefined whenever stdout is not a TTY — piped, redirected
+    // to a file, or captured by a wrapper. Without a fallback that undefined
+    // becomes NaN and propagates: `substring(0, NaN)` erases the message and
+    // the bar loop never runs, so the whole line renders as ": || 33/100".
+    // Progress printed into a pipe is still worth reading; it just cannot be
+    // sized to the window.
+    const columns = this.outStream.columns || DEFAULT_PROGRESS_COLUMNS;
+    let width = Math.floor(columns * 0.8);
     width = Math.min(width, 80);
     const messageMaxWidth = Math.floor(width * 0.3);
     let message = options.message || '';

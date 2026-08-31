@@ -27,6 +27,8 @@ export {
 export type {
   AnonymizationMode,
   AnonymizeOptions,
+  AnonymizePhase,
+  AnonymizeProgressCallback,
   AnonymizeReport,
   AnonymizeRuleCount,
   RedactionContext,

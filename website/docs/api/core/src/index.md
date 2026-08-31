@@ -15,6 +15,12 @@
 
 ## Type Aliases
 
+- [AnonymizationMode](type-aliases/AnonymizationMode.md)
+- [AnonymizeOptions](type-aliases/AnonymizeOptions.md)
+- [AnonymizePhase](type-aliases/AnonymizePhase.md)
+- [AnonymizeProgressCallback](type-aliases/AnonymizeProgressCallback.md)
+- [AnonymizeReport](type-aliases/AnonymizeReport.md)
+- [AnonymizeRuleCount](type-aliases/AnonymizeRuleCount.md)
 - [CheckPageLoadCallback](type-aliases/CheckPageLoadCallback.md)
 - [Cookie](type-aliases/Cookie.md)
 - [Cookies](type-aliases/Cookies.md)
@@ -26,12 +32,18 @@
 - [Optional](type-aliases/Optional.md)
 - [Page](type-aliases/Page.md)
 - [Predicator](type-aliases/Predicator.md)
+- [RedactionContext](type-aliases/RedactionContext.md)
 - [ReferenceFilterCallback](type-aliases/ReferenceFilterCallback.md)
 - [RunMetaInfo](type-aliases/RunMetaInfo.md)
+- [UnclassifiedLabelFamily](type-aliases/UnclassifiedLabelFamily.md)
 - [Undefinable](type-aliases/Undefinable.md)
 
 ## Functions
 
+- [anonymizeHeapSnapshot](functions/anonymizeHeapSnapshot.md)
+- [anonymizeHeapSnapshotFile](functions/anonymizeHeapSnapshotFile.md)
+- [auditHeapSnapshotFile](functions/auditHeapSnapshotFile.md)
 - [dumpNodeHeapSnapshot](functions/dumpNodeHeapSnapshot.md)
+- [serializeHeapSnapshot](functions/serializeHeapSnapshot.md)
 - [tagObject](functions/tagObject.md)
 - [takeNodeMinimalHeap](functions/takeNodeMinimalHeap.md)
