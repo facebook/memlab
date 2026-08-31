@@ -15,7 +15,7 @@ const {utils, NumericSet} = memlabCore;
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
 import {
-  isNodeWorthInspecting,
+  matchesPropertyShape,
   serializeNodeSummary,
   formatNodeSummaryTable,
   formatNumber,
@@ -81,19 +81,8 @@ export function registerFindByShape(server: McpServer): void {
         const requiredSet = new Set(properties);
         const excludeSet = new Set(exclude_properties ?? []);
 
-        const matchesShape = (node: IHeapNode): boolean => {
-          if (!isNodeWorthInspecting(node)) return false;
-          if (class_name && node.name !== class_name) return false;
-
-          const foundProps = new Set<string>();
-          for (const edge of node.references) {
-            if (edge.type !== 'property' && edge.type !== 'element') continue;
-            const name = String(edge.name_or_index);
-            if (excludeSet.has(name)) return false;
-            if (requiredSet.has(name)) foundProps.add(name);
-          }
-          return foundProps.size === requiredSet.size;
-        };
+        const matchesShape = (node: IHeapNode): boolean =>
+          matchesPropertyShape(node, requiredSet, excludeSet, class_name);
 
         const shapeDesc =
           `{${properties.join(', ')}}` +

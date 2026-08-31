@@ -12,11 +12,14 @@ import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import fs from 'fs';
 import memlabCore from '@memlab/core';
+import memlabHeapAnalysis from '@memlab/heap-analysis';
 import {z} from 'zod';
 import {
   errorResult,
+  formatBytes,
   formatNumber,
   markdownTable,
+  matchesPropertyShape,
   pathsHeader,
   toolResult,
 } from '../utils.js';
@@ -25,8 +28,36 @@ import {resolveLadderPaths} from './ladder.js';
 import {resolveMaxFileSizeMB, resolveSnapshotPath} from './load-snapshot.js';
 
 const {utils: memlabUtils} = memlabCore;
+const {getFullHeapFromFile} = memlabHeapAnalysis;
 
-type MetricKind = 'collection_length' | 'class_count' | 'pending_chain';
+type MetricKind =
+  | 'collection_length'
+  | 'class_count'
+  | 'pending_chain'
+  | 'shape_count'
+  | 'shape_self_bytes'
+  | 'retained_size';
+
+/**
+ * `retained_size` is the only metric that needs the dominator pass; every other
+ * one is read off names and edges. Kept as a predicate rather than inlined so
+ * the light/full decision is made in exactly one place — a light snapshot
+ * returns 0 for `retainedSize` WITHOUT failing, which is the silent-zero trap
+ * the eval pre-flight already guards against.
+ */
+function needsRetainedSizes(kind: MetricKind): boolean {
+  return kind === 'retained_size';
+}
+
+/** `"a, b,c"` -> `Set{a, b, c}`. Empty entries dropped. */
+function parseShapeLocator(locator: string): Set<string> {
+  return new Set(
+    locator
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean),
+  );
+}
 
 // Guard against a corrupt or genuinely circular chain. V8's update queues ARE
 // circular (`queue.pending.next` loops back), so the walk stops on a repeat as
@@ -51,6 +82,30 @@ export function measureMetric(
       if (node.id > 3 && node.name === want) count++;
     });
     return count;
+  }
+
+  if (kind === 'shape_count' || kind === 'shape_self_bytes') {
+    const required = parseShapeLocator(locator);
+    let total = 0;
+    snapshot.nodes.forEach(node => {
+      if (!matchesPropertyShape(node, required)) return;
+      total += kind === 'shape_count' ? 1 : node.self_size;
+    });
+    return total;
+  }
+
+  if (kind === 'retained_size') {
+    // The single largest instance, not the sum: the metric the leak-hunt
+    // methodology asks you to quote is "the retained size of the object the fix
+    // targets", and summing retained sizes over instances that nest on the
+    // dominator tree double-counts.
+    const want = locator.trim();
+    let largest = 0;
+    snapshot.nodes.forEach(node => {
+      if (node.id <= 3 || node.name !== want) return;
+      if (node.retainedSize > largest) largest = node.retainedSize;
+    });
+    return largest;
   }
 
   const loc = parseLocator(locator);
@@ -113,13 +168,18 @@ async function measureArm(
         `${p} is ${sizeMB.toFixed(0)} MB — exceeds the ${limit} MB per-file safety limit. Raise it with max_file_size_mb: ${Math.ceil(sizeMB + 100)}.`,
       );
     }
-    // Light parse: every metric here is read off names and edges, so the
+    // Light parse by default: most metrics are read off names and edges, so the
     // dominator/retained-size pass would be paid on every rung of both arms for
-    // nothing.
-    const snapshot = await memlabUtils.getSnapshotFromFile(local, {
-      buildNodeIdIndex: true,
-      verbose: false,
-    });
+    // nothing. `retained_size` is the exception and must have it — on a light
+    // snapshot `retainedSize` reads back 0 WITHOUT failing, so a silent zero
+    // would be reported as "the fix removed everything", which is the most
+    // damaging possible wrong answer from a fix-verification tool.
+    const snapshot = needsRetainedSizes(kind)
+      ? await getFullHeapFromFile(local)
+      : await memlabUtils.getSnapshotFromFile(local, {
+          buildNodeIdIndex: true,
+          verbose: false,
+        });
     labels.push(fetchedFrom ?? p.replace(/^.*\//, ''));
     values.push(measureMetric(snapshot, kind, locator, chainEdge));
   }
@@ -138,17 +198,27 @@ export function registerVerifyFix(server: McpServer): void {
     'memlab_verify_fix',
     'Decide whether a fix actually worked, by comparing the per-cycle growth RATE of one metric between a before ladder and an after ladder. hunt_runner --ab drives both arms but nothing analyses them, which is why fix write-ups stall at "A/B pending". ' +
       'NO RUNTIME GATE IS REQUIRED: the two arms are two sets of snapshot files passed as `before_paths` and `after_paths`, so a fix that cannot be put behind a flag — a build-only change, a local patch, a reverted commit — is verified exactly the same way. One session concluded this tool was unusable for an ungated fix and skipped A/B entirely; it is not. ' +
-      'Metrics: "collection_length" (entries under "<OwnerClass>.<property>"), "class_count" (instances of a class), "pending_chain" (total length of the linked lists hanging off "<OwnerClass>.<property>", following `next` — the React update-queue shape). ' +
+      'Metrics: "collection_length" (entries under "<OwnerClass>.<property>"), "class_count" (instances of a class), "pending_chain" (total length of the linked lists hanging off "<OwnerClass>.<property>", following `next` — the React update-queue shape), ' +
+      '"shape_count" and "shape_self_bytes" (objects carrying ALL of a comma-separated property set — use these when the leaking population is anonymous object literals, whose class name is the useless "Object"; this is the common case for record types and the reason a session with a real A/B still had to hand-roll the comparison), ' +
+      '"retained_size" (retained size of the LARGEST instance of a class — the figure the leak-hunt methodology asks you to quote for a fix, rather than aggregate heap). ' +
+      'Note "retained_size" forces a FULL parse of every rung on both arms because retained sizes need the dominator pass; the other metrics load LIGHT. ' +
       'Compares RATES, not levels: a build difference, a warmer cache or a longer session all shift the absolute level, and only the slope per interaction says whether the thing still accumulates. Each arm therefore needs at least 2 rungs — a single snapshot per arm is refused rather than compared, because that comparison is confounded. ' +
       'Returns both series, both rates, the reduction, and a PASS/FAIL against expected_reduction. Loads rungs transiently in LIGHT mode, one graph at a time.',
     {
       metric_kind: z
-        .enum(['collection_length', 'class_count', 'pending_chain'])
+        .enum([
+          'collection_length',
+          'class_count',
+          'pending_chain',
+          'shape_count',
+          'shape_self_bytes',
+          'retained_size',
+        ])
         .describe('What to measure on every rung of both arms.'),
       locator: z
         .string()
         .describe(
-          'For collection_length / pending_chain: "<OwnerClass>.<property>" (deeper paths allowed). For class_count: the class name alone.',
+          'For collection_length / pending_chain: "<OwnerClass>.<property>" (deeper paths allowed). For class_count and retained_size: the class name alone. For shape_count / shape_self_bytes: a comma-separated property set, e.g. "timeToFirstByte,timeToLastByte,transferSize" — matching is the same as memlab_find_by_shape, so the population counted here is the population that tool finds.',
         ),
       before_paths: z
         .array(z.string())
@@ -237,8 +307,18 @@ export function registerVerifyFix(server: McpServer): void {
         const beforeRate = perCycleRate(b.values, cycles);
         const afterRate = perCycleRate(a.values, cycles);
 
+        // Byte-valued metrics read as nonsense in raw counts — "1162420" is not
+        // a number anyone checks, "1.1 MB" is.
+        const isBytes =
+          metric_kind === 'shape_self_bytes' || metric_kind === 'retained_size';
+        const fmtVal = (v: number): string =>
+          isBytes ? formatBytes(v) : formatNumber(v);
         const fmtRate = (r: number): string =>
-          Math.abs(r) < 10 ? r.toFixed(2) : formatNumber(Math.round(r));
+          isBytes
+            ? `${formatBytes(Math.round(r))}`
+            : Math.abs(r) < 10
+              ? r.toFixed(2)
+              : formatNumber(Math.round(r));
 
         const lines: string[] = [
           `## Fix verification — \`${metric_kind}\` on \`${locator}\``,
@@ -249,25 +329,25 @@ export function registerVerifyFix(server: McpServer): void {
               [
                 'before (unfixed)',
                 String(b.values.length),
-                formatNumber(b.values[0]),
-                formatNumber(b.values[b.values.length - 1]),
-                formatNumber(b.values[b.values.length - 1] - b.values[0]),
+                fmtVal(b.values[0]),
+                fmtVal(b.values[b.values.length - 1]),
+                fmtVal(b.values[b.values.length - 1] - b.values[0]),
                 fmtRate(beforeRate),
               ],
               [
                 'after (fixed)',
                 String(a.values.length),
-                formatNumber(a.values[0]),
-                formatNumber(a.values[a.values.length - 1]),
-                formatNumber(a.values[a.values.length - 1] - a.values[0]),
+                fmtVal(a.values[0]),
+                fmtVal(a.values[a.values.length - 1]),
+                fmtVal(a.values[a.values.length - 1] - a.values[0]),
                 fmtRate(afterRate),
               ],
             ],
             new Set([1, 2, 3, 4, 5]),
           ),
           '',
-          `- before series: ${b.values.map(v => formatNumber(v)).join(' → ')}`,
-          `- after series: ${a.values.map(v => formatNumber(v)).join(' → ')}`,
+          `- before series: ${b.values.map(v => fmtVal(v)).join(' → ')}`,
+          `- after series: ${a.values.map(v => fmtVal(v)).join(' → ')}`,
           '',
         ];
 

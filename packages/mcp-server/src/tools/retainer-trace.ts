@@ -13,6 +13,7 @@ import type {IHeapNode, IHeapEdge} from '@memlab/core';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
 import {
+  classifyRetainerRoot,
   formatBytes,
   formatNodeInline,
   collapseRepeatedRuns,
@@ -244,6 +245,11 @@ export function registerRetainerTrace(server: McpServer): void {
           lines.push(
             '(top = GC root; each node is retained by the one above it)',
           );
+        }
+        const rootNote = classifyRetainerRoot(reverseItems);
+        if (rootNote != null) {
+          lines.push('');
+          lines.push(rootNote);
         }
         lines.push('');
         if (appFrame) {

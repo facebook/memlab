@@ -282,6 +282,118 @@ export function isNodeWorthInspecting(
 }
 
 /**
+ * Names that make a direct property of the page global almost certainly
+ * scaffolding rather than product state: debug handles, test harness globals,
+ * and the `__x` convention for "not really part of the app".
+ */
+const SCAFFOLDING_GLOBAL_RE = /^__|^\$|debug|Debug|harness|Harness|^_?test/;
+
+/**
+ * Where does a retainer path actually start?
+ *
+ * A trace whose second hop is a DIRECT property of `Window [JSGlobalObject]` is
+ * rooted on a page global, not on the module registry the application's own
+ * state hangs off. That distinction decides whether the trace describes
+ * production retention or the measuring apparatus, and nothing else in the
+ * output makes it: `dev_artifacts` looks for known DevTools/extension globals
+ * and correctly reports "none found" for an ordinary global a harness attached.
+ *
+ * A real case: a fix's A/B held its instance at `window.__stats`, and the
+ * captured trace read `Window -> .global_object -> .__stats -> …`. Pasted into
+ * a diff as "the production retainer chain" it would have been wrong, and no
+ * tool objected.
+ *
+ * KNOWN LIMITATION, and do not "fix" it by broadening the match. This only
+ * fires on captures that name the global `Window [JSGlobalObject]`. Other
+ * captures name it `Window / <url>` with no JSGlobalObject node at all
+ * (measured: 0 such nodes in an 892k-node internal-app snapshot), and there the
+ * check is blind. Matching those too would be worse than blind: their app code
+ * hangs off `Window.__d`, Haste's module define, which is both a direct global
+ * property AND a match for the `^__` scaffolding heuristic below — so it would
+ * flag the legitimate module registry as test scaffolding on essentially every
+ * www trace. A quiet miss is the right failure for a warning whose job is to
+ * tell you to distrust a trace.
+ */
+export function classifyRetainerRoot(
+  items: ReadonlyArray<{
+    node: IHeapNode;
+    edgeName?: string;
+    edgeType?: string;
+  }>,
+): string | null {
+  for (let i = 0; i < items.length - 1; i++) {
+    if (!items[i].node.name.includes('JSGlobalObject')) {
+      continue;
+    }
+    // An item's edgeName is the edge LEAVING it toward its child (the walk
+    // records `edge.fromNode` together with that edge), so the property hung off
+    // the global is on the global's own item — not the next one. Reading the
+    // next item named the grandchild's edge instead: for
+    // `Window -> .__stats -> NetworkRequestPipelineStats -> #resourceTimingEntries`
+    // it reported `#resourceTimingEntries` as the global's property.
+    const hop = items[i];
+    if (hop.edgeType !== 'property' || hop.edgeName == null) {
+      return null;
+    }
+    const name = hop.edgeName;
+    const scaffoldy = SCAFFOLDING_GLOBAL_RE.test(name);
+    return (
+      `⚠ Rooted on a DIRECT property of the page global (\`${name}\`), not on the ` +
+      'module registry. ' +
+      (scaffoldy
+        ? `\`${name}\` looks like debug or test scaffolding. If a harness, console ` +
+          'session or debug diff attached it, this path describes what the ' +
+          'MEASURING APPARATUS retains, not what the product retains — do not ' +
+          'quote it as the production retainer chain.'
+        : 'If the app genuinely owns this global the path is real; if it was ' +
+          'attached by a harness or a console session, the path describes the ' +
+          'measuring apparatus rather than the product. Confirm which before ' +
+          'quoting it as the production retainer chain.')
+    );
+  }
+  return null;
+}
+
+/**
+ * Does this node carry ALL of `required` as own property/element edges, and
+ * none of `exclude`?
+ *
+ * Shared because two tools now answer "how many objects have this shape" —
+ * `find_by_shape` and `verify_fix`'s `shape_count`/`shape_self_bytes` metrics —
+ * and a fix-verification that counted a slightly different population than the
+ * tool used to find the leak would compare two different things while looking
+ * like a clean A/B. Same reasoning as the elements primitives in
+ * `heap-shapes.ts`: one definition, so the two cannot drift.
+ */
+export function matchesPropertyShape(
+  node: IHeapNode,
+  required: ReadonlySet<string>,
+  exclude?: ReadonlySet<string>,
+  className?: string,
+): boolean {
+  if (!isNodeWorthInspecting(node)) {
+    return false;
+  }
+  if (className != null && node.name !== className) {
+    return false;
+  }
+  const found = new Set<string>();
+  for (const edge of node.references) {
+    if (edge.type !== 'property' && edge.type !== 'element') {
+      continue;
+    }
+    const name = String(edge.name_or_index);
+    if (exclude?.has(name)) {
+      return false;
+    }
+    if (required.has(name)) {
+      found.add(name);
+    }
+  }
+  return found.size === required.size;
+}
+
+/**
  * Property names that mark a "freshness" timestamp on a TTL/warm cache wrapper
  * object (e.g. `{entries, loadedAt}`, `{items, timestamp}`). Their presence next
  * to a large array/Map means the collection was loaded as a point-in-time

@@ -136,7 +136,11 @@ export function linearFit(xs: number[], ys: number[]): LinearFit {
   return {slope, intercept, r2};
 }
 
-export function verdictFor(values: number[], fit: LinearFit): string {
+export function verdictFor(
+  values: number[],
+  fit: LinearFit,
+  axisAssumed = false,
+): string {
   const n = values.length;
   const delta = values[n - 1] - values[0];
   // FLAT is the strongest negative claim this produces, so it has to mean the
@@ -181,7 +185,20 @@ export function verdictFor(values: number[], fit: LinearFit): string {
   if (strictlyIncreasing && fit.r2 >= 0.98) {
     return 'LINEAR — grew every step, r2 >= 0.98 (unbounded per-cycle shape)';
   }
-  if (strictlyIncreasing) return 'grew every step (but not a clean line)';
+  if (strictlyIncreasing) {
+    // r2 is invariant under an affine change of x, so when the cycle axis was
+    // INFERRED as evenly spaced this number is really a fit against rung index.
+    // A population that is exactly linear in cycles but sampled at uneven
+    // cycle counts (0 / 2.5k / 5k / 10k, say) is then guaranteed to score below
+    // 1.0 and gets reported as "not a clean line" — a property of the assumed
+    // axis, not of the data. Nothing in the series can distinguish the two, so
+    // say so rather than asserting non-linearity the tool cannot see.
+    return axisAssumed
+      ? 'grew every step; r2 < 0.98 against an ASSUMED evenly-spaced axis — ' +
+          'if the rungs were NOT evenly spaced in cycles, pass cycles_per_rung ' +
+          'and re-read the fit before concluding the growth is non-linear'
+      : 'grew every step (but not a clean line)';
+  }
   // Non-decreasing with at least one flat step. Name the shape instead of
   // rounding it up to growth; a single jump is the classic bounded allocation.
   if (nonDecreasing) {
@@ -428,6 +445,10 @@ export function registerLadderProbe(server: McpServer): void {
             return i;
           });
         const perCycleKnown = cycles != null || cycles_per_rung != null;
+        // `cycles` alone spreads the rungs evenly over the range. That is a
+        // guess about how the ladder was driven, and it silently becomes the
+        // x-axis every fit is scored against.
+        const axisAssumed = cycles != null && cycles_per_rung == null;
 
         const lines: string[] = [];
         const multi = metricList.length > 1;
@@ -512,6 +533,19 @@ export function registerLadderProbe(server: McpServer): void {
             lines.push(
               `**Rate: ${fit.slope >= 0 ? '+' : ''}${fit.slope.toFixed(3)} per cycle**, r2 = ${fit.r2.toFixed(4)}.`,
             );
+            // Skip the caveat on a completely flat series: no choice of
+            // x-axis changes a rate of 0 or an r2 of 1, so the note is
+            // pure noise exactly where it cannot matter.
+            const flatSeries = Math.min(...usableYs) === Math.max(...usableYs);
+            if (axisAssumed && !flatSeries) {
+              lines.push(
+                `_Cycle axis ASSUMED evenly spaced: ${formatNumber(cycles ?? 0)} cycles ` +
+                  `split equally across ${usable.length} rung(s). If the ladder was ` +
+                  'driven at uneven cycle counts, both the rate and r2 above are ' +
+                  'against the wrong x-axis — pass `cycles_per_rung` with the real ' +
+                  'per-rung counts._',
+              );
+            }
           } else {
             lines.push(
               `**Slope: ${fit.slope >= 0 ? '+' : ''}${fit.slope.toFixed(3)} per rung**, r2 = ${fit.r2.toFixed(4)}. ` +
@@ -519,7 +553,7 @@ export function registerLadderProbe(server: McpServer): void {
             );
           }
           lines.push('');
-          lines.push(`**Verdict:** ${verdictFor(usableYs, fit)}`);
+          lines.push(`**Verdict:** ${verdictFor(usableYs, fit, axisAssumed)}`);
           if (usable.length === 2) {
             // A line through two points fits them perfectly, so r2 is 1.0000 by
             // construction and "grew every step" is the same statement as "grew".
