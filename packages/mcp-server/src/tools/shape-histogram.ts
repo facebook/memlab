@@ -213,6 +213,28 @@ export function registerShapeHistogram(server: McpServer): void {
             '',
             "_Retained shown as a range `[lower, ≤ upper]`: lower = Σ self size (objects' own bytes), upper = Σ retained size (double-counts subtrees shared between instances on the dominator tree). The exact dominator-deduped value needs a per-shape dominator walk that can stall or time out on large heaps — pass `exact_retained_size:true` for it._",
           );
+          // A range is only safe to quote when its ends agree. Three different
+          // figures have been published for one object before the right one was
+          // measured, so say WHEN the choice of end changes the story rather
+          // than leaving the reader to notice.
+          const widest = finalList.reduce(
+            (w, g) => {
+              const ratio =
+                g.totalSelfSize > 0 ? g.rawRetained / g.totalSelfSize : 1;
+              return ratio > w.ratio ? {ratio, g} : w;
+            },
+            {ratio: 0, g: finalList[0]},
+          );
+          if (widest.ratio >= 2 && widest.g != null) {
+            lines.push(
+              `⚠ The widest range here spans **${widest.ratio.toFixed(1)}×** ` +
+                `(${formatBytes(widest.g.totalSelfSize)} → ${formatBytes(widest.g.rawRetained)}). ` +
+                'Which end you quote changes the finding, so do not carry either ' +
+                'number into a write-up as "the size" — re-run with ' +
+                '`exact_retained_size:true`, or size the specific instance with ' +
+                '`memlab_dominator_attribution`.',
+            );
+          }
         }
 
         if (!suggestionsSuppressed()) {

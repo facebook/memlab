@@ -665,7 +665,14 @@ export function registerEval(server: McpServer): void {
       '`node.referrers` (incoming edges, iterable with for-of). ' +
       'Each edge has: `.name_or_index`, `.type` (property/element/context/internal/hidden/shortcut), ' +
       '`.toNode`, `.fromNode`.\n' +
-      '**Iterating all nodes:** `snapshot.nodes.forEach(node => { ... })` — NOT for-of.\n' +
+      '**Iterating all nodes:** `snapshot.nodes.forEach(node => { ... })` — NOT for-of. ' +
+      'It stops early ONLY on `return false`; a bare `return` is "skip this node" and keeps walking all 3-7M of them while reading like an early exit.\n' +
+      '**Helper cheat-sheet — prefer these over hand-rolled scans.** They are indexed and memoized per snapshot, so a second call is index-speed rather than another full pass: ' +
+      '`helpers.byClass(name)` / `helpers.byTypename(name)` / `helpers.withProp(name)` return id arrays; ' +
+      '`helpers.hasShape(id, ["a","b"], {exact})` is the CORRECT shape test and `helpers.shapeKeys(id)` / `helpers.ownProps(id)` its building blocks; ' +
+      '`helpers.rootPath(id)` is the GC-root path without hand-writing the `pathEdge` loop; ' +
+      '`helpers.mapEntries(id)` / `helpers.setElements(id)` enumerate Maps/Sets correctly. ' +
+      '**`helpers.props()` is for INSPECTION, not shape matching** — on a node with no property edges it falls back to internal/hidden edges and adds synthetic keys, so a shape test written against `Object.keys(props(id))` returns zero matches on objects that plainly have the shape. Call `mode: "describe_env"` for the full surface and its gotchas.\n' +
       '**Get node by ID:** `snapshot.getNodeById(id)` returns IHeapNode or null.\n' +
       '**String values:** `node.toStringNode()?.stringValue` for string nodes.\n' +
       '**Caveat — retained_size is unreliable here:** inside eval, `node.retained_size`/`.retainedSize` can read back ~0 for every node on some loads. Node counts, property/edge walks, and string values ARE trustworthy. For authoritative retained sizes call `helpers.retainedSize(id)` (number) / `helpers.retainedSizes([ids])` (a `Record<id, bytes>` object, NOT an array) — they re-resolve the node on the real snapshot — or use the dedicated tools (`memlab_largest_objects`, `memlab_class_histogram`, `memlab_pinch_points`, `memlab_object_shape`).\n\n' +

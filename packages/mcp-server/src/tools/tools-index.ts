@@ -336,6 +336,10 @@ const GROUPS: Group[] = [
       ['memlab_search_nodes', 'By name/type/size predicates.'],
       ['memlab_find_by_property', 'By a property name/value.'],
       ['memlab_find_by_shape', 'By property set.'],
+      [
+        'memlab_module_present',
+        'Is this class in the heap AT ALL? Pre-flight before instrumenting a module.',
+      ],
       ['memlab_match_object', 'By a structural pattern.'],
       ['memlab_get_node', 'One node’s details.'],
       ['memlab_object_shape', 'One object’s properties and their sizes.'],
