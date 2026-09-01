@@ -617,21 +617,62 @@ export function registerFindingIndex(server: McpServer): void {
                 'history, then record findings as you confirm them (`action: "record"`).',
             );
           }
-          const rows = all
+          // `fixed_behind` is free text and in practice holds a sentence or
+          // three — which gate, which diffs, what else has to be on. Printed in
+          // full it sets the column width for the whole table and pushes every
+          // other column off the readable area; one observed index rendered a
+          // 300-character status cell next to a 12-character fingerprint. The
+          // detail is worth keeping, so it moves below the table rather than
+          // being dropped.
+          // A hard cap on the RENDERED cell, wrapper included. Budgeting only
+          // the text inside `fixed (…)` left a ~70-character cell, which still
+          // set the table width — the thing the cap exists to stop.
+          const STATUS_CELL_MAX = 48;
+          // Free text also means a `|` or a newline, either of which splits the
+          // row and silently rewrites the table around it. Truncation bounds the
+          // WIDTH; this bounds the cell to one table cell.
+          const cellSafe = (text: string): string =>
+            text.replace(/\s+/g, ' ').replace(/\|/g, '\\|').trim();
+          const SEE_BELOW = '… — see below';
+          /**
+           * The status cell for one finding, plus the detail line it displaced.
+           *
+           * Returns the detail rather than pushing it, so building the rows has
+           * no side effect on an accumulator declared elsewhere — the row
+           * pipeline can be reordered or filtered without silently changing
+           * what appears under the table.
+           */
+          const statusCell = (
+            f: Finding,
+          ): {cell: string; detail: string | null} => {
+            if (f.status !== 'fixed') return {cell: f.status, detail: null};
+            const behind = cellSafe(f.fixed_behind ?? '?');
+            const full = `fixed (${behind})`;
+            if (full.length <= STATUS_CELL_MAX)
+              return {cell: full, detail: null};
+            const room = STATUS_CELL_MAX - 'fixed ()'.length - SEE_BELOW.length;
+            return {
+              cell: `fixed (${behind.slice(0, Math.max(room, 0))}${SEE_BELOW})`,
+              detail: `- \`${f.fingerprint}\` fixed behind: ${behind}`,
+            };
+          };
+          const listed = all
             .sort((a, b) => b.seen_count - a.seen_count)
             .slice(0, 40)
-            .map(f => [
-              f.fingerprint,
-              f.status === 'fixed'
-                ? `fixed (${f.fixed_behind ?? '?'})`
-                : f.status,
-              f.growing_classes.slice(0, 3).join(', ') || '—',
-              `${f.first_seen_round}${f.last_seen_round !== f.first_seen_round ? `→${f.last_seen_round}` : ''}`,
-              String(f.seen_count),
-              f.signature.length > 60
-                ? f.signature.slice(0, 57) + '…'
-                : f.signature,
-            ]);
+            .map(f => ({finding: f, status: statusCell(f)}));
+          const fixedDetails = listed
+            .map(r => r.status.detail)
+            .filter((d): d is string => d != null);
+          const rows = listed.map(({finding: f, status}) => [
+            f.fingerprint,
+            status.cell,
+            f.growing_classes.slice(0, 3).join(', ') || '—',
+            `${f.first_seen_round}${f.last_seen_round !== f.first_seen_round ? `→${f.last_seen_round}` : ''}`,
+            String(f.seen_count),
+            f.signature.length > 60
+              ? f.signature.slice(0, 57) + '…'
+              : f.signature,
+          ]);
           // Sort by round id rather than trusting object insertion order: a
           // re-recorded round moves in the object and "the last 8" silently
           // stops meaning the most recent ones.
@@ -657,8 +698,18 @@ export function registerFindingIndex(server: McpServer): void {
                 rows,
                 new Set([4]),
               ),
-              covered.length > 0 ? '\n### Combo coverage by round\n' : '',
-              ...covered.map(c => `- ${c}`),
+              // Each block contributes its heading only when it has rows;
+              // pushing an empty string unconditionally leaves a stray blank
+              // line between the table and whatever follows.
+              ...(fixedDetails.length > 0
+                ? ['\n### Fix details (truncated above)\n', ...fixedDetails]
+                : []),
+              ...(covered.length > 0
+                ? [
+                    '\n### Combo coverage by round\n',
+                    ...covered.map(c => `- ${c}`),
+                  ]
+                : []),
             ].join('\n'),
           );
         }

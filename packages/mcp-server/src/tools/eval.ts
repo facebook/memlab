@@ -649,6 +649,163 @@ function editDistanceWithin(a: string, b: string, max: number): boolean {
   return prev[b.length] <= max;
 }
 
+/**
+ * Worked idioms, kept next to the tool that runs them.
+ *
+ * `describe_env` documents the SURFACE — what exists and what it returns. That is
+ * not the thing that stops a novel query getting written. What stops it is not
+ * knowing the shape of a working answer: how to count a population when the
+ * class name is `Object`, how to reach something that has no property edge at
+ * all, how to group without printing every id to the transcript.
+ *
+ * Every recipe here is one that a real hunt either wrote by hand or, in the
+ * first case, got WRONG and shipped as a false negative before the mistake was
+ * found. Recipe 2 exists because a shape-based probe returned 0 at every rung
+ * against a closure-captured array and read as a clean negative.
+ */
+const EVAL_RECIPES = `## memlab_eval recipes
+
+Ten idioms that cover most of what a hunt actually asks. Copy, adjust, run.
+Use \`mode: "describe_env"\` for the full helper surface and its gotchas, and
+\`mode: "lint"\` on anything you edit — it names any helper that does not exist
+before a snapshot load is spent on it.
+
+### 1. Count a population whose class name is useless (\`Object\`)
+
+Match on SHAPE, not name. This is the normal case in a modern heap.
+\`withProp\` narrows by index to the objects carrying one of the keys, then
+\`hasShape\` is the actual test — do NOT test with \`Object.keys(helpers.props(id))\`,
+which adds synthetic keys and matches nothing.
+
+    result = helpers
+      .withProp('callback')
+      .filter(id => helpers.hasShape(id, ['callback', 'context'])).length;
+
+### 2. Count something held in a CLOSURE, not in a property
+
+A closure-captured variable is not a property of anything, so shape and property
+matching cannot see it and quietly return 0. It is reached by a \`context\`-TYPED
+edge — and those edges leave the SCOPE object, never the function itself, so
+filtering a closure's own \`.references\` for \`type === 'context'\` matches zero
+edges on every heap. Walk all nodes and match the edge:
+
+    let n = 0;
+    snapshot.nodes.forEach(node => {
+      for (const e of node.references) {
+        if (e.type === 'context' && String(e.name_or_index) === 'myQueue') n++;
+      }
+    });
+    result = n;
+
+A zero from a probe that cannot observe its population is NOT a negative result.
+Pair any zero with a control — see \`visibility_probe\` on
+\`memlab_ladder_probe\` — or let \`memlab_count_population\` run this method and a
+shape method side by side.
+
+### 3. The biggest instance of a class, and what it holds
+
+\`node.retainedSize\` throws inside eval — the sandbox refuses it, because it was
+observed reading back 0 for every node on some loads and a silently wrong size
+ranks a whole analysis wrongly. Sizes come from \`helpers.retainedSizes\`, which
+returns an OBJECT keyed by id.
+
+    const nodes = helpers.nodesByClass('MyCache');
+    const sizes = helpers.retainedSizes(nodes.map(n => n.id));
+    const ranked = nodes
+      .map(n => ({id: n.id, retained: sizes[n.id] || 0}))
+      .sort((a, b) => b.retained - a.retained);
+    result = ranked[0] || null;
+
+### 4. Every array longer than N, ranked
+
+Finds unbounded queues without knowing their name. Size only the survivors: one
+\`retainedSizes\` call on 20 ids, not one per node inside the walk.
+
+    const big = [];
+    snapshot.nodes.forEach(node => {
+      if (node.name !== 'Array') return;
+      let n = 0;
+      for (const e of node.references) if (e.type === 'element') n++;
+      if (n >= 1000) big.push({id: node.id, entries: n});
+    });
+    big.sort((a, b) => b.entries - a.entries);
+    const top = big.slice(0, 20);
+    const sizes = helpers.retainedSizes(top.map(b => b.id));
+    result = top.map(b => ({id: b.id, entries: b.entries, retained: sizes[b.id] || 0}));
+
+### 5. Group a population by its owner's class
+
+Answers "who owns these?" without one trace per instance. \`helpers.owner\` is the
+nearest dominator carrying a class identity — \`node.dominatorNode\` is usually a
+\`system /\` container, and it is refused on a light load.
+
+    result = helpers.histogram(helpers.byClass('Thing'), id => {
+      const o = helpers.owner(id);
+      return o ? o.name : '(none)';
+    });
+
+### 6. Distinct property shapes inside one class
+
+Splits a class that is really several record types. \`shapeKeys\` returns a Set of
+own JS properties only.
+
+    const shapes = {};
+    for (const id of helpers.byClass('Object', {type: 'object'})) {
+      const keys = Array.from(helpers.shapeKeys(id));
+      if (keys.length === 0 || keys.length > 12) continue;
+      const k = keys.sort().join(',');
+      shapes[k] = (shapes[k] || 0) + 1;
+    }
+    result = Object.entries(shapes).sort((a, b) => b[1] - a[1]).slice(0, 15);
+
+### 7. Hand a population to another tool without printing it
+
+    const ids = helpers.withProp('expiresAt');
+    helpers.save('ttl_records', ids);
+    result = ids.length;
+
+Then \`memlab_retainer_summary({from_result: "ttl_records"})\`.
+
+### 8. Total self size of a population
+
+Cheap; needs no dominator pass, so it works on a LIGHT snapshot. \`byClass\`
+returns IDS, so take nodes when you need a field off them.
+
+    result = helpers
+      .nodesByClass('MyRecord')
+      .reduce((sum, n) => sum + n.self_size, 0);
+
+### 9. Strings that appear many times (interning candidates)
+
+    const counts = {};
+    snapshot.nodes.forEach(node => {
+      if (!node.isString) return;
+      const v = node.toStringNode && node.toStringNode();
+      const s = v && v.stringValue;
+      if (!s || s.length < 16) return;
+      counts[s] = (counts[s] || 0) + 1;
+    });
+    result = Object.entries(counts).filter(e => e[1] > 50).sort((a, b) => b[1] - a[1]).slice(0, 20);
+
+### 10. Probe for a ladder — one number, nothing else
+
+\`memlab_ladder_probe\` requires the value to be a NUMBER assigned to
+\`result\`. Anything else is refused rather than guessed at.
+
+    result = helpers.withProp('unsubscribe').length;
+
+## Cost, before you run something exploratory
+
+A full-graph walk on a multi-million-node heap is the expensive case, and it is
+the one worth doing. Bound it rather than avoiding it:
+
+- \`max_nodes\` caps nodes visited; the result says how many were seen.
+- \`timeout_ms\` caps wall clock; a hit returns partial output, not an error.
+- \`mode: "lint"\` checks the code WITHOUT a snapshot, so a typo costs no walk.
+
+Run \`lint\` first on anything longer than a line or two.
+`;
+
 export function registerEval(server: McpServer): void {
   server.tool(
     'memlab_eval',
@@ -691,11 +848,11 @@ export function registerEval(server: McpServer): void {
       'Pass `max_nodes` to bound a full-heap walk — on overrun the partial `result` is returned with a warning instead of failing, so a broad scan is safe to attempt. Every call reports `nodes_visited`.',
     {
       mode: z
-        .enum(['eval', 'describe_env', 'list_saved', 'lint'])
+        .enum(['eval', 'describe_env', 'recipes', 'list_saved', 'lint'])
         .optional()
         .default('eval')
         .describe(
-          '"eval" (default) runs `code`. "describe_env" ignores `code` and returns the in-scope globals, the IHeapNode/IHeapEdge API, and the required calling conventions (`result =`, `.forEach`) so you can self-correct before running — narrow it with `section` to avoid paying for all ~10 KB. "lint" syntax-checks `code`, lists the helpers it references and flags unknown ones, and estimates traversal nesting — all WITHOUT a snapshot, so a typo in a 40-line eval costs seconds instead of a 2-4 minute load. "list_saved" ignores `code` and lists the named result sets saved so far for this snapshot.',
+          '"eval" (default) runs `code`. "describe_env" ignores `code` and returns the in-scope globals, the IHeapNode/IHeapEdge API, and the required calling conventions (`result =`, `.forEach`) so you can self-correct before running — narrow it with `section` to avoid paying for all ~10 KB. "lint" syntax-checks `code`, lists the helpers it references and flags unknown ones, and estimates traversal nesting — all WITHOUT a snapshot, so a typo in a 40-line eval costs seconds instead of a 2-4 minute load. "recipes" ignores `code` and returns ten worked idioms — counting a population whose class name is `Object`, reaching a CLOSURE-captured variable that shape matching cannot see, finding unbounded arrays, grouping by retainer, handing ids to another tool without printing them — plus how to bound an exploratory full-graph walk. Read it before writing a query you have not written before; `describe_env` says what EXISTS, `recipes` shows what a working answer looks like. "list_saved" ignores `code` and lists the named result sets saved so far for this snapshot.',
         ),
       code: z
         .string()
@@ -842,7 +999,7 @@ export async function runEval({
   max_result_bytes,
   ownsScanBudget,
 }: {
-  mode?: 'eval' | 'describe_env' | 'list_saved' | 'lint';
+  mode?: 'eval' | 'describe_env' | 'recipes' | 'list_saved' | 'lint';
   code?: string;
   section?: string;
   timeout_ms?: number;
@@ -919,6 +1076,9 @@ export async function runEval({
     }
     if (mode === 'describe_env') {
       return toolResult(describeEnv(section));
+    }
+    if (mode === 'recipes') {
+      return toolResult(EVAL_RECIPES);
     }
     if (mode === 'list_saved') {
       return toolResult(describeSaved());

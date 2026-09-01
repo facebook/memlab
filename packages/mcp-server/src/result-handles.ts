@@ -8,7 +8,11 @@
  * @oncall memory_lab
  */
 
-import {getEvalScratch} from './heap-state.js';
+import {
+  getCurrentHandle,
+  getSavedResult,
+  listSavedResults,
+} from './heap-state.js';
 
 /**
  * Read a saved result (from `memlab_eval`'s `save_as` / `helpers.save`) as a
@@ -16,36 +20,50 @@ import {getEvalScratch} from './heap-state.js';
  * making a round trip through the transcript.
  *
  * A list of a few thousand ids is tens of thousands of tokens to print and
- * re-type, and re-typing them is where they get truncated or corrupted. The
- * scratch store already existed for `eval`; this makes it readable by the tools
- * that take `node_ids`, which is where such a list is actually wanted.
+ * re-type, and re-typing them is where they get truncated or corrupted.
+ *
+ * Reads the SESSION REGISTRY, which is where both `save_as` and `helpers.save`
+ * write (`setSavedResult`). It used to read `memlab_eval`'s per-snapshot scratch
+ * under a `__saved:` prefix instead, which nothing has written for some time, so
+ * `from_result` answered "nothing is saved" for a set that had just been saved.
+ * The scratch is not consulted as a fallback: it also holds eval's own memoized
+ * indexes under bare names, and it carries no record of which snapshot a value
+ * belongs to, so reading it would mean either resolving an internal index as a
+ * node-id list or stamping a value with a handle nobody verified.
  *
  * Accepts the shapes a result realistically has: an array of numbers, an array
  * of `{id}` objects, or an object with an `ids`/`node_ids` array.
  */
-// `memlab_eval` namespaces saved values in the shared per-snapshot scratch so
-// they cannot collide with its own indexes. Reading them back means honoring
-// that prefix — a bare-name lookup finds nothing and reports "not saved" for a
-// result that is sitting right there.
-const SAVED_PREFIX = '__saved:';
-
 export function resolveSavedNodeIds(name: string): number[] {
-  const scratch = getEvalScratch();
-  const prefixed = SAVED_PREFIX + name;
-  const key = prefixed in scratch ? prefixed : name;
-  if (!(key in scratch)) {
-    const available = Object.keys(scratch)
-      .filter(k => k.startsWith(SAVED_PREFIX))
-      .map(k => k.slice(SAVED_PREFIX.length));
+  const currentHandle = getCurrentHandle();
+  const saved = getSavedResult(name);
+  if (saved == null) {
+    // Names saved against ANOTHER snapshot are listed too, marked — suggesting
+    // one that will then be refused for a handle mismatch is worse than saying
+    // up front that it exists but belongs elsewhere.
+    const available = listSavedResults().map(r =>
+      currentHandle != null && r.handle !== currentHandle
+        ? `${r.name} (saved against "${r.handle}")`
+        : r.name,
+    );
     throw new Error(
       `No saved result named "${name}". ` +
         (available.length > 0
           ? `Saved: ${available.join(', ')}.`
-          : 'Nothing is saved for this snapshot. Save one with memlab_eval({code, save_as: "name"}).') +
-        ' Saved results are per-snapshot and are dropped when the snapshot is replaced.',
+          : 'Nothing is saved. Save one with memlab_eval({code, save_as: "name"}) or helpers.save(name, ids).'),
     );
   }
-  const raw: unknown = scratch[key];
+  if (currentHandle != null && saved.handle !== currentHandle) {
+    // Node ids are per-capture, so ids saved against another snapshot resolve
+    // to unrelated objects rather than to nothing — a silently wrong answer.
+    // `helpers.load` refuses the same read; this is the tool-side twin of it.
+    throw new Error(
+      `Saved result "${name}" was saved against snapshot "${saved.handle}" and the current snapshot is ` +
+        `"${currentHandle}". Node ids are per-capture, so they would resolve to unrelated objects here. ` +
+        'Re-save the set against this snapshot.',
+    );
+  }
+  const raw: unknown = saved.value;
   const fromArray = (arr: unknown[]): number[] => {
     const ids: number[] = [];
     for (const item of arr) {
