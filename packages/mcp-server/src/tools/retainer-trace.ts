@@ -46,6 +46,56 @@ function isAsyncContinuationFrame(node: IHeapNode): boolean {
   return ASYNC_CONTINUATION_NAMES.has(node.name);
 }
 
+/**
+ * How many DISTINCT references could be keeping this node alive, beyond the one
+ * path the trace shows.
+ *
+ * `retainer_trace` returns a single shortest path, and a reader reasonably takes
+ * it for "the reason" the object is alive. For anything in a detached island
+ * that is usually wrong: several independent holders exist, the shortest is
+ * whichever happens to sit nearest a GC root, and a fix aimed at it frees
+ * nothing while the others remain.
+ *
+ * Deliberately cheap — referrers only, no reachability pass — because it runs on
+ * every trace. Within that budget it over-counts: a referrer that is itself
+ * unreachable still counts here.
+ *
+ * The one direction it can UNDER-count is the ephemeron. A `part of key -> value
+ * pair in WeakMap` edge retains only while the KEY is reachable, and deciding
+ * that needs the reachability pass this function is defined not to do — so
+ * ephemerons are counted separately and reported separately, rather than folded
+ * into a number the caller would read as "definite holders". `memlab_island_doors`
+ * runs the fixpoint that resolves them; the point of this count is to send the
+ * caller there.
+ */
+function countIndependentHolders(node: IHeapNode): {
+  strong: number;
+  ephemeron: number;
+} {
+  const targetIsDetached =
+    node.is_detached || node.name.startsWith('Detached ');
+  let strong = 0;
+  let ephemeron = 0;
+  for (const edge of node.referrers) {
+    const from = edge.fromNode;
+    if (from == null || from.id <= 3) continue;
+    if (edge.type === 'weak') continue;
+    // Other members of the same detached island are wreckage, not holders.
+    if (
+      targetIsDetached &&
+      (from.is_detached || from.name.startsWith('Detached '))
+    ) {
+      continue;
+    }
+    if (parseEphemeronEdge(String(edge.name_or_index)) != null) {
+      ephemeron++;
+      continue;
+    }
+    strong++;
+  }
+  return {strong, ephemeron};
+}
+
 export function registerRetainerTrace(server: McpServer): void {
   server.tool(
     'memlab_retainer_trace',
@@ -250,6 +300,23 @@ export function registerRetainerTrace(server: McpServer): void {
         if (rootNote != null) {
           lines.push('');
           lines.push(rootNote);
+        }
+        const holders = countIndependentHolders(node);
+        if (holders.strong > 1 || holders.ephemeron > 0) {
+          const ephemeronNote =
+            holders.ephemeron > 0
+              ? ` Another ${holders.ephemeron} reference(s) reach it through a WeakMap ` +
+                "entry, which retains only while that entry's KEY is reachable — not counted above, " +
+                'and not dismissable either without checking the key.'
+              : '';
+          lines.push(
+            '',
+            `⚠ **This is ONE path of ${holders.strong} independent reference(s) to @${node_id}.**` +
+              ` Removing the holder shown here will not free the object while the others remain, ` +
+              'and the re-measurement then reads as "the fix does not work" rather than "the fix is ' +
+              `incomplete".${ephemeronNote} Enumerate all of them before writing a fix: ` +
+              `\`memlab_island_doors({seed_node_ids: [${node_id}]})\`.`,
+          );
         }
         lines.push('');
         if (appFrame) {

@@ -116,6 +116,14 @@ const GROUPS: Group[] = [
         'Which rungs of a ladder fit in memory at once, and which to probe transiently — answers "can I afford the MARGINAL unit cost?" before an analysis discovers the ceiling by hitting it.',
       ],
       [
+        'memlab_island_doors',
+        'List EVERY production-reachable reference into a detached island, not just the shortest one — a fix that closes one of several holders reclaims nothing.',
+      ],
+      [
+        'memlab_build_provenance',
+        'Assert the snapshot came from a build that actually contains the change, before reading any before/after number — "the fix does not work" and "the fix was never built" otherwise look identical.',
+      ],
+      [
         'memlab_count_population',
         'Count one population by class, by shape AND by closure-captured variable, and flag when the methods disagree — a method that cannot reach a population returns the same 0 as a population that is absent.',
       ],
