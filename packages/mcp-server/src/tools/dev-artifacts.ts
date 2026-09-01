@@ -887,6 +887,29 @@ export function registerDevArtifacts(server: McpServer): void {
         if (breakdown.length > 0) {
           lines.push(`By source: ${breakdown.join(' · ')}`);
         }
+        // The console total understates the console PROBLEM, and reading the
+        // percentage as "negligible" is the mistake this points at. These bytes
+        // are only what is retained SOLELY via a dev root; an object with a real
+        // production path AND a console-held root is excluded from the figure, yet
+        // the console path is the one a retainer trace will surface, because it
+        // is short. Bytes are the wrong axis — one held object roots everything
+        // it references.
+        if (devRoots.categoryById.size > 0) {
+          let consoleRootCount = 0;
+          for (const [, category] of devRoots.categoryById) {
+            if (category === 'console') consoleRootCount++;
+          }
+          if (consoleRootCount > 0) {
+            lines.push(
+              `⚠ ${formatNumber(consoleRootCount)} console-held root(s) are present (objects the DevTools ` +
+                'console is pinning; the global handle itself is not a node with an identity to count). ' +
+                "Do not read the percentage above as the console's impact: it counts only what is retained " +
+                'SOLELY via a dev root, while a console-held root can also add a short, convincing path to an ' +
+                'object that is otherwise real. Run `memlab_console_retention` for what is being held, and ' +
+                '`memlab_console_retention({target_node_id})` to ask whether one object depends on it.',
+            );
+          }
+        }
         // Name the Fast Refresh registries and their BACKING STORES explicitly.
         // The category rollup above already counts these bytes, but it counts
         // them as a number, and the thing an operator actually needs is the

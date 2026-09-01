@@ -124,6 +124,10 @@ const GROUPS: Group[] = [
         'Assert the snapshot came from a build that actually contains the change, before reading any before/after number — "the fix does not work" and "the fix was never built" otherwise look identical.',
       ],
       [
+        'memlab_console_retention',
+        'Report what an attached DevTools console is keeping alive, and whether a given object depends on it — console-held roots are real GC roots in the capture that do not exist in production.',
+      ],
+      [
         'memlab_count_population',
         'Count one population by class, by shape AND by closure-captured variable, and flag when the methods disagree — a method that cannot reach a population returns the same 0 as a population that is absent.',
       ],
