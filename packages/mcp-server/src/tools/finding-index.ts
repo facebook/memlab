@@ -82,8 +82,21 @@ interface Finding {
   growing_classes: string[];
   first_seen_round: string;
   last_seen_round: string;
-  status: 'new' | 'known' | 'fixed';
+  status: 'new' | 'known' | 'fixed' | 'retracted';
   fixed_behind?: string;
+  /**
+   * Diffs that carry the fix, as D-numbers.
+   *
+   * Separate from the free-text `fixed_behind` because that field has been
+   * carrying load-bearing structure as prose — "D1 stacked on D2, BOTH required",
+   * "effective only if <other gate> is also on". A reader has to parse a sentence
+   * to learn which diffs to check, and a tool cannot reconcile it at all.
+   */
+  fixed_by_diffs?: string[];
+  /** Whether a real before/after A/B confirmed the fix, rather than reasoning. */
+  verified_by_ab?: boolean;
+  /** Why a finding was withdrawn; required in practice for `retracted`. */
+  retraction_reason?: string;
   note?: string;
   seen_count: number;
 }
@@ -146,8 +159,11 @@ const IMPORTED_FINDING_SCHEMA = z.object({
   signature: z.string().optional(),
   growing_classes: z.array(z.string()).optional(),
   round: z.string().optional(),
-  status: z.enum(['new', 'known', 'fixed']).optional(),
+  status: z.enum(['new', 'known', 'fixed', 'retracted']).optional(),
   fixed_behind: z.string().optional(),
+  fixed_by_diffs: z.array(z.string()).optional(),
+  verified_by_ab: z.boolean().optional(),
+  retraction_reason: z.string().optional(),
   note: z.string().optional(),
 });
 
@@ -182,6 +198,9 @@ export function importFindings(
       last_seen_round: round,
       status: raw.status ?? existing?.status ?? 'known',
       fixed_behind: raw.fixed_behind ?? existing?.fixed_behind,
+      fixed_by_diffs: raw.fixed_by_diffs ?? existing?.fixed_by_diffs,
+      verified_by_ab: raw.verified_by_ab ?? existing?.verified_by_ab,
+      retraction_reason: raw.retraction_reason ?? existing?.retraction_reason,
       note: raw.note ?? existing?.note,
       // An import is history, not a sighting: it must not inflate seen_count
       // for a finding this operator has never actually observed.
@@ -465,7 +484,7 @@ export function registerFindingIndex(server: McpServer): void {
     'memlab_finding_index',
     'Fingerprint a leak finding by its retainer path and check it against findings from previous rounds, so a hunt does not spend itself re-discovering a known or already-fixed leak. ' +
       'This is the highest-cost failure a leak hunt has: a measured round produced three findings that were all already known — two already fixed behind gates — which is an entire round spent re-deriving history. Class names cannot detect that (`Object` and `Array` top every heap); the retainer PATH can, so the fingerprint is a normalized path signature with node ids, array indices and per-capture scope ids stripped. ' +
-      'Actions: "check" fingerprints a candidate and reports NEW / KNOWN / KNOWN-AND-FIXED; "record" adds it; "import" bootstraps history in bulk from a team doc or a JSON file; "list" prints the index; "cover" records which combos a round drove, so the "do not repeat covered combos" rule stops depending on someone remembering.\n\n' +
+      'Actions: "check" fingerprints a candidate and reports NEW / KNOWN / KNOWN-AND-FIXED / RETRACTED; a RETRACTED finding is one a previous round investigated and WITHDREW (a structural population mistaken for a rate, an artifact, a measurement error) — re-deriving one costs the same round as re-deriving a fixed leak and is harder to notice, because the population really is present; "record" adds it; "import" bootstraps history in bulk from a team doc or a JSON file; "list" prints the index; "cover" records which combos a round drove, so the "do not repeat covered combos" rule stops depending on someone remembering.\n\n' +
       'IMPORTANT: a verdict of NEW is only as good as the index behind it. A newly-created index is pre-seeded with the generic ARTIFACT families (JIT warmup, CDP network/perf/console retention, a11y caches, React Fast Refresh registries, captured Error stacks, the automation bridge bundle), so the first `check` can already answer KNOWN for a population that is documented and is not app memory — but it knows nothing about YOUR app. Seed that with `action: "import"` before trusting the first `check` of a workstream. Set `MEMLAB_FINDINGS_INDEX` to a checked-in path to share the index across hosts and operators instead of keeping it in a per-machine home directory.',
     {
       action: z
@@ -493,14 +512,34 @@ export function registerFindingIndex(server: McpServer): void {
           'Round identifier (e.g. "r59"), recorded as first/last seen.',
         ),
       status: z
-        .enum(['new', 'known', 'fixed'])
+        .enum(['new', 'known', 'fixed', 'retracted'])
         .optional()
         .default('known')
-        .describe('Status to record. Use "fixed" together with fixed_behind.'),
+        .describe(
+          'Status to record. Use "fixed" together with `fixed_behind` and `fixed_by_diffs`. Use "retracted" with `retraction_reason` for a finding that was investigated and WITHDRAWN — a structural population mistaken for a rate, an artifact, a measurement error. Without a retracted state the next round has no record that the question was already answered and re-derives it.',
+        ),
       fixed_behind: z
         .string()
         .optional()
         .describe('Gate/ABProp the fix sits behind, if it is fixed.'),
+      fixed_by_diffs: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'D-numbers carrying the fix, e.g. ["D123", "D124"]. Structured because `fixed_behind` has been carrying this as prose ("D1 stacked on D2, BOTH required"), which a reader has to parse and a tool cannot reconcile.',
+        ),
+      verified_by_ab: z
+        .boolean()
+        .optional()
+        .describe(
+          'True when a real before/after A/B confirmed the fix rather than reasoning about it. A fix recorded without this is a claim, not a result.',
+        ),
+      retraction_reason: z
+        .string()
+        .optional()
+        .describe(
+          'Why the finding was withdrawn. Required in practice for status "retracted" — a retraction with no reason cannot stop the next round re-deriving it.',
+        ),
       note: z
         .string()
         .optional()
@@ -536,6 +575,9 @@ export function registerFindingIndex(server: McpServer): void {
       round,
       status,
       fixed_behind,
+      fixed_by_diffs,
+      verified_by_ab,
+      retraction_reason,
       note,
       combos,
       workstream,
@@ -781,7 +823,9 @@ export function registerFindingIndex(server: McpServer): void {
           const label =
             existing.status === 'fixed'
               ? `KNOWN-AND-FIXED-BEHIND(${existing.fixed_behind ?? 'unknown gate'})`
-              : `KNOWN (${existing.first_seen_round})`;
+              : existing.status === 'retracted'
+                ? `RETRACTED (${existing.first_seen_round})`
+                : `KNOWN (${existing.first_seen_round})`;
           return toolResult(
             [
               `## ${label} — fingerprint \`${fingerprint}\``,
@@ -790,9 +834,15 @@ export function registerFindingIndex(server: McpServer): void {
               `First seen: ${existing.first_seen_round}; last seen: ${existing.last_seen_round}; seen ${existing.seen_count}×.`,
               existing.note ? `Note: ${existing.note}` : '',
               '',
+              existing.fixed_by_diffs != null &&
+              existing.fixed_by_diffs.length > 0
+                ? `Fixed by: ${existing.fixed_by_diffs.join(', ')}${existing.verified_by_ab === true ? ' (A/B verified)' : ' (NOT A/B verified — the fix is a claim, not a measured result)'}`
+                : '',
               existing.status === 'fixed'
                 ? `**Stop here.** This leak is already fixed behind \`${existing.fixed_behind}\`. If it is still reproducing, the gate is probably not enabled in this run — verify the gating state before treating it as a finding.`
-                : '**This is not a new finding.** Check whether the earlier round already root-caused it before spending the rest of this one on it.',
+                : existing.status === 'retracted'
+                  ? `**Stop here — this was investigated and WITHDRAWN.** ${existing.retraction_reason ?? 'No reason was recorded, which is itself worth fixing in the index.'} Re-deriving a retracted finding is the same wasted round as re-deriving a fixed one, and it is harder to notice because the population really is there. If you believe the retraction was wrong, say what new evidence changes it before reopening.`
+                  : '**This is not a new finding.** Check whether the earlier round already root-caused it before spending the rest of this one on it.',
             ]
               .filter(Boolean)
               .join('\n'),
@@ -809,13 +859,52 @@ export function registerFindingIndex(server: McpServer): void {
           last_seen_round: roundId,
           status,
           fixed_behind: fixed_behind ?? existing?.fixed_behind,
+          fixed_by_diffs: fixed_by_diffs ?? existing?.fixed_by_diffs,
+          verified_by_ab: verified_by_ab ?? existing?.verified_by_ab,
+          retraction_reason: retraction_reason ?? existing?.retraction_reason,
           note: note ?? existing?.note,
           seen_count: (existing?.seen_count ?? 0) + 1,
         };
         saveIndex(indexPath, index);
+        const recorded = index.findings[fingerprint];
+        const extras: string[] = [];
+        if (
+          recorded.fixed_by_diffs != null &&
+          recorded.fixed_by_diffs.length > 0
+        ) {
+          extras.push(`fixed by ${recorded.fixed_by_diffs.join(', ')}`);
+        }
+        if (recorded.verified_by_ab === true) extras.push('A/B verified');
+        if (recorded.retraction_reason != null) {
+          extras.push(`retracted: ${recorded.retraction_reason}`);
+        }
+        // A fix recorded with no gate, no diffs and no A/B is a claim with
+        // nothing behind it, and the next round has no way to tell that from a
+        // verified one. Say so at the moment of recording, where it is cheap to
+        // fix, rather than leaving it to be discovered when the leak reappears.
+        // Against the MERGED record, not the raw args: the record inherits a
+        // gate or a diff list from the previous recording, so a re-record that
+        // only updates the round would otherwise be told it has neither.
+        const thinFix =
+          status === 'fixed' &&
+          recorded.fixed_behind == null &&
+          (recorded.fixed_by_diffs == null ||
+            recorded.fixed_by_diffs.length === 0);
+        const missingReason =
+          status === 'retracted' && recorded.retraction_reason == null;
         return toolResult(
-          `Recorded \`${fingerprint}\` as **${status}**${fixed_behind ? ` (behind \`${fixed_behind}\`)` : ''} for round ${roundId}. ` +
-            `Signature: \`${signature}\`. The index now holds ${formatNumber(Object.keys(index.findings).length)} finding(s).`,
+          `Recorded \`${fingerprint}\` as **${status}**${recorded.fixed_behind ? ` (behind \`${recorded.fixed_behind}\`)` : ''}` +
+            `${extras.length > 0 ? ` — ${extras.join('; ')}` : ''} for round ${roundId}. ` +
+            `Signature: \`${signature}\`. The index now holds ${formatNumber(Object.keys(index.findings).length)} finding(s).` +
+            (thinFix
+              ? '\n\n⚠️ Recorded as fixed with neither a gate nor a diff. A later `check` will say ' +
+                'KNOWN-AND-FIXED and stop a hunt, with no way to confirm the fix is actually live — ' +
+                'add `fixed_behind` and/or `fixed_by_diffs`.'
+              : '') +
+            (missingReason
+              ? '\n\n⚠️ Retracted with no `retraction_reason`. The point of the retracted state is to stop ' +
+                'the next round re-deriving the finding; without the reason it cannot.'
+              : ''),
         );
       } catch (err) {
         return errorResult(err);

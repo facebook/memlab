@@ -112,6 +112,10 @@ const GROUPS: Group[] = [
         'Retained bytes per instance, AVERAGE and MARGINAL — the number a cap, an LRU size or an eviction policy is sized against.',
       ],
       [
+        'memlab_count_population',
+        'Count one population by class, by shape AND by closure-captured variable, and flag when the methods disagree — a method that cannot reach a population returns the same 0 as a population that is absent.',
+      ],
+      [
         'memlab_drill_to_heavy_leaf',
         'Follow a big retained size DOWN to the object actually holding it in ONE call, instead of walking dominator_subtree hop by hop — stops at the leaf or the branch point where the weight splits.',
       ],
