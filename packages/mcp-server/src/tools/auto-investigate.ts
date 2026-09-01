@@ -2253,7 +2253,7 @@ export function registerAutoInvestigate(server: McpServer): void {
           lines.push('');
         }
 
-        if (!suggestionsSuppressed()) {
+        if (!suggestionsSuppressed('memlab_auto_investigate')) {
           lines.push('## Suggested Next Steps');
           lines.push('');
           let stepNum = 1;

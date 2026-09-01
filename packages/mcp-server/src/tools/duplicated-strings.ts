@@ -248,7 +248,7 @@ export function registerDuplicatedStrings(server: McpServer): void {
         // the expensive scan is shared rather than repeated.
         const relatedNote = `\n\n_This is the raw per-VALUE duplication table. \`memlab_intern_opportunities\` groups the same strings by property x parent shape and estimates what a canonical intern pool would actually reclaim (accounting for co-retention and the length cap) — use it to decide whether to write the fix, and this to see the values. It reuses this snapshot's string scan${reused ? ', which was itself already cached' : ''}, so running both costs one pass over the string nodes, not two._`;
 
-        const body = `Duplicated strings (${summaryLine}):\n\n${lines.join('\n')}\n\n**Total interning savings: ${formatBytes(totalSavings)}** (if each string were stored only once, harness content excluded)${harnessNote}${suggestionsSuppressed() ? '' : relatedNote}`;
+        const body = `Duplicated strings (${summaryLine}):\n\n${lines.join('\n')}\n\n**Total interning savings: ${formatBytes(totalSavings)}** (if each string were stored only once, harness content excluded)${harnessNote}${suggestionsSuppressed('memlab_duplicated_strings') ? '' : relatedNote}`;
         return toolResult(
           withAnonymizedBanner(
             snapshot,

@@ -1088,7 +1088,7 @@ export function registerLoadSnapshot(server: McpServer): void {
         if (warnings.length > 0) {
           lines.push('', ...warnings);
         }
-        if (!suggestionsSuppressed()) {
+        if (!suggestionsSuppressed('memlab_load_snapshot')) {
           lines.push('', ...nextStepMenu());
         }
 

@@ -887,7 +887,7 @@ export function registerCacheAnalysis(server: McpServer): void {
           '- Check if the owner has `clear()`, `delete()`, or LRU logic',
         ];
 
-        if (!suggestionsSuppressed()) {
+        if (!suggestionsSuppressed('memlab_cache_analysis')) {
           const top = caches[0];
           lines.push(
             '',

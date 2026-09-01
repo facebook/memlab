@@ -237,7 +237,7 @@ export function registerShapeHistogram(server: McpServer): void {
           }
         }
 
-        if (!suggestionsSuppressed()) {
+        if (!suggestionsSuppressed('memlab_shape_histogram')) {
           lines.push('', '**Suggested next steps:**');
           const top = finalList[0];
           lines.push(

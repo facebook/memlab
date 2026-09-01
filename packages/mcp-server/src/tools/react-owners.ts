@@ -227,7 +227,7 @@ export function registerReactOwners(server: McpServer): void {
           );
         }
 
-        if (!suggestionsSuppressed() && shown.length > 0) {
+        if (!suggestionsSuppressed('memlab_react_owners') && shown.length > 0) {
           lines.push(
             '**Suggested next steps**',
             `- \`memlab_chain_walk({start_id: ${shown[0].exampleRecord}, next_edges: ["next"]})\` — how long is this owner's chain, and does it terminate or cycle?`,

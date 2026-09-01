@@ -336,7 +336,7 @@ export function registerIdSpaceAudit(server: McpServer): void {
           `_Compared on SPARSE keys only — indices at or below a structure's own key count are dropped, because a densely packed array has keys 0..N-1 by construction and would otherwise match everything. Up to ${formatNumber(MAX_KEYS_PER_STRUCTURE)} keys per structure, sampled evenly across the range, so a high score is strong evidence and a low one on very large key sets is not proof they differ._`,
         );
 
-        if (!suggestionsSuppressed()) {
+        if (!suggestionsSuppressed('memlab_id_space_audit')) {
           lines.push(
             '',
             '**Suggested next steps**',

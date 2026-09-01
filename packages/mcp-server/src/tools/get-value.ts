@@ -298,7 +298,7 @@ export function registerGetValue(server: McpServer): void {
           }
         }
 
-        if (!suggestionsSuppressed()) {
+        if (!suggestionsSuppressed('memlab_get_value')) {
           lines.push('');
           lines.push('**Suggested next steps:**');
           if (contexts.length > 0) {

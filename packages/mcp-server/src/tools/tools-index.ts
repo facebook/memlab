@@ -112,6 +112,10 @@ const GROUPS: Group[] = [
         'Retained bytes per instance, AVERAGE and MARGINAL — the number a cap, an LRU size or an eviction policy is sized against.',
       ],
       [
+        'memlab_snapshot_budget_planner',
+        'Which rungs of a ladder fit in memory at once, and which to probe transiently — answers "can I afford the MARGINAL unit cost?" before an analysis discovers the ceiling by hitting it.',
+      ],
+      [
         'memlab_count_population',
         'Count one population by class, by shape AND by closure-captured variable, and flag when the methods disagree — a method that cannot reach a population returns the same 0 as a population that is absent.',
       ],

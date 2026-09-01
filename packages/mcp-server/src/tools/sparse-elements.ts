@@ -289,7 +289,10 @@ export function registerSparseElements(server: McpServer): void {
               ]),
         );
 
-        if (!suggestionsSuppressed() && shown.length > 0) {
+        if (
+          !suggestionsSuppressed('memlab_sparse_elements') &&
+          shown.length > 0
+        ) {
           lines.push(
             '',
             '**Suggested next steps**',

@@ -328,7 +328,10 @@ export function registerClassHistogram(server: McpServer): void {
           );
         }
 
-        if (!suppress_suggestions && !suggestionsSuppressed()) {
+        if (
+          !suppress_suggestions &&
+          !suggestionsSuppressed('memlab_class_histogram')
+        ) {
           const highCount = sorted.filter(v => v.count >= 1000);
           if (highCount.length > 0) {
             lines.push('', '**Suggested next steps:**');

@@ -146,7 +146,7 @@ export function registerPinchPoints(server: McpServer): void {
           '**Interpretation:** Each row is a small object retaining a large subtree. Freeing it (e.g., clearing a cache, removing an event listener) would reclaim the retained size.',
         ];
 
-        if (!suggestionsSuppressed()) {
+        if (!suggestionsSuppressed('memlab_pinch_points')) {
           const top = candidates[0];
           lines.push(
             '',

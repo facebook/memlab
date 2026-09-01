@@ -215,7 +215,7 @@ export function registerDuplicateObjects(server: McpServer): void {
         });
         lines.push(markdownTable(headers, rows, rightCols));
 
-        if (!suggestionsSuppressed()) {
+        if (!suggestionsSuppressed('memlab_duplicate_objects')) {
           lines.push(
             '',
             '**Suggested next steps:**',

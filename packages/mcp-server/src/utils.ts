@@ -1511,20 +1511,48 @@ export function toolResult(text: string, headerOverride?: string | null) {
  * Auto-suppressing keeps the onboarding value and drops the repetition without
  * anyone having to notice.
  */
-const SUGGESTION_TRAILER_BUDGET = 5;
+const SUGGESTION_TRAILER_BUDGET = 12;
 let suggestionTrailersEmitted = 0;
 
 /**
- * Whether tools should omit "Suggested next steps" / "How to fix" trailers.
- * Honors the session-level `suppressSuggestions` config so callers can trim
- * repeated boilerplate tokens across a long investigation, and self-suppresses
- * after `SUGGESTION_TRAILER_BUDGET` trailers.
+ * How many trailers ONE tool may emit before it repeats itself.
  *
- * NOTE: this both reads and ADVANCES the budget, so call it once per decision.
+ * A tool's trailer is the same text every time that tool runs, so its second
+ * printing is already pure cost. One is the whole value.
  */
-export function suggestionsSuppressed(): boolean {
+const PER_TOOL_TRAILER_BUDGET = 1;
+const perToolTrailersEmitted = new Map<string, number>();
+
+/**
+ * Whether tools should omit "Suggested next steps" / "How to fix" trailers.
+ *
+ * Honors the session-level `suppressSuggestions` config, and self-suppresses on
+ * two budgets at once.
+ *
+ * The two budgets exist because a single global one spends itself on whichever
+ * tool happens to run first. With a global budget of 5, five `class_histogram`
+ * calls at the start of a session exhausted it, and every tool reached later —
+ * with a DIFFERENT and still-unread trailer — was silently suppressed. The
+ * budget was capping repetition of the useful text rather than of the
+ * boilerplate.
+ *
+ * So the per-tool budget carries the onboarding value (each distinct tool gets
+ * to say its piece once) and the global ceiling bounds the total, since a
+ * per-tool budget alone would scale with the ~100 registered tools and be worse
+ * than what it replaced.
+ *
+ * NOTE: this both reads and ADVANCES the budgets, so call it once per decision.
+ * Pass `toolKey` — without it the caller falls back to the global budget only,
+ * which is the pre-existing behaviour and gets no per-tool allowance.
+ */
+export function suggestionsSuppressed(toolKey?: string): boolean {
   if (getSessionConfig().suppressSuggestions) return true;
   if (suggestionTrailersEmitted >= SUGGESTION_TRAILER_BUDGET) return true;
+  if (toolKey != null) {
+    const emitted = perToolTrailersEmitted.get(toolKey) ?? 0;
+    if (emitted >= PER_TOOL_TRAILER_BUDGET) return true;
+    perToolTrailersEmitted.set(toolKey, emitted + 1);
+  }
   suggestionTrailersEmitted++;
   return false;
 }
@@ -1532,6 +1560,7 @@ export function suggestionsSuppressed(): boolean {
 /** Test seam; also reset when the session config is changed explicitly. */
 export function resetSuggestionBudget(): void {
   suggestionTrailersEmitted = 0;
+  perToolTrailersEmitted.clear();
 }
 
 export function jsonResult(data: unknown) {

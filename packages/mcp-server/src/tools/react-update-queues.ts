@@ -220,7 +220,10 @@ export function registerReactUpdateQueues(server: McpServer): void {
           'One measured round found `REPRODUCED` on record count and `NOT_REPRODUCED` on breadth across independent runs, which is exactly what proved the chains were lengthening rather than multiplying.',
         );
 
-        if (!suggestionsSuppressed() && shown.length > 0) {
+        if (
+          !suggestionsSuppressed('memlab_react_update_queues') &&
+          shown.length > 0
+        ) {
           lines.push(
             '',
             '**Suggested next steps**',
