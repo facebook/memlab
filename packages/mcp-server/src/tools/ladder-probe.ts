@@ -140,6 +140,7 @@ export function verdictFor(
   values: number[],
   fit: LinearFit,
   axisAssumed = false,
+  visibilityVerified = false,
 ): string {
   const n = values.length;
   const delta = values[n - 1] - values[0];
@@ -150,7 +151,41 @@ export function verdictFor(
   // clearly did. Check the full range before claiming it.
   const min = Math.min(...values);
   const max = Math.max(...values);
-  if (min === max) return 'FLAT — identical at every rung';
+  if (min === max) {
+    // Zero at every rung is the one series this tool CANNOT interpret on its
+    // own, because two very different situations produce byte-identical output:
+    // the population genuinely does not grow, or the probe cannot observe the
+    // population at all and is reporting the absence of its own reach.
+    //
+    // The second is not hypothetical. A probe written with `shapeKeys` against
+    // React Scheduler's `timerQueue` returned 0 at every rung of a real ladder
+    // while the population was in the tens of thousands — the array is a
+    // CLOSURE-CAPTURED variable, which is not a property of any object, so no
+    // amount of property or shape matching can see it. A sibling probe counting
+    // Set entries returned 23 for a population of the same order. Both read as
+    // clean negatives and one of them nearly closed a round.
+    //
+    // So an all-zero series is reported as UNKNOWN unless the caller supplied a
+    // `visibility_probe` that came back non-zero, which is the only evidence
+    // available that this probe family can see anything here at all.
+    if (max === 0 && !visibilityVerified) {
+      return (
+        'UNKNOWN — 0 at every rung, and nothing here distinguishes "this ' +
+        'population does not grow" from "this probe cannot see this ' +
+        'population". Both produce exactly these numbers. Closure-captured ' +
+        'variables in particular are invisible to property/shape matching. ' +
+        'Re-run with `visibility_probe` set to an expression that MUST be ' +
+        'non-zero on this heap (a population you already counted another way); ' +
+        'if that also returns 0, the probe is blind, not the heap clean. Do ' +
+        'NOT record this as a negative result until it is verified.'
+      );
+    }
+    return max === 0
+      ? 'FLAT — 0 at every rung, and the visibility probe confirmed this ' +
+          'probe family CAN observe a non-zero population on this ladder, so ' +
+          'this is a verified negative rather than a blind one'
+      : 'FLAT — identical at every rung';
+  }
   if (delta === 0) {
     return (
       `ends where it started (${formatNumber(values[0])}) but swung between ` +
@@ -334,6 +369,12 @@ export function registerLadderProbe(server: McpServer): void {
         .describe(
           'Exact cumulative cycle count at each rung, when the ladder is NOT evenly spaced (the common case — rungs are placed on a schedule, not at equal intervals). Must match `paths` in length; overrides `cycles`.',
         ),
+      visibility_probe: z
+        .string()
+        .optional()
+        .describe(
+          'A CONTROL expression, evaluated on every rung exactly like `code`, whose value MUST be non-zero on a healthy heap — e.g. `result = helpers.byClass("Object").length`. Its only job is to answer "can a probe of this kind see anything here?". Without it, a series of 0 at every rung is reported as UNKNOWN rather than as a negative, because a probe that cannot reach its population (closure-captured variables are invisible to property/shape matching) returns exactly the same zeros as a population that never grew. Supply it whenever a zero result would be recorded as "no leak here".',
+        ),
       label: z
         .string()
         .optional()
@@ -362,6 +403,7 @@ export function registerLadderProbe(server: McpServer): void {
       metrics,
       cycles,
       cycles_per_rung,
+      visibility_probe,
       label,
       timeout_ms,
       max_nodes,
@@ -402,6 +444,23 @@ export function registerLadderProbe(server: McpServer): void {
               'Pass `code` for a single probe, or `metrics` for several measured in one pass over the ladder.',
             ),
           );
+        }
+
+        // The control rides along as an ordinary metric so it shares the rung
+        // loads — the whole reason this tool batches. `probeRung` keys outcomes
+        // by metric NAME, so the control uses a sentinel a caller cannot type as
+        // a JSON key by accident; a collision with someone's `label` or `metrics`
+        // key would merge the control's series into a reported one and silently
+        // corrupt both.
+        const VISIBILITY_METRIC = '<<memlab:visibility-control>>';
+        const reportedCount = metricList.length;
+        const hasVisibilityProbe =
+          visibility_probe != null && visibility_probe.trim() !== '';
+        if (hasVisibilityProbe) {
+          metricList.push({
+            name: VISIBILITY_METRIC,
+            code: visibility_probe as string,
+          });
         }
 
         const {rungs: locals, largestMB} = resolveRungs(
@@ -450,23 +509,50 @@ export function registerLadderProbe(server: McpServer): void {
         // x-axis every fit is scored against.
         const axisAssumed = cycles != null && cycles_per_rung == null;
 
+        // A control that came back non-zero anywhere proves a probe of this
+        // kind can observe this heap; that is the whole claim, so one rung is
+        // enough to establish it.
+        const visibilityIndex = hasVisibilityProbe
+          ? metricList.findIndex(m => m.name === VISIBILITY_METRIC)
+          : -1;
+        const visibilityValues =
+          visibilityIndex >= 0 ? perMetric[visibilityIndex] : [];
+        const visibilityVerified = visibilityValues.some(
+          r => r.value != null && r.value !== 0,
+        );
+        const visibilityBlind =
+          hasVisibilityProbe &&
+          visibilityValues.length > 0 &&
+          !visibilityVerified;
+
         const lines: string[] = [];
-        const multi = metricList.length > 1;
+        const multi = reportedCount > 1;
         lines.push(
           multi
-            ? `## Ladder probe — ${metricList.length} metrics over ${locals.length} rungs`
+            ? `## Ladder probe — ${reportedCount} metrics over ${locals.length} rungs`
             : `## Ladder probe — \`${metricList[0].name}\``,
         );
         lines.push('');
         if (multi) {
           lines.push(
-            `_All ${metricList.length} metrics were measured in a single pass over the ladder — each rung was loaded once._`,
+            `_All ${reportedCount} metrics were measured in a single pass over the ladder — each rung was loaded once._`,
           );
           lines.push('');
         }
+        if (visibilityBlind) {
+          lines.push(
+            '> ⚠️ **The visibility control itself never returned a non-zero value.** ' +
+              'It was supposed to be non-zero on any healthy heap, so the likely reading is ' +
+              'that probes of this kind cannot reach anything here — a wrong snapshot, a ' +
+              'helper that does not apply to this heap, or an expression that never ran. ' +
+              'Treat EVERY series below as unverified, including the non-zero ones.',
+            '',
+          );
+        }
 
         let anyUsable = false;
-        for (let mi = 0; mi < metricList.length; mi++) {
+        let allMetricsFlat = true;
+        for (let mi = 0; mi < reportedCount; mi++) {
           const m = metricList[mi];
           const rungs = perMetric[mi];
           const xs = xsFor(rungs.length);
@@ -503,6 +589,8 @@ export function registerLadderProbe(server: McpServer): void {
           const first = usableYs[0];
           const last = usableYs[usableYs.length - 1];
           const delta = last - first;
+          const seriesFlat = Math.min(...usableYs) === Math.max(...usableYs);
+          if (!seriesFlat) allMetricsFlat = false;
 
           const rows = rungs.map((r, i) => [
             r.label,
@@ -536,8 +624,7 @@ export function registerLadderProbe(server: McpServer): void {
             // Skip the caveat on a completely flat series: no choice of
             // x-axis changes a rate of 0 or an r2 of 1, so the note is
             // pure noise exactly where it cannot matter.
-            const flatSeries = Math.min(...usableYs) === Math.max(...usableYs);
-            if (axisAssumed && !flatSeries) {
+            if (axisAssumed && !seriesFlat) {
               lines.push(
                 `_Cycle axis ASSUMED evenly spaced: ${formatNumber(cycles ?? 0)} cycles ` +
                   `split equally across ${usable.length} rung(s). If the ladder was ` +
@@ -553,7 +640,9 @@ export function registerLadderProbe(server: McpServer): void {
             );
           }
           lines.push('');
-          lines.push(`**Verdict:** ${verdictFor(usableYs, fit, axisAssumed)}`);
+          lines.push(
+            `**Verdict:** ${verdictFor(usableYs, fit, axisAssumed, visibilityVerified)}`,
+          );
           if (usable.length === 2) {
             // A line through two points fits them perfectly, so r2 is 1.0000 by
             // construction and "grew every step" is the same statement as "grew".
@@ -587,6 +676,30 @@ export function registerLadderProbe(server: McpServer): void {
             new Error(
               `No metric produced two usable rungs, so nothing can be fitted. See the per-metric errors above; the probe must assign a NUMBER to \`result\`.`,
             ),
+          );
+        }
+
+        // Every metric flat across three or more rungs is worth stopping on. A
+        // driven surface moves SOMETHING — even a clean one churns caches and
+        // scheduler records — so a ladder where nothing at all changed is more
+        // often a harness that stopped driving than an app with no growth.
+        //
+        // Measured: three consecutive rounds of a real hunt were voided after
+        // the page silently logged out mid-run. The hammer found no opener, the
+        // ladder froze flat, and the output was indistinguishable from a clean
+        // surface. They were only caught because the number was implausibly
+        // stable. The natural output of that failure is a FALSE NEGATIVE, which
+        // is the most expensive thing this tool can emit.
+        if (allMetricsFlat && anyUsable && locals.length >= 3) {
+          lines.push(
+            `> ⚠️ **SUSPECT — every metric was flat across all ${locals.length} rungs.** ` +
+              'That can mean the surface is clean, but it is also exactly what a harness ' +
+              'that stopped driving the app produces: a logged-out page, a selector that ' +
+              'stopped matching, or an interaction that silently no-ops still yields a ' +
+              'perfectly stable ladder. Before recording a negative, confirm the run ' +
+              'actually drove the app — a per-cycle mount/unmount or node-count delta, and ' +
+              'a logged-in assertion at the LAST rung, not just the first.',
+            '',
           );
         }
 

@@ -306,6 +306,20 @@ export function registerUnitCost(server: McpServer): void {
           );
         }
 
+        // The figure above is for THIS population alone. Retained size is
+        // reported per class, so the natural way to value a fix that removes
+        // several classes is to add their rows — and that double-counts every
+        // byte they share, which is the normal case for classes on one
+        // retention chain. Two measured classes reported 16.6 MB each and
+        // ~16.6 MB combined; the sum was 2x the truth. Say so where the number
+        // is produced, since that is where the addition gets done.
+        lines.push(
+          '',
+          '_This is the retained size of this population ALONE. Do not add it to another class’s ' +
+            'figure to value a multi-class fix — classes on the same retention chain share bytes and ' +
+            'the sum double-counts them. Use `memlab_overlap_matrix` for the combined, deduped total._',
+        );
+
         return toolResult(lines.join('\n'));
       } catch (err) {
         return errorResult(err);

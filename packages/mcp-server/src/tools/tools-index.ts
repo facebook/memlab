@@ -111,6 +111,10 @@ const GROUPS: Group[] = [
         'memlab_unit_cost',
         'Retained bytes per instance, AVERAGE and MARGINAL — the number a cap, an LRU size or an eviction policy is sized against.',
       ],
+      [
+        'memlab_overlap_matrix',
+        'Do these classes retain the SAME bytes? Use it before adding two per-class retained sizes together — classes on one retention chain share bytes and the sum double-counts them.',
+      ],
     ],
   },
   {
