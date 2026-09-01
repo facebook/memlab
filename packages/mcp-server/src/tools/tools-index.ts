@@ -112,6 +112,10 @@ const GROUPS: Group[] = [
         'Retained bytes per instance, AVERAGE and MARGINAL — the number a cap, an LRU size or an eviction policy is sized against.',
       ],
       [
+        'memlab_drill_to_heavy_leaf',
+        'Follow a big retained size DOWN to the object actually holding it in ONE call, instead of walking dominator_subtree hop by hop — stops at the leaf or the branch point where the weight splits.',
+      ],
+      [
         'memlab_overlap_matrix',
         'Do these classes retain the SAME bytes? Use it before adding two per-class retained sizes together — classes on one retention chain share bytes and the sum double-counts them.',
       ],
@@ -123,6 +127,10 @@ const GROUPS: Group[] = [
       [
         'memlab_ladder_probe',
         'ONE numeric probe across an ordered ladder, with the per-cycle rate and a linear fit — the cheapest way to test a metric, since each rung loads once for all probes.',
+      ],
+      [
+        'memlab_rate_model',
+        'Unbounded leak, or a working set whose size is just rate x window? Fits a line AND a saturating curve to one series and reports which the data supports, plus the implied plateau.',
       ],
       [
         'memlab_census_diff',

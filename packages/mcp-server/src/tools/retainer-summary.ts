@@ -98,6 +98,59 @@ function normalizeStepName(name: string): string {
   return name.replace(/ @\d+\b/g, ' @…');
 }
 
+/** Hop separator used by the compact single-line path rendering. */
+const PATH_SEP = ' → ';
+
+/** Marker a rendered body carries when a shared head was already elided. */
+const ELISION = '… → ';
+
+/**
+ * The leading segments every pattern shares, when factoring them out is worth
+ * the extra paragraph.
+ *
+ * Counted in RENDERED segments, not retainer hops. A segment of the compact form
+ * can be a gap marker standing in for framework frames the display filtered out,
+ * or a collapsed run of repeats, so the count is what the reader sees on the
+ * line rather than a number of graph edges — which is why the output says
+ * "segments" and not "hops".
+ *
+ * Returns null unless there are at least three patterns, every body is a single
+ * line in the compact form, and the shared prefix is at least four segments and
+ * leaves each pattern with something of its own to show. Those thresholds exist
+ * so the factoring never costs more than it saves: two patterns, or a prefix of
+ * one segment, is cheaper printed in full.
+ */
+function commonPathPrefix(
+  bodies: string[],
+): {prefix: string; segments: number} | null {
+  const MIN_PATTERNS = 3;
+  const MIN_SHARED_SEGMENTS = 4;
+  if (bodies.length < MIN_PATTERNS) return null;
+  if (bodies.some(b => b.includes('\n') || !b.includes(PATH_SEP))) return null;
+  // A body may already carry a leading `… → ` from the common-prefix elision
+  // applied when the patterns were rendered. Factoring again would count that
+  // `…` as a shared segment (inflating the reported count by one, and starting
+  // the shared prefix with a stray marker) and then re-prefix each body with a
+  // second `… → `. The upstream elision already removed the shared head, so
+  // there is nothing left here to factor.
+  if (bodies.some(b => b.startsWith(ELISION))) return null;
+
+  const split = bodies.map(b => b.split(PATH_SEP));
+  const shortest = Math.min(...split.map(s => s.length));
+  let segments = 0;
+  while (
+    segments < shortest &&
+    split.every(s => s[segments] === split[0][segments])
+  ) {
+    segments++;
+  }
+  // Every pattern must keep at least one distinguishing segment; a prefix that
+  // swallows a whole pattern would render it as an empty suffix.
+  if (segments >= shortest) segments = shortest - 1;
+  if (segments < MIN_SHARED_SEGMENTS) return null;
+  return {prefix: split[0].slice(0, segments).join(PATH_SEP), segments};
+}
+
 export function traceToKey(
   steps: TraceStep[],
   frameworkFilter: boolean,
@@ -630,6 +683,30 @@ export function registerRetainerSummary(server: McpServer): void {
               : `**${merged.length} distinct retainer patterns found**${collapsedNote}`;
         }
 
+        // Patterns that diverge only at the very end still print their whole
+        // path each. Measured: one call with 12 sampled nodes produced nine
+        // patterns whose first thirteen hops were identical and which differed
+        // in ONE edge name (`feedQueryReference` / `megaphoneQueryReference` /
+        // `storiesTrayQueryReference` / …), for several thousand tokens of
+        // near-duplicate text. Print the shared prefix once and let each pattern
+        // show only where it actually diverges.
+        //
+        // Only for single-line bodies: the multi-line rendering has its own
+        // structure and re-flowing it here would fight that, for no gain — the
+        // duplication this targets is a property of the compact form.
+        const sharedPrefix = commonPathPrefix(merged.map(p => p.body));
+        if (sharedPrefix != null) {
+          lines.push(
+            `**All ${merged.length} patterns share these first ${sharedPrefix.segments} steps, as shown:**`,
+            '',
+            `    ${sharedPrefix.prefix}`,
+            '',
+            '_Each pattern below shows only the part AFTER that prefix — the steps where they actually differ. ' +
+              'A step here is a segment of the line above, which may stand in for several filtered frames._',
+            '',
+          );
+        }
+
         for (let i = 0; i < merged.length; i++) {
           const p = merged[i];
           const pct = ((p.count / totalSampled) * 100).toFixed(0);
@@ -637,7 +714,11 @@ export function registerRetainerSummary(server: McpServer): void {
             `### Pattern ${i + 1}: ${p.count}/${totalSampled} instances (${pct}%), ${formatBytes(p.total_retained)} retained`,
           );
           lines.push('');
-          lines.push(p.body);
+          lines.push(
+            sharedPrefix != null
+              ? `… → ${p.body.split(PATH_SEP).slice(sharedPrefix.segments).join(PATH_SEP)}`
+              : p.body,
+          );
           lines.push('');
           lines.push(
             `Example nodes: ${p.example_ids.map(id => `@${id}`).join(', ')}`,
