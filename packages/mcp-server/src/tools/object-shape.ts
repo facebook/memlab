@@ -23,6 +23,14 @@ import {
   toolResult,
 } from '../utils.js';
 
+/**
+ * Nodes inspected per call.
+ *
+ * The output is a per-node shape breakdown, so the cap is about the size of the
+ * answer, not the cost of producing it.
+ */
+const MAX_BATCH = 20;
+
 export function registerObjectShape(server: McpServer): void {
   server.tool(
     'memlab_object_shape',
@@ -45,7 +53,7 @@ export function registerObjectShape(server: McpServer): void {
         .string()
         .optional()
         .describe(
-          'Read the node ids from a result saved by memlab_eval ({save_as} / helpers.save) instead of listing them. Avoids round-tripping a long id list through the transcript.',
+          `Read the node ids from a result saved by memlab_eval ({save_as} / helpers.save) instead of listing them. Avoids round-tripping a long id list through the transcript. A saved set is normally a whole population, so one larger than ${MAX_BATCH} is sampled rather than rejected: ${MAX_BATCH} ids evenly spaced across the set, reported in the response. Pass node_ids to choose the subset yourself.`,
         ),
       class_name: z
         .string()
@@ -93,16 +101,41 @@ export function registerObjectShape(server: McpServer): void {
       try {
         const snapshot = getSnapshot();
 
+        const fromSavedSet = node_ids == null && from_result != null;
         let ids: number[] =
           node_ids ??
-          (from_result != null ? resolveSavedNodeIds(from_result) : null) ??
+          (fromSavedSet ? resolveSavedNodeIds(from_result as string) : null) ??
           (node_id != null ? [node_id] : []);
-        let classNote = '';
+        let sampleNote = '';
+        // A saved set is normally a whole population — the point of handing it
+        // over by name is that nobody counted it — so meeting the batch cap with
+        // "reduce node_ids count" names a parameter the caller did not pass and
+        // leaves them nowhere to go. Sample it the way `class_name` already
+        // does, evenly rather than head-first so the sample is not all of
+        // whatever the producing walk happened to reach first, and say so.
+        if (fromSavedSet && ids.length > MAX_BATCH) {
+          const total = ids.length;
+          // MAX_BATCH points spanning [0, total - 1] inclusive, so the sample
+          // ends ON the last id. Dividing by MAX_BATCH instead would stop a
+          // whole step short of the tail, and for a set barely over the cap
+          // (21 ids) would degenerate to the first 20 — head-first, which is
+          // the one thing this sampling exists to avoid.
+          const step = (total - 1) / (MAX_BATCH - 1);
+          const sampled: number[] = [];
+          for (let i = 0; i < MAX_BATCH; i++) {
+            sampled.push(ids[Math.round(i * step)]);
+          }
+          ids = sampled;
+          sampleNote =
+            `Sampling ${formatNumber(MAX_BATCH)} of the ${formatNumber(total)} node(s) saved as ` +
+            `\`${from_result}\`, evenly spaced. Shape is read from the sample; pass \`node_ids\` ` +
+            'explicitly to inspect a chosen subset.\n\n';
+        }
         if (ids.length === 0 && class_name != null && class_name !== '') {
           // Pick the largest instances by retained size: a shape read from the
           // biggest instances describes where the memory actually is, whereas an
           // arbitrary instance may be an empty or partially-initialized one.
-          const want = Math.min(Math.max(1, sample_count), 20);
+          const want = Math.min(Math.max(1, sample_count), MAX_BATCH);
           const best: IHeapNode[] = [];
           let total = 0;
           snapshot.nodes.forEach(node => {
@@ -127,16 +160,17 @@ export function registerObjectShape(server: McpServer): void {
             );
           }
           ids = best.map(n => n.id);
-          classNote = `Sampling ${formatNumber(ids.length)} of ${formatNumber(total)} \`${class_name}\` instance(s), largest by retained size.\n\n`;
+          sampleNote = `Sampling ${formatNumber(ids.length)} of ${formatNumber(total)} \`${class_name}\` instance(s), largest by retained size.\n\n`;
         }
         if (ids.length === 0) {
           return errorResult(
             'Provide node_id, node_ids, from_result, or class_name to inspect.',
           );
         }
-        if (ids.length > 20) {
+        if (ids.length > MAX_BATCH) {
           return errorResult(
-            'Maximum 20 nodes per batch. Reduce node_ids count.',
+            `Maximum ${MAX_BATCH} nodes per batch, and ${formatNumber(ids.length)} were given in \`node_ids\`. ` +
+              'Pass fewer ids, or save the set and pass `from_result`, which samples it.',
           );
         }
 
@@ -321,7 +355,7 @@ export function registerObjectShape(server: McpServer): void {
           }
         }
 
-        return toolResult(classNote + sections.join('\n\n---\n\n'));
+        return toolResult(sampleNote + sections.join('\n\n---\n\n'));
       } catch (err) {
         return errorResult(err);
       }
