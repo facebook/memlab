@@ -478,6 +478,65 @@ export function filterLargestObjects(
  * largest covering 2.2%. The sample fraction has to reach the caller, so the
  * walk that already visits every node returns it.
  */
+/**
+ * Sample a population ACROSS it, not off the top of it.
+ *
+ * `filterLargestObjectsCounted` picks the N largest by retained size, which is
+ * the right default for "what is big" and the wrong one for "is this one root
+ * cause?". A by-size top-5 is drawn from whichever subtree happens to be
+ * largest, so it returns a uniform answer routinely — and `retainer_summary`
+ * then has to print a warning saying its own sample does not establish the
+ * thing it looks like it establishes. The honest alternative it points at
+ * (`memlab_trace_all` over the whole population) is too expensive to reach for,
+ * so in practice the biased sample is what gets believed.
+ *
+ * This spreads the sample over the id range (V8 allocates ids monotonically, so
+ * that is oldest → newest) AND over retained-size deciles, which is enough to
+ * turn "all 5 agreed" into a claim about the population rather than about its
+ * largest member.
+ */
+export function sampleAcrossPopulation(
+  snapshot: IHeapSnapshot,
+  filter: (node: IHeapNode) => boolean,
+  limit: number,
+): {nodes: IHeapNode[]; matched: number} {
+  const all: IHeapNode[] = [];
+  let matched = 0;
+  snapshot.nodes.forEach(node => {
+    if (!filter(node)) return;
+    matched++;
+    all.push(node);
+  });
+  if (all.length <= limit) return {nodes: all, matched};
+
+  const picked = new Map<number, IHeapNode>();
+
+  // Half the budget spread evenly over the id range: this is the axis that
+  // separates the growth cohort (newest ids) from the static population.
+  const byId = [...all].sort((a, b) => a.id - b.id);
+  const idPicks = Math.max(1, Math.ceil(limit / 2));
+  for (let i = 0; i < idPicks; i++) {
+    const idx = Math.min(
+      byId.length - 1,
+      Math.round((i * (byId.length - 1)) / Math.max(1, idPicks - 1)),
+    );
+    picked.set(byId[idx].id, byId[idx]);
+  }
+
+  // The rest spread over retained-size deciles, so a minority path that only
+  // shows up among small instances is still reachable.
+  const bySize = [...all].sort((a, b) => b.retainedSize - a.retainedSize);
+  for (let i = 0; picked.size < limit && i < bySize.length; i++) {
+    const idx = Math.min(
+      bySize.length - 1,
+      Math.round((i * (bySize.length - 1)) / Math.max(1, limit - 1)),
+    );
+    picked.set(bySize[idx].id, bySize[idx]);
+  }
+
+  return {nodes: [...picked.values()].slice(0, limit), matched};
+}
+
 export function filterLargestObjectsCounted(
   snapshot: IHeapSnapshot,
   filter: (node: IHeapNode) => boolean,

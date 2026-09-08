@@ -9,7 +9,7 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
-import type {IHeapNode, IHeapEdge} from '@memlab/core';
+import type {IHeapNode, IHeapSnapshot, IHeapEdge} from '@memlab/core';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
 import {resolveSavedNodeIds} from '../result-handles.js';
@@ -18,6 +18,7 @@ import {
   collapseRepeatedLabels,
   errorResult,
   filterLargestObjectsCounted,
+  sampleAcrossPopulation,
   formatBytes,
   toolResult,
   truncateDomToTag,
@@ -320,6 +321,13 @@ export function registerRetainerSummary(server: McpServer): void {
         .describe(
           'Specific node IDs to analyze instead of searching by class name. Use this with example_node_ids from duplicated_strings or other tools.',
         ),
+      sample_strategy: z
+        .enum(['by-size', 'stratified'])
+        .optional()
+        .default('by-size')
+        .describe(
+          'How to choose the sampled instances. `by-size` (default) takes the N largest by retained size — right for "what is big", biased for "is this one root cause?", because it draws from whichever subtree is largest and so returns a uniform answer routinely. `stratified` spreads the sample across the id range (oldest → newest, which separates the growth cohort from the static population) and across retained-size deciles. Use it whenever you are about to conclude that a population has a single root cause.',
+        ),
       sample: z
         .number()
         .optional()
@@ -363,12 +371,24 @@ export function registerRetainerSummary(server: McpServer): void {
       shape,
       node_ids,
       sample,
+      sample_strategy,
       max_depth,
       compact,
       framework_filter,
       include_properties,
       from_result,
     }) => {
+      // One switch so every selection path below honours the strategy; three
+      // call sites drifting apart is how a flag silently applies to only one.
+      const pickNodes = (
+        snap: IHeapSnapshot,
+        filter: (n: IHeapNode) => boolean,
+        limit: number,
+      ) =>
+        sample_strategy === 'stratified'
+          ? sampleAcrossPopulation(snap, filter, limit)
+          : filterLargestObjectsCounted(snap, filter, limit);
+
       try {
         const snapshot = getSnapshot();
 
@@ -398,7 +418,7 @@ export function registerRetainerSummary(server: McpServer): void {
           label = `${nodes.length} specified node(s)`;
         } else if (shape && shape.length > 0) {
           const requiredProps = new Set(shape);
-          ({nodes, matched: population} = filterLargestObjectsCounted(
+          ({nodes, matched: population} = pickNodes(
             snapshot,
             node => {
               if (node.type !== 'object' || node.id <= 3) return false;
@@ -415,7 +435,7 @@ export function registerRetainerSummary(server: McpServer): void {
           ));
           label = `shape {${shape.join(', ')}}`;
         } else if (name_prefix) {
-          ({nodes, matched: population} = filterLargestObjectsCounted(
+          ({nodes, matched: population} = pickNodes(
             snapshot,
             node => node.name.startsWith(name_prefix),
             sample,
@@ -423,7 +443,7 @@ export function registerRetainerSummary(server: McpServer): void {
           label = `prefix "${name_prefix}"`;
         } else if (class_name) {
           // Try exact match first
-          ({nodes, matched: population} = filterLargestObjectsCounted(
+          ({nodes, matched: population} = pickNodes(
             snapshot,
             node => node.name === class_name,
             sample,
@@ -431,7 +451,7 @@ export function registerRetainerSummary(server: McpServer): void {
           // Fall back to substring match (handles V8 detached DOM names
           // like "Detached <div>" which contain angle brackets)
           if (nodes.length === 0) {
-            ({nodes, matched: population} = filterLargestObjectsCounted(
+            ({nodes, matched: population} = pickNodes(
               snapshot,
               node => node.name.includes(class_name),
               sample,
@@ -567,7 +587,7 @@ export function registerRetainerSummary(server: McpServer): void {
               `> ⚠️ **This does NOT establish a single root cause.** The sample is picked by retained ` +
                 `size, so it is biased toward whichever subtree is largest, and a uniform top-${totalSampled} ` +
                 `is routine in populations that hold thousands of distinct paths. Run ` +
-                `\`memlab_trace_all\` over the full population before making that claim, or raise \`sample\`.`,
+                `\`memlab_trace_all\` over the full population before making that claim, or re-run with \`sample_strategy: "stratified"\` (spreads the sample across the id range and the retained-size deciles instead of taking the largest), or raise \`sample\`.`,
               '',
             );
           }

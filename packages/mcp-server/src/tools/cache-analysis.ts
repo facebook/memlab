@@ -11,6 +11,11 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode, IHeapEdge} from '@memlab/core';
 import {z} from 'zod';
+import {
+  DEV_ONLY_FOOTNOTE,
+  moduleProvenanceOf,
+  provenanceCell,
+} from '../dev-modules.js';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {
   formatBytes,
@@ -799,6 +804,7 @@ export function registerCacheAnalysis(server: McpServer): void {
           'Owner',
           'Property',
           'Weak?',
+          'Prod?',
           ...(hasAnyFramework ? ['Framework'] : []),
         ];
         const numericFrom = 3;
@@ -833,9 +839,20 @@ export function registerCacheAnalysis(server: McpServer): void {
             c.ownerName,
             c.ownerEdge,
             c.hasWeakRefs ? 'Yes' : 'No',
+            // A dev-only MODULE holding ordinary references passes
+            // `memlab_dev_artifacts`, which only sees dev ROOTS. See
+            // ../dev-modules.ts for the 12.7 MB Map this exists to catch.
+            provenanceCell(
+              moduleProvenanceOf(snapshot.getNodeById(c.nodeId) ?? null),
+            ),
             ...(hasAnyFramework ? [c.framework || '-'] : []),
           ];
         });
+        const devOnlyCount = caches.filter(
+          c =>
+            moduleProvenanceOf(snapshot.getNodeById(c.nodeId) ?? null)
+              .prodReachable === 'no',
+        ).length;
 
         const totalRetained = caches.reduce(
           (sum, c) => sum + c.retainedSize,
@@ -862,6 +879,15 @@ export function registerCacheAnalysis(server: McpServer): void {
           '',
           markdownTable(headers, rows, rightCols),
           '',
+          ...(devOnlyCount > 0
+            ? [
+                `⚠ **${devOnlyCount} of these are reached only through a dev-only module** and do not ` +
+                  'exist in a production build. Do not write a product fix for them.',
+                '',
+                DEV_ONLY_FOOTNOTE,
+                '',
+              ]
+            : []),
           ...(staleCapacity.length > 0
             ? [
                 `⚠ **${staleCapacity.length} table(s) below 25% occupancy — this is STALE CAPACITY, not live data.** ` +

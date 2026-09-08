@@ -8,6 +8,7 @@
  * @oncall memory_lab
  */
 
+import {resolveLadderInputs} from '../run-manifest.js';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
@@ -202,11 +203,17 @@ export function registerLeakReport(server: McpServer): void {
       'The verdict column is a HINT, not a conclusion — confirm a candidate with memlab_retainer_trace on the example node before calling it a leak. ' +
       "The retainer column votes over the class's NEWEST instances (highest node ids = the growth cohort), NOT over its whole population: voting over the population names whoever holds the most instances, which is a large STATIC collection whenever one exists and is not what grew. Rows where the two disagree are listed under the table. Paths may be local, manifold:// URLs, or bare filenames.",
     {
+      run_dir: z
+        .string()
+        .optional()
+        .describe(
+          "A leak-hunt round's output directory (the one holding run.json and snapshots/). PREFERRED over `paths`: the rung paths and the exact cycles driven are read from run.json, so the per-cycle axis is measured rather than assumed. Rungs are placed on a schedule, so a real ladder is unevenly spaced (e.g. 0/200/375/450).",
+        ),
       paths: z
         .array(z.string())
-        .min(1)
+        .optional()
         .describe(
-          'Ordered list of >=2 snapshot paths (oldest first): local absolute paths, manifold:// URLs, or bare snapshot filenames. A single ["ladder:<name>"] entry expands to a ladder saved with memlab_ladder.',
+          'Ordered list of >=2 snapshot paths (oldest first): local absolute paths, manifold:// URLs, or bare snapshot filenames. A single ["ladder:<name>"] entry expands to a ladder saved with memlab_ladder. Ignored when `run_dir` is given.',
         ),
       cycles: z
         .number()
@@ -257,6 +264,7 @@ export function registerLeakReport(server: McpServer): void {
     },
     async (
       {
+        run_dir,
         paths,
         cycles,
         content,
@@ -269,6 +277,11 @@ export function registerLeakReport(server: McpServer): void {
       extra,
     ) => {
       try {
+        // Read the ladder + cycle axis from run.json when given; see
+        // ../run-manifest.ts for why an assumed-even axis is unsafe.
+        const inputs = resolveLadderInputs({run_dir, paths, cycles});
+        paths = inputs.paths;
+        cycles = inputs.cycles;
         const {steps, rows} = await computeSequenceTrends(paths, {
           minGrowthCount: min_growth_count,
           monotonicOnly: monotonic_only,

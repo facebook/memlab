@@ -153,6 +153,10 @@ const GROUPS: Group[] = [
         'Unbounded leak, or a working set whose size is just rate x window? Fits a line AND a saturating curve to one series and reports which the data supports, plus the implied plateau.',
       ],
       [
+        'memlab_retention_windows',
+        "What windows could BOUND this population — timeouts, TTLs, cleanup intervals? Run it before calling any growth unbounded: a ladder shorter than the app's window cannot tell a leak from a working set.",
+      ],
+      [
         'memlab_census_diff',
         'Detached-DOM and listener census at TWO rungs, diffed per class and per callback in one call.',
       ],

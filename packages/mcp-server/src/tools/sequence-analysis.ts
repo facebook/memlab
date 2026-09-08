@@ -8,6 +8,7 @@
  * @oncall memory_lab
  */
 
+import {resolveLadderInputs} from '../run-manifest.js';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapSnapshot} from '@memlab/core';
 import fs from 'fs';
@@ -335,9 +336,15 @@ export function registerSequenceAnalysis(server: McpServer): void {
     'memlab_sequence_analysis',
     'Trend analysis across an ORDERED sequence of >=2 heap snapshots (the canonical "is anything growing unboundedly?" tool). Loads each snapshot transiently (does NOT change your active snapshot), builds per-class histograms, and reports each class\'s value at every step plus a growth verdict: "monotonic-up" (grew every step — strongest leak signal) vs "grew-net" (grew overall but not every step — often GC/navigation noise) vs flat/shrank. Also lists classes new since the baseline. Paths may be local, manifold:// URLs, or bare filenames.',
     {
+      run_dir: z
+        .string()
+        .optional()
+        .describe(
+          "A leak-hunt round's output directory (the one holding run.json and snapshots/). PREFERRED over `paths`: the rung paths and the exact cycles driven are read from run.json, so the per-cycle axis is measured rather than assumed. Rungs are placed on a schedule, so a real ladder is unevenly spaced (e.g. 0/200/375/450).",
+        ),
       paths: z
         .array(z.string())
-        .min(1)
+        .optional()
         .describe(
           'Ordered list of >=2 snapshot paths (oldest first): local absolute paths, manifold:// URLs, or bare snapshot filenames. A single ["ladder:<name>"] entry expands to a ladder saved with memlab_ladder.',
         ),
@@ -389,6 +396,7 @@ export function registerSequenceAnalysis(server: McpServer): void {
     },
     async (
       {
+        run_dir,
         paths,
         limit,
         min_growth_count,
@@ -402,6 +410,11 @@ export function registerSequenceAnalysis(server: McpServer): void {
     ) => {
       try {
         if (repeat_notes) resetEmittedNotes();
+        // run.json is the source of truth for the rung list; see
+        // ../run-manifest.ts.
+        const inputs = resolveLadderInputs({run_dir, paths, cycles});
+        paths = inputs.paths;
+        cycles = inputs.cycles;
         const {steps, rows, keys, reusedHandles} = await computeSequenceTrends(
           paths,
           {

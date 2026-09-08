@@ -25,6 +25,12 @@ import {
 } from '../utils.js';
 import {runEval} from './eval.js';
 import {resolveLadderPaths} from './ladder.js';
+import {
+  describeCycleAxis,
+  ladderSpanSeconds,
+  resolveLadderInputs,
+  retentionWindowCaveat,
+} from '../run-manifest.js';
 
 /** The tool result shape the MCP SDK expects; runEval returns exactly this. */
 type TextResult = {content: Array<{type: 'text'; text: string}>};
@@ -339,11 +345,17 @@ export function registerLadderProbe(server: McpServer): void {
       'with r2 near 1.0 is the signature of an unbounded per-cycle leak and is what separates it from a cache filling ' +
       'toward a plateau.',
     {
+      run_dir: z
+        .string()
+        .optional()
+        .describe(
+          "A leak-hunt round's output directory (the one holding run.json and snapshots/). PREFERRED over `paths`: the rung paths, the exact per-rung cycle counts and the total cycles driven are all read from run.json, so the x-axis is measured rather than assumed. Rungs are placed on a schedule, so a real ladder is unevenly spaced (e.g. 0/200/375/450) and an assumed-even axis silently reports wrong rates.",
+        ),
       paths: z
         .array(z.string())
-        .min(1)
+        .optional()
         .describe(
-          'Ordered snapshot paths, oldest rung first. Local paths, manifold:// URLs, bare filenames, or a single ["ladder:<name>"] reference.',
+          'Ordered snapshot paths, oldest rung first. Local paths, manifold:// URLs, bare filenames, or a single ["ladder:<name>"] reference. Ignored when `run_dir` is given. When these are named `rung_NN_cNNN.heapsnapshot` the cycle axis is recovered from the filenames.',
         ),
       code: z
         .string()
@@ -398,6 +410,7 @@ export function registerLadderProbe(server: McpServer): void {
         .describe('Per-file size ceiling, matching memlab_load_snapshot.'),
     },
     async ({
+      run_dir,
       paths,
       code,
       metrics,
@@ -410,7 +423,19 @@ export function registerLadderProbe(server: McpServer): void {
       max_file_size_mb,
     }) => {
       try {
-        const {paths: resolved} = resolveLadderPaths(paths);
+        // One place decides the x-axis for every trend tool; see
+        // ../run-manifest.ts for why reconstructing it per caller is unsafe.
+        const inputs = resolveLadderInputs({
+          run_dir,
+          paths,
+          cycles,
+          cycles_per_rung,
+        });
+        const {paths: resolved} = resolveLadderPaths(inputs.paths);
+        cycles_per_rung = inputs.cyclesPerRung ?? undefined;
+        cycles = inputs.cycles;
+        const axisSource = inputs.source;
+        const ladderSpanS = ladderSpanSeconds(inputs.manifest);
         if (resolved.length < 2) {
           return errorResult(
             new Error(
@@ -507,7 +532,9 @@ export function registerLadderProbe(server: McpServer): void {
         // `cycles` alone spreads the rungs evenly over the range. That is a
         // guess about how the ladder was driven, and it silently becomes the
         // x-axis every fit is scored against.
-        const axisAssumed = cycles != null && cycles_per_rung == null;
+        const axisAssumed =
+          axisSource === 'assumed-even' ||
+          (cycles != null && cycles_per_rung == null);
 
         // A control that came back non-zero anywhere proves a probe of this
         // kind can observe this heap; that is the whole claim, so one rung is
@@ -539,6 +566,10 @@ export function registerLadderProbe(server: McpServer): void {
           );
           lines.push('');
         }
+        // State how the axis was obtained. A reader cannot otherwise tell a
+        // measured axis from an assumed one, and the tables look identical.
+        lines.push(describeCycleAxis(axisSource, cycles_per_rung ?? null));
+        lines.push('');
         if (visibilityBlind) {
           lines.push(
             '> ⚠️ **The visibility control itself never returned a non-zero value.** ' +
@@ -640,9 +671,20 @@ export function registerLadderProbe(server: McpServer): void {
             );
           }
           lines.push('');
-          lines.push(
-            `**Verdict:** ${verdictFor(usableYs, fit, axisAssumed, visibilityVerified)}`,
+          const verdictText = verdictFor(
+            usableYs,
+            fit,
+            axisAssumed,
+            visibilityVerified,
           );
+          lines.push(`**Verdict:** ${verdictText}`);
+          // LINEAR is the verdict most often read as "unbounded leak". Over a
+          // ladder shorter than the app's retention window it is equally
+          // consistent with a bounded working set.
+          if (/LINEAR/.test(verdictText)) {
+            lines.push('');
+            lines.push(retentionWindowCaveat(ladderSpanS));
+          }
           if (usable.length === 2) {
             // A line through two points fits them perfectly, so r2 is 1.0000 by
             // construction and "grew every step" is the same statement as "grew".
