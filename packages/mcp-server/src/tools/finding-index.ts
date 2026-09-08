@@ -488,9 +488,9 @@ export function registerFindingIndex(server: McpServer): void {
       'IMPORTANT: a verdict of NEW is only as good as the index behind it. A newly-created index is pre-seeded with the generic ARTIFACT families (JIT warmup, CDP network/perf/console retention, a11y caches, React Fast Refresh registries, captured Error stacks, the automation bridge bundle), so the first `check` can already answer KNOWN for a population that is documented and is not app memory — but it knows nothing about YOUR app. Seed that with `action: "import"` before trusting the first `check` of a workstream. Set `MEMLAB_FINDINGS_INDEX` to a checked-in path to share the index across hosts and operators instead of keeping it in a per-machine home directory.',
     {
       action: z
-        .enum(['check', 'record', 'list', 'cover', 'import'])
+        .enum(['check', 'record', 'list', 'cover', 'import', 'export'])
         .describe(
-          '"check" (fingerprint + look up, no write), "record" (add/update), "import" (bulk-seed history), "list", "cover" (log combos driven in a round).',
+          '"check" (fingerprint + look up, no write), "record" (add/update), "import" (bulk-seed history), "export" (write the whole index to a file so it can be checked in), "list", "cover" (log combos driven in a round).',
         ),
       retainer_path: z
         .string()
@@ -555,6 +555,12 @@ export function registerFindingIndex(server: McpServer): void {
         .describe(
           'Scopes the index file, so one shared location can hold several hunts side by side (e.g. "wa-web"). Omit to use the unscoped index.',
         ),
+      to: z
+        .string()
+        .optional()
+        .describe(
+          'For action "export": the file to write the index to. Point it at a checked-in path and set MEMLAB_FINDINGS_INDEX to the same path.',
+        ),
       from: z
         .string()
         .optional()
@@ -582,11 +588,58 @@ export function registerFindingIndex(server: McpServer): void {
       combos,
       workstream,
       from,
+      to,
       findings,
     }) => {
       try {
         const indexPath = resolveIndexPath(workstream);
         const index = loadIndex(indexPath);
+
+        if (action === 'export') {
+          // The round trip `import` always implied. A previous sweep recorded
+          // that it had "checked in" its seeded index, but the file exists in
+          // neither the repo nor the plugin — because there was no way to get
+          // the index back OUT. Without this the index is per-machine by
+          // construction, and the next host starts empty and answers NEW to
+          // everything.
+          const idx = loadIndex(indexPath);
+          const dest = to ?? from;
+          if (dest == null || dest === '') {
+            return errorResult(
+              'export needs `to` (the path to write). Point it at a checked-in ' +
+                'file and set MEMLAB_FINDINGS_INDEX to the same path so the next ' +
+                'session inherits it.',
+            );
+          }
+          const dir = path.dirname(dest);
+          if (dir !== '' && !fs.existsSync(dir)) {
+            fs.mkdirSync(dir, {recursive: true});
+          }
+          const payload = {
+            workstream: workstream ?? null,
+            exported_at: new Date().toISOString(),
+            findings: Object.values(idx.findings ?? {}),
+            combos_driven: idx.combos_driven ?? {},
+          };
+          fs.writeFileSync(
+            dest,
+            JSON.stringify(payload, null, 2) + '\n',
+            'utf8',
+          );
+          const n = payload.findings.length;
+          return toolResult(
+            `Exported **${n}** finding(s)${
+              workstream != null ? ` for workstream \`${workstream}\`` : ''
+            } to \`${dest}\`.\n\n` +
+              (n === 0
+                ? '_The index was EMPTY, so this wrote an empty file. Seed it with ' +
+                  '`action: "import"` first, or a `check` against it will answer NEW ' +
+                  'to everything._'
+                : '_Check this file in and point `MEMLAB_FINDINGS_INDEX` at it, so the ' +
+                  'next host and the next operator inherit the history instead of ' +
+                  'starting from zero._'),
+          );
+        }
 
         if (action === 'import') {
           const incoming: ImportedFinding[] = [...(findings ?? [])];
