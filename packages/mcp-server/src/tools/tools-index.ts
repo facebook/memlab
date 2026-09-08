@@ -153,6 +153,10 @@ const GROUPS: Group[] = [
         'Unbounded leak, or a working set whose size is just rate x window? Fits a line AND a saturating curve to one series and reports which the data supports, plus the implied plateau.',
       ],
       [
+        'memlab_field_release_impact',
+        'If a fix nulls this property, how many bytes come back — and is it the only reference? The question every memory fix asks, in the form fixes actually take.',
+      ],
+      [
         'memlab_analysis_battery',
         "Run a whole round's analysis in one call, write per-tool detail to disk, return only a digest — the way to read a multi-round sweep without spending a context window on it.",
       ],
