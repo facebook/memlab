@@ -25,6 +25,7 @@ import {
   formatBytes,
   formatNumber,
   markdownTable,
+  stratifyNodes,
   toolResult,
 } from '../utils.js';
 
@@ -156,7 +157,8 @@ export function registerTraceAll(server: McpServer): void {
     'memlab_trace_all',
     'Retainer-trace an ENTIRE population and cluster the paths server-side, instead of sampling a handful and hoping they are representative.\n\n' +
       '`memlab_retainer_summary` samples ~10 instances and stops early once they agree, which is the right default for a quick read but is structurally unable to find a minority path: a cluster holding 3% of the objects and 60% of the bytes is invisible to it, and that cluster is very often the leak. This traces every member (bounded, and it says so when the bound is hit), groups by structural path signature, and reports each cluster with its share of the population — so the output cost is the number of DISTINCT paths, not the size of the population.\n\n' +
-      'Select by class, shape or explicit ids. Use it when a population is large enough that "are they all retained the same way?" is the question, and when a sampled answer has already been used to justify a conclusion.',
+      'Select by class, shape or explicit ids. Use it when a population is large enough that "are they all retained the same way?" is the question, and when a sampled answer has already been used to justify a conclusion.\n\n' +
+      'On a population too large to trace whole, pass `sample_target` rather than skipping the tool: it traces a STRATIFIED sample spread across the id range and retained-size deciles, which still finds a 3% minority cluster, where the default bound truncates off the top of the id order and keeps only the oldest instances.',
     {
       class_name: z
         .string()
@@ -204,6 +206,14 @@ export function registerTraceAll(server: McpServer): void {
         .describe(
           `Safety bound on how many nodes to trace (default ${formatNumber(DEFAULT_MAX_TRACE)}). Truncation is always reported — a partial sweep is never presented as a complete one.`,
         ),
+      sample_target: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe(
+          'Trace a STRATIFIED sample of this many objects instead of the first `max_trace`, spread across the id range and retained-size deciles. Hitting `max_trace` truncates off the TOP of the population, which is id order — the oldest instances, which is the cohort least likely to contain the leak, and the report then says "partial sweep" without saying partial in which direction. This tool exists to find minority paths a 10-instance sample misses, and on a population too big to trace whole it was simply avoided instead. A stratified 5,000 still finds a 3% cluster; the first 5,000 by id may not contain one.',
+        ),
     },
     async ({
       class_name,
@@ -214,6 +224,7 @@ export function registerTraceAll(server: McpServer): void {
       exact_bytes,
       max_depth,
       max_trace,
+      sample_target,
     }) => {
       try {
         const snapshot = getSnapshot();
@@ -241,10 +252,17 @@ export function registerTraceAll(server: McpServer): void {
           );
         }
 
+        const population = nodes.length;
+        const sampled =
+          sample_target != null && population > sample_target
+            ? stratifyNodes(nodes, sample_target)
+            : nodes;
         const {clusters, traced, noPath, truncated} = clusterByRetainerPath(
-          nodes,
+          sampled,
           framework_filter,
-          max_trace,
+          // A stratified sample must not then be truncated by the safety bound,
+          // or the spread is thrown away and only the low ids survive.
+          sampled === nodes ? max_trace : Math.max(max_trace, sampled.length),
           max_depth,
         );
         if (clusters.length === 0) {
@@ -301,10 +319,21 @@ export function registerTraceAll(server: McpServer): void {
         const lines: string[] = [
           `## Retainer paths for ${label}`,
           '',
-          `**${formatNumber(traced)} of ${formatNumber(nodes.length)} traced** into **${formatNumber(clusters.length)} distinct path${clusters.length === 1 ? '' : 's'}**` +
+          `**${formatNumber(traced)} of ${formatNumber(population)} traced** into **${formatNumber(clusters.length)} distinct path${clusters.length === 1 ? '' : 's'}**` +
             `${noPath > 0 ? `; ${formatNumber(noPath)} had no retainer path (unreachable, awaiting collection)` : ''}` +
-            `${truncated ? `. ⚠ Stopped at the ${formatNumber(max_trace)}-node bound, so this is a partial sweep — raise max_trace for the full population` : ''}.`,
+            `${truncated ? `. ⚠ Stopped at the ${formatNumber(max_trace)}-node bound, so this is a partial sweep — raise max_trace, or pass sample_target to spread the budget across the population instead of taking it off the top` : ''}.`,
           '',
+          ...(sampled !== nodes
+            ? [
+                `_Stratified sample: ${formatNumber(sampled.length)} of ${formatNumber(population)} ` +
+                  `(${((sampled.length / population) * 100).toFixed(1)}%), spread across the id range and ` +
+                  `retained-size deciles. Shares below are shares OF THE SAMPLE — a cluster's real population is ` +
+                  `about ${(population / sampled.length).toFixed(1)}x its count here. A path absent from a sample ` +
+                  `this size is unlikely but not impossible; re-run without \`sample_target\` to make the ` +
+                  `claim exhaustive._`,
+                '',
+              ]
+            : []),
           markdownTable(
             ['#', 'Objects', 'Share', 'Self size', 'Retained', 'Example'],
             rows,

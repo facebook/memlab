@@ -507,7 +507,18 @@ export function sampleAcrossPopulation(
     matched++;
     all.push(node);
   });
-  if (all.length <= limit) return {nodes: all, matched};
+  return {nodes: stratifyNodes(all, limit), matched};
+}
+
+/**
+ * The stratification itself, over a node array a caller already has.
+ *
+ * Split out so a tool that has already selected its population does not have to
+ * walk the heap again to sample it representatively — and so the two axes are
+ * chosen in exactly one place.
+ */
+export function stratifyNodes(all: IHeapNode[], limit: number): IHeapNode[] {
+  if (all.length <= limit) return all;
 
   const picked = new Map<number, IHeapNode>();
 
@@ -534,7 +545,7 @@ export function sampleAcrossPopulation(
     picked.set(bySize[idx].id, bySize[idx]);
   }
 
-  return {nodes: [...picked.values()].slice(0, limit), matched};
+  return [...picked.values()].slice(0, limit);
 }
 
 export function filterLargestObjectsCounted(

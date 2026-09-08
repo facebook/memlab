@@ -13,6 +13,7 @@ import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {
   errorResult,
+  formatBytes,
   formatNumber,
   markdownTable,
   toolResult,
@@ -128,6 +129,13 @@ export function registerRateModel(server: McpServer): void {
         .describe(
           'A realistic interaction rate for this surface. Used only for the projection described on `harness_cycles_per_minute`.',
         ),
+      bytes_per_object: z
+        .number()
+        .positive()
+        .optional()
+        .describe(
+          'Retained bytes per member of this population (`memlab_unit_cost` measures it). Converts the projection from a COUNT to bytes, which is the number a fix decision is actually made on — "12,000 records at steady state" does not say whether to file, and a count was the only thing this tool could report. With `production_cycles_per_minute` it also turns an UNBOUNDED verdict into MB/hour for a real user, which is otherwise arithmetic done by hand in every write-up.',
+        ),
     },
     async ({
       run_dir,
@@ -137,6 +145,7 @@ export function registerRateModel(server: McpServer): void {
       label,
       harness_cycles_per_minute,
       production_cycles_per_minute,
+      bytes_per_object,
     }) => {
       try {
         let ladderSpanS: number | null = null;
@@ -245,6 +254,7 @@ export function registerRateModel(server: McpServer): void {
         const fittedRise = lin.slope * spanX;
         const grows =
           lin.slope > 0 && fittedRise > 0.05 * Math.max(Math.abs(meanY), 1);
+        let unbounded = false;
 
         if (saturates) {
           lines.push(
@@ -254,7 +264,11 @@ export function registerRateModel(server: McpServer): void {
               `(${formatNumber(Math.round(sat.tau))} cycles) falls INSIDE the ladder, so the levelling-off was ` +
               'observed rather than extrapolated.',
             '',
-            `Steady state is about **${formatNumber(Math.round(sat.plateau))}**. The population is ` +
+            `Steady state is about **${formatNumber(Math.round(sat.plateau))}**` +
+              (bytes_per_object != null
+                ? ` (**${formatBytes(sat.plateau * bytes_per_object)}** at ${formatBytes(bytes_per_object)} each)`
+                : '') +
+              '. The population is ' +
               'approximately `rate x window`: it grows linearly only while the window has not yet elapsed, which ' +
               'is why a short ladder scores it as a clean line. Size the window, not the slope.',
             '',
@@ -281,6 +295,7 @@ export function registerRateModel(server: McpServer): void {
             '',
           );
         } else if (lin.r2 >= 0.98) {
+          unbounded = true;
           lines.push(
             `**UNBOUNDED — consistent with a per-cycle leak.** The straight line fits at r2 ${lin.r2.toFixed(4)}` +
               // Name the test that actually rejected saturation. Saying "the
@@ -316,7 +331,37 @@ export function registerRateModel(server: McpServer): void {
           );
         }
 
-        if (
+        // An UNBOUNDED population has no steady state, so the saturating
+        // projection is not just uninformative for it — it is the number the
+        // verdict above just rejected. What a real user accrues PER HOUR is the
+        // actionable figure, and it was computed by hand in every write-up.
+        if (unbounded && production_cycles_per_minute != null) {
+          const perHour = lin.slope * production_cycles_per_minute * 60;
+          lines.push(
+            '### At a production interaction rate',
+            '',
+            'There is no steady state to project — that is what UNBOUNDED means. At ' +
+              `${formatNumber(production_cycles_per_minute)} cycles/min a user accrues about ` +
+              `**${formatNumber(Math.round(perHour))} per hour**` +
+              (bytes_per_object != null
+                ? ` (**${formatBytes(perHour * bytes_per_object)}/hour**, ` +
+                  `${formatBytes(perHour * bytes_per_object * 8)} over an 8-hour session)`
+                : '') +
+              '.',
+            '',
+            '_This assumes the session never ends and nothing evicts. Check the session length this surface ' +
+              'actually sees before quoting the 8-hour figure — for a tab reloaded every 20 minutes the per-hour ' +
+              'rate is the ceiling, not the exposure._',
+            '',
+          );
+          if (bytes_per_object == null) {
+            lines.push(
+              '_Pass `bytes_per_object` (`memlab_unit_cost` measures it) to get this in MB/hour, which is the ' +
+                'form the decision to fix is actually made in._',
+              '',
+            );
+          }
+        } else if (
           harness_cycles_per_minute != null &&
           production_cycles_per_minute != null
         ) {
@@ -344,9 +389,16 @@ export function registerRateModel(server: McpServer): void {
               'measured peak._',
             '',
           );
+          if (bytes_per_object != null) {
+            lines.push(
+              `That is **${formatBytes(prodSteady * bytes_per_object)}** at ${formatBytes(bytes_per_object)} per ` +
+                `member, against ${formatBytes(last * bytes_per_object)} measured here.`,
+              '',
+            );
+          }
           // The projection is only meaningful if the window it rests on was
-          // measured. Under UNBOUNDED or INCONCLUSIVE the same tau was just
-          // judged unreliable, so printing a confident steady state from it
+          // measured. Under INCONCLUSIVE the same tau was just judged
+          // unreliable, so printing a confident steady state from it
           // contradicts the verdict above.
           if (!saturates) {
             lines.push(

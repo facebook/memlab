@@ -47,6 +47,35 @@ function shapeKey(node: IHeapNode): string {
   return `${node.name} {${props.join(',')}}`;
 }
 
+type Expectation = 'grows' | 'flat' | 'absent' | 'present';
+
+/**
+ * Judge one hypothesis against what it predicted.
+ *
+ * Returns null when the data cannot decide — a `grows` expectation on a single
+ * snapshot has no trend to check, and reporting that as a FAIL would be the tool
+ * asserting something the ladder never measured.
+ */
+function judge(
+  expect: Expectation,
+  counts: number[],
+): {pass: boolean; note?: string} | null {
+  const last = counts[counts.length - 1];
+  const net = last - counts[0];
+  switch (expect) {
+    case 'absent':
+      return {pass: counts.every(c => c === 0)};
+    case 'present':
+      return {pass: last > 0};
+    case 'grows':
+      if (counts.length < 2) return null;
+      return {pass: trendOf(counts) === '↑ every step'};
+    case 'flat':
+      if (counts.length < 2) return null;
+      return {pass: net <= 0};
+  }
+}
+
 function trendOf(counts: number[]): string {
   let up = true;
   for (let i = 1; i < counts.length; i++) {
@@ -64,7 +93,8 @@ export function registerHypothesis(server: McpServer): void {
     'memlab_hypothesis',
     'Test one hypothesis against EVERY rung of a snapshot ladder in a single call: supply a JavaScript predicate over heap nodes and get its match count, total self size, and trend per rung. ' +
       'This is the "is my theory true across the whole ladder?" tool. Without it, confirming a specific theory — "the growth is Maps with a `_pending` field", "it is closures capturing `chatId`" — meant loading each rung separately and re-running a query by hand, at minutes per rung, which is why theories tended to be checked against one snapshot and generalized. ' +
-      'Set group_by_shape to break matches down by property shape per rung instead of a single count, which answers "WHICH variant of this class is the one accumulating?" — the shape sweep that otherwise required a separate pass. Snapshots are loaded one at a time and released, so a long ladder is memory-safe.',
+      'Set group_by_shape to break matches down by property shape per rung instead of a single count, which answers "WHICH variant of this class is the one accumulating?" — the shape sweep that otherwise required a separate pass. Snapshots are loaded one at a time and released, so a long ladder is memory-safe.\n\n' +
+      'Give each entry in `predicates` an `expect` (`grows` / `flat` / `absent` / `present`) to get a PASS/FAIL column instead of counts to interpret. A measured round carried ~15 candidate explanations and tested four, because a table of fifteen count-rows still has to be read against what you thought would happen, one row at a time. Stating the prediction up front also stops the counts from deciding, after the fact, what they showed.',
     {
       paths: z
         .array(z.string())
@@ -79,6 +109,12 @@ export function registerHypothesis(server: McpServer): void {
             predicate: z
               .string()
               .describe('The expression, as for `predicate`.'),
+            expect: z
+              .enum(['grows', 'flat', 'absent', 'present'])
+              .optional()
+              .describe(
+                'What this hypothesis PREDICTS, turning the row into a pass/fail. Without it the table is 15 rows of counts that still have to be read one at a time against what you thought would happen, which is the step that gets skipped at hypothesis 12. `grows` = up every step (needs >=2 rungs); `flat` = no net growth; `absent` = zero matches everywhere; `present` = non-zero in the last rung.',
+              ),
           }),
         )
         .optional()
@@ -231,6 +267,21 @@ export function registerHypothesis(server: McpServer): void {
           // One row per hypothesis, so the candidate explanations are compared
           // side by side rather than across separate calls whose rungs may not
           // have been the same load.
+          const expectations = specs.map(sp =>
+            'expect' in sp
+              ? ((sp as {expect?: Expectation}).expect ?? null)
+              : null,
+          );
+          const anyExpect = expectations.some(e => e != null);
+          const verdicts = specs.map((_, t) => {
+            const e = expectations[t];
+            return e == null
+              ? null
+              : judge(
+                  e,
+                  rungs.map(r => r.matched[t]),
+                );
+          });
           lines.push(
             `## ${specs.length} hypotheses across ${rungs.length} snapshot(s)`,
             '',
@@ -239,10 +290,12 @@ export function registerHypothesis(server: McpServer): void {
                 'Hypothesis',
                 ...rungs.map((r, i) => `#${i + 1}`),
                 ...(rungs.length > 1 ? ['Δ', 'Trend'] : []),
+                ...(anyExpect ? ['Expected', 'Result'] : []),
               ],
               specs.map((spec, t) => {
                 const per = rungs.map(r => r.matched[t]);
                 const net = per[per.length - 1] - per[0];
+                const v = verdicts[t];
                 return [
                   spec.label.length > 40
                     ? spec.label.slice(0, 37) + '…'
@@ -254,6 +307,18 @@ export function registerHypothesis(server: McpServer): void {
                         trendOf(per),
                       ]
                     : []),
+                  ...(anyExpect
+                    ? [
+                        expectations[t] ?? '—',
+                        v == null
+                          ? expectations[t] == null
+                            ? '—'
+                            : 'undecidable'
+                          : v.pass
+                            ? '✅ PASS'
+                            : '❌ FAIL',
+                      ]
+                    : []),
                 ];
               }),
               new Set(rungs.map((_, i) => i + 1).concat([rungs.length + 1])),
@@ -261,6 +326,22 @@ export function registerHypothesis(server: McpServer): void {
             '',
             `_All ${specs.length} predicates were applied in the SAME walk of each rung, so the counts are of one heap state and are directly comparable. Rungs: ${rungs.map(r => r.label).join(' → ')}._`,
           );
+          if (anyExpect) {
+            const decided = verdicts.filter(v => v != null);
+            const passed = decided.filter(v => v?.pass).length;
+            const undecidable = verdicts.filter(
+              (v, t) => v == null && expectations[t] != null,
+            ).length;
+            lines.push(
+              '',
+              `**${passed} of ${decided.length} stated expectations held.**` +
+                (undecidable > 0
+                  ? ` ${undecidable} could not be decided on ${rungs.length} rung(s) — \`grows\` and \`flat\` need at least two.`
+                  : '') +
+                ' A FAIL is a result: it rules the explanation out, which is what makes it worth stating the' +
+                ' expectation up front rather than reading the counts and deciding afterwards what they showed.',
+            );
+          }
           const allZero = specs.every((_, t) =>
             rungs.every(r => r.matched[t] === 0),
           );
