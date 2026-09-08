@@ -38,6 +38,12 @@ interface RunManifest {
   ladder_splits_after_rung?: number[];
   mutates_content_per_cycle?: string[];
   gating_verified?: Record<string, unknown>;
+  /**
+   * How this round's gating is applied. `gk_allowlist` means the gates are
+   * resolved SERVER-side and there is nothing for the runner to write in-page,
+   * so an empty `gating_verified` is correct rather than a gap.
+   */
+  gating_mechanism?: string;
   /** {declared, verified, absent, absent_props} written by hunt_runner. */
   gating_summary?: {
     declared?: number;
@@ -64,7 +70,30 @@ const WEAK_STEP_RATE = 0.5;
  *
  * Split out as a pure function so the adjudication is testable without a run.
  */
-export function auditManifest(m: RunManifest): {
+/**
+ * Gating an operator verified out of band, read from `gate_state.json`.
+ *
+ * Not every app gates the way the runner can see. Comet's gates are server-side
+ * GK allowlists, so `hunt_runner`'s gating manifest is empty BY DESIGN — and
+ * this audit therefore reported "No verified gating recorded" on every
+ * correctly-gated round, forever. A check that can never pass for a whole app
+ * is worse than no check: it trains the reader to skip the one signal that is
+ * supposed to mean the round is trustworthy.
+ */
+export interface ExternalGateState {
+  /** Gate name -> the value observed IN-PAGE at runtime. */
+  verified_in_page?: Record<string, unknown>;
+  /** Gate name -> how it was verified, when not a plain in-page read. */
+  verified_via_resolved_config?: Record<string, unknown>;
+  /** Gate name -> why it could not be verified. Each one is a caveat. */
+  not_verified?: Record<string, unknown>;
+  note?: string;
+}
+
+export function auditManifest(
+  m: RunManifest,
+  external?: ExternalGateState | null,
+): {
   checks: AuditCheck[];
   verdict: 'TRUSTWORTHY' | 'CAVEATED' | 'UNTRUSTWORTHY';
 } {
@@ -182,6 +211,16 @@ export function auditManifest(m: RunManifest): {
 
   const gating = m.gating_verified ?? {};
   const gateKeys = Object.keys(gating);
+  const externalVerified = {
+    ...(external?.verified_in_page ?? {}),
+    ...(external?.verified_via_resolved_config ?? {}),
+  };
+  const externalCount = Object.keys(externalVerified).length;
+  const externalUnverified = Object.keys(external?.not_verified ?? {});
+  // A gate read back as literal `false` is not "verified", it is verified WRONG.
+  const externalFalse = Object.entries(externalVerified)
+    .filter(([, v]) => v === false)
+    .map(([k]) => k);
   // Prefer the runner's own summary. Counting read-back entries here while the
   // runner counted declared-minus-absent produced two different fractions for
   // the same bring-up ("16 verified" vs "14/16"), and both were quoted.
@@ -204,6 +243,30 @@ export function auditManifest(m: RunManifest): {
             'one where it did exist is not comparing the same configuration.'
           : '. The round ran with every declared prop applied and read back.'),
     });
+  } else if (externalCount > 0) {
+    // Verified out of band and recorded in gate_state.json.
+    checks.push(
+      externalFalse.length > 0
+        ? {
+            name: 'gating',
+            status: 'blocking',
+            detail:
+              `gate_state.json records ${externalFalse.length} gate(s) read back as FALSE ` +
+              `(${externalFalse.join(', ')}). The round measured the wrong arm.`,
+          }
+        : {
+            name: 'gating',
+            status: externalUnverified.length > 0 ? 'caveat' : 'ok',
+            detail:
+              `${externalCount} gate(s) verified out of band and recorded in gate_state.json` +
+              (m.gating_mechanism === 'gk_allowlist'
+                ? ' (this app gates server-side, so the runner has nothing to apply in-page)'
+                : '') +
+              (externalUnverified.length > 0
+                ? `; ${externalUnverified.length} NOT verified (${externalUnverified.join(', ')}) — each is a gap in what this round can claim.`
+                : '.'),
+          },
+    );
   } else {
     checks.push(
       gateKeys.length === 0
@@ -212,7 +275,10 @@ export function auditManifest(m: RunManifest): {
             status: 'caveat',
             detail:
               'No verified gating recorded. If the round depends on a flag being on or off, ' +
-              'nothing here shows it actually was.',
+              'nothing here shows it actually was.' +
+              (m.gating_mechanism === 'gk_allowlist'
+                ? ' This app gates SERVER-side, so the runner has nothing to apply in-page — verify the gates at runtime and write them to `gate_state.json` next to run.json (keys: verified_in_page, verified_via_resolved_config, not_verified).'
+                : ''),
           }
         : {
             name: 'gating',
@@ -304,7 +370,29 @@ export function registerRoundAudit(server: McpServer): void {
         const manifest = JSON.parse(
           fs.readFileSync(manifestPath, 'utf8'),
         ) as RunManifest;
-        const {checks, verdict} = auditManifest(manifest);
+        // Sits next to run.json so it travels with the round.
+        const gateStatePath = path.join(
+          path.dirname(manifestPath),
+          'gate_state.json',
+        );
+        let external: ExternalGateState | null = null;
+        if (fs.existsSync(gateStatePath)) {
+          try {
+            external = JSON.parse(
+              fs.readFileSync(gateStatePath, 'utf8'),
+            ) as ExternalGateState;
+          } catch (err) {
+            // A malformed file must not be read as "no gating" — that is the
+            // silent-downgrade this whole check exists to prevent.
+            return errorResult(
+              new Error(
+                `${gateStatePath} exists but is not valid JSON (${err instanceof Error ? err.message : String(err)}). ` +
+                  'Fix or remove it — treating it as absent would silently downgrade the gating check.',
+              ),
+            );
+          }
+        }
+        const {checks, verdict} = auditManifest(manifest, external);
 
         const lines: string[] = [
           `## Round audit — \`${manifest.run_id ?? path.basename(path.dirname(manifestPath))}\``,

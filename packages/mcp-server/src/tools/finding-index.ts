@@ -709,7 +709,13 @@ export function registerFindingIndex(server: McpServer): void {
               `The findings index at \`${indexPath}\` is **empty**, so every \`check\` in this ` +
                 'session will answer NEW — including for findings that are already documented ' +
                 'and already fixed. Seed it first with `action: "import"` from the workstream\'s ' +
-                'history, then record findings as you confirm them (`action: "record"`).',
+                'history, then record findings as you confirm them (`action: "record"`).\n\n' +
+                'The leak-hunt skill ships checked-in seeds, so this usually does not need ' +
+                'writing by hand:\n\n' +
+                '    memlab_finding_index({action: "import", workstream: "comet",\n' +
+                '      from: "<plugin>/skills/leak-hunt/references/findings.comet.json"})\n\n' +
+                'Point `MEMLAB_FINDINGS_INDEX` at a checked-in path afterwards so the next host ' +
+                'and the next operator inherit the index instead of starting empty again.',
             );
           }
           // `fixed_behind` is free text and in practice holds a sentence or
