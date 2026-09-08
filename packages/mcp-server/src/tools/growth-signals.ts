@@ -11,6 +11,11 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
+import {
+  DEV_ONLY_FOOTNOTE,
+  moduleProvenanceOf,
+  provenanceCell,
+} from '../dev-modules.js';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {
   formatBytes,
@@ -205,6 +210,7 @@ export function registerGrowthSignals(server: McpServer): void {
           'Entries',
           'Retained',
           '% Heap',
+          'Prod?',
           'Sample keys',
         ];
         const rightCols = new Set([2, 3, 4]);
@@ -216,8 +222,19 @@ export function registerGrowthSignals(server: McpServer): void {
           totalSize > 0
             ? Math.min(100, (c.retainedSize / totalSize) * 100).toFixed(1) + '%'
             : '-',
+          // A dev-only module holding ordinary references passes
+          // `memlab_dev_artifacts`, which only sees dev ROOTS; see
+          // ../dev-modules.ts.
+          provenanceCell(
+            moduleProvenanceOf(snapshot.getNodeById(c.nodeId) ?? null),
+          ),
           c.sample.length > 40 ? c.sample.slice(0, 37) + '…' : c.sample,
         ]);
+        const devOnlyCount = candidates.filter(
+          c =>
+            moduleProvenanceOf(snapshot.getNodeById(c.nodeId) ?? null)
+              .prodReachable === 'no',
+        ).length;
 
         const lines = [
           `## Growth Signals (single-snapshot heuristic)`,
@@ -227,6 +244,14 @@ export function registerGrowthSignals(server: McpServer): void {
           markdownTable(headers, rows, rightCols),
           '',
           ...(loadOnceNote ? [`_Note:${loadOnceNote}_`, ''] : []),
+          ...(devOnlyCount > 0
+            ? [
+                `⚠ **${devOnlyCount} of these are reached only through a dev-only module** and do not exist in a production build.`,
+                '',
+                DEV_ONLY_FOOTNOTE,
+                '',
+              ]
+            : []),
           '_Heuristic only — timestamp/sequential keys and large dense arrays *suggest* append-only growth but do not prove it. Confirm by capturing a later snapshot and running `memlab_diff_snapshots`, or trace one with `memlab_retainer_trace` to see what keeps it alive._',
         ];
 

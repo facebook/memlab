@@ -8,6 +8,7 @@
  * @oncall memory_lab
  */
 
+import {loadRunManifest} from '../run-manifest.js';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {
@@ -86,6 +87,12 @@ export function registerRateModel(server: McpServer): void {
       'the ~10 interactions/second a hammer drives.\n\n' +
       'Feed it the series `memlab_ladder_probe` already produced; this does no snapshot work of its own.',
     {
+      run_dir: z
+        .string()
+        .optional()
+        .describe(
+          "A leak-hunt round's output directory. Supplies `cycles_per_rung` from run.json (so the axis is measured, not assumed) and the ladder's wall-clock span, which is what decides whether an implied window is even observable on this data.",
+        ),
       values: z
         .array(z.number())
         .min(3)
@@ -95,6 +102,7 @@ export function registerRateModel(server: McpServer): void {
       cycles_per_rung: z
         .array(z.number())
         .min(3)
+        .optional()
         .describe(
           'Cumulative interaction cycles at each rung, same length and order as `values`, non-decreasing. The real counts, not an even split: the whole comparison is against this axis.',
         ),
@@ -118,6 +126,7 @@ export function registerRateModel(server: McpServer): void {
         ),
     },
     async ({
+      run_dir,
       values,
       cycles_per_rung,
       label,
@@ -125,14 +134,30 @@ export function registerRateModel(server: McpServer): void {
       production_cycles_per_minute,
     }) => {
       try {
-        if (values.length !== cycles_per_rung.length) {
+        let ladderSpanS: number | null = null;
+        if (run_dir != null && run_dir !== '') {
+          const manifest = loadRunManifest(run_dir);
+          // Same axis bug class as the ladder tools: rungs are placed on a
+          // schedule, so an assumed-even axis silently changes which model wins.
+          cycles_per_rung = manifest.cyclesPerRung;
+          ladderSpanS = manifest.wallClockSeconds;
+        }
+        if (cycles_per_rung == null) {
           return errorResult(
             new Error(
-              `values has ${values.length} entries but cycles_per_rung has ${cycles_per_rung.length}; they describe the same rungs and must match.`,
+              'pass either `run_dir` (reads the axis from run.json) or `cycles_per_rung`.',
             ),
           );
         }
-        if (Math.max(...cycles_per_rung) <= 0) {
+        const axis: number[] = cycles_per_rung;
+        if (values.length !== axis.length) {
+          return errorResult(
+            new Error(
+              `values has ${values.length} entries but cycles_per_rung has ${axis.length}; they describe the same rungs and must match.`,
+            ),
+          );
+        }
+        if (Math.max(...axis) <= 0) {
           return errorResult(
             new Error(
               'cycles_per_rung must contain a positive cycle count; a model against an all-zero axis is meaningless.',
@@ -145,23 +170,21 @@ export function registerRateModel(server: McpServer): void {
         // largest, so that comparison silently flips the verdict. Cumulative
         // cycle counts cannot decrease, so a decrease is a caller mistake worth
         // refusing rather than fitting.
-        const outOfOrder = cycles_per_rung.findIndex(
-          (x, i) => i > 0 && x < cycles_per_rung[i - 1],
-        );
+        const outOfOrder = axis.findIndex((x, i) => i > 0 && x < axis[i - 1]);
         if (outOfOrder > 0) {
           return errorResult(
             new Error(
               `cycles_per_rung must be in ladder order (non-decreasing cumulative cycles), but rung ${outOfOrder} ` +
-                `is ${formatNumber(cycles_per_rung[outOfOrder])} after ${formatNumber(cycles_per_rung[outOfOrder - 1])}. ` +
+                `is ${formatNumber(axis[outOfOrder])} after ${formatNumber(axis[outOfOrder - 1])}. ` +
                 'Sort the rungs — and `values` with them — before modelling.',
             ),
           );
         }
 
-        const lin = linearFit(cycles_per_rung, values);
-        const sat = fitSaturating(cycles_per_rung, values);
+        const lin = linearFit(axis, values);
+        const sat = fitSaturating(axis, values);
         const last = values[values.length - 1];
-        const lastX = cycles_per_rung[cycles_per_rung.length - 1];
+        const lastX = axis[axis.length - 1];
 
         const lines: string[] = [
           `## Rate model — ${label != null ? `\`${label}\`` : 'population'}`,
@@ -210,8 +233,7 @@ export function registerRateModel(server: McpServer): void {
         // The 5% floor separates "did not move" from "moved"; it is not a
         // significance threshold, and both branches print the slope so the
         // reader can judge the size for themselves.
-        const spanX =
-          cycles_per_rung[cycles_per_rung.length - 1] - cycles_per_rung[0];
+        const spanX = axis[axis.length - 1] - axis[0];
         const meanY = values.reduce((a, b) => a + b, 0) / values.length;
         const fittedRise = lin.slope * spanX;
         const grows =
@@ -334,6 +356,21 @@ export function registerRateModel(server: McpServer): void {
               'and project the steady state a real user would see — for a rate-driven population that projection ' +
               'is the finding._',
             '',
+          );
+        }
+
+        // The ladder's own duration decides whether a window is OBSERVABLE at
+        // all. A linear verdict over a ladder shorter than the app's retention
+        // window is exactly what a bounded working set looks like — a measured
+        // sweep published "unbounded" for a population bounded by a 30-minute
+        // cleanup timer, because every round drove for ~20 minutes.
+        if (ladderSpanS != null) {
+          const mins = Math.round(ladderSpanS / 6) / 10;
+          lines.push(
+            '',
+            `_This ladder spans **${mins} min** of wall clock. Any window LONGER than that cannot be ` +
+              'observed here whichever model wins, so a LINEAR verdict over it is not evidence of ' +
+              'an unbounded leak. `memlab_retention_windows` lists the windows this app actually has._',
           );
         }
 

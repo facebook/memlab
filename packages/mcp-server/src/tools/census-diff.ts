@@ -8,6 +8,7 @@
  * @oncall memory_lab
  */
 
+import {loadRunManifest} from '../run-manifest.js';
 import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
@@ -221,14 +222,24 @@ export function registerCensusDiff(server: McpServer): void {
       'The per-row diff is what makes the negative claim: "777 nodes across 66 classes, zero change on every one" is a finding; "777 at both ends" is a guess.\n\n' +
       'Replaces the ~30-line eval that otherwise gets rewritten every round (build {class -> count} on each rung, diff the maps by hand), and loads one graph at a time so it works on a ladder of 250-540 MB captures.',
     {
+      run_dir: z
+        .string()
+        .optional()
+        .describe(
+          "A leak-hunt round's output directory. Uses the FIRST and LAST rungs from run.json as baseline and target, so the pair cannot be transposed or drawn from the wrong round.",
+        ),
       baseline: z
         .string()
+        .optional()
         .describe(
-          'Path to the EARLY rung. Local path, manifold:// URL, or bare filename.',
+          'Path to the EARLY rung. Local path, manifold:// URL, or bare filename. Ignored when `run_dir` is given.',
         ),
       target: z
         .string()
-        .describe('Path to the LATE rung, compared against the baseline.'),
+        .optional()
+        .describe(
+          'Path to the LATE rung, compared against the baseline. Ignored when `run_dir` is given.',
+        ),
       kinds: z
         .array(z.enum(['detached', 'listeners']))
         .optional()
@@ -250,8 +261,23 @@ export function registerCensusDiff(server: McpServer): void {
         .optional()
         .describe('Per-file size ceiling, matching memlab_load_snapshot.'),
     },
-    async ({baseline, target, kinds, top_n, max_file_size_mb}) => {
+    async ({run_dir, baseline, target, kinds, top_n, max_file_size_mb}) => {
       try {
+        // The rung pair is the one thing a caller can transpose silently, and a
+        // reversed census reads as a population that shrank. Take it from
+        // run.json when we can.
+        if (run_dir != null && run_dir !== '') {
+          const manifest = loadRunManifest(run_dir);
+          baseline = manifest.paths[0];
+          target = manifest.paths[manifest.paths.length - 1];
+        }
+        if (baseline == null || target == null) {
+          return errorResult(
+            new Error(
+              'pass either `run_dir`, or both `baseline` and `target` rung paths.',
+            ),
+          );
+        }
         const {rungs, largestMB} = resolveRungs(
           [baseline, target],
           max_file_size_mb,

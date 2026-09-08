@@ -28,6 +28,7 @@ import {
   setSavedResult,
   getEvalScratch,
   getSnapshotMetadata,
+  shouldEmitNote,
 } from '../heap-state.js';
 import {beginAnalysisBudget} from '../analysis-budget.js';
 import {formatEvalHints, hintsForEval} from '../eval-hints.js';
@@ -2886,6 +2887,27 @@ export async function runEval({
         nothingToSave
           ? `Not saved as "${save_as}" — \`result\` was undefined, and a saved \`undefined\` is indistinguishable from a name that was never saved. Assign the value you want to keep to \`result\` (do NOT \`return\` at the top level) and re-run.`
           : `Saved as "${save_as}" — read it back in a later call with \`helpers.load("${save_as}")\`.`,
+      );
+    }
+    // ONCE per session: the helper surface, in signature form. A session that
+    // does not know the API writes evals against invented helpers — measured,
+    // four in a row — and the recovery path (`mode:"describe_env"`) is a
+    // ~10 KB document nobody reaches for mid-probe. Fifteen lines here costs
+    // a fraction of that and arrives before the first mistake.
+    if (shouldEmitNote('eval:helper-cheatsheet')) {
+      footer.push(
+        'helpers (once per session; `mode:"describe_env"` for full signatures): ' +
+          'walk({name: pred}, {collect}) runs SEVERAL predicates in ONE pass — the ' +
+          'node budget is cumulative across the eval, so two forEach passes on a ' +
+          'multi-million-node graph aborts; byClass, nodesByClass, iterByClass, ' +
+          'byTypename, withProp, hasShape, shapeKeys, queryNodes, findWithin; ' +
+          'retainedSize(id), retainedSizes(ids), aggregateRetained(ids) — ' +
+          'node.retainedSize THROWS here; rootPath, pathBetween, owner, contextOf, ' +
+          'groupReferrersByEdge, detachedNamed, listenerRecords, closureCensus; ' +
+          'entries/mapEntries/elements/setElements for Map/Set/array contents ' +
+          '(they hang off internal `table`/`elements` edges, not properties); ' +
+          'save/load/listSaved keep an id set SERVER-SIDE across calls, which is ' +
+          'how a multi-step investigation avoids printing ids into the transcript.',
       );
     }
     if (footer.length > 0) {

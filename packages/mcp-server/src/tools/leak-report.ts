@@ -8,7 +8,11 @@
  * @oncall memory_lab
  */
 
-import {resolveLadderInputs} from '../run-manifest.js';
+import {
+  ladderSpanSeconds,
+  resolveLadderInputs,
+  retentionWindowCaveat,
+} from '../run-manifest.js';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
@@ -282,6 +286,7 @@ export function registerLeakReport(server: McpServer): void {
         const inputs = resolveLadderInputs({run_dir, paths, cycles});
         paths = inputs.paths;
         cycles = inputs.cycles;
+        const ladderSpanS = ladderSpanSeconds(inputs.manifest);
         const {steps, rows} = await computeSequenceTrends(paths, {
           minGrowthCount: min_growth_count,
           monotonicOnly: monotonic_only,
@@ -488,6 +493,14 @@ export function registerLeakReport(server: McpServer): void {
                 'content count — the ratio should hold and the absolute number should not._',
             );
           }
+        }
+
+        // A LEAK-candidate verdict is the one most often read as "unbounded".
+        // Over a ladder shorter than the app's retention window it is equally
+        // consistent with a bounded working set — the exact reading that was
+        // published and retracted. `ladder_probe` says this; this tool did not.
+        if (leakCandidates > 0) {
+          lines.push('', retentionWindowCaveat(ladderSpanS));
         }
 
         lines.push(

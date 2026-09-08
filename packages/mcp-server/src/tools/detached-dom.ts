@@ -578,8 +578,29 @@ export function registerDetachedDom(server: McpServer): void {
             ];
           });
 
+          // The dev-only share belongs in the HEADER, not only in a per-group
+          // column. A reader who takes the total at face value files a finding:
+          // one measured capture was 98.3% React Fast Refresh, and another was
+          // 83% browser-owned `History .context`, in both cases with a real
+          // GC-root path so the per-node classification said "pinned —
+          // actionable leak". The share is the first thing that decides whether
+          // the total means anything.
+          const devOnlyTotal = sorted.reduce(
+            (sum, [, st]) => sum + st.devOnlyCount,
+            0,
+          );
+          const devOnlyPct =
+            totalDetached > 0 ? (devOnlyTotal / totalDetached) * 100 : 0;
           const lines = [
             `Detached DOM grouped by ${group_by}: ${formatNumber(totalDetached)} total nodes, ${formatBytes(totalRetainedAll)} total retained`,
+            ...(devOnlyTotal > 0
+              ? [
+                  `**${formatNumber(devOnlyTotal)} of them (${devOnlyPct.toFixed(1)}%) are dev-only** ` +
+                    '(React Fast Refresh, DevTools, or the automation bridge) and do not exist in ' +
+                    'production. Subtract them before quoting a total: a measured capture read 98.3% ' +
+                    'Fast Refresh while every per-node check still said "pinned — actionable leak".',
+                ]
+              : []),
             ...formatReachabilitySplit(split, snapshot),
           ];
           if (only_with_retainer_path) {
