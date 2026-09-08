@@ -272,6 +272,29 @@ interface Rung {
 type ProbeOutcome = {value: number | null; error: string | null};
 
 /**
+ * What to show when a probe returned something other than a number.
+ *
+ * A blanket `slice(0, 120)` cut the most useful failure in half. `helpers.foo
+ * does not exist` errors carry the full helper list and a "did you mean" —
+ * exactly what recovery needs — and truncating them at 120 chars ended a
+ * measured session mid-identifier (`...byTypename, classCo`), so the agent had
+ * to spend a separate `describe_env` round trip to learn the API. Errors are
+ * kept whole; ordinary output is still clipped, on a boundary.
+ */
+export function summarizeProbeText(text: string): string {
+  const t = text.trim();
+  if (t === '') return 'empty';
+  // The recovery information IS the message; never clip it.
+  if (/does not exist|is not a function|is not defined|SyntaxError/.test(t)) {
+    return t;
+  }
+  if (t.length <= 200) return t;
+  const cut = t.slice(0, 200);
+  const lastBreak = Math.max(cut.lastIndexOf(' '), cut.lastIndexOf('\n'));
+  return `${cut.slice(0, lastBreak > 120 ? lastBreak : 200)}…`;
+}
+
+/**
  * Run EVERY metric against one rung, inside a single load of that rung.
  *
  * The load is what costs: a 300 MB capture takes far longer to parse and build
@@ -304,7 +327,7 @@ export async function probeRung(
             value == null
               ? {
                   value: null,
-                  error: `probe did not yield a number (got: ${text.slice(0, 120) || 'empty'})`,
+                  error: `probe did not yield a number (got: ${summarizeProbeText(text)})`,
                 }
               : {value, error: null},
           );
@@ -498,6 +521,7 @@ export function registerLadderProbe(server: McpServer): void {
         // not guaranteed unique (a `label` can collide with a `metrics` key),
         // and a keyed map would silently merge two series into one.
         const perMetric: Rung[][] = metricList.map(() => []);
+        let rungIndex = 0;
         for (const {label: rungLabel, localPath} of locals) {
           // Per rung, not once: the budget is a wall clock, so a six-rung
           // ladder would otherwise spend rung 1's allowance and starve rung 6.
@@ -520,6 +544,37 @@ export function registerLadderProbe(server: McpServer): void {
               error: o.error,
             });
           });
+
+          // Fail fast on a ladder that cannot answer anything. A typo'd helper
+          // is not detectable until a probe RUNS, and a measured session spent
+          // a full four-rung pass on 300-500 MB captures to be told three of
+          // four metrics referenced helpers that do not exist. Rung 0 already
+          // knows that; the remaining rungs only make the same discovery more
+          // expensive. Some metrics failing is fine — the survivors still earn
+          // the pass — but all of them failing means there is nothing to learn.
+          if (rungIndex === 0) {
+            const firstRung = perMetric.map(rows => rows[0]);
+            const allFailed =
+              firstRung.length > 0 && firstRung.every(r => r?.value == null);
+            if (allFailed) {
+              const detail = metricList
+                .map(
+                  (m, mi) =>
+                    `- \`${m.name}\`: ${firstRung[mi]?.error ?? 'no value'}`,
+                )
+                .join('\n');
+              return errorResult(
+                new Error(
+                  `every probe failed on the FIRST rung, so the remaining ${
+                    locals.length - 1
+                  } rung(s) were not loaded (each is a full pass over a multi-hundred-MB graph).\n\n` +
+                    `${detail}\n\n` +
+                    'Fix the probe(s) and re-run. `memlab_eval({mode:"describe_env"})` lists the helper API.',
+                ),
+              );
+            }
+          }
+          rungIndex++;
         }
 
         const xsFor = (n: number): number[] =>

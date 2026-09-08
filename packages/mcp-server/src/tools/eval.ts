@@ -2459,6 +2459,79 @@ export async function runEval({
     };
 
     const helpersImpl = {
+      /**
+       * Run SEVERAL predicates in ONE pass over the heap.
+       *
+       * The node-visit budget is cumulative across an eval, not per walk, and a
+       * full `snapshot.nodes.forEach` on a multi-million-node graph is most of
+       * it. Writing two questions as two walks is the natural thing to do and it
+       * aborts: a measured session lost a pass to
+       * "Walk aborted after 9,000,000 node visits" from exactly that shape.
+       * Fusing them costs one pass for any number of questions.
+       *
+       *   result = helpers.walk({
+       *     vcRecords: n => n.type === 'object' && hasProp(n, 'isMediaVCElement'),
+       *     domRects:  n => n.type === 'object' && hasProp(n, 'bottom'),
+       *   });                       // -> {vcRecords: 59218, domRects: 140888}
+       *
+       * Pass `{collect: true}` to get the matching ids instead of counts, which
+       * composes with `helpers.aggregateRetained` and `helpers.save`.
+       */
+      walk: (
+        predicates: Record<string, (node: unknown) => boolean>,
+        opts?: {collect?: boolean; limit?: number},
+      ): Record<string, number | number[]> => {
+        const names = Object.keys(predicates);
+        // Reject a non-function predicate instead of counting zero matches for
+        // it. The natural way to call this is
+        // `walk([{name, predicate}, ...])` — an array of specs is how the same
+        // idea is usually spelled, and it is the shape this helper was
+        // requested in. That array lands here as an object keyed "0", "1", …
+        // whose values are spec OBJECTS, not functions, so every predicate
+        // matched nothing and the call returned `{"0": 0, "1": 0}` after a full
+        // pass over the graph: a silent, plausible, completely wrong answer,
+        // which is the exact failure mode this tool exists to prevent.
+        const bad = names.filter(n => typeof predicates[n] !== 'function');
+        if (bad.length > 0 || names.length === 0) {
+          throw new Error(
+            names.length === 0
+              ? 'helpers.walk needs at least one predicate: walk({name: node => boolean, ...}).'
+              : `helpers.walk got a non-function predicate for ${bad
+                  .map(n => `\`${n}\``)
+                  .join(', ')}. The signature is an OBJECT mapping name to ` +
+                  'predicate — `walk({maps: n => n.name === "Map", arrays: n => n.name === "Array"})` ' +
+                  '— not an array of `{name, predicate}` specs. An array arrives here keyed "0", "1", … ' +
+                  'with objects as values, which would match nothing and report zero for everything.',
+          );
+        }
+        const collect = opts?.collect === true;
+        const limit = opts?.limit ?? Infinity;
+        const counts: Record<string, number> = {};
+        const ids: Record<string, number[]> = {};
+        for (const n of names) {
+          counts[n] = 0;
+          ids[n] = [];
+        }
+        snapshot.nodes.forEach((node: IHeapNode) => {
+          for (const name of names) {
+            let hit = false;
+            try {
+              hit = predicates[name](node);
+            } catch {
+              // A throwing predicate must not cost the other questions their
+              // pass — that is the whole reason they were fused.
+              hit = false;
+            }
+            if (!hit) continue;
+            counts[name]++;
+            if (collect && ids[name].length < limit) ids[name].push(node.id);
+          }
+        });
+        const out: Record<string, number | number[]> = {};
+        for (const name of names)
+          out[name] = collect ? ids[name] : counts[name];
+        return out;
+      },
       serializeNodeSummary: (n: unknown) =>
         blankRetentionOnLight(serializeNodeSummary(unwrapNode(n) as IHeapNode)),
       serializeNodeDetail: (n: unknown) =>
@@ -3233,6 +3306,14 @@ function describeEnvLines(): string[] {
     '',
     '## Traversal budget',
     'Every call reports `nodes_visited`. Pass `max_nodes` to bound a `snapshot.nodes.forEach` walk: on overrun the walk aborts and the PARTIAL `result` is returned with a warning rather than failing, so a broad exploratory scan is safe to attempt. A partial result is never saved by `save_as`.',
+    '**The budget is CUMULATIVE across the whole eval, not per walk.** Two `snapshot.nodes.forEach` passes over a 6.5M-node graph is 13M visits and aborts against the 9M default — a measured session lost a pass to exactly that. Use `helpers.walk` to fuse several questions into ONE pass:',
+    '```',
+    'result = helpers.walk({',
+    "  vcRecords: n => n.type === 'object' && [...n.references].some(e => e.name_or_index === 'isMediaVCElement'),",
+    "  domRects:  n => n.type === 'object' && [...n.references].some(e => e.name_or_index === 'bottom'),",
+    '});                    // -> {vcRecords: 59218, domRects: 140888}',
+    'helpers.walk({big: p}, {collect: true})   // ids instead of counts',
+    '```',
     '',
     '## IHeapNode API',
     '`.id`, `.name`, `.type`, `.self_size`, `.edge_count`, `.is_detached`, `.numOfReferrers` (alias `.referrer_count`), `.isString`, `.toStringNode()?.stringValue`, `.hasPathEdge`, `.pathEdge`, `.dominatorNode`, `.location` (`script_id`/`line`/`column`).',
