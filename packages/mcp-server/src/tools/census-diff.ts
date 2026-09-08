@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 
-import {loadRunManifest} from '../run-manifest.js';
+import {resolveLadderInputs, SEGMENT_ARG_DESCRIPTION} from '../run-manifest.js';
 import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
@@ -228,6 +228,10 @@ export function registerCensusDiff(server: McpServer): void {
         .describe(
           "A leak-hunt round's output directory. Uses the FIRST and LAST rungs from run.json as baseline and target, so the pair cannot be transposed or drawn from the wrong round.",
         ),
+      segment: z
+        .union([z.number().int().nonnegative(), z.literal('all')])
+        .optional()
+        .describe(SEGMENT_ARG_DESCRIPTION),
       baseline: z
         .string()
         .optional()
@@ -261,15 +265,26 @@ export function registerCensusDiff(server: McpServer): void {
         .optional()
         .describe('Per-file size ceiling, matching memlab_load_snapshot.'),
     },
-    async ({run_dir, baseline, target, kinds, top_n, max_file_size_mb}) => {
+    async ({
+      run_dir,
+      segment,
+      baseline,
+      target,
+      kinds,
+      top_n,
+      max_file_size_mb,
+    }) => {
       try {
         // The rung pair is the one thing a caller can transpose silently, and a
         // reversed census reads as a population that shrank. Take it from
         // run.json when we can.
         if (run_dir != null && run_dir !== '') {
-          const manifest = loadRunManifest(run_dir);
-          baseline = manifest.paths[0];
-          target = manifest.paths[manifest.paths.length - 1];
+          // Segment-aware: if the page reloaded mid-run, the first and last
+          // rungs are different V8 isolates and their census diff is a
+          // comparison of two unrelated heaps.
+          const inputs = resolveLadderInputs({run_dir, segment});
+          baseline = inputs.paths[0];
+          target = inputs.paths[inputs.paths.length - 1];
         }
         if (baseline == null || target == null) {
           return errorResult(

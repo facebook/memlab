@@ -29,6 +29,8 @@ import {
   describeCycleAxis,
   ladderSpanSeconds,
   resolveLadderInputs,
+  describeSegmentSelection,
+  SEGMENT_ARG_DESCRIPTION,
   retentionWindowCaveat,
 } from '../run-manifest.js';
 
@@ -374,6 +376,10 @@ export function registerLadderProbe(server: McpServer): void {
         .describe(
           "A leak-hunt round's output directory (the one holding run.json and snapshots/). PREFERRED over `paths`: the rung paths, the exact per-rung cycle counts and the total cycles driven are all read from run.json, so the x-axis is measured rather than assumed. Rungs are placed on a schedule, so a real ladder is unevenly spaced (e.g. 0/200/375/450) and an assumed-even axis silently reports wrong rates.",
         ),
+      segment: z
+        .union([z.number().int().nonnegative(), z.literal('all')])
+        .optional()
+        .describe(SEGMENT_ARG_DESCRIPTION),
       paths: z
         .array(z.string())
         .optional()
@@ -434,6 +440,7 @@ export function registerLadderProbe(server: McpServer): void {
     },
     async ({
       run_dir,
+      segment,
       paths,
       code,
       metrics,
@@ -450,6 +457,7 @@ export function registerLadderProbe(server: McpServer): void {
         // ../run-manifest.ts for why reconstructing it per caller is unsafe.
         const inputs = resolveLadderInputs({
           run_dir,
+          segment,
           paths,
           cycles,
           cycles_per_rung,
@@ -458,7 +466,8 @@ export function registerLadderProbe(server: McpServer): void {
         cycles_per_rung = inputs.cyclesPerRung ?? undefined;
         cycles = inputs.cycles;
         const axisSource = inputs.source;
-        const ladderSpanS = ladderSpanSeconds(inputs.manifest);
+        const ladderSpanS =
+          inputs.spanSeconds ?? ladderSpanSeconds(inputs.manifest);
         if (resolved.length < 2) {
           return errorResult(
             new Error(
@@ -624,6 +633,11 @@ export function registerLadderProbe(server: McpServer): void {
         // State how the axis was obtained. A reader cannot otherwise tell a
         // measured axis from an assumed one, and the tables look identical.
         lines.push(describeCycleAxis(axisSource, cycles_per_rung ?? null));
+        const segmentNote = describeSegmentSelection(
+          inputs.segment,
+          inputs.manifest,
+        );
+        if (segmentNote != null) lines.push(segmentNote);
         lines.push('');
         if (visibilityBlind) {
           lines.push(

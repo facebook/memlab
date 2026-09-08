@@ -11,6 +11,8 @@
 import {
   ladderSpanSeconds,
   resolveLadderInputs,
+  describeSegmentSelection,
+  SEGMENT_ARG_DESCRIPTION,
   retentionWindowCaveat,
 } from '../run-manifest.js';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -213,6 +215,10 @@ export function registerLeakReport(server: McpServer): void {
         .describe(
           "A leak-hunt round's output directory (the one holding run.json and snapshots/). PREFERRED over `paths`: the rung paths and the exact cycles driven are read from run.json, so the per-cycle axis is measured rather than assumed. Rungs are placed on a schedule, so a real ladder is unevenly spaced (e.g. 0/200/375/450).",
         ),
+      segment: z
+        .union([z.number().int().nonnegative(), z.literal('all')])
+        .optional()
+        .describe(SEGMENT_ARG_DESCRIPTION),
       paths: z
         .array(z.string())
         .optional()
@@ -269,6 +275,7 @@ export function registerLeakReport(server: McpServer): void {
     async (
       {
         run_dir,
+        segment,
         paths,
         cycles,
         content,
@@ -283,10 +290,11 @@ export function registerLeakReport(server: McpServer): void {
       try {
         // Read the ladder + cycle axis from run.json when given; see
         // ../run-manifest.ts for why an assumed-even axis is unsafe.
-        const inputs = resolveLadderInputs({run_dir, paths, cycles});
+        const inputs = resolveLadderInputs({run_dir, segment, paths, cycles});
         paths = inputs.paths;
         cycles = inputs.cycles;
-        const ladderSpanS = ladderSpanSeconds(inputs.manifest);
+        const ladderSpanS =
+          inputs.spanSeconds ?? ladderSpanSeconds(inputs.manifest);
         const {steps, rows} = await computeSequenceTrends(paths, {
           minGrowthCount: min_growth_count,
           monotonicOnly: monotonic_only,
@@ -308,6 +316,11 @@ export function registerLeakReport(server: McpServer): void {
           `Heap self-size ${heapNet >= 0 ? 'grew' : 'shrank'} by ${formatBytes(Math.abs(heapNet))} across the ladder (${formatNumber(steps[0].nodeCount)} → ${formatNumber(steps[n - 1].nodeCount)} nodes).`,
           '',
         ];
+        const segmentNote = describeSegmentSelection(
+          inputs.segment,
+          inputs.manifest,
+        );
+        if (segmentNote != null) lines.push(segmentNote, '');
         if (n === 2) {
           lines.push(
             '> ⚠️ **Only 2 snapshots: "↑ every step" is monotonic by construction** and cannot separate a real trend from a single GC-band sample. Capture at least a third rung before treating anything here as a leak.',

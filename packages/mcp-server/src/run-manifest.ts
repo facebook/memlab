@@ -53,6 +53,8 @@ export interface RunManifest {
   cycles: number;
   /** Wall-clock seconds the ladder spans, when the manifest records it. */
   wallClockSeconds: number | null;
+  /** Wall clock at each rung, so a SEGMENT can report its own span. */
+  elapsedPerRung: Array<number | null>;
   /** Rung indices after which the runner detected a ladder split. */
   splitAfterRung: number[];
   /** Caveats the runner recorded, verbatim. */
@@ -160,6 +162,7 @@ export function loadRunManifest(runDir: string): RunManifest {
 
   const paths: string[] = [];
   const cyclesPerRung: number[] = [];
+  const elapsedPerRung: Array<number | null> = [];
   for (const r of rungs as Array<Record<string, unknown>>) {
     if (typeof r.path !== 'string') {
       throw new Error(
@@ -168,6 +171,7 @@ export function loadRunManifest(runDir: string): RunManifest {
     }
     paths.push(r.path);
     cyclesPerRung.push(typeof r.cycles === 'number' ? r.cycles : NaN);
+    elapsedPerRung.push(typeof r.elapsed_s === 'number' ? r.elapsed_s : null);
   }
 
   // A rung without a recorded cycle count would poison the fit silently.
@@ -190,6 +194,7 @@ export function loadRunManifest(runDir: string): RunManifest {
     cyclesPerRung,
     cycles,
     wallClockSeconds: elapsed,
+    elapsedPerRung,
     splitAfterRung: Array.isArray(raw.ladder_splits_after_rung)
       ? (raw.ladder_splits_after_rung as unknown[]).filter(
           (n): n is number => typeof n === 'number',
@@ -202,30 +207,153 @@ export function loadRunManifest(runDir: string): RunManifest {
   };
 }
 
+/** A run of rungs captured inside ONE V8 isolate. */
+export interface LadderSegment {
+  /** 0-based position in the run, for `segment:` selection. */
+  index: number;
+  /** Rung indices this segment covers, inclusive. */
+  firstRung: number;
+  lastRung: number;
+  paths: string[];
+  cyclesPerRung: number[];
+  /**
+   * Cycles driven WITHIN the segment, not the absolute count at its last rung.
+   * A per-cycle rate divides by this; a segment that starts at cycle 600 and
+   * ends at 900 drove 300, and dividing by 900 understates every rate by 3x.
+   */
+  spanCycles: number;
+  /** Wall clock WITHIN the segment, for the retention-window caveat. */
+  spanSeconds: number | null;
+}
+
+/**
+ * Split a ladder at its isolate boundaries.
+ *
+ * A page reload starts a fresh V8 isolate, so rungs on either side of the split
+ * describe different heaps. Differencing across the boundary produced
+ * `app_delta -3.6 MB` ("cleanest round on record") where the valid segment of
+ * the SAME run read `+2.1 MB`. The runner detects the reload and records it;
+ * this turns that record into the per-segment ladders the caveat asks for.
+ */
+export function ladderSegments(manifest: RunManifest): LadderSegment[] {
+  const cuts = [...new Set(manifest.splitAfterRung)]
+    .filter(n => n >= 0 && n < manifest.paths.length - 1)
+    .sort((a, b) => a - b);
+  const bounds = [0, ...cuts.map(n => n + 1), manifest.paths.length];
+  const out: LadderSegment[] = [];
+  for (let i = 0; i < bounds.length - 1; i++) {
+    const [from, to] = [bounds[i], bounds[i + 1]];
+    if (to <= from) continue;
+    const cyclesPerRung = manifest.cyclesPerRung.slice(from, to);
+    const startS = manifest.elapsedPerRung[from];
+    const endS = manifest.elapsedPerRung[to - 1];
+    out.push({
+      index: out.length,
+      firstRung: from,
+      lastRung: to - 1,
+      paths: manifest.paths.slice(from, to),
+      cyclesPerRung,
+      spanCycles: cyclesPerRung[cyclesPerRung.length - 1] - cyclesPerRung[0],
+      spanSeconds: startS != null && endS != null ? endS - startS : null,
+    });
+  }
+  return out;
+}
+
+/** The `segment` parameter's description, shared so the three ladder tools agree. */
+export const SEGMENT_ARG_DESCRIPTION =
+  'Which isolate segment of the run to analyze, when the page reloaded mid-ladder. ' +
+  'Rungs on either side of a reload live in DIFFERENT V8 isolates and are not comparable — ' +
+  'differencing across one produced a 3.6 MB "shrink" where the valid segment read +2.1 MB. ' +
+  'Only meaningful with `run_dir`, and only when run.json records a split: then this is REQUIRED, ' +
+  'and the error lists the segments. Pass `"all"` to override and treat the whole ladder as one heap.';
+
+/** The `segment:` menu, for an error message or a report header. */
+export function describeSegments(segments: LadderSegment[]): string {
+  return segments
+    .map(
+      s =>
+        `segment ${s.index}: rungs ${s.firstRung}-${s.lastRung} ` +
+        `(${s.paths.length} snapshot${s.paths.length === 1 ? '' : 's'}, ` +
+        `cycles ${s.cyclesPerRung[0]}-${
+          s.cyclesPerRung[s.cyclesPerRung.length - 1]
+        })`,
+    )
+    .join('; ');
+}
+
 /**
  * Resolve the ladder inputs for a tool that accepts EITHER `run_dir` OR
  * `paths`, so the five trend tools cannot drift in how they read the axis.
+ *
+ * When the run has an isolate split, this REFUSES to return the whole ladder
+ * unless the caller says `segment: 'all'`. The runner already emits a caveat
+ * saying the segments must not be compared, and it was read and then ignored in
+ * four separate rounds — a caveat next to a plausible-looking number does not
+ * survive contact with a hurry.
  */
 export function resolveLadderInputs(args: {
   run_dir?: string;
   paths?: string[];
   cycles?: number;
   cycles_per_rung?: number[];
+  segment?: number | 'all';
 }): {
   paths: string[];
   cyclesPerRung: number[] | null;
   cycles: number | undefined;
   source: CycleAxisSource;
   manifest: RunManifest | null;
+  segment: LadderSegment | null;
+  /**
+   * Wall clock the RESOLVED ladder spans — the segment's own span when one is
+   * selected, the whole run's otherwise. Callers must prefer this over
+   * `manifest.wallClockSeconds`: on a segment the latter is the whole run, and
+   * the retention caveat built from it claims a window several times longer
+   * than the data can actually observe.
+   */
+  spanSeconds: number | null;
 } {
   if (args.run_dir != null && args.run_dir !== '') {
     const manifest = loadRunManifest(args.run_dir);
+    const segments = ladderSegments(manifest);
+    if (segments.length > 1 && args.segment !== 'all') {
+      if (args.segment == null) {
+        throw new Error(
+          `this run reloaded the page mid-ladder, so its ${segments.length} segments are ` +
+            `DIFFERENT V8 isolates and cannot be compared to each other — a run like this ` +
+            `reported a 3.6 MB SHRINK where the valid segment read +2.1 MB. ` +
+            `Pass \`segment: <n>\` to analyze one (${describeSegments(segments)}), ` +
+            `or \`segment: "all"\` to override and treat the whole ladder as one heap.`,
+        );
+      }
+      const chosen = segments[args.segment];
+      if (chosen == null) {
+        throw new Error(
+          `no segment ${args.segment} in this run. Available: ${describeSegments(segments)}.`,
+        );
+      }
+      return {
+        paths: chosen.paths,
+        cyclesPerRung: chosen.cyclesPerRung,
+        // The SPAN, not the absolute count at the last rung: `cycles` is
+        // documented as "driven between the first and last snapshot" and is the
+        // denominator of every per-cycle rate.
+        cycles: chosen.spanCycles,
+        source: 'manifest',
+        manifest,
+        segment: chosen,
+        spanSeconds: chosen.spanSeconds,
+      };
+    }
     return {
       paths: manifest.paths,
       cyclesPerRung: manifest.cyclesPerRung,
       cycles: manifest.cycles,
       source: 'manifest',
       manifest,
+      segment: segments.length === 1 ? segments[0] : null,
+      spanSeconds: manifest.wallClockSeconds,
     };
   }
   const paths = args.paths ?? [];
@@ -245,7 +373,24 @@ export function resolveLadderInputs(args: {
     cycles: args.cycles,
     source,
     manifest: null,
+    segment: null,
+    spanSeconds: null,
   };
+}
+
+/** The header line a segmented run needs, so a partial ladder is never read as the whole run. */
+export function describeSegmentSelection(
+  segment: LadderSegment | null,
+  manifest: RunManifest | null,
+): string | null {
+  if (segment == null || manifest == null) return null;
+  const total = ladderSegments(manifest).length;
+  if (total < 2) return null;
+  return (
+    `_**Segment ${segment.index} of ${total}** (rungs ${segment.firstRung}-${segment.lastRung}). ` +
+    `The page reloaded mid-run; the other segments are different V8 isolates and are NOT included ` +
+    `in the numbers below._`
+  );
 }
 
 /**

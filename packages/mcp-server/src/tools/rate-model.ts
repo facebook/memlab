@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 
-import {loadRunManifest} from '../run-manifest.js';
+import {resolveLadderInputs, SEGMENT_ARG_DESCRIPTION} from '../run-manifest.js';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {
@@ -93,6 +93,10 @@ export function registerRateModel(server: McpServer): void {
         .describe(
           "A leak-hunt round's output directory. Supplies `cycles_per_rung` from run.json (so the axis is measured, not assumed) and the ladder's wall-clock span, which is what decides whether an implied window is even observable on this data.",
         ),
+      segment: z
+        .union([z.number().int().nonnegative(), z.literal('all')])
+        .optional()
+        .describe(SEGMENT_ARG_DESCRIPTION),
       values: z
         .array(z.number())
         .min(3)
@@ -127,6 +131,7 @@ export function registerRateModel(server: McpServer): void {
     },
     async ({
       run_dir,
+      segment,
       values,
       cycles_per_rung,
       label,
@@ -136,11 +141,13 @@ export function registerRateModel(server: McpServer): void {
       try {
         let ladderSpanS: number | null = null;
         if (run_dir != null && run_dir !== '') {
-          const manifest = loadRunManifest(run_dir);
           // Same axis bug class as the ladder tools: rungs are placed on a
-          // schedule, so an assumed-even axis silently changes which model wins.
-          cycles_per_rung = manifest.cyclesPerRung;
-          ladderSpanS = manifest.wallClockSeconds;
+          // schedule, so an assumed-even axis silently changes which model
+          // wins. `segment` must match whatever produced `values`, which is
+          // enforced by the length check below.
+          const inputs = resolveLadderInputs({run_dir, segment});
+          cycles_per_rung = inputs.cyclesPerRung ?? undefined;
+          ladderSpanS = inputs.spanSeconds;
         }
         if (cycles_per_rung == null) {
           return errorResult(

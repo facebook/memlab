@@ -8,7 +8,11 @@
  * @oncall memory_lab
  */
 
-import {resolveLadderInputs} from '../run-manifest.js';
+import {
+  describeSegmentSelection,
+  resolveLadderInputs,
+  SEGMENT_ARG_DESCRIPTION,
+} from '../run-manifest.js';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapSnapshot} from '@memlab/core';
 import fs from 'fs';
@@ -342,6 +346,10 @@ export function registerSequenceAnalysis(server: McpServer): void {
         .describe(
           "A leak-hunt round's output directory (the one holding run.json and snapshots/). PREFERRED over `paths`: the rung paths and the exact cycles driven are read from run.json, so the per-cycle axis is measured rather than assumed. Rungs are placed on a schedule, so a real ladder is unevenly spaced (e.g. 0/200/375/450).",
         ),
+      segment: z
+        .union([z.number().int().nonnegative(), z.literal('all')])
+        .optional()
+        .describe(SEGMENT_ARG_DESCRIPTION),
       paths: z
         .array(z.string())
         .optional()
@@ -397,6 +405,7 @@ export function registerSequenceAnalysis(server: McpServer): void {
     async (
       {
         run_dir,
+        segment,
         paths,
         limit,
         min_growth_count,
@@ -412,7 +421,7 @@ export function registerSequenceAnalysis(server: McpServer): void {
         if (repeat_notes) resetEmittedNotes();
         // run.json is the source of truth for the rung list; see
         // ../run-manifest.ts.
-        const inputs = resolveLadderInputs({run_dir, paths, cycles});
+        const inputs = resolveLadderInputs({run_dir, segment, paths, cycles});
         paths = inputs.paths;
         cycles = inputs.cycles;
         const {steps, rows, keys, reusedHandles} = await computeSequenceTrends(
@@ -443,6 +452,12 @@ export function registerSequenceAnalysis(server: McpServer): void {
           `## Sequence / Trend Analysis (${n} snapshots)`,
           '',
         ];
+
+        const segmentNote = describeSegmentSelection(
+          inputs.segment,
+          inputs.manifest,
+        );
+        if (segmentNote != null) lines.push(segmentNote, '');
 
         // Per-step heap totals.
         const totalHeaders = ['Step', 'Snapshot', 'Nodes', 'Heap (self)'];
