@@ -32,8 +32,20 @@ export function registerFindByShape(server: McpServer): void {
       properties: z
         .array(z.string())
         .min(1)
+        .optional()
         .describe(
           'Property names that must ALL be present on matching objects (e.g., ["callback", "context", "priority"])',
+        ),
+      // The same concept is spelled `shape` by memlab_unit_cost,
+      // memlab_what_if and memlab_verify_fix. Rejecting `shape` here made a
+      // population selected in one tool un-pasteable into the next, which in
+      // CLI mode costs a snapshot reload to discover. Accept both.
+      shape: z
+        .array(z.string())
+        .min(1)
+        .optional()
+        .describe(
+          'Alias for `properties`, matching the parameter name used by memlab_unit_cost / memlab_what_if / memlab_verify_fix. Pass one or the other.',
         ),
       exclude_properties: z
         .array(z.string())
@@ -69,7 +81,8 @@ export function registerFindByShape(server: McpServer): void {
         .describe('Maximum number of results (default 20)'),
     },
     async ({
-      properties,
+      properties: propertiesParam,
+      shape: shapeAlias,
       exclude_properties,
       class_name,
       output_mode,
@@ -77,6 +90,25 @@ export function registerFindByShape(server: McpServer): void {
       limit,
     }) => {
       try {
+        const properties = propertiesParam ?? shapeAlias;
+        if (properties == null || properties.length === 0) {
+          return errorResult(
+            new Error(
+              'Pass `properties` (or its alias `shape`): the property names an object must ALL carry.',
+            ),
+          );
+        }
+        if (
+          propertiesParam != null &&
+          shapeAlias != null &&
+          propertiesParam.join('\u0000') !== shapeAlias.join('\u0000')
+        ) {
+          return errorResult(
+            new Error(
+              '`properties` and `shape` are aliases for the same thing but were given different values. Pass one.',
+            ),
+          );
+        }
         const snapshot = getSnapshot();
         const requiredSet = new Set(properties);
         const excludeSet = new Set(exclude_properties ?? []);

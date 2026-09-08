@@ -58,22 +58,68 @@ const DEV_MODULE_PATTERNS: ReadonlyArray<{re: RegExp; why: string}> = [
   {re: /webdriver|puppeteer|playwright/i, why: 'automation harness'},
 ];
 
+/**
+ * Modules that ARE production code but only RUN behind a flag that is off for
+ * approximately all production traffic.
+ *
+ * This is a third state, not a shade of the two above, and the distinction is
+ * load-bearing in both directions. Calling these "dev-only" would be wrong —
+ * they ship, they are product code, and a ramp makes them live for real users,
+ * so a leak in one is worth fixing. Calling them "production" is what actually
+ * went wrong: a round attributed **+316 MB of app_delta** to a leak that no
+ * production user could experience.
+ *
+ * They are invisible to every artifact check available. `memlab_dev_artifacts`
+ * reports what is retained through a dev ROOT; these hold ordinary references
+ * from ordinary app objects. `memlab_artifact_budget` buckets them as `App`,
+ * correctly by its own definition. The code is dev-ENABLED but app-RETAINED,
+ * and nothing else separates those.
+ *
+ * Measured (Comet, 2026-09-06): `RedblockInst.#passes`, a `Map<Element, …>` in
+ * the accessibility auditor, dominated **318,852 detached nodes / 116.4 MB
+ * after 400 interactions**, growing +7.000 detached canvases per cycle at
+ * r² = 1.0000. Its gate `comet_redblock` passes for **0.0000%** of production
+ * traffic (7-day window, ~1,574 checks/sec); on a dev build it runs because
+ * `__DEV__` is true. Everything about the measurement was right except who it
+ * applied to.
+ *
+ * Conservative on purpose, same as above: each entry is an auditor, overlay or
+ * debug console that a product does not need in order to function.
+ */
+const GATED_MODULE_PATTERNS: ReadonlyArray<{re: RegExp; why: string}> = [
+  {
+    re: /^Redblock|RedblockInst|^CometRedblock/,
+    why: 'Redblock a11y auditor, gated on `comet_redblock` (~0% of production)',
+  },
+  {re: /AccessibilityAudit|A11yAudit/i, why: 'accessibility auditing overlay'},
+  {re: /^CometConsole|DebugConsole/, why: 'in-page debug console'},
+  {re: /DebugOverlay|^DebugRenderer/, why: 'debug overlay'},
+];
+
 export interface ModuleProvenance {
   /** The nearest module name on the retainer path, when one was found. */
   module: string | null;
-  /** `no` when the owning module is dev-only, `yes` when it is app code. */
-  prodReachable: 'yes' | 'no' | 'unknown';
-  /** Human-readable reason, present only when `prodReachable === 'no'`. */
+  /**
+   * `no` when the owning module is dev-only, `gated` when it is production
+   * code that only runs behind a flag which is off for approximately all
+   * production traffic, `yes` when it is ordinary app code.
+   */
+  prodReachable: 'yes' | 'no' | 'gated' | 'unknown';
+  /** Human-readable reason, present unless `prodReachable === 'yes'`. */
   why?: string;
 }
 
-/** Does this module name belong to a dev-only component? */
+/** Does this module name belong to a dev-only or flag-gated component? */
 export function classifyModuleName(name: string): {
   dev: boolean;
+  gated?: boolean;
   why?: string;
 } {
   for (const {re, why} of DEV_MODULE_PATTERNS) {
     if (re.test(name)) return {dev: true, why};
+  }
+  for (const {re, why} of GATED_MODULE_PATTERNS) {
+    if (re.test(name)) return {dev: false, gated: true, why};
   }
   return {dev: false};
 }
@@ -108,6 +154,9 @@ export function moduleProvenanceOf(
     if (byName.dev) {
       return {module: current.name, prodReachable: 'no', why: byName.why};
     }
+    if (byName.gated === true) {
+      return {module: current.name, prodReachable: 'gated', why: byName.why};
+    }
 
     // `pathEdge` is the edge that reached this node on its shortest path from a
     // GC root. In a Haste/CommonJS app the module registry hop looks like
@@ -121,6 +170,9 @@ export function moduleProvenanceOf(
       if (byEdge.dev) {
         return {module: edgeName, prodReachable: 'no', why: byEdge.why};
       }
+      if (byEdge.gated === true) {
+        return {module: edgeName, prodReachable: 'gated', why: byEdge.why};
+      }
     }
     current = edge.fromNode ?? null;
   }
@@ -131,6 +183,9 @@ export function moduleProvenanceOf(
 export function provenanceCell(p: ModuleProvenance): string {
   if (p.prodReachable === 'no') {
     return `⚠️ dev-only (${p.why ?? p.module ?? 'dev module'})`;
+  }
+  if (p.prodReachable === 'gated') {
+    return `⚠️ flag-gated (${p.why ?? p.module ?? 'gated module'})`;
   }
   return '';
 }
@@ -143,3 +198,14 @@ export const DEV_ONLY_FOOTNOTE =
   '(console handles, Fast Refresh registries); a dev-only module holding ordinary references ' +
   'passes that check. Measured: a 12.7 MB non-weak Map that ranked first here was ' +
   '`traceVisualCompletionMetrics`, loaded only by Comet DevTools._';
+
+/** The footnote a report needs when it flagged at least one flag-gated row. */
+export const GATED_FOOTNOTE =
+  '_A row marked **flag-gated** IS production code, but it only runs behind a flag that is off ' +
+  'for approximately all production traffic — so the leak is real and worth fixing, and the bytes ' +
+  "are NOT what a production user carries. Check the gate's actual pass rate before quoting the " +
+  'number as production impact, and before treating it as a dev artifact either. Neither ' +
+  '`memlab_dev_artifacts` nor `memlab_artifact_budget` can see this: the memory is held by an ' +
+  'ordinary app-side reference, so it is bucketed as `App`. Measured: a Redblock `Map<Element, …>` ' +
+  'dominating 318,852 detached nodes / 116.4 MB after 400 interactions, behind a gate passing ' +
+  '0.0000% of production._';

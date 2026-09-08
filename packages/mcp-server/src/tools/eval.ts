@@ -1681,9 +1681,32 @@ export async function runEval({
     // bytes when one id dominates another in the set.
     const aggregateRetained = (
       ids: number[],
-    ): {retained: number; exact: boolean} => {
+    ): {retained: number; exact: boolean; unresolved?: number} => {
       requireRetention('aggregateRetained');
-      return boundedDominatorRetainedSize(new NumericSet(ids), snapshot);
+      const out = boundedDominatorRetainedSize(new NumericSet(ids), snapshot);
+      // A set where NOTHING resolved is not a 0-byte population, it is a
+      // mistake in the call — almost always node objects passed where ids were
+      // expected, or `.map(n => n.id)` over an array that already held ids
+      // (`byClass`/`byTypename`/`withProp` all return ids, not nodes). Returning
+      // `{retained: 0, exact: true}` for that is a wrong answer wearing a
+      // correctness flag, so refuse instead.
+      if (out.resolved === 0 && out.unresolved > 0) {
+        const raw = Array.from(ids as unknown as Iterable<unknown>);
+        const sample = raw.slice(0, 3);
+        // Report the INPUT length, not the deduped set size: a hundred
+        // `undefined`s collapse to one entry, and "none of the 1 value(s)"
+        // against a visibly longer array reads as a second bug.
+        throw new Error(
+          `aggregateRetained: none of the ${formatNumber(raw.length)} value(s) passed resolve to a heap node ` +
+            `(first few: ${JSON.stringify(sample)}). It takes an array of NUMERIC ids. ` +
+            'Note that `helpers.byClass` / `byTypename` / `withProp` already return ids, so ' +
+            '`byTypename("X").map(n => n.id)` yields `[undefined, …]` — pass the array straight through. ' +
+            'For node objects (from `iterByClass`, `sample`, …) use `.map(n => n.id)`.',
+        );
+      }
+      return out.unresolved > 0
+        ? {retained: out.retained, exact: out.exact, unresolved: out.unresolved}
+        : {retained: out.retained, exact: out.exact};
     };
 
     // ---- additional traversal helpers -------------------------------
@@ -1822,10 +1845,13 @@ export async function runEval({
      * retainer path (`memlab_detached_dom` groups by nearest non-detached
      * dominator) rather than the node name.
      */
-    const detachedNamed = (
-      needle: string,
-    ): Array<{id: number; name: string}> => {
-      const lowered = needle.toLowerCase();
+    // `needle` is optional: with no argument this returns EVERY detached node,
+    // which is the obvious first call and used to throw
+    // `Cannot read properties of undefined (reading 'toLowerCase')` — a crash
+    // that, inside `memlab_replicate`, surfaced only after six snapshot loads
+    // as "a rung produced no number".
+    const detachedNamed = (needle = ''): Array<{id: number; name: string}> => {
+      const lowered = String(needle ?? '').toLowerCase();
       const out: Array<{id: number; name: string}> = [];
       snapshot.nodes.forEach((node: IHeapNode) => {
         if (node.id <= 3) return;
@@ -2962,10 +2988,26 @@ function actionableEvalError(err: unknown, code: string | undefined): string {
     code &&
     /\bfor\s*\(\s*(const|let|var)\b.*\bof\b.*\bsnapshot\.nodes\b/.test(code)
   ) {
-    return `${msg}\nHint: iterate all nodes with \`snapshot.nodes.forEach(node => { ... })\`, not \`for...of\`.`;
+    return `${msg}\n${VALIDATE_WITHOUT_LOADING}\nHint: iterate all nodes with \`snapshot.nodes.forEach(node => { ... })\`, not \`for...of\`.`;
   }
-  return msg;
+  return `${msg}\n${VALIDATE_WITHOUT_LOADING}`;
 }
+
+/**
+ * Every eval failure ends with this.
+ *
+ * `mode: "lint"` and `dry_run` already existed and were, in a long measured
+ * session, not found until someone read the schema for an unrelated reason —
+ * after four failed evals, each of which had cost a full snapshot load in CLI
+ * mode (snapshots are not resident across `memlab-cli.js script` invocations).
+ * The skill states the rule this violates: a fallback nobody finds at the
+ * moment of failure is not a fallback. So the failure path names it.
+ */
+const VALIDATE_WITHOUT_LOADING =
+  'Iterate cheaply: `memlab_eval({code, mode: "lint"})` checks syntax and helper ' +
+  'names WITHOUT loading a snapshot, and `dry_run: true` reports the walk it ' +
+  'would do before doing it. `mode: "describe_env"` lists every helper and its ' +
+  'signature.';
 
 function savedNames(): string[] {
   return listSavedResults()

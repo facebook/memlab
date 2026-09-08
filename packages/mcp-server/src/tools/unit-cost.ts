@@ -25,6 +25,7 @@ import {
   formatNumber,
   markdownTable,
   toolResult,
+  typenameOf,
 } from '../utils.js';
 
 const {NumericSet} = memlabCore;
@@ -48,7 +49,12 @@ function matchesShape(node: IHeapNode, shape: string[]): boolean {
 
 function measure(
   snapshot: IHeapSnapshot,
-  opts: {className?: string; shape?: string[]; containerId?: number},
+  opts: {
+    className?: string;
+    typename?: string;
+    shape?: string[];
+    containerId?: number;
+  },
 ): Population {
   const ids: number[] = [];
   // Sizing a cap needs the per-entry cost of THAT cache, not of a class that
@@ -88,6 +94,8 @@ function measure(
     if (node.id <= 3) return;
     if (opts.className != null) {
       if (node.name !== opts.className) return;
+    } else if (opts.typename != null) {
+      if (typenameOf(node) !== opts.typename) return;
     } else if (opts.shape != null) {
       if (!matchesShape(node, opts.shape)) return;
     }
@@ -116,7 +124,13 @@ export function registerUnitCost(server: McpServer): void {
         .string()
         .optional()
         .describe(
-          'Class/constructor name as reported by memlab_class_histogram (exact match). Use this OR shape.',
+          'Class/constructor name as reported by memlab_class_histogram (exact match). Use this OR typename OR shape.',
+        ),
+      typename: z
+        .string()
+        .optional()
+        .describe(
+          'GraphQL `__typename` an instance must carry, e.g. "CIXLoggerOutput". The selector a normalised Relay/Apollo store is actually organised by, and the one `helpers.byTypename` uses — on those heaps the class name is a bare `Object` and tells you nothing. Use this OR class_name OR shape.',
         ),
       shape: z
         .array(z.string())
@@ -149,6 +163,7 @@ export function registerUnitCost(server: McpServer): void {
     },
     async ({
       class_name,
+      typename,
       shape,
       container_id,
       handle,
@@ -159,16 +174,24 @@ export function registerUnitCost(server: McpServer): void {
         if (
           container_id == null &&
           class_name == null &&
+          typename == null &&
           (shape == null || shape.length === 0)
         ) {
           return errorResult(
             new Error(
-              'Pass class_name, shape or container_id. On a minified heap prefer shape — class names like "t"/"e" match thousands of unrelated objects — and prefer container_id when sizing a cap for one specific cache.',
+              'Pass class_name, typename, shape or container_id. On a minified heap prefer shape — class names like "t"/"e" match thousands of unrelated objects — prefer typename on a normalised GraphQL store, and prefer container_id when sizing a cap for one specific cache.',
             ),
           );
         }
-        if (class_name != null && shape != null && shape.length > 0) {
-          return errorResult(new Error('Pass class_name OR shape, not both.'));
+        const selectors = [
+          class_name != null,
+          typename != null,
+          shape != null && shape.length > 0,
+        ].filter(Boolean).length;
+        if (selectors > 1) {
+          return errorResult(
+            new Error('Pass exactly ONE of class_name, typename or shape.'),
+          );
         }
 
         const target =
@@ -189,13 +212,14 @@ export function registerUnitCost(server: McpServer): void {
         }
         const now = measure(target, {
           className: class_name,
+          typename,
           shape,
           containerId: container_id,
         });
         if (now.count === 0) {
           return toolResult(
-            `No instances found for ${container_id != null ? `the entries of @${container_id}` : class_name != null ? `class \`${class_name}\`` : `shape {${(shape ?? []).join(', ')}}`} in \`${targetLabel}\`. ` +
-              'For a class, check the exact name with memlab_class_histogram; for a shape, with memlab_shape_histogram.',
+            `No instances found for ${container_id != null ? `the entries of @${container_id}` : class_name != null ? `class \`${class_name}\`` : typename != null ? `typename \`${typename}\`` : `shape {${(shape ?? []).join(', ')}}`} in \`${targetLabel}\`. ` +
+              'For a class, check the exact name with memlab_class_histogram; for a shape, with memlab_shape_histogram; for a typename, with `memlab_eval` + `helpers.byTypename`.',
           );
         }
 
@@ -231,7 +255,9 @@ export function registerUnitCost(server: McpServer): void {
             ? `entries of @${container_id}`
             : class_name != null
               ? `class \`${class_name}\``
-              : `shape \`{${(shape ?? []).join(', ')}}\``;
+              : typename != null
+                ? `typename \`${typename}\``
+                : `shape \`{${(shape ?? []).join(', ')}}\``;
         const lines: string[] = [
           `## Unit cost — ${label}`,
           '',

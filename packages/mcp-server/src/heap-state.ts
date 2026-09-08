@@ -439,12 +439,39 @@ export function getCurrentHandle(): string | null {
   return currentHandle;
 }
 
+/**
+ * The handle a caller MEANT, given what they typed.
+ *
+ * `memlab_load_snapshot` prints `[handle: rung_00_c0]` on the same line as the
+ * file `rung_00_c0.heapsnapshot`, and `run.json` records the filename — so the
+ * filename is what gets pasted into the next call, and it used to fail with
+ * "neither a resident handle nor a readable snapshot file" on a snapshot that
+ * was resident the whole time. Accepting the filename spelling costs one
+ * `endsWith` and removes a whole class of retry that, in CLI mode, is paid for
+ * with a full reload.
+ *
+ * Only exact and basename matches are accepted. Fuzzy/prefix matching is
+ * deliberately not done: silently resolving to the wrong rung would be far
+ * worse than an error, because the analysis would still produce a number.
+ */
+export function resolveHandle(ref: string): string | null {
+  if (loaded.has(ref)) return ref;
+  const base = ref.replace(/\.heapsnapshot$/i, '');
+  if (base !== ref && loaded.has(base)) return base;
+  // A full path whose basename is a handle: `/tmp/run/snapshots/rung_01.heapsnapshot`.
+  const leaf = base.split(/[/\\]/).pop();
+  if (leaf != null && leaf !== base && loaded.has(leaf)) return leaf;
+  return null;
+}
+
 export function getSnapshotByHandle(handle: string): IHeapSnapshot | null {
-  return loaded.get(handle)?.snapshot ?? null;
+  const resolved = resolveHandle(handle);
+  return resolved == null ? null : (loaded.get(resolved)?.snapshot ?? null);
 }
 
 export function getMetadataByHandle(handle: string): SnapshotMetadata | null {
-  return loaded.get(handle)?.metadata ?? null;
+  const resolved = resolveHandle(handle);
+  return resolved == null ? null : (loaded.get(resolved)?.metadata ?? null);
 }
 
 export function setCurrentSnapshot(handle: string): boolean {

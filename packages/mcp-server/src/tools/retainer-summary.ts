@@ -688,6 +688,64 @@ export function registerRetainerSummary(server: McpServer): void {
           }
         }
         merged.sort((a, b) => b.count - a.count);
+
+        // A linked list of varying length renders as N patterns that are
+        // identical except for one repeat count — `.next → ×26 Object`,
+        // `×27`, `×28`, … Measured: one call with `sample: 60` produced 13
+        // such patterns, thirteen screens of near-identical chain whose entire
+        // content was "this is ONE list and its length varies from 26 to 38".
+        // Collapsing them to a range is both cheaper and a clearer statement of
+        // the finding — the varying length IS the leak.
+        const repeatCollapsedFrom = merged.length;
+        const byRepeatShape = new Map<string, (typeof merged)[number]>();
+        const repeatRanges = new Map<string, {min: number; max: number}>();
+        const shapeOf = (body: string): string => body.replace(/×\d+/g, '×N');
+        const collapsedByRepeat: typeof merged = [];
+        for (const entry of merged) {
+          const shape = shapeOf(entry.body);
+          const counts = [...entry.body.matchAll(/×(\d+)/g)].map(m =>
+            Number(m[1]),
+          );
+          const existing = byRepeatShape.get(shape);
+          const range = repeatRanges.get(shape);
+          const lo = counts.length > 0 ? Math.min(...counts) : 0;
+          const hi = counts.length > 0 ? Math.max(...counts) : 0;
+          if (existing != null && counts.length > 0) {
+            existing.count += entry.count;
+            existing.total_retained += entry.total_retained;
+            for (const id of entry.example_ids) {
+              if (existing.example_ids.length < 3)
+                existing.example_ids.push(id);
+            }
+            if (range != null) {
+              range.min = Math.min(range.min, lo);
+              range.max = Math.max(range.max, hi);
+            }
+          } else {
+            byRepeatShape.set(shape, entry);
+            if (counts.length > 0) repeatRanges.set(shape, {min: lo, max: hi});
+            collapsedByRepeat.push(entry);
+          }
+        }
+        // Rewrite each collapsed body to show the RANGE it now stands for.
+        for (const entry of collapsedByRepeat) {
+          const range = repeatRanges.get(shapeOf(entry.body));
+          if (range == null || range.min === range.max) continue;
+          let seen = false;
+          entry.body = entry.body.replace(/×\d+/g, m => {
+            if (seen) return m;
+            seen = true;
+            return `×${range.min}–${range.max}`;
+          });
+        }
+        merged.length = 0;
+        merged.push(...collapsedByRepeat);
+        merged.sort((a, b) => b.count - a.count);
+        const repeatNote =
+          merged.length < repeatCollapsedFrom
+            ? ` _(${repeatCollapsedFrom} patterns collapsed to ${merged.length}: they are the same chain at different repeat lengths, shown as a range — a chain whose length VARIES across instances is the signature of an unbounded linked list, not of distinct retainers.)_`
+            : '';
+
         if (patternHeaderIndex >= 0) {
           const collapsedNote =
             merged.length < sorted.length
@@ -700,7 +758,7 @@ export function registerRetainerSummary(server: McpServer): void {
                 : `**All ${totalSampled} sampled instances share ONE retainer path**, but that is only ` +
                   `${(coverage * 100).toFixed(1)}% of the ${population} matching nodes — NOT evidence of a ` +
                   `single root cause. Confirm with \`memlab_trace_all\` over the full population.${collapsedNote}`
-              : `**${merged.length} distinct retainer patterns found**${collapsedNote}`;
+              : `**${merged.length} distinct retainer patterns found**${collapsedNote}${repeatNote}`;
         }
 
         // Patterns that diverge only at the very end still print their whole

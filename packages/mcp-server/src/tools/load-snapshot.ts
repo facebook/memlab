@@ -543,6 +543,51 @@ function nextStepMenu(): string[] {
   ];
 }
 
+/**
+ * The largest sibling rung that should fit under the load ceiling.
+ *
+ * A refused load already tells the caller to "use a smaller snapshot from the
+ * same ladder"; without naming one, that costs a directory listing and a
+ * size-by-size comparison done by hand, in the middle of an investigation —
+ * and the rung that matters most (the last) is exactly the one that is too big,
+ * so this happens on every large hunt. Best-effort and silent on failure: this
+ * runs inside an error path and must never throw over the real error.
+ */
+function largestLoadableSibling(
+  filePath: string,
+  estMB: number | null,
+): string | null {
+  if (estMB == null || estMB <= 0) return null;
+  try {
+    const dir = path.dirname(filePath);
+    const self = path.basename(filePath);
+    const candidates = fs
+      .readdirSync(dir)
+      .filter(f => f.endsWith('.heapsnapshot') && f !== self)
+      .map(f => {
+        try {
+          return {
+            name: f,
+            mb: fs.statSync(path.join(dir, f)).size / (1024 * 1024),
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter(
+        (c): c is {name: string; mb: number} => c != null && c.mb <= estMB,
+      )
+      .sort((a, b) => b.mb - a.mb);
+    if (candidates.length === 0) {
+      return `No sibling snapshot in \`${dir}\` is under that size either — every rung of this ladder is too large to load, so use the transient-load tools or \`force: true\`.`;
+    }
+    const best = candidates[0];
+    return `The largest rung in \`${dir}\` that should fit is **${best.name}** (${Math.round(best.mb)} MB)${candidates.length > 1 ? `, of ${candidates.length} that would` : ''}.`;
+  } catch {
+    return null;
+  }
+}
+
 export function registerLoadSnapshot(server: McpServer): void {
   server.tool(
     'memlab_load_snapshot',
@@ -797,9 +842,14 @@ export function registerLoadSnapshot(server: McpServer): void {
             estMB != null
               ? `This capture is ${formatBytes(fileStat.size)} at ${formatNumber(Math.round(counts.nodeCount / fileSizeMB))} nodes/MB and ${formatNumber(Math.round(counts.edgeCount / fileSizeMB))} edges/MB, so for this app the ceiling corresponds to roughly a ≤${formatNumber(estMB)} MB capture — pick a smaller snapshot below that size.`
               : '';
+          // "Use a smaller snapshot from the same ladder" is the right advice
+          // and still leaves the caller to work out WHICH — measured as an
+          // `ls -la` of the snapshots dir, by hand, mid-investigation. The
+          // sibling rungs are right there, so name the largest one that fits.
+          const siblingHint = largestLoadableSibling(file_path, estMB);
           const options = [
             `1. Get trend/growth WITHOUT a full load: memlab_sequence_analysis loads snapshots transiently (one at a time) and is the right tool for a ladder.`,
-            `2. Use a smaller/earlier snapshot from the same ladder.${estMB != null ? ` ${sizeHint}` : ''} Check a candidate's counts first WITHOUT a load via memlab_snapshot_header.`,
+            `2. Use a smaller/earlier snapshot from the same ladder.${siblingHint != null ? ` ${siblingHint}` : ''}${estMB != null ? ` ${sizeHint}` : ''} Check a candidate's counts first WITHOUT a load via memlab_snapshot_header.`,
             `3. Load it anyway with force:true — it self-sizes from these header counts, so you do NOT also need max_nodes/max_edges: memlab_load_snapshot({file_path: "${file_path}", force: true}). Expect a long, uninterruptible dominator pass.`,
           ];
           // Only suggest more memory when the server is actually under-provisioned.

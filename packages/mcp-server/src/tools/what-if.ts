@@ -20,6 +20,7 @@ import {
   formatNumber,
   markdownTable,
   toolResult,
+  typenameOf,
 } from '../utils.js';
 
 const {NumericSet} = memlabCore;
@@ -125,6 +126,12 @@ export function registerWhatIf(server: McpServer): void {
         .describe(
           'Explicit node ids to free (from any tool that reports ids).',
         ),
+      typename: z
+        .string()
+        .optional()
+        .describe(
+          'GraphQL `__typename` an instance must carry, e.g. "CIXLoggerOutput". On a normalised Relay/Apollo store this is the real class name — `class_name` there is a bare `Object` matching everything. Matches `helpers.byTypename`.',
+        ),
       class_name: z
         .string()
         .optional()
@@ -155,25 +162,34 @@ export function registerWhatIf(server: McpServer): void {
           'Also compute the SECOND-ORDER effect: objects that become unreachable because the population was their last live referrer, even though no member dominated them. Recomputes reachability from the GC roots with the population removed (two O(N+E) walks — seconds on a multi-million-node heap, not instant). Off by default because the dominator figure alone is the conservative answer.',
         ),
     },
-    async ({node_ids, class_name, shape, breakdown, limit, cascade}) => {
+    async ({
+      node_ids,
+      class_name,
+      typename,
+      shape,
+      breakdown,
+      limit,
+      cascade,
+    }) => {
       try {
         const snapshot = getSnapshot();
         const selectors = [
           node_ids != null && node_ids.length > 0,
           class_name != null,
+          typename != null,
           shape != null && shape.length > 0,
         ].filter(Boolean).length;
         if (selectors === 0) {
           return errorResult(
             new Error(
-              'Pass node_ids, class_name or shape to select what to free.',
+              'Pass node_ids, class_name, typename or shape to select what to free.',
             ),
           );
         }
         if (selectors > 1) {
           return errorResult(
             new Error(
-              'Pass exactly one of node_ids / class_name / shape — combining them would make the reported population ambiguous.',
+              'Pass exactly one of node_ids / class_name / typename / shape — combining them would make the reported population ambiguous.',
             ),
           );
         }
@@ -195,6 +211,8 @@ export function registerWhatIf(server: McpServer): void {
             if (node.id <= 3) return;
             if (class_name != null) {
               if (node.name !== class_name) return;
+            } else if (typename != null) {
+              if (typenameOf(node) !== typename) return;
             } else if (shape != null && !matchesShape(node, shape)) {
               return;
             }
@@ -222,9 +240,11 @@ export function registerWhatIf(server: McpServer): void {
         const label =
           class_name != null
             ? `class \`${class_name}\``
-            : shape != null
-              ? `shape \`{${shape.join(', ')}}\``
-              : `${formatNumber(ids.length)} explicit id(s)`;
+            : typename != null
+              ? `typename \`${typename}\``
+              : shape != null
+                ? `shape \`{${shape.join(', ')}}\``
+                : `${formatNumber(ids.length)} explicit id(s)`;
 
         const lines: string[] = [
           `## What if ${label} were freed?`,

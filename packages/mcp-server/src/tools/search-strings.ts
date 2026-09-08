@@ -80,6 +80,26 @@ export function registerSearchStrings(server: McpServer): void {
           substring = pattern;
         }
 
+        // A pattern is regex ONLY when it starts with "/". A regex written
+        // without the slashes — `cix_log\(input:` — is therefore searched for
+        // literally, backslash and all, matches nothing, and the "no matches"
+        // result reads as "this string is not on the heap". Measured: exactly
+        // that pattern returned 0 against a heap holding 63,735 matching
+        // strings, and the zero was believed.
+        //
+        // Counting the regex interpretation in the SAME pass costs one extra
+        // test per string only in the mistaken case, and turns a wrong negative
+        // into an answer.
+        let altRegex: RegExp | null = null;
+        if (substring != null && /[\\[\]().*+?^$|{}]/.test(substring)) {
+          try {
+            altRegex = new RegExp(substring);
+          } catch {
+            altRegex = null; // not valid as a regex either; nothing to suggest
+          }
+        }
+        let altMatchCount = 0;
+
         interface Match {
           nodeId: number;
           stringValue: string;
@@ -146,7 +166,10 @@ export function registerSearchStrings(server: McpServer): void {
             isMatch = val.includes(substring);
           }
 
-          if (!isMatch) return;
+          if (!isMatch) {
+            if (altRegex != null && altRegex.test(val)) altMatchCount++;
+            return;
+          }
 
           // A light load has no retained sizes, so ranking by them would sort
           // every match to a tie and silently return scan order instead of the
@@ -198,6 +221,15 @@ export function registerSearchStrings(server: McpServer): void {
               `Scanned ${formatNumber(scannedCount)} of ${formatNumber(totalStringNodes)} string nodes` +
               (min_length > 0 ? ` (filtered to length >= ${min_length})` : '') +
               '.\n\n' +
+              (altMatchCount > 0
+                ? `> ⚠️ **This pattern was searched as a LITERAL substring, not as a regex.** ` +
+                  `A pattern is treated as a regex only when it starts with \`/\`. Read as a regex it matches ` +
+                  `**${formatNumber(altMatchCount)} string(s)** — re-run with \`pattern: "/${pattern.replace(/"/g, '\\"')}/"\`.\n\n`
+                : altRegex != null
+                  ? `> ℹ️ This pattern contains regex metacharacters but was searched as a LITERAL substring ` +
+                    `(a pattern is a regex only when it starts with \`/\`). Read as a regex it also matches nothing, ` +
+                    `so the escaping is probably not the problem here.\n\n`
+                  : '') +
               '**Try:**\n' +
               '- Use a shorter or less specific pattern\n' +
               '- Use regex for flexible matching: `/partial.*match/i`\n' +

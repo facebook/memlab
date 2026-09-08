@@ -25,6 +25,13 @@ import {
   boundedDominatorRetainedSize,
 } from '../utils.js';
 import memlabCore from '@memlab/core';
+import type {ModuleProvenance} from '../dev-modules.js';
+import {
+  DEV_ONLY_FOOTNOTE,
+  GATED_FOOTNOTE,
+  moduleProvenanceOf,
+  provenanceCell,
+} from '../dev-modules.js';
 const {NumericSet} = memlabCore;
 import type {OutputMode} from '../utils.js';
 import {
@@ -314,6 +321,11 @@ interface GroupStats {
   // freed by releasing it, which includes whatever else it holds besides this
   // group's detached DOM.
   ownerRetained: number;
+  // Provenance of the accountable owner, so a dominator that is dev-only or
+  // flag-gated is visible in the row rather than only after someone thinks to
+  // check the gate by hand. This table is where a 116.4 MB "production leak"
+  // was read off a Redblock Map whose gate passes 0.0000% of production.
+  provenance: ModuleProvenance | null;
 }
 
 export function registerDetachedDom(server: McpServer): void {
@@ -488,6 +500,7 @@ export function registerDetachedDom(server: McpServer): void {
                 // The owner's own retained size, not the sum of the group's
                 // detached nodes: releasing it frees everything it dominates.
                 ownerRetained: owner ? owner.retainedSize : 0,
+                provenance: owner ? moduleProvenanceOf(owner) : null,
               });
             }
           });
@@ -531,6 +544,14 @@ export function registerDetachedDom(server: McpServer): void {
           // interesting column is what that owner frees; for every other
           // grouping it is how many owners the group is split across.
           const isDominatorMode = group_by === 'dominator';
+          // Only widen the table when there is something to say: on a heap with
+          // no dev-only or flag-gated owner the column is dead weight.
+          const anyFlaggedProvenance = sorted.some(
+            ([, st]) =>
+              st.provenance != null &&
+              (st.provenance.prodReachable === 'no' ||
+                st.provenance.prodReachable === 'gated'),
+          );
           const ownerCountLabel = (stats: GroupStats): string => {
             const n = stats.ownerIds.size;
             const shown = stats.ownersTruncated ? `${n}+` : String(n);
@@ -544,6 +565,7 @@ export function registerDetachedDom(server: McpServer): void {
             'Total Retained',
             '% of Detached',
             ...(isDominatorMode ? ['Owner Frees'] : ['Owners']),
+            ...(anyFlaggedProvenance ? ['Owner is'] : []),
             'Example ID',
           ];
           const rightCols = new Set(
@@ -574,6 +596,13 @@ export function registerDetachedDom(server: McpServer): void {
                   ? formatBytes(stats.ownerRetained)
                   : '-'
                 : ownerCountLabel(stats),
+              ...(anyFlaggedProvenance
+                ? [
+                    stats.provenance == null
+                      ? ''
+                      : provenanceCell(stats.provenance),
+                  ]
+                : []),
               `@${stats.exampleId}`,
             ];
           });
@@ -615,6 +644,9 @@ export function registerDetachedDom(server: McpServer): void {
             lines.push(
               '',
               "_Grouped by the nearest non-detached **dominator**: releasing that object frees every detached node in its row. **Owner Frees** is the owner's own retained size — the true, non-overlapping figure, and the amount actually reclaimed (it also covers whatever else the owner holds). Total Retained is a plain sum over the group, so it double-counts nested detached subtrees and can exceed Owner Frees._",
+              ...(anyFlaggedProvenance
+                ? ['', DEV_ONLY_FOOTNOTE, GATED_FOOTNOTE]
+                : []),
             );
             if (ownerless) {
               lines.push(

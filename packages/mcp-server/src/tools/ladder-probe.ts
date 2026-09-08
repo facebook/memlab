@@ -178,20 +178,19 @@ export function verdictFor(
     // available that this probe family can see anything here at all.
     if (max === 0 && !visibilityVerified) {
       return (
-        'UNKNOWN — 0 at every rung, and nothing here distinguishes "this ' +
-        'population does not grow" from "this probe cannot see this ' +
-        'population". Both produce exactly these numbers. Closure-captured ' +
-        'variables in particular are invisible to property/shape matching. ' +
-        'Re-run with `visibility_probe` set to an expression that MUST be ' +
-        'non-zero on this heap (a population you already counted another way); ' +
-        'if that also returns 0, the probe is blind, not the heap clean. Do ' +
-        'NOT record this as a negative result until it is verified.'
+        'UNKNOWN — 0 at every rung, and the visibility control ALSO returned ' +
+        '0, so this heap did not answer either probe. That is the signature of ' +
+        'a snapshot the probes cannot read (a light load, a truncated capture), ' +
+        'not of a clean population. Do NOT record this as a negative result.'
       );
     }
     return max === 0
-      ? 'FLAT — 0 at every rung, and the visibility probe confirmed this ' +
-          'probe family CAN observe a non-zero population on this ladder, so ' +
-          'this is a verified negative rather than a blind one'
+      ? 'FLAT — 0 at every rung, and the visibility control confirmed a probe ' +
+          'CAN observe a non-zero population on this ladder, so this is a ' +
+          'verified negative rather than a blind one. Note the control only ' +
+          'proves the snapshot is readable; if `code` reaches its population ' +
+          'through closure capture (invisible to property/shape matching), ' +
+          'pass a `visibility_probe` that uses the SAME access path'
       : 'FLAT — identical at every rung';
   }
   if (delta === 0) {
@@ -511,14 +510,25 @@ export function registerLadderProbe(server: McpServer): void {
         // corrupt both.
         const VISIBILITY_METRIC = '<<memlab:visibility-control>>';
         const reportedCount = metricList.length;
-        const hasVisibilityProbe =
+        const callerVisibilityProbe =
           visibility_probe != null && visibility_probe.trim() !== '';
-        if (hasVisibilityProbe) {
-          metricList.push({
-            name: VISIBILITY_METRIC,
-            code: visibility_probe as string,
-          });
-        }
+        // Run a control ALWAYS, not only when asked. Without one, an all-zero
+        // series can only be reported as UNKNOWN — "does not grow" and "this
+        // probe is blind" produce identical numbers — and that verdict is the
+        // caller's to resolve, usually by driving another whole round. The
+        // control rides along as an extra metric inside the SAME rung loads and
+        // is an indexed lookup, so the cost is negligible against a
+        // hundreds-of-megabytes parse; the default turns most UNKNOWNs into a
+        // definite verdict for free. A caller-supplied probe is strictly better
+        // (it can be chosen to exercise the same access path as `code`), so it
+        // still wins when given.
+        const DEFAULT_VISIBILITY_PROBE =
+          "result = helpers.byClass('Object').length";
+        const visibilityCode = callerVisibilityProbe
+          ? (visibility_probe as string)
+          : DEFAULT_VISIBILITY_PROBE;
+        const hasVisibilityProbe = true;
+        metricList.push({name: VISIBILITY_METRIC, code: visibilityCode});
 
         const {rungs: locals, largestMB} = resolveRungs(
           resolved,

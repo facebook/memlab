@@ -17,6 +17,7 @@ import {
   getCurrentHandle,
   listSnapshots,
   findResidentByPath,
+  resolveHandle,
 } from '../heap-state.js';
 import {getRegisteredTool} from '../tool-registry.js';
 import {
@@ -171,6 +172,11 @@ export function registerExplainDelta(server: McpServer): void {
         // Loading it is exactly what the "must be resident" error tells the
         // caller to go and do by hand, and a re-authored batch costs a reload of
         // every rung.
+        // Canonicalise first: a resident snapshot referred to by its FILENAME
+        // (`rung_00_c0.heapsnapshot`) must compare equal to its handle
+        // (`rung_00_c0`) below, or the same-snapshot check silently passes and
+        // the tool diffs a snapshot against itself.
+        baselineRef = resolveHandle(baselineRef) ?? baselineRef;
         if (
           getSnapshotByHandle(baselineRef) == null &&
           /[/\\.]/.test(baselineRef)

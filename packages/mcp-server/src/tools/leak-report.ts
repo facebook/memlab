@@ -225,11 +225,16 @@ export function registerLeakReport(server: McpServer): void {
         .describe(
           'Ordered list of >=2 snapshot paths (oldest first): local absolute paths, manifold:// URLs, or bare snapshot filenames. A single ["ladder:<name>"] entry expands to a ladder saved with memlab_ladder. Ignored when `run_dir` is given.',
         ),
+      // Accepts a total OR a per-rung axis. memlab_ladder_probe, which is the
+      // tool called immediately before or after this one on the same ladder,
+      // spells the per-rung form `cycles_per_rung` and also accepts `cycles`,
+      // so passing `[0, 1000, 2000, 3000]` here is the natural mistake and used
+      // to hard-fail with "Expected number, received array".
       cycles: z
-        .number()
+        .union([z.number(), z.array(z.number())])
         .optional()
         .describe(
-          'Number of interaction cycles driven between the FIRST and LAST snapshot. When provided, a "Δ/cycle" column is reported — a per-cycle rate is what says whether growth scales with interaction, which a total cannot.',
+          'Interaction cycles driven between the FIRST and LAST snapshot. When provided, a "Δ/cycle" column is reported — a per-cycle rate is what says whether growth scales with interaction, which a total cannot. An ARRAY is also accepted and read as the per-rung cumulative axis (e.g. [0, 1000, 2000, 3000]), same as `cycles_per_rung` elsewhere. Prefer `run_dir`, which reads the exact axis from run.json.',
         ),
       content: z
         .record(z.number())
@@ -290,7 +295,19 @@ export function registerLeakReport(server: McpServer): void {
       try {
         // Read the ladder + cycle axis from run.json when given; see
         // ../run-manifest.ts for why an assumed-even axis is unsafe.
-        const inputs = resolveLadderInputs({run_dir, segment, paths, cycles});
+        const cyclesArray = Array.isArray(cycles) ? cycles : undefined;
+        const cyclesTotal = Array.isArray(cycles)
+          ? cycles.length > 1
+            ? cycles[cycles.length - 1] - cycles[0]
+            : undefined
+          : cycles;
+        const inputs = resolveLadderInputs({
+          run_dir,
+          segment,
+          paths,
+          cycles: cyclesTotal,
+          cycles_per_rung: cyclesArray,
+        });
         paths = inputs.paths;
         cycles = inputs.cycles;
         const ladderSpanS =

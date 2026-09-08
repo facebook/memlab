@@ -143,6 +143,29 @@ export function abbreviateBlinkTypeName(name: string): string {
   return abbreviated.length < name.length ? abbreviated : name;
 }
 
+/**
+ * The GraphQL `__typename` this node carries, or null.
+ *
+ * Exists so every tool selects a typename population the same way
+ * `helpers.byTypename` does. Without it, `typename` was an eval-only concept:
+ * a Relay/GraphQL population found with `helpers.byTypename("CIXLoggerOutput")`
+ * could not be handed to `memlab_unit_cost`, `memlab_what_if` or
+ * `memlab_dominator_attribution` at all, and the operator had to fall back to a
+ * class name that matches thousands of unrelated `Object`s. In a normalised
+ * store — Relay, Apollo, any GraphQL cache — `__typename` IS the class name,
+ * so this is the selector those heaps are actually organised by.
+ */
+export function typenameOf(node: IHeapNode): string | null {
+  if (node.type !== 'object') return null;
+  for (const e of node.references) {
+    if (e.type !== 'property') continue;
+    if (String(e.name_or_index) !== '__typename') continue;
+    const t = e.toNode;
+    return t.isString ? (t.toStringNode()?.stringValue ?? null) : null;
+  }
+  return null;
+}
+
 export function truncateNodeName(
   name: string,
   type: string,
@@ -723,18 +746,33 @@ export function queryNodes(
  * whenever any node's walk was truncated, letting callers mark the figure as an
  * upper bound. Calls `tickAnalysis()` per node so it also honors the wall-clock
  * guardrail.
+ *
+ * Ids that resolve to no node are COUNTED and reported in `unresolved`, and
+ * force `exact: false`. They used to be skipped silently, which made the one
+ * failure mode that matters indistinguishable from a real answer: a caller who
+ * passes node objects where ids are expected (`nodes.map(n => n.id)` over an
+ * id array yields `[undefined, …]`) got back `{retained: 0, exact: true}` — a
+ * zero asserting its own correctness. Measured on a real hunt: a 31,810-object
+ * population sized as 0 bytes, caught only because another tool disagreed.
  */
 export function boundedDominatorRetainedSize(
   ids: HeapNodeIdSet,
   snapshot: IHeapSnapshot,
   maxWalk = 500,
-): {retained: number; exact: boolean} {
+): {retained: number; exact: boolean; unresolved: number; resolved: number} {
   let retained = 0;
   let exact = true;
+  let unresolved = 0;
+  let resolved = 0;
   for (const id of ids) {
     tickAnalysis();
     const node = snapshot.getNodeById(id);
-    if (!node) continue;
+    if (!node) {
+      unresolved++;
+      exact = false;
+      continue;
+    }
+    resolved++;
     let dominated = false;
     let truncated = false;
     let cur: IHeapNode | null = node.dominatorNode ?? null;
@@ -759,7 +797,7 @@ export function boundedDominatorRetainedSize(
       if (truncated) exact = false;
     }
   }
-  return {retained, exact};
+  return {retained, exact, unresolved, resolved};
 }
 
 /**
