@@ -173,12 +173,25 @@ export interface SessionConfig {
    * remembering N names. This is one switch for the session.
    */
   terse: boolean;
+  /**
+   * Suppress the once-per-process orientation menu and load-cost calibration
+   * note on `memlab_load_snapshot`.
+   *
+   * Deliberately NOT `quietHeader`. That flag defaults ON and means "print the
+   * per-call snapshot header once per snapshot"; reading it here would suppress
+   * the orientation menu for every session by default, which is the opposite of
+   * the once-per-process behaviour it is meant to have. This is session state
+   * rather than a per-call argument so that a caller who asked for quiet output
+   * on an earlier load still gets it on a later load that omits the argument.
+   */
+  suppressOrientation: boolean;
 }
 
 const sessionConfig: SessionConfig = {
   quietHeader: true,
   suppressSuggestions: false,
   terse: false,
+  suppressOrientation: false,
 };
 
 // Tracks whether the header has been emitted since the current snapshot was
@@ -195,6 +208,9 @@ export function setSessionConfig(patch: Partial<SessionConfig>): SessionConfig {
     sessionConfig.suppressSuggestions = patch.suppressSuggestions;
   }
   if (patch.terse != null) sessionConfig.terse = patch.terse;
+  if (patch.suppressOrientation != null) {
+    sessionConfig.suppressOrientation = patch.suppressOrientation;
+  }
   return sessionConfig;
 }
 

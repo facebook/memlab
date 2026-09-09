@@ -32,7 +32,199 @@ import {
   moduleProvenanceOf,
   provenanceCell,
 } from '../dev-modules.js';
+import {
+  resolveRungs,
+  withSnapshotAt,
+  armScanBudgetFor,
+  scaledTimeoutMs,
+} from '../snapshot-borrow.js';
+import {
+  describeSegmentSelection,
+  resolveLadderInputs,
+  SEGMENT_ARG_DESCRIPTION,
+} from '../run-manifest.js';
 const {NumericSet} = memlabCore;
+
+/**
+ * Detached population per rung, with the per-class breakdown of what grew.
+ *
+ * A single census answers "how many are detached", which is a working-set
+ * number; the ladder answers "how many per interaction", which is the leak.
+ * Assembling the second from the first meant N calls and a hand-diff, on the
+ * detector most likely to be carrying the finding.
+ */
+async function detachedLadder(args: {
+  run_dir?: string;
+  paths?: string[];
+  segment?: number | 'all';
+  limit: number;
+}): Promise<ReturnType<typeof toolResult>> {
+  const inputs = resolveLadderInputs({
+    run_dir: args.run_dir,
+    paths: args.paths,
+    segment: args.segment,
+  });
+  if (inputs.paths.length < 2) {
+    return errorResult(
+      new Error(
+        'A ladder needs at least 2 rungs; with one, a census cannot be turned into a rate.',
+      ),
+    );
+  }
+  const {rungs, largestMB} = resolveRungs(inputs.paths);
+
+  // One unreadable rung must not discard the rungs that DID scan. These are
+  // the largest snapshots a hunt produces — the ones this mode exists for are
+  // exactly the ones most likely to throw — so a rung that fails is recorded
+  // and the ladder continues with a hole in it.
+  const totals: Array<number | null> = [];
+  const read: Array<{
+    index: number;
+    total: number;
+    byClass: Map<string, number>;
+  }> = [];
+  const failures: string[] = [];
+  for (const [index, rung] of rungs.entries()) {
+    armScanBudgetFor(scaledTimeoutMs(largestMB));
+    try {
+      const counts = await withSnapshotAt(rung.localPath, snap => {
+        const byClass = new Map<string, number>();
+        let total = 0;
+        snap.nodes.forEach(node => {
+          if (!isDetachedDOMNode(node)) return;
+          total++;
+          const key = truncateNodeName(
+            node.name,
+            node.type,
+            node.self_size,
+            48,
+          );
+          byClass.set(key, (byClass.get(key) ?? 0) + 1);
+        });
+        return {total, byClass};
+      });
+      totals.push(counts.total);
+      read.push({index, total: counts.total, byClass: counts.byClass});
+    } catch (err) {
+      totals.push(null);
+      failures.push(
+        `${rung.label.replace(/^.*\//, '')}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  if (read.length < 2) {
+    return errorResult(
+      new Error(
+        `only ${read.length} of ${rungs.length} rungs could be read, and a rate needs 2.\n\n` +
+          failures.map(f => `- ${f}`).join('\n'),
+      ),
+    );
+  }
+  const firstRead = read[0];
+  const lastRead = read[read.length - 1];
+
+  const axis = inputs.cyclesPerRung;
+  // The span is between the rungs actually READ, not the first and last rung
+  // requested: dividing by the full span after a rung dropped out would
+  // understate every rate on the page.
+  const span =
+    axis != null && axis.length === totals.length
+      ? axis[lastRead.index] - axis[firstRead.index]
+      : null;
+  const rate = (a: number, b: number): string =>
+    span != null && span > 0 ? ((b - a) / span).toFixed(3) : '—';
+
+  const first = firstRead.byClass;
+  const last = lastRead.byClass;
+  const names = new Set<string>([...first.keys(), ...last.keys()]);
+  const changed = [...names]
+    .map(n => ({
+      name: n,
+      a: first.get(n) ?? 0,
+      b: last.get(n) ?? 0,
+    }))
+    .filter(r => r.b !== r.a);
+  // Sorted by the MAGNITUDE of the change, not its sign. Ranking by signed
+  // delta sorts every class that SHRANK to the bottom of the list, so on a
+  // ladder with more changed classes than `limit` the largest decreases are
+  // the first rows cut from a table headed "what changed".
+  const rows = changed.sort(
+    (x, y) => Math.abs(y.b - y.a) - Math.abs(x.b - x.a),
+  );
+
+  const segmentNote = describeSegmentSelection(inputs.segment, inputs.manifest);
+  const lines: string[] = ['## Detached DOM across the ladder', ''];
+  if (segmentNote != null) lines.push(segmentNote, '');
+  lines.push(
+    `_${rungs.length} rungs${axis != null ? `, cycle axis [${axis.join(', ')}] (${inputs.source === 'assumed-even' ? 'ASSUMED even — pass `run_dir` for the measured axis' : 'measured'})` : ', no cycle axis — pass `run_dir` for per-cycle rates'}._`,
+    '',
+    markdownTable(
+      ['Rung', ...rungs.map(r => r.label.replace(/^.*\//, ''))],
+      [
+        [
+          'Detached nodes',
+          ...totals.map(v => (v == null ? '—' : formatNumber(v))),
+        ],
+      ],
+      new Set(rungs.map((_, i) => i + 1)),
+    ),
+    '',
+    `**${formatNumber(firstRead.total)} → ${formatNumber(lastRead.total)}** (${rate(firstRead.total, lastRead.total)}/cycle)`,
+    '',
+  );
+  if (failures.length > 0) {
+    lines.push(
+      `_${failures.length} of ${rungs.length} rungs could not be read and are shown as \`—\`; the rate above spans the rungs that were. ${failures.join('; ')}._`,
+      '',
+    );
+  }
+
+  if (rows.length > 0) {
+    lines.push(
+      '### What changed, by element',
+      '',
+      markdownTable(
+        ['Element', 'First', 'Last', 'Δ', 'Δ/cycle'],
+        rows
+          .slice(0, args.limit)
+          .map(r => [
+            r.name,
+            formatNumber(r.a),
+            formatNumber(r.b),
+            formatNumber(r.b - r.a),
+            rate(r.a, r.b),
+          ]),
+        new Set([1, 2, 3, 4]),
+      ),
+      '',
+    );
+    if (rows.length > args.limit) {
+      lines.push(
+        `_Showing ${args.limit} of ${rows.length} changed element types, largest absolute change first — raise \`limit\` for the rest._`,
+        '',
+      );
+    }
+    lines.push(
+      '_A dead-exact integer rate is the signature of a fixed number of nodes stranded per interaction — count the elements the surface actually mints per cycle and see whether they match. Rows that did not change are omitted._',
+      '',
+      '_This is a COUNT ladder. It does not say who retains them: load the largest rung that fits and run `memlab_detached_dom({group_by: "dominator"})` for the owner, which also flags a dev-only or flag-gated owner before the bytes get quoted as production impact._',
+    );
+  } else {
+    lines.push(
+      '_No element type changed count across the ladder — the detached population is the same shape at both ends. Equal totals are not identity, but an unchanged per-class distribution is much stronger than an unchanged total._',
+    );
+  }
+  // The census options are not silently dropped: a caller who asks for
+  // `group_by: "dominator"` here — which the closing line above tells them to
+  // run — would otherwise get the count ladder back with no indication that
+  // the grouping was ignored.
+  lines.push(
+    '',
+    '_Ladder mode reports COUNTS only. `output_mode`, `group_by`, `offset`, `classify_dev_only` and `only_with_retainer_path` apply to a single-snapshot census and are ignored here; load one rung without `run_dir`/`paths` to use them. Because of that, these totals count every detached node, including the GC-eligible, dev-only and browser-owned ones that the single-census path splits out and excludes from its leak total — expect this ladder to read higher than a census of the same rung._',
+  );
+  return toolResult(lines.join('\n'));
+}
 import type {OutputMode} from '../utils.js';
 import {
   collectDevRoots,
@@ -334,6 +526,7 @@ export function registerDetachedDom(server: McpServer): void {
     'Find detached DOM elements still retained in memory. These are common sources of memory leaks — DOM nodes removed from the document but kept alive by JavaScript references. Supports count-only and ids-only modes for large result sets. Use group_by to aggregate by dominator (accountable owner), element tag, retainer pattern, or data-testid. ' +
       'Prefer group_by: "dominator" when you intend to act on the result: it groups by the nearest non-detached DOMINATOR, so releasing that one object provably frees the whole group. The other groupings key on a shortest retainer path, which need not dominate the nodes — they report an "Owners" column (distinct accountable dominators) so a group split across many owners is not mistaken for a single fix. ' +
       'Reports a pinned-vs-GC-eligible split: detached nodes with a retainer path to a GC root are actual leaks, while nodes with no retainer path found are typically GC-eligible (transient / weak-only) and should be excluded from leak totals — set only_with_retainer_path to list/aggregate just the pinned ones. ' +
+      'Pass `run_dir` (or `paths`) for a LADDER: the detached population per rung with a per-cycle rate and the per-element breakdown of what grew. A single census is a working-set number; the rate is what makes it a leak. ' +
       '⚠ Full-heap scan — slow on very large heaps (millions of nodes); use count-only / ids-only modes and group_by to bound output.',
     {
       output_mode: z
@@ -368,6 +561,22 @@ export function registerDetachedDom(server: McpServer): void {
         .describe(
           'Report how much detached DOM is retained ONLY via dev/automation artifacts — dev/extension globals (__REACT_DEVTOOLS_GLOBAL_HOOK__, window.Debug, …) or the Blink a11y/CDP cache (AXObjectCacheImpl, which co-retains detached DOM under automation) — and so should be excluded from production leak totals (default true). Use memlab_dev_artifacts for the full breakdown.',
         ),
+      run_dir: z
+        .string()
+        .optional()
+        .describe(
+          "A leak-hunt round's output directory (the one holding run.json and snapshots/). Reports the detached population PER RUNG with a per-cycle rate and the per-class breakdown of what grew, instead of a single census that cannot distinguish a leak from a working set.",
+        ),
+      paths: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Ordered snapshot paths (oldest first), as an alternative to `run_dir`. Ignored when `run_dir` is given.',
+        ),
+      segment: z
+        .union([z.number().int().min(0), z.literal('all')])
+        .optional()
+        .describe(SEGMENT_ARG_DESCRIPTION),
       only_with_retainer_path: z
         .boolean()
         .optional()
@@ -383,8 +592,21 @@ export function registerDetachedDom(server: McpServer): void {
       limit,
       classify_dev_only,
       only_with_retainer_path,
+      run_dir,
+      paths,
+      segment,
     }) => {
       try {
+        // Ladder mode. A single detached census is a population; the RATE is
+        // what says whether it is a leak, and assembling that meant one call
+        // per rung plus arithmetic by hand — on the detector most likely to
+        // carry the finding.
+        if (
+          (paths != null && paths.length > 0) ||
+          (run_dir != null && run_dir !== '')
+        ) {
+          return await detachedLadder({run_dir, paths, segment, limit});
+        }
         const env = getSnapshotEnv();
         if (env === 'node') {
           return toolResult(

@@ -26,6 +26,7 @@ const {utils: memlabUtils} = memlabCore;
 import {
   setSnapshot,
   getSnapshotMetadata,
+  getSessionConfig,
   setSessionConfig,
   listSnapshots,
   clearAllSnapshots,
@@ -506,6 +507,25 @@ function quickDiagnosis(
 }
 
 /**
+ * True once the menu has been emitted in this PROCESS.
+ *
+ * The menu is ~20 lines of orientation aimed at "I don't know what I'm looking
+ * at", which is true of the first load of a session and of no load after it. It
+ * was emitted unconditionally, so a four-rung batch paid for it four times —
+ * and in CLI mode (`memlab-cli.js script`), where snapshots are not resident
+ * across invocations, an investigation reloads constantly and pays it every
+ * time. Measured on a real batch: ~120 lines of menu before any content.
+ *
+ * Process-scoped rather than session-scoped on purpose: it is the cheapest
+ * scope that is definitely right. A fresh server process is a fresh operator
+ * for this purpose.
+ */
+let menuEmitted = false;
+
+/** See `menuEmitted`; same reasoning, for the load-cost calibration note. */
+let loadCostNoteEmitted = false;
+
+/**
  * What to call next, indexed by the QUESTION rather than by tool.
  *
  * The old trailer always pointed at `quick_diagnosis` / `auto_investigate`
@@ -591,7 +611,7 @@ function largestLoadableSibling(
 export function registerLoadSnapshot(server: McpServer): void {
   server.tool(
     'memlab_load_snapshot',
-    'Load and parse a .heapsnapshot file. This builds indexes, computes the dominator tree, and calculates retained sizes. Returns a quick diagnosis highlighting potential issues. Accepts a local absolute path, a manifold:// URL, or a bare snapshot filename (resolved against the nest_server_nodejs_heap_snapshots bucket and fetched automatically). Multiple snapshots can be kept resident — pass keep_previous:true to load several for diffing/comparison; switch between them with memlab_snapshots. Cost note: the load working set is several× the file size and the dominator pass runs uninterruptibly, so large/deep snapshots are memory- and time-heavy — run the server with NODE_OPTIONS="--max-old-space-size=8192", load one snapshot at a time (omit keep_previous) on large heaps, and prefer memlab_sequence_analysis (transient per-snapshot loads) when you only need trend/growth across a ladder. A node/edge-count ceiling (max_nodes/max_edges) refuses pathologically large loads before they wedge the server; the ceiling auto-scales from the server\'s configured --max-old-space-size (an 8 GB server admits the ~1.1 GB / ~14M-node / ~55M-edge Nest tier by default), and force:true self-sizes from the header counts so a one-off oversized load needs no manual max_nodes/max_edges.',
+    'Load and parse a .heapsnapshot file. This builds indexes, computes the dominator tree, and calculates retained sizes. Returns a quick diagnosis highlighting potential issues. Accepts a local absolute path, a manifold:// URL, or a bare snapshot filename (resolved against the nest_server_nodejs_heap_snapshots bucket and fetched automatically). Multiple snapshots can be kept resident — pass keep_previous:true to load several for diffing/comparison; switch between them with memlab_snapshots. Cost note: the load working set is several× the file size and the dominator pass runs uninterruptibly, so large/deep snapshots are memory- and time-heavy — run the server with NODE_OPTIONS="--max-old-space-size=8192", load one snapshot at a time (omit keep_previous) on large heaps, and prefer memlab_sequence_analysis (transient per-snapshot loads) when you only need trend/growth across a ladder. A node/edge-count ceiling (max_nodes/max_edges) refuses pathologically large loads before they wedge the server; the ceiling auto-scales from the server\'s configured --max-old-space-size (an 8 GB server admits the ~1.1 GB / ~14M-node / ~55M-edge Nest tier by default), and force:true self-sizes from the header counts so a one-off oversized load needs no manual max_nodes/max_edges. A light load (light:true) skips the dominator pass the ceiling exists to bound, so the auto-scaled ceiling does not apply to it — an explicitly passed max_nodes/max_edges still does.',
     {
       file_path: z
         .string()
@@ -615,7 +635,7 @@ export function registerLoadSnapshot(server: McpServer): void {
         .boolean()
         .optional()
         .describe(
-          'Session output control: when true, the per-call "> Snapshot: …" header is printed once instead of on every subsequent tool result (saves tokens over a long investigation).',
+          'Session output control: when true, the per-call "> Snapshot: …" header is printed once instead of on every subsequent tool result, and this tool omits the orientation menu and the load-cost calibration note (saves tokens over a long investigation). Persists for the session, so later loads that omit it stay quiet.',
         ),
       suppress_suggestions: z
         .boolean()
@@ -633,13 +653,13 @@ export function registerLoadSnapshot(server: McpServer): void {
         .number()
         .optional()
         .describe(
-          `Maximum node count to attempt loading. Defaults to an auto-scaled ceiling derived from the server's configured --max-old-space-size (≈${formatNumber(NODES_PER_HEAP_MB)}× the old-space MB, floored at ${formatNumber(DEFAULT_MAX_NODES)}); an 8 GB server defaults to ~${formatNumber(8192 * NODES_PER_HEAP_MB)}. The dominator-tree computation done at load is super-linear in graph size AND depth and runs uninterruptibly, so a very large/deep snapshot can wedge the server with no timeout; the count is peeked cheaply from the header and the load is refused before it starts if it exceeds this. File size is a poor proxy for this cost, so this is separate from max_file_size_mb.`,
+          `Maximum node count to attempt loading. Defaults to an auto-scaled ceiling derived from the server's configured --max-old-space-size (≈${formatNumber(NODES_PER_HEAP_MB)}× the old-space MB, floored at ${formatNumber(DEFAULT_MAX_NODES)}); an 8 GB server defaults to ~${formatNumber(8192 * NODES_PER_HEAP_MB)}. The dominator-tree computation done at load is super-linear in graph size AND depth and runs uninterruptibly, so a very large/deep snapshot can wedge the server with no timeout; the count is peeked cheaply from the header and the load is refused before it starts if it exceeds this. File size is a poor proxy for this cost, so this is separate from max_file_size_mb. A light load (light:true) never runs that pass, so the AUTO-scaled default does not apply to it — but a value you pass explicitly still does.`,
         ),
       max_edges: z
         .number()
         .optional()
         .describe(
-          `Maximum edge count to attempt loading; see max_nodes. Defaults to an auto-scaled ceiling (≈${formatNumber(EDGES_PER_HEAP_MB)}× the old-space MB, floored at ${formatNumber(DEFAULT_MAX_EDGES)}); an 8 GB server defaults to ~${formatNumber(8192 * EDGES_PER_HEAP_MB)}. Nest server snapshots are edge-dense (~4 edges/node), so this — not max_nodes — is usually the binding limit. Peeked from the header; the load is refused before it starts if it exceeds this.`,
+          `Maximum edge count to attempt loading; see max_nodes. Defaults to an auto-scaled ceiling (≈${formatNumber(EDGES_PER_HEAP_MB)}× the old-space MB, floored at ${formatNumber(DEFAULT_MAX_EDGES)}); an 8 GB server defaults to ~${formatNumber(8192 * EDGES_PER_HEAP_MB)}. Nest server snapshots are edge-dense (~4 edges/node), so this — not max_nodes — is usually the binding limit. Peeked from the header; the load is refused before it starts if it exceeds this. As with max_nodes, the auto default is exempt on a light load but an explicitly passed value is still honored.`,
         ),
       force: z
         .boolean()
@@ -687,12 +707,19 @@ export function registerLoadSnapshot(server: McpServer): void {
       try {
         if (quiet != null || suppress_suggestions != null) {
           setSessionConfig({
-            ...(quiet != null ? {quietHeader: quiet} : {}),
+            ...(quiet != null
+              ? {quietHeader: quiet, suppressOrientation: quiet}
+              : {}),
             ...(suppress_suggestions != null
               ? {suppressSuggestions: suppress_suggestions}
               : {}),
           });
         }
+        // Read from the session, not from the local argument: `quiet` is
+        // optional with no default, so a load that omits it would otherwise
+        // re-emit the orientation menu and the calibration note in a session
+        // that already asked for quiet output.
+        const orientationSuppressed = getSessionConfig().suppressOrientation;
         const previousMeta = getSnapshotMetadata();
         progress.phase(
           1,
@@ -815,11 +842,43 @@ export function registerLoadSnapshot(server: McpServer): void {
         const autoCeilings = computeDefaultCeilings();
         const effectiveMaxNodes = max_nodes ?? autoCeilings.maxNodes;
         const effectiveMaxEdges = max_edges ?? autoCeilings.maxEdges;
+        // A LIGHT load does not run the dominator pass, which is the entire
+        // reason this ceiling exists — so applying it to a light load refuses a
+        // load whose danger is not present. It refused it on exactly the rungs
+        // where the light-safe tools matter most: measured, a 1.47 GB /
+        // 5.4M-node / 94.9M-edge final rung — the one with the most signal in
+        // the whole ladder — could not be opened even for `search_strings` or
+        // `class_histogram`.
+        //
+        // Light loads are still bounded, by the two guards that measure the
+        // right thing: the file-size safety limit above, and the memory-headroom
+        // projection below, which already discounts for light
+        // (`estimateLoadHeapMB(counts, light)`) and evicts or refuses when the
+        // parse would not fit. Those bound MEMORY; this ceiling bounds an
+        // uninterruptible CPU pass that a light load never starts.
+        //
+        // An EXPLICIT `max_nodes` / `max_edges` is a different thing from the
+        // auto-scaled default: the caller asked for this load to be bounded, and
+        // dropping that on a light load gives them neither the refusal nor a
+        // note. So only the AUTO ceiling is exempt on a light load, and only for
+        // the dimension the caller left unset.
+        const explicitCeiling = max_nodes != null || max_edges != null;
+        const ceilingNodes =
+          light && max_nodes == null
+            ? Number.POSITIVE_INFINITY
+            : effectiveMaxNodes;
+        const ceilingEdges =
+          light && max_edges == null
+            ? Number.POSITIVE_INFINITY
+            : effectiveMaxEdges;
+        const countCeilingApplies = !light || explicitCeiling;
+        const renderCeiling = (v: number): string =>
+          Number.isFinite(v) ? formatNumber(v) : 'unbounded';
         if (
           counts &&
           !force &&
-          (counts.nodeCount > effectiveMaxNodes ||
-            counts.edgeCount > effectiveMaxEdges)
+          countCeilingApplies &&
+          (counts.nodeCount > ceilingNodes || counts.edgeCount > ceilingEdges)
         ) {
           const heapMB = autoCeilings.heapLimitMB;
           // Tailor the advice to the server's ACTUAL old-space size. The generic
@@ -850,18 +909,19 @@ export function registerLoadSnapshot(server: McpServer): void {
           const options = [
             `1. Get trend/growth WITHOUT a full load: memlab_sequence_analysis loads snapshots transiently (one at a time) and is the right tool for a ladder.`,
             `2. Use a smaller/earlier snapshot from the same ladder.${siblingHint != null ? ` ${siblingHint}` : ''}${estMB != null ? ` ${sizeHint}` : ''} Check a candidate's counts first WITHOUT a load via memlab_snapshot_header.`,
-            `3. Load it anyway with force:true — it self-sizes from these header counts, so you do NOT also need max_nodes/max_edges: memlab_load_snapshot({file_path: "${file_path}", force: true}). Expect a long, uninterruptible dominator pass.`,
+            `3. Load LIGHT — parses the graph but skips the dominator/retained-size pass, which is the pass this ceiling exists to bound, so the auto ceiling does not apply: memlab_load_snapshot({file_path: "${file_path}", light: true}).${explicitCeiling ? ' You passed an explicit max_nodes/max_edges, which is still honored on a light load — drop it to use the light exemption.' : ''} Enables counts, names, types, self sizes and string values (memlab_search_strings, memlab_class_histogram, memlab_search_nodes, memlab_snapshot_summary); tools needing retained sizes or retainer paths still refuse rather than reporting zeros.`,
+            `4. Load it anyway with force:true — it self-sizes from these header counts, so you do NOT also need max_nodes/max_edges: memlab_load_snapshot({file_path: "${file_path}", force: true}). Expect a long, uninterruptible dominator pass.`,
           ];
           // Only suggest more memory when the server is actually under-provisioned.
           if (heapMB > 0 && heapMB < 8192) {
             options.push(
-              `4. This server has only ~${formatNumber(heapMB)} MB — restart it with more memory to raise the ceiling before forcing: NODE_OPTIONS="--max-old-space-size=8192".`,
+              `5. This server has only ~${formatNumber(heapMB)} MB — restart it with more memory to raise the ceiling before forcing: NODE_OPTIONS="--max-old-space-size=8192".`,
             );
           }
           return errorResult(
             new Error(
               `Snapshot has ${formatNumber(counts.nodeCount)} nodes / ${formatNumber(counts.edgeCount)} edges — exceeds the load ceiling ` +
-                `(${formatNumber(effectiveMaxNodes)} nodes / ${formatNumber(effectiveMaxEdges)} edges). ${heapNote}\n\n` +
+                `(${renderCeiling(ceilingNodes)} nodes / ${renderCeiling(ceilingEdges)} edges). ${heapNote}\n\n` +
                 `The load computes a dominator tree whose cost grows super-linearly with graph size and depth, and it runs as one synchronous block that the wall-clock guardrail cannot interrupt — so a snapshot this large/deep can wedge the server with no timeout. Refusing before the pass starts.\n\n` +
                 `Options:\n` +
                 options.join('\n'),
@@ -1094,7 +1154,17 @@ export function registerLoadSnapshot(server: McpServer): void {
             // direction, which GC cannot manufacture — is stated as a fact.
             const atLeastMB = Math.max(0, headroomBeforeMB - headroomAfterMB);
             const ratio = atLeastMB / estimateMB;
-            if (atLeastMB > 0 && (ratio > 1.5 || ratio < 0.5)) {
+            // Once per process, and never in quiet mode. This is calibration
+            // telemetry for whoever tunes LOAD_BYTES_PER_NODE — actionable the
+            // first time and noise on every load after it, and it is emitted on
+            // most loads because the model is deliberately conservative.
+            if (
+              atLeastMB > 0 &&
+              (ratio > 1.5 || ratio < 0.5) &&
+              !orientationSuppressed &&
+              !loadCostNoteEmitted
+            ) {
+              loadCostNoteEmitted = true;
               lines.push(
                 `_Load-cost model: predicted ~${formatNumber(estimateMB)} MB, measured at least ~${formatNumber(atLeastMB)} MB (${ratio.toFixed(1)}x). ` +
                   (ratio < 0.5
@@ -1138,8 +1208,21 @@ export function registerLoadSnapshot(server: McpServer): void {
         if (warnings.length > 0) {
           lines.push('', ...warnings);
         }
-        if (!suggestionsSuppressed('memlab_load_snapshot')) {
-          lines.push('', ...nextStepMenu());
+        if (
+          !suggestionsSuppressed('memlab_load_snapshot') &&
+          !orientationSuppressed
+        ) {
+          if (!menuEmitted) {
+            menuEmitted = true;
+            lines.push('', ...nextStepMenu());
+          } else {
+            lines.push(
+              '',
+              '_(orientation menu shown on the first load of this server ' +
+                'process; `memlab_tools` lists every tool by the question it ' +
+                'answers.)_',
+            );
+          }
         }
 
         return textResult(lines.join('\n'));
