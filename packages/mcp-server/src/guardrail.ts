@@ -17,7 +17,7 @@ import {
   ScanTimeoutError,
 } from './analysis-budget.js';
 import {toolResult} from './utils.js';
-import {recordToolHandler} from './tool-registry.js';
+import {getRegisteredTool, recordToolHandler} from './tool-registry.js';
 
 type AnyFn = (...a: unknown[]) => unknown;
 
@@ -33,7 +33,138 @@ type AnyFn = (...a: unknown[]) => unknown;
  *
  * Must be called BEFORE the tools are registered so they register wrapped.
  */
+
+/**
+ * Parameters the caller passed that the tool does not declare.
+ *
+ * `timeout_ms` is universally accepted — the guardrail reads it off every call
+ * whether or not a given tool declares it — so it is never reported.
+ */
+function unknownParamNames(
+  params: unknown,
+  shape: Record<string, unknown>,
+): Array<{key: string; suggestion: string | null}> {
+  if (params == null || typeof params !== 'object' || Array.isArray(params)) {
+    return [];
+  }
+  const known = Object.keys(shape);
+  const knownSet = new Set([...known, 'timeout_ms']);
+  const out: Array<{key: string; suggestion: string | null}> = [];
+  for (const key of Object.keys(params as Record<string, unknown>)) {
+    if (knownSet.has(key)) continue;
+    out.push({key, suggestion: closestKey(key, known)});
+  }
+  return out;
+}
+
+/**
+ * The declared parameter a typo most likely meant, or null when nothing is
+ * close enough. Deliberately conservative: a wrong suggestion sends the caller
+ * down a worse path than no suggestion.
+ */
+function closestKey(key: string, known: string[]): string | null {
+  const lower = key.toLowerCase();
+  let best: string | null = null;
+  let bestScore = Infinity;
+  for (const candidate of known) {
+    const c = candidate.toLowerCase();
+    if (c === lower) return candidate;
+    // Substring either way catches the common shapes: `shape` vs `properties`
+    // is not a typo, but `class` vs `class_name` and `path` vs `paths` are.
+    if (c.includes(lower) || lower.includes(c)) {
+      const score = Math.abs(c.length - lower.length);
+      if (score < bestScore) {
+        bestScore = score;
+        best = candidate;
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Refuse a tool call that passes a parameter the tool does not declare.
+ *
+ * This has to sit at the REQUEST level, not around the handler: the SDK builds
+ * `z.object(shape)` from each tool's shape, and a plain `z.object` STRIPS
+ * unknown keys, so by the time a handler runs the offending key is already
+ * gone. Wrapping the handler therefore cannot see it — which is exactly why the
+ * behaviour went unnoticed.
+ *
+ * The cost of ignoring it is a wrong answer that looks right. Measured:
+ * `memlab_retainer_summary({class_name: "Object", typename: "CIXLoggerOutput"})`
+ * — `retainer_summary` has no `typename`, so the filter silently vanished and
+ * the call sampled 60 arbitrary `Object`s. The output was read as the retainer
+ * structure of the typename population, and nothing in it said otherwise. A
+ * caller cannot detect this by inspection; only the server can.
+ *
+ * `McpServer` installs its own `tools/call` handler lazily on first tool
+ * registration, so this patches `setRequestHandler` (before any tool registers)
+ * and wraps whatever handler is installed, rather than replacing it.
+ */
+function installUnknownParamRejection(server: McpServer): void {
+  const inner = (server as unknown as {server?: {setRequestHandler?: AnyFn}})
+    .server;
+  if (inner == null || typeof inner.setRequestHandler !== 'function') {
+    // A future SDK could restructure this. Losing the check is acceptable;
+    // throwing here and taking the whole server down with it is not.
+    return;
+  }
+  const origSet = inner.setRequestHandler.bind(inner) as AnyFn;
+  (inner as {setRequestHandler: AnyFn}).setRequestHandler = (
+    ...setArgs: unknown[]
+  ) => {
+    const [schema, handler, ...rest] = setArgs;
+    if (typeof handler !== 'function') return origSet(...setArgs);
+    const call = handler as AnyFn;
+    const wrapped = async (request: unknown, extra: unknown) => {
+      const req = request as
+        | {method?: string; params?: {name?: string; arguments?: unknown}}
+        | undefined;
+      if (req?.method === 'tools/call' && req.params?.name != null) {
+        const registered = getRegisteredTool(String(req.params.name));
+        const shape = registered?.shape;
+        if (shape != null) {
+          const unknown = unknownParamNames(req.params.arguments, shape);
+          if (unknown.length > 0) {
+            return toolResult(
+              unknownParamMessage(req.params.name, unknown, shape),
+            );
+          }
+        }
+      }
+      return call(request, extra);
+    };
+    return origSet(schema, wrapped, ...rest);
+  };
+}
+
+function unknownParamMessage(
+  name: string,
+  unknown: Array<{key: string; suggestion: string | null}>,
+  shape: Record<string, unknown>,
+): string {
+  const listed = unknown
+    .map(
+      u =>
+        `\`${u.key}\`` +
+        (u.suggestion != null ? ` (did you mean \`${u.suggestion}\`?)` : ''),
+    )
+    .join(', ');
+  return (
+    `⚠ \`${name}\` does not accept ${listed}.\n\n` +
+    'Refusing rather than ignoring it: an unknown parameter used to be dropped ' +
+    'silently, so a filter that did not apply produced a plausible, ' +
+    'confidently-formatted answer to a DIFFERENT question than the one asked.\n\n' +
+    `Accepted parameters: ${Object.keys(shape)
+      .sort()
+      .map(k => `\`${k}\``)
+      .join(', ')}.`
+  );
+}
+
 export function installAnalysisGuardrail(server: McpServer): void {
+  installUnknownParamRejection(server);
   const origTool = (server.tool as AnyFn).bind(server) as AnyFn;
   (server as unknown as {tool: AnyFn}).tool = (...toolArgs: unknown[]) => {
     const name = String(toolArgs[0]);
