@@ -3,15 +3,9 @@
 </h1>
 
 <p align="center">
-  <a href="https://github.com/facebook/memlab/blob/master/LICENSE">
-    <img alt="Licensed under the MIT License" src="https://img.shields.io/badge/License-MIT-blue.svg"/>
-  </a>
-  <a href="https://github.com/facebook/memlab/blob/main/CONTRIBUTING.md">
-    <img alt="PR's Welcome" src="https://img.shields.io/badge/PRs%20-welcome-brightgreen.svg"/>
-  </a>
-  <a href="https://www.npmjs.com/package/memlab?activeTab=readme">
-    <img alt="npm version" src="https://img.shields.io/npm/v/memlab.svg?style=flat"/>
-  </a>
+  <a href="https://github.com/facebook/memlab/blob/master/LICENSE"><img alt="Licensed under the MIT License" src="https://img.shields.io/badge/License-MIT-blue.svg"/></a>
+  <a href="https://github.com/facebook/memlab/blob/main/CONTRIBUTING.md"><img alt="PR's Welcome" src="https://img.shields.io/badge/PRs%20-welcome-brightgreen.svg"/></a>
+  <a href="https://www.npmjs.com/package/memlab?activeTab=readme"><img alt="npm version" src="https://img.shields.io/npm/v/memlab.svg?style=flat"/></a>
 </p>
 
 memlab is an end-to-end testing and analysis framework for identifying
