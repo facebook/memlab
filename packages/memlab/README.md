@@ -14,8 +14,8 @@ Features:
 - **Browser memory leak detection** - Write test scenarios with the Puppeteer
   API, and memlab will automatically compare JavaScript heap snapshots, filter
   out memory leaks, and aggregate the results
-- **Object-oriented heap traversing API** - Supports the creation of
-  self-defined memory leak detector, and enables programmatic analysis of JS heap
+- **Object-oriented heap traversal API** - Supports the creation of
+  custom memory leak detectors, and enables programmatic analysis of JS heap
   snapshots taken from Chromium-based browsers, Node.js, Electron.js, and Hermes
 - **Memory CLI toolbox** - Built-in toolbox and APIs for finding memory
   optimization opportunities (not necessarily just memory leaks)
@@ -35,7 +35,7 @@ npm install -g memlab
 
 To find memory leaks in Google Maps, you can create a
 [scenario file](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IScenario) defining how
-to interact with the Google Maps, let's name it `test-google-maps.js`:
+to interact with Google Maps. Let's call it `test-google-maps.js`:
 
 ```javascript
 // initial page load url: Google Maps
@@ -93,11 +93,11 @@ MemLab found 46 leak(s)
 ...
 ```
 
-To get readable trace, the web site under test needs to serve non-minified code (or at least minified code
-with readable variables, function name, and property names on objects).
+To get a readable trace, the website under test needs to serve non-minified code (or at least minified code
+with readable variable, function, and property names on objects).
 
 Alternatively, you can debug the leak by loading the heap snapshot taken by memlab (saved in `$(memlab get-default-work-dir)/data/cur`)
-in Chrome DevTool and search for the leaked object ID (`@182929`).
+in Chrome DevTools and search for the leaked object ID (`@182929`).
 
 **View Retainer Trace Interactively**
 
@@ -111,9 +111,9 @@ memlab view-heap --snapshot <PATH TO .heapsnapshot FILE>
 
 You can optionally specify a specific heap object with the object's id: `--node-id @28173` to pinpoint a specific object.
 
-**Self-defined leak detector**: If you want to use a self-defined leak detector, add a `leakFilter` callback
-([doc](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IScenario/#-optional-leakfilter-leakfiltercallback))
-in the scenario file. `filterLeak` will be called for every unreleased heap
+**Custom leak detector**: If you want to use a custom leak detector, add a `leakFilter` callback
+([doc](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IScenario/#leakfilter))
+in the scenario file. `leakFilter` will be called for every unreleased heap
 object (`node`) allocated by the target interaction.
 
 ```javascript
@@ -125,7 +125,7 @@ function leakFilter(node, heap) {
 
 `heap` is the graph representation of the final JavaScript heap snapshot.
 For more details, view the
-[doc site](https://facebook.github.io/memlab/docs/api/interfaces/core_src.IHeapSnapshot).
+[doc site](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IHeapSnapshot).
 
 ### Heap Analysis and Investigation
 
@@ -154,7 +154,7 @@ Use `memlab help` to view all CLI commands.
 
 ## APIs
 
-Use the `memlab` npm package to start a E2E run in browser and detect memory leaks.
+Use the `memlab` npm package to start an E2E run in the browser and detect memory leaks.
 
 ```javascript
 const memlab = require('memlab');
@@ -174,8 +174,8 @@ memlab.run({scenario});
 
 ## Memory Assertions
 
-memlab makes it possible to enable a unit test or running node.js program
-to take a heap snapshot of its own state, and write advanced memory assertions:
+memlab makes it possible for a unit test or running Node.js program
+to take a heap snapshot of its own state and write advanced memory assertions:
 
 ```typescript
 // save as example.test.ts
@@ -208,4 +208,4 @@ test('memory test with heap assertion', async () => {
 ```
 
 For other APIs check out the
-[API documentation](https://facebook.github.io/memlab/docs/api/interfaces/core_src.IHeapSnapshot#hasobjectwithclassnameclassname).
+[API documentation](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IHeapSnapshot#hasobjectwithclassname).

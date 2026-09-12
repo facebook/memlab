@@ -3,7 +3,7 @@
 </h1>
 
 <p align="center">
-  <a href="https://github.com/facebook/memlab/blob/master/LICENSE"><img alt="Licensed under the MIT License" src="https://img.shields.io/badge/License-MIT-blue.svg"/></a>
+  <a href="https://github.com/facebook/memlab/blob/main/LICENSE"><img alt="Licensed under the MIT License" src="https://img.shields.io/badge/License-MIT-blue.svg"/></a>
   <a href="https://github.com/facebook/memlab/blob/main/CONTRIBUTING.md"><img alt="PR's Welcome" src="https://img.shields.io/badge/PRs%20-welcome-brightgreen.svg"/></a>
   <a href="https://www.npmjs.com/package/memlab?activeTab=readme"><img alt="npm version" src="https://img.shields.io/npm/v/memlab.svg?style=flat"/></a>
 </p>
@@ -109,7 +109,7 @@ To get a readable trace, the website under test needs to serve non-minified code
 with readable variable, function, and property names on objects).
 
 Alternatively, you can debug the leak by loading the heap snapshot taken by memlab (saved in `$(memlab get-default-work-dir)/data/cur`)
-in Chrome DevTool and search for the leaked object ID (`@182929`).
+in Chrome DevTools and search for the leaked object ID (`@182929`).
 
 **View Retainer Trace Interactively**
 

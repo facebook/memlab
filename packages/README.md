@@ -1,7 +1,7 @@
 
 ## npm packages
 
-[![Licensed under the MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/facebook/memlab/blob/master/LICENSE)
+[![Licensed under the MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/facebook/memlab/blob/main/LICENSE)
 [![PR's Welcome](https://img.shields.io/badge/PRs%20-welcome-brightgreen.svg)](https://github.com/facebook/memlab/blob/main/CONTRIBUTING.md)
 
 This GitHub repo hosts the code for the following npm packages:
@@ -21,4 +21,4 @@ This GitHub repo hosts the code for the following npm packages:
  * [@memlab/lens](https://www.npmjs.com/package/@memlab/lens?activeTab=readme)
    – Memory Lens - an in-browser UI debugging layer that visualizes leaked React components
  * [@memlab/mcp-server](https://www.npmjs.com/package/@memlab/mcp-server?activeTab=readme)
-   – Use memlab as a mcp-server to allow AI tooling to analyze and debug heap snapshots
+   – Use memlab as an MCP server to allow AI tooling to analyze and debug heap snapshots
