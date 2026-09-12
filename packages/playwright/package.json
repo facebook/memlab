@@ -1,0 +1,72 @@
+{
+  "name": "@memlab/playwright",
+  "version": "2.0.2",
+  "license": "MIT",
+  "description": "Playwright integration for memlab: attach memory leak detection to existing Playwright tests with a single tag",
+  "author": "Liang Gong <lgong@meta.com>",
+  "contributors": [],
+  "keywords": [
+    "playwright",
+    "memlab",
+    "memory",
+    "leak",
+    "e2e",
+    "heap",
+    "snapshot"
+  ],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@memlab/api": "^2.0.2",
+    "@memlab/core": "^2.0.2",
+    "fs-extra": "^4.0.2"
+  },
+  "peerDependencies": {
+    "@playwright/test": ">=1.40.0",
+    "playwright": ">=1.40.0"
+  },
+  "peerDependenciesMeta": {
+    "@playwright/test": {
+      "optional": true
+    },
+    "playwright": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1",
+    "@types/fs-extra": "^9.0.3",
+    "@types/node": "^25.0.0",
+    "playwright": "^1.49.1",
+    "typescript": "^5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/facebook/memlab.git",
+    "directory": "packages/playwright"
+  },
+  "scripts": {
+    "build-pkg": "tsc",
+    "test-pkg": "npm run test-e2e",
+    "test-e2e": "playwright test --config=__tests__/playwright.config.ts --tsconfig=__tests__/tsconfig.json",
+    "publish-patch": "npm publish",
+    "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo && rm -rf ./test-results && rm -rf ./playwright-report"
+  },
+  "bugs": {
+    "url": "https://github.com/facebook/memlab/issues"
+  },
+  "homepage": "https://github.com/facebook/memlab#readme"
+}
