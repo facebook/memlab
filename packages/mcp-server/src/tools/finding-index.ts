@@ -107,6 +107,50 @@ interface FindingIndex {
   combos_driven: Record<string, string[]>;
 }
 
+/**
+ * Accept BOTH shapes an index file can legitimately have on disk.
+ *
+ * `findings` is keyed by fingerprint everywhere in this module, but `export`
+ * writes a plain ARRAY — and the message it prints tells the operator to point
+ * `MEMLAB_FINDINGS_INDEX` at that very file. Loading it back as an array made
+ * every `index.findings[fingerprint]` lookup miss, so `check` answered NEW for
+ * findings that were in the file, which is the exact silent failure this tool
+ * exists to prevent. `hasAppHistory` did not catch it either: `Object.values`
+ * of a non-empty array is non-empty, so the "index is empty" warning stayed
+ * quiet. Re-keying on load fixes the exported file and any hand-written array.
+ */
+function normalizeFindings(
+  findings: FindingIndex['findings'] | Finding[] | undefined,
+): Record<string, Finding> {
+  if (findings == null) return {};
+  if (!Array.isArray(findings)) return findings;
+  const keyed: Record<string, Finding> = {};
+  for (const f of findings) {
+    // Prefer a recomputed fingerprint over the stored one: a hand-edited row
+    // can carry a `fingerprint` that no longer matches its own signature and
+    // classes, and the lookup key is what has to be right.
+    //
+    // Normalized first, exactly as `importFindings` and `check` do. An
+    // exported row is already normalized, so this is a no-op there — but the
+    // hand-written array this function exists to accept can hold a RAW
+    // retainer path, and keying that verbatim produces a fingerprint `check`
+    // never computes, which is the same silent miss in a new place.
+    const signature =
+      f?.signature != null ? normalizeRetainerPath(f.signature) : null;
+    const key =
+      signature != null
+        ? fingerprintOf(signature, f.growing_classes ?? [])
+        : f?.fingerprint;
+    if (key == null || key === '') continue;
+    keyed[key] = {
+      ...f,
+      fingerprint: key,
+      ...(signature != null ? {signature} : {}),
+    };
+  }
+  return keyed;
+}
+
 function loadIndex(indexPath: string): FindingIndex {
   try {
     if (fs.existsSync(indexPath)) {
@@ -115,7 +159,7 @@ function loadIndex(indexPath: string): FindingIndex {
         const idx = parsed as Partial<FindingIndex>;
         return {
           version: idx.version ?? 1,
-          findings: idx.findings ?? {},
+          findings: normalizeFindings(idx.findings),
           combos_driven: idx.combos_driven ?? {},
         };
       }
@@ -602,8 +646,15 @@ export function registerFindingIndex(server: McpServer): void {
           // the index back OUT. Without this the index is per-machine by
           // construction, and the next host starts empty and answers NEW to
           // everything.
-          const idx = loadIndex(indexPath);
-          const dest = to ?? from;
+          // `index` is already loaded from `indexPath` above; re-reading and
+          // re-parsing the same file gave two copies that could only drift.
+          const idx = index;
+          // Deliberately NOT `to ?? from`. `from` is the import SOURCE, so a
+          // call that passed only `from` — e.g. the checked-in seed file it
+          // just imported — overwrote that file with the current export, and
+          // if the live index held fewer findings the checked-in history was
+          // lost. The error below already says export needs `to`.
+          const dest = to;
           if (dest == null || dest === '') {
             return errorResult(
               'export needs `to` (the path to write). Point it at a checked-in ' +
@@ -627,14 +678,19 @@ export function registerFindingIndex(server: McpServer): void {
             'utf8',
           );
           const n = payload.findings.length;
+          // `n === 0` is unreachable in the common case — `loadIndex` seeds a
+          // brand-new index with `builtinSeedFindings()`, so a host that never
+          // recorded anything still exports a non-empty file. `hasAppHistory`
+          // is the distinction that was actually wanted: generic artifact seeds
+          // and no app history at all.
           return toolResult(
             `Exported **${n}** finding(s)${
               workstream != null ? ` for workstream \`${workstream}\`` : ''
             } to \`${dest}\`.\n\n` +
-              (n === 0
-                ? '_The index was EMPTY, so this wrote an empty file. Seed it with ' +
-                  '`action: "import"` first, or a `check` against it will answer NEW ' +
-                  'to everything._'
+              (!hasAppHistory(idx)
+                ? '_This index holds only the built-in artifact seeds — no finding from ' +
+                  'an actual round. Record or `import` some history first, or a `check` ' +
+                  'against this file will answer NEW to everything real._'
                 : '_Check this file in and point `MEMLAB_FINDINGS_INDEX` at it, so the ' +
                   'next host and the next operator inherit the history instead of ' +
                   'starting from zero._'),
@@ -644,11 +700,33 @@ export function registerFindingIndex(server: McpServer): void {
         if (action === 'import') {
           const incoming: ImportedFinding[] = [...(findings ?? [])];
           const fileErrors: string[] = [];
+          let combosImported = 0;
           if (from != null && from !== '') {
             if (!fs.existsSync(from)) {
               return errorResult(`import source not found: ${from}`);
             }
             const parsed: unknown = JSON.parse(fs.readFileSync(from, 'utf8'));
+            // `export` takes care to write `combos_driven`, but import used to
+            // read only `findings`, so the round trip dropped the driven-combo
+            // coverage every time.
+            const incomingCombos = Array.isArray(parsed)
+              ? null
+              : ((parsed as {combos_driven?: Record<string, unknown>})
+                  ?.combos_driven ?? null);
+            if (incomingCombos != null) {
+              for (const [round, combos] of Object.entries(incomingCombos)) {
+                if (!Array.isArray(combos)) continue;
+                const existing = index.combos_driven[round] ?? [];
+                const merged = [
+                  ...new Set([
+                    ...existing,
+                    ...combos.filter((c): c is string => typeof c === 'string'),
+                  ]),
+                ];
+                if (merged.length !== existing.length) combosImported++;
+                index.combos_driven[round] = merged;
+              }
+            }
             const fromFile = Array.isArray(parsed)
               ? parsed
               : ((parsed as {findings?: unknown[]})?.findings ?? null);
@@ -679,9 +757,31 @@ export function registerFindingIndex(server: McpServer): void {
               }
             });
           }
-          if (incoming.length === 0) {
+          const gaveSource =
+            (findings != null && findings.length > 0) ||
+            (from != null && from !== '');
+          if (!gaveSource) {
             return errorResult(
               'action "import" needs `findings` (inline) or `from` (a JSON file path).',
+            );
+          }
+          // A source that was read and held nothing NEW is a no-op, not a
+          // missing argument. Reporting it as the latter sent the operator
+          // looking for an argument they had in fact passed.
+          if (incoming.length === 0 && combosImported === 0) {
+            return toolResult(
+              `Nothing to import: ${
+                from != null && from !== ''
+                  ? `\`${from}\` was read but yielded no usable finding, and its driven-combo coverage was already recorded`
+                  : 'the `findings` array was empty'
+              }. The index still holds ${formatNumber(
+                Object.keys(index.findings).length,
+              )} finding(s).` +
+                (fileErrors.length > 0
+                  ? `\n\nSkipped ${fileErrors.length}:\n${fileErrors
+                      .map(s => `- ${s}`)
+                      .join('\n')}`
+                  : ''),
             );
           }
           const {imported, updated, skipped} = importFindings(index, incoming);
@@ -690,7 +790,10 @@ export function registerFindingIndex(server: McpServer): void {
           return toolResult(
             [
               `Imported **${imported} new** and updated **${updated}** finding(s) into \`${indexPath}\`; ` +
-                `the index now holds ${formatNumber(Object.keys(index.findings).length)}.`,
+                `the index now holds ${formatNumber(Object.keys(index.findings).length)}.` +
+                (combosImported > 0
+                  ? ` Also merged driven-combo coverage for ${combosImported} round(s).`
+                  : ''),
               skipped.length > 0
                 ? `\nSkipped ${skipped.length}:\n${skipped.map(s => `- ${s}`).join('\n')}`
                 : '',

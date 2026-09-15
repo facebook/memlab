@@ -17,6 +17,7 @@ import {
   getCurrentHandle,
   listSnapshots,
   findResidentByPath,
+  handlesSharingBasename,
   resolveHandle,
 } from '../heap-state.js';
 import {getRegisteredTool} from '../tool-registry.js';
@@ -183,8 +184,15 @@ export function registerExplainDelta(server: McpServer): void {
         ) {
           const loaded = await loadSnapshotByPath(baselineRef);
           if (loaded == null) {
+            // An ambiguous basename resolves to null exactly like an unknown
+            // one, so the generic message sent the operator looking for a file
+            // that is in fact resident several times over. Name the candidates.
+            const candidates = handlesSharingBasename(baselineRef);
             return errorResult(
-              `\`baseline\` "${baselineRef}" is neither a resident handle nor a readable snapshot file.`,
+              candidates.length > 1
+                ? `\`baseline\` "${baselineRef}" matches ${candidates.length} resident snapshots ` +
+                    `(${candidates.join(', ')}), so it cannot be resolved by name. Pass one of those handles.`
+                : `\`baseline\` "${baselineRef}" is neither a resident handle nor a readable snapshot file.`,
             );
           }
           baselineRef = loaded;

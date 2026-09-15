@@ -69,20 +69,75 @@ function judge(
       return {pass: last > 0};
     case 'grows':
       if (counts.length < 2) return null;
-      return {pass: trendOf(counts) === '↑ every step'};
-    case 'flat':
+      // Decided on the DISCRIMINANT, not on the rendered label. Comparing
+      // against the literal '↑ every step' coupled the verdict to display text:
+      // rewording the label (or changing the glyph) would have turned every
+      // `grows` expectation into a silent ❌ FAIL with no compile-time or test
+      // signal.
+      return {pass: shapeOf(counts).upEveryStep};
+    case 'flat': {
       if (counts.length < 2) return null;
-      return {pass: net <= 0};
+      // `net <= 0` alone accepted any series whose last rung is not above its
+      // first, so 0 → 5,000 → 0 and 1,000 → 500 → 100 both passed as "flat"
+      // while the count table beside them showed a large excursion or a clear
+      // downward trend. `flat` has to mean no material move at ANY step, which
+      // means bounding the FALLS too: bounding only the rises still passed
+      // 1,000 → 500 → 100, the second case this comment cites.
+      const {maxStepRise, maxStepFall} = shapeOf(counts);
+      const tolerance = Math.max(1, Math.abs(counts[0]) * 0.02);
+      if (maxStepRise > tolerance) {
+        return {
+          pass: false,
+          // Only a series that came back "returned". Saying so unconditionally
+          // described 0 → 5,000 → 9,000 as having returned to where it started.
+          note:
+            net <= tolerance
+              ? `rose ${formatNumber(maxStepRise)} at one step before returning`
+              : `rose ${formatNumber(maxStepRise)} at one step and stayed up (net +${formatNumber(net)})`,
+        };
+      }
+      if (maxStepFall > tolerance) {
+        return {
+          pass: false,
+          note: `fell ${formatNumber(maxStepFall)} at one step; a decline is not flat`,
+        };
+      }
+      return {
+        pass: net <= tolerance,
+        note:
+          net > tolerance
+            ? `grew ${formatNumber(net)} net, in steps too small to flag individually`
+            : undefined,
+      };
+    }
   }
 }
 
-function trendOf(counts: number[]): string {
+/**
+ * The shape facts a verdict needs, separate from how the trend is rendered.
+ */
+function shapeOf(counts: number[]): {
+  upEveryStep: boolean;
+  maxStepRise: number;
+  maxStepFall: number;
+} {
   let up = true;
+  let maxStepRise = 0;
+  let maxStepFall = 0;
   for (let i = 1; i < counts.length; i++) {
     if (counts[i] <= counts[i - 1]) up = false;
+    const step = counts[i] - counts[i - 1];
+    maxStepRise = Math.max(maxStepRise, step);
+    maxStepFall = Math.max(maxStepFall, -step);
   }
   const net = counts[counts.length - 1] - counts[0];
-  if (up && net > 0) return '↑ every step';
+  return {upEveryStep: up && net > 0, maxStepRise, maxStepFall};
+}
+
+function trendOf(counts: number[]): string {
+  const {upEveryStep} = shapeOf(counts);
+  const net = counts[counts.length - 1] - counts[0];
+  if (upEveryStep) return '↑ every step';
   if (net > 0) return 'grew net';
   if (net < 0) return 'shrank';
   return 'flat';
@@ -113,7 +168,7 @@ export function registerHypothesis(server: McpServer): void {
               .enum(['grows', 'flat', 'absent', 'present'])
               .optional()
               .describe(
-                'What this hypothesis PREDICTS, turning the row into a pass/fail. Without it the table is 15 rows of counts that still have to be read one at a time against what you thought would happen, which is the step that gets skipped at hypothesis 12. `grows` = up every step (needs >=2 rungs); `flat` = no net growth; `absent` = zero matches everywhere; `present` = non-zero in the last rung.',
+                'What this hypothesis PREDICTS, turning the row into a pass/fail. Without it the table is 15 rows of counts that still have to be read one at a time against what you thought would happen, which is the step that gets skipped at hypothesis 12. `grows` = up every step (needs >=2 rungs); `flat` = no material move at any step, in either direction (a large excursion that returns, and a steady decline, both FAIL); `absent` = zero matches everywhere; `present` = non-zero in the last rung.',
               ),
           }),
         )
@@ -314,9 +369,9 @@ export function registerHypothesis(server: McpServer): void {
                           ? expectations[t] == null
                             ? '—'
                             : 'undecidable'
-                          : v.pass
-                            ? '✅ PASS'
-                            : '❌ FAIL',
+                          : `${v.pass ? '✅ PASS' : '❌ FAIL'}${
+                              v.note != null ? ` — ${v.note}` : ''
+                            }`,
                       ]
                     : []),
                 ];

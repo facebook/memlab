@@ -83,6 +83,30 @@ export function deriveCycleAxis(
   if (cyclesPerRung != null && cyclesPerRung.length === paths.length) {
     return {axis: cyclesPerRung, source: 'caller'};
   }
+  // A `ladder:<name>` reference (see tools/ladder.ts) is ONE raw entry that
+  // expands to every rung later, so the count here is not the rung count and a
+  // mismatch against it proves nothing — rejecting on it made the documented
+  // `paths: ["ladder:x"]` + `cycles_per_rung` call unusable. Hand the axis back
+  // and let the caller check it against the RESOLVED rungs, which is the only
+  // place the comparison means anything (ladder-probe.ts does exactly that).
+  if (
+    cyclesPerRung != null &&
+    paths.length === 1 &&
+    paths[0].startsWith('ladder:')
+  ) {
+    return {axis: cyclesPerRung, source: 'caller'};
+  }
+  // A caller-supplied axis of the WRONG length used to fall through silently to
+  // filenames or even spacing, discarding a measured axis without a word.
+  if (cyclesPerRung != null && cyclesPerRung.length !== paths.length) {
+    throw new Error(
+      `cycles_per_rung has ${cyclesPerRung.length} entries but ${paths.length} ` +
+        `rung(s) were resolved, so it cannot be the axis for them. Pass one entry ` +
+        `per resolved rung, or drop it and let the axis come from \`run_dir\` / the ` +
+        `filenames. (A "ladder:<name>" reference expands to several rungs, so count ` +
+        `the rungs it resolves to, not the arguments you passed.)`,
+    );
+  }
   const fromNames = paths.map(cyclesFromFilename);
   if (fromNames.every(v => v != null)) {
     const axis = fromNames as number[];
@@ -306,6 +330,14 @@ export function resolveLadderInputs(args: {
   manifest: RunManifest | null;
   segment: LadderSegment | null;
   /**
+   * How many segments the run has. `segment` is non-null on an UNSPLIT run too
+   * (there is exactly one segment and it is the whole ladder), so it cannot be
+   * used to ask "did this run reload mid-ladder?" — a caller that did printed
+   * "pick a segment with more than one rung" for a run that has no other
+   * segment to pick. 0 when there is no manifest to count.
+   */
+  segmentCount: number;
+  /**
    * Wall clock the RESOLVED ladder spans — the segment's own span when one is
    * selected, the whole run's otherwise. Callers must prefer this over
    * `manifest.wallClockSeconds`: on a segment the latter is the whole run, and
@@ -343,8 +375,24 @@ export function resolveLadderInputs(args: {
         source: 'manifest',
         manifest,
         segment: chosen,
+        segmentCount: segments.length,
         spanSeconds: chosen.spanSeconds,
       };
+    }
+    // An out-of-range or copied-from-another-run `segment` reached here
+    // whenever the run had no split, and was accepted in silence — on a run
+    // with one segment the validation above never runs. `segment` decides which
+    // heap the numbers describe, so a mismatched index has to be an error, not
+    // a no-op. `"all"` is the explicit override and stays valid.
+    if (
+      typeof args.segment === 'number' &&
+      segments.length <= 1 &&
+      args.segment !== 0
+    ) {
+      throw new Error(
+        `no segment ${args.segment} in this run — it was not split mid-ladder, so segment 0 ` +
+          `is the whole thing. Drop \`segment\`, or pass 0.`,
+      );
     }
     return {
       paths: manifest.paths,
@@ -353,6 +401,7 @@ export function resolveLadderInputs(args: {
       source: 'manifest',
       manifest,
       segment: segments.length === 1 ? segments[0] : null,
+      segmentCount: segments.length,
       spanSeconds: manifest.wallClockSeconds,
     };
   }
@@ -374,6 +423,7 @@ export function resolveLadderInputs(args: {
     source,
     manifest: null,
     segment: null,
+    segmentCount: 0,
     spanSeconds: null,
   };
 }
@@ -383,9 +433,20 @@ export function describeSegmentSelection(
   segment: LadderSegment | null,
   manifest: RunManifest | null,
 ): string | null {
-  if (segment == null || manifest == null) return null;
+  if (manifest == null) return null;
   const total = ladderSegments(manifest).length;
   if (total < 2) return null;
+  // `segment: "all"` resolves to a null segment on a run that HAS splits, so
+  // every report rendered no header at all and silently mixed rungs from
+  // different V8 isolates — the exact reading failure the segment machinery
+  // exists to prevent, just behind an explicit flag. Say so instead.
+  if (segment == null) {
+    return (
+      `_**Whole ladder across ${total} isolates.** The page reloaded mid-run, so these rungs are ` +
+      `NOT all the same V8 heap and the numbers below span the reloads. Pass \`segment: <n>\` to ` +
+      `analyze one isolate._`
+    );
+  }
   return (
     `_**Segment ${segment.index} of ${total}** (rungs ${segment.firstRung}-${segment.lastRung}). ` +
     `The page reloaded mid-run; the other segments are different V8 isolates and are NOT included ` +

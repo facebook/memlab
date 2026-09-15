@@ -57,6 +57,45 @@ const WINDOW_KEY =
  */
 const NOT_A_WINDOW = /^(timeoutId|timeoutID|_timeout|intervalId|intervalID)$/;
 
+/**
+ * Convert a window value to milliseconds using the UNIT NAMED IN ITS KEY.
+ *
+ * Every value used to be rendered and compared against the ladder span as if it
+ * were milliseconds, but the name scan matches keys that carry a different unit
+ * — `staleTimeSeconds`, `cleanupIntervalMinutes` — or none at all. A
+ * seconds-valued key rendered ~1000x too small and then failed the "longer than
+ * the ladder" test, which is the row a reader acts on.
+ *
+ * Returns the multiplier and the unit that was recognised; `null` unit means
+ * the key says nothing, in which case ms remains the assumption and the table
+ * marks it.
+ */
+const UNITS: ReadonlyArray<{re: RegExp; toMs: number; unit: string}> = [
+  {re: /(?:^|[_.-])(?:ms|millis|milliseconds?)$/i, toMs: 1, unit: 'ms'},
+  {re: /(?:^|[_.-])(?:s|secs?|seconds?)$/i, toMs: 1000, unit: 's'},
+  // `m`, `min` and `mins` are deliberately absent: `retry_delay_min` is a
+  // MINIMUM at least as often as it is minutes, and reading it as minutes
+  // multiplies the value by 60,000 and invents a window longer than the
+  // ladder — the row a reader acts on. Spelled-out `minutes` is unambiguous.
+  {re: /(?:^|[_.-])minutes?$/i, toMs: 60_000, unit: 'min'},
+  {re: /(?:^|[_.-])(?:h|hrs?|hours?)$/i, toMs: 3_600_000, unit: 'h'},
+  {re: /(?:^|[_.-])(?:d|days?)$/i, toMs: 86_400_000, unit: 'd'},
+];
+
+function unitOf(key: string): {toMs: number; unit: string | null} {
+  // camelCase carries no delimiter before the unit — in `staleTimeSeconds` the
+  // character before `Seconds` is a word character, so a `(_|\b)` boundary
+  // never matches and both keys the docblock names above fell through to "no
+  // unit". Inserting the delimiter the case change implies lets one delimited
+  // rule serve both spellings, while still refusing a bare lowercase suffix
+  // (`staleWindows` ends in `s` and is not seconds).
+  const delimited = key.replace(/([a-z0-9])([A-Z])/g, '$1_$2');
+  for (const {re, toMs, unit} of UNITS) {
+    if (re.test(delimited)) return {toMs, unit};
+  }
+  return {toMs: 1, unit: null};
+}
+
 /** Render a millisecond count the way a human reasons about a window. */
 export function humanDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return String(ms);
@@ -185,15 +224,21 @@ export function registerRetentionWindows(server: McpServer): void {
         });
 
         let exceeding = 0;
+        let assumedMs = 0;
         const rows = hits.slice(0, limit).map(h => {
+          const {toMs, unit} = unitOf(h.key);
+          const valueMs = h.value == null ? null : h.value * toMs;
+          if (h.value != null && unit == null) assumedMs++;
           const overLadder =
-            spanMs != null && h.value != null && h.value > spanMs;
+            spanMs != null && valueMs != null && valueMs > spanMs;
           if (overLadder) exceeding++;
           return [
             h.key,
             h.owner,
             formatNumber(h.count),
-            h.value == null ? '(not recorded)' : humanDuration(h.value),
+            valueMs == null
+              ? '(not recorded)'
+              : `${humanDuration(valueMs)}${unit == null ? ' †' : ''}`,
             overLadder ? '⚠️ longer than ladder' : '',
           ];
         });
@@ -211,6 +256,18 @@ export function registerRetentionWindows(server: McpServer): void {
           ),
           '',
         ];
+
+        if (assumedMs > 0) {
+          lines.push(
+            `_† ${assumedMs} row(s) carry no unit in the key, so the value is read as ` +
+              'MILLISECONDS. A key that is really seconds or minutes renders ~1000x too small ' +
+              'here and will not trip the "longer than ladder" flag — check the source before ' +
+              'acting on one. Keys naming their unit are converted, in either spelling ' +
+              '(`stale_time_seconds`, `staleTimeSeconds`). `min` is left unconverted on purpose: ' +
+              'it is a MINIMUM as often as it is minutes._',
+            '',
+          );
+        }
 
         if (spanMs != null) {
           lines.push(

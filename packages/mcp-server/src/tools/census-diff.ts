@@ -283,6 +283,29 @@ export function registerCensusDiff(server: McpServer): void {
           // rungs are different V8 isolates and their census diff is a
           // comparison of two unrelated heaps.
           const inputs = resolveLadderInputs({run_dir, segment});
+          // A one-rung run — or a one-rung SEGMENT, which `ladderSegments`
+          // produces legitimately whenever a split falls on the first or last
+          // rung — makes baseline and target the same file. Without this the
+          // tool censuses a snapshot against itself twice over and prints a
+          // guaranteed all-zero "nothing moved" diff as if it were a finding.
+          // The sibling ladder tools already refuse this (`ladder-probe` checks
+          // `resolved.length < 2`, `computeSequenceTrends` throws for <2).
+          if (inputs.paths.length < 2) {
+            // Keyed on whether the run actually SPLIT, not on `segment != null`
+            // — an unsplit run reports its single segment too, and telling its
+            // operator to "pick a segment with more than one rung" names a
+            // choice that does not exist while hiding the advice that applies.
+            const isSplitRun = inputs.segmentCount > 1;
+            return errorResult(
+              new Error(
+                `this ${isSplitRun ? 'segment' : 'run'} has only ${inputs.paths.length} rung, ` +
+                  'and a census diff needs 2. ' +
+                  (isSplitRun
+                    ? 'Pick a segment with more than one rung, or pass `segment: "all"`.'
+                    : 'Drive more cycles, or pass `baseline` and `target` explicitly.'),
+              ),
+            );
+          }
           baseline = inputs.paths[0];
           target = inputs.paths[inputs.paths.length - 1];
         }

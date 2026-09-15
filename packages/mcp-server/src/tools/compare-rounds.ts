@@ -50,10 +50,42 @@ interface RoundData {
   rates: Map<string, number>;
   /** component -> longest pending chain */
   chains: Map<string, number>;
+  /** Analysis artifacts that are ABSENT — the all-missing test counts these. */
   missing: string[];
+  /** Artifacts that exist but could not be read for what this tool needs. */
+  notes: string[];
+  /** How many analysis artifacts `readRound` looked for, for the all-missing test. */
+  artifactCount: number;
 }
 
-const MB = /([-+]?[\d.]+)\s*MB/;
+/**
+ * The number attached to `app_delta:`, in MB, whatever unit it was printed in.
+ *
+ * Anchored to the text right AFTER `app_delta:` and accepting every unit
+ * `formatBytes` can emit. Matching the first `<n> MB` anywhere on the line read
+ * the wrong number twice over: `artifact_budget` renders small rounds in B/KB
+ * (`**app_delta: +386.5 KB — 10% of the +2.6 MB total**`), so the regex skipped
+ * the delta and returned the TOTAL, and a line with no `MB` at all silently
+ * became `—`.
+ */
+const APP_DELTA = /app_delta:\s*([-+]?[\d.]+)\s*(B|KB|MB|GB)\b/i;
+const UNIT_MB: Record<string, number> = {
+  b: 1 / (1024 * 1024),
+  kb: 1 / 1024,
+  mb: 1,
+  gb: 1024,
+};
+
+/**
+ * Both note lists are capped. Saying so matters: a sweep with more than
+ * NOTE_LIMIT hits silently hid the remainder, which can include the one row the
+ * tool exists to surface.
+ */
+const NOTE_LIMIT = 40;
+
+function truncationNote(total: number): string[] {
+  return total > NOTE_LIMIT ? [`- _…showing ${NOTE_LIMIT} of ${total}._`] : [];
+}
 
 function readIf(file: string): string | null {
   return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
@@ -64,8 +96,26 @@ function parseAppDelta(text: string | null): number | null {
   if (text == null) return null;
   const line = text.split('\n').find(l => l.includes('app_delta'));
   if (line == null) return null;
-  const m = MB.exec(line);
-  return m ? Number(m[1]) : null;
+  const m = APP_DELTA.exec(line);
+  if (m == null) return null;
+  const scale = UNIT_MB[m[2].toLowerCase()];
+  return scale == null ? null : Number(m[1]) * scale;
+}
+
+/**
+ * The row key has to mean the same thing in every round, and the rendered cell
+ * text does not.
+ *
+ * `react_update_queues` appends ` ⚠` to a component whose walk hit the cap, and
+ * `leak_report` truncates a class label to 34 chars with `…`. The same
+ * component keyed as `Foo` in one round and `Foo ⚠` in the next split into two
+ * rows, each present in half the rounds — and `min_rounds` then dropped both.
+ */
+function normalizePopulationKey(raw: string): string {
+  return raw
+    .replace(/\s*⚠\s*$/u, '')
+    .replace(/…$/u, '')
+    .trim();
 }
 
 /**
@@ -95,7 +145,7 @@ function parseLeakRates(text: string | null): Map<string, number> {
   for (const line of lines.slice(1)) {
     const c = cells(line);
     if (c.length <= Math.max(classCol, rateCol)) continue;
-    const name = c[classCol];
+    const name = normalizePopulationKey(c[classCol]);
     const rate = Number(c[rateCol].replace(/[+,]/g, ''));
     if (name !== '' && !/^-+$/.test(name) && Number.isFinite(rate)) {
       out.set(name, rate);
@@ -123,8 +173,9 @@ function parseChains(text: string | null): Map<string, number> {
     const c = cells(line);
     if (c.length <= Math.max(compCol, chainCol)) continue;
     const n = Number(c[chainCol].replace(/,/g, ''));
-    if (c[compCol] !== '' && !/^-+$/.test(c[compCol]) && Number.isFinite(n)) {
-      out.set(c[compCol], n);
+    const comp = normalizePopulationKey(c[compCol]);
+    if (comp !== '' && !/^-+$/.test(comp) && Number.isFinite(n)) {
+      out.set(comp, n);
     }
   }
   return out;
@@ -149,6 +200,10 @@ function parseChains(text: string | null): Map<string, number> {
  */
 function nearWhole(x: number, tol = 0.03, maxMagnitude = 20): number | null {
   if (!Number.isFinite(x)) return null;
+  // A NEGATIVE rate is not a unit rate. Rounding `Math.abs(x)` reported -1.00
+  // as "≈ 1 per cycle" and bolded it in the matrix, dropping the sign that says
+  // the population SHRANK — the opposite reading of the row.
+  if (x < 0) return null;
   const a = Math.abs(x);
   if (a < 1 - tol || a > maxMagnitude + tol) return null;
   const r = Math.round(a);
@@ -159,20 +214,42 @@ function readRound(dir: string): RoundData {
   const name = path.basename(dir.replace(/\/$/, ''));
   const manifest = loadRunManifest(dir);
   const a = path.join(dir.replace(/\/$/, ''), 'analysis');
-  const budget = readIf(path.join(a, 'memlab_artifact_budget.txt'));
-  const leak = readIf(path.join(a, 'memlab_leak_report.txt'));
-  const queues = readIf(path.join(a, 'memlab_react_update_queues.txt'));
+  const artifacts = [
+    ['artifact_budget', 'memlab_artifact_budget.txt'],
+    ['leak_report', 'memlab_leak_report.txt'],
+    ['react_update_queues', 'memlab_react_update_queues.txt'],
+  ] as const;
+  const budget = readIf(path.join(a, artifacts[0][1]));
+  const leak = readIf(path.join(a, artifacts[1][1]));
+  const queues = readIf(path.join(a, artifacts[2][1]));
   const missing: string[] = [];
   if (budget == null) missing.push('artifact_budget');
   if (leak == null) missing.push('leak_report');
   if (queues == null) missing.push('react_update_queues');
+  const rates = parseLeakRates(leak);
+  // A round whose leak_report exists but carries no `Δ/cycle` column (the
+  // column only appears when the cycle count is known) parses to an empty rate
+  // map, and every class then renders `—` — indistinguishable from "that class
+  // was absent". Recording it is what makes the un-analysable round visible,
+  // which is the tool's stated contract.
+  //
+  // Kept OUT of `missing`, which counts artifacts that are ABSENT: the
+  // all-missing test downstream is `missing.length >= artifactCount`, so
+  // mixing a parse-quality note in let a round that produced one readable
+  // artifact be reported as having no analysis output at all.
+  const notes: string[] =
+    leak != null && rates.size === 0
+      ? ['leak_report has no Δ/cycle column']
+      : [];
   return {
     name,
+    artifactCount: artifacts.length,
     cycles: manifest.cycles,
     appDeltaMB: parseAppDelta(budget),
-    rates: parseLeakRates(leak),
+    rates,
     chains: parseChains(queues),
     missing,
+    notes,
   };
 }
 
@@ -238,7 +315,7 @@ export function registerCompareRounds(server: McpServer): void {
               r.name,
               formatNumber(r.cycles),
               r.appDeltaMB == null ? '—' : r.appDeltaMB.toFixed(1),
-              r.missing.length > 0 ? r.missing.join(', ') : '',
+              [...r.missing, ...r.notes].join(', '),
             ]),
             new Set([1, 2]),
           ),
@@ -250,9 +327,21 @@ export function registerCompareRounds(server: McpServer): void {
 
         const buildMatrix = (
           title: string,
-          pick: (r: RoundData) => Map<string, number>,
+          // Precomputed per round, NOT a callback. `pick(r)` was called once
+          // per round to collect names and again inside the per-population
+          // loops, so a derived map (the chains one builds a fresh Map every
+          // call) was rebuilt roughly 3 x rounds x populations times.
+          byRound: Map<RoundData, Map<string, number>>,
           unitLabel: string,
+          // Whether a positive cell means the population GREW. True for a
+          // Δ/cycle rate; false for the chains matrix, whose cells are
+          // longest-chain-per-cycle and are positive whenever any pending chain
+          // exists — so a stable chain was being reported as "grew".
+          valueIsGrowthRate: boolean,
         ): void => {
+          const empty = new Map<string, number>();
+          const pick = (r: RoundData): Map<string, number> =>
+            byRound.get(r) ?? empty;
           const names = new Set<string>();
           for (const r of rounds) for (const k of pick(r).keys()) names.add(k);
           const rows: string[][] = [];
@@ -276,7 +365,12 @@ export function registerCompareRounds(server: McpServer): void {
                   `\`${n}\` in **${r.name}**: ${v.toFixed(3)} ≈ **${whole}** ${unitLabel}`,
                 );
               }
-              if (v > 0 && r.appDeltaMB != null && r.appDeltaMB < 0) {
+              if (
+                valueIsGrowthRate &&
+                v > 0 &&
+                r.appDeltaMB != null &&
+                r.appDeltaMB < 0
+              ) {
                 invisibleNotes.push(
                   `\`${n}\` grew in **${r.name}** while app_delta was ${r.appDeltaMB.toFixed(1)} MB`,
                 );
@@ -297,21 +391,31 @@ export function registerCompareRounds(server: McpServer): void {
         };
 
         if (metric === 'classes' || metric === 'both') {
-          buildMatrix('Per-class Δ/cycle', r => r.rates, 'per cycle');
+          const byRound = new Map(rounds.map(r => [r, r.rates]));
+          buildMatrix('Per-class Δ/cycle', byRound, 'per cycle', true);
         }
         if (metric === 'chains' || metric === 'both') {
           // A chain equal to the cycle count is the unit-rate signature in the
           // form it actually appeared: chain length == cycles driven.
-          buildMatrix(
-            'Longest React pending chain (records)',
-            r => {
+          //
+          // Built once per round. The title says per-cycle because the cells
+          // are `longest / cycles`; labelling it "(records)" put a different
+          // number under the same name as the round's own react_update_queues
+          // report.
+          const byRound = new Map(
+            rounds.map(r => {
               const perCycle = new Map<string, number>();
-              for (const [k, v] of r.chains) {
-                if (r.cycles > 0) perCycle.set(k, v / r.cycles);
+              if (r.cycles > 0) {
+                for (const [k, v] of r.chains) perCycle.set(k, v / r.cycles);
               }
-              return perCycle;
-            },
+              return [r, perCycle] as const;
+            }),
+          );
+          buildMatrix(
+            'Longest React pending chain (records per cycle)',
+            byRound,
             'record(s) per cycle',
+            false,
           );
         }
 
@@ -323,7 +427,10 @@ export function registerCompareRounds(server: McpServer): void {
               '"it grew": it says one record is stranded per interaction, which points at a specific ' +
               'call site rather than at a trend.',
             '',
-            ...[...new Set(unitRateNotes)].slice(0, 40).map(n => `- ${n}`),
+            ...[...new Set(unitRateNotes)]
+              .slice(0, NOTE_LIMIT)
+              .map(n => `- ${n}`),
+            ...truncationNote(new Set(unitRateNotes).size),
             '',
           );
         }
@@ -335,12 +442,20 @@ export function registerCompareRounds(server: McpServer): void {
               'called those rounds clean — a measured sweep had eight of them, with chains reaching ' +
               '9,818 records while the heap shrank.',
             '',
-            ...[...new Set(invisibleNotes)].slice(0, 40).map(n => `- ${n}`),
+            ...[...new Set(invisibleNotes)]
+              .slice(0, NOTE_LIMIT)
+              .map(n => `- ${n}`),
+            ...truncationNote(new Set(invisibleNotes).size),
             '',
           );
         }
 
-        const noAnalysis = rounds.filter(r => r.missing.length === 3);
+        // Compared against the number of artifacts actually checked, not a
+        // literal 3: adding a fourth artifact to `readRound` would otherwise
+        // stop every analysis-less round from being reported as such.
+        const noAnalysis = rounds.filter(
+          r => r.missing.length >= r.artifactCount,
+        );
         if (noAnalysis.length > 0) {
           lines.push(
             `_${noAnalysis.length} round(s) have no analysis output at all ` +

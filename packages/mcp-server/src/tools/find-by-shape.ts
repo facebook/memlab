@@ -98,10 +98,19 @@ export function registerFindByShape(server: McpServer): void {
             ),
           );
         }
+        // Compared as SETS. The matcher itself builds a Set from these, so the
+        // same names in a different order select an identical population —
+        // rejecting `["a","b"]` against `["b","a"]` as "different values" was
+        // refusing a call that contained no disagreement.
+        const sameNames = (a: string[], b: string[]): boolean => {
+          const sa = new Set(a);
+          const sb = new Set(b);
+          return sa.size === sb.size && [...sb].every(n => sa.has(n));
+        };
         if (
           propertiesParam != null &&
           shapeAlias != null &&
-          propertiesParam.join('\u0000') !== shapeAlias.join('\u0000')
+          !sameNames(propertiesParam, shapeAlias)
         ) {
           return errorResult(
             new Error(

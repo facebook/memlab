@@ -243,10 +243,39 @@ export function registerAnalysisBattery(server: McpServer): void {
         const written: Array<{tool: string; bytes: number; ms: number}> = [];
         const failures: string[] = [];
         let skipped = 0;
+        // Every step whose args name no snapshot of their own reads whatever
+        // `memlab_load_snapshot` left resident. If that load failed, running
+        // them anyway meant censusing a STALE snapshot (or none), and
+        // `digestFor` then lifted plausible-looking lines into the returned
+        // digest as though they described this round — a silently wrong answer
+        // with nothing in the output saying so.
+        const needsResidentSnapshot = (step: Step): boolean => {
+          const a = step.args as Record<string, unknown>;
+          return (
+            a.run_dir == null &&
+            a.paths == null &&
+            a.file_path == null &&
+            a.baseline == null &&
+            a.target == null
+          );
+        };
+        let loadFailed = false;
 
         for (const step of plan) {
+          // A load that never RAN leaves the previous round's snapshot resident,
+          // which is the same wrong answer as a load that ran and failed — so
+          // the two skip paths below have to set `loadFailed` as well.
+          const isLoad = step.tool === 'memlab_load_snapshot';
           if (deadline != null && Date.now() > deadline) {
             skipped++;
+            if (isLoad) loadFailed = true;
+            continue;
+          }
+          if (loadFailed && needsResidentSnapshot(step)) {
+            skipped++;
+            failures.push(
+              `${step.tool}: skipped — the snapshot load it depends on did not succeed`,
+            );
             continue;
           }
           const entry = getRegisteredTool(step.tool);
@@ -254,6 +283,7 @@ export function registerAnalysisBattery(server: McpServer): void {
             // A profile naming a tool this build does not have is a bug in the
             // profile, not a reason to abandon the round.
             failures.push(`${step.tool}: not registered in this build`);
+            if (isLoad) loadFailed = true;
             continue;
           }
           const started = Date.now();
@@ -267,6 +297,14 @@ export function registerAnalysisBattery(server: McpServer): void {
           } catch (err: unknown) {
             text = `ERROR: ${err instanceof Error ? err.message : String(err)}`;
             failures.push(`${step.tool}: ${text.slice(0, 160)}`);
+          }
+          // Both spellings of failure: a thrown error and an error RESULT,
+          // which `errorResult` returns as text rather than throwing.
+          if (
+            step.tool === 'memlab_load_snapshot' &&
+            /^(ERROR|❌|Error:)/.test(text.trimStart())
+          ) {
+            loadFailed = true;
           }
           const ms = Date.now() - started;
           const file = path.join(outDir, `${step.tool}.txt`);

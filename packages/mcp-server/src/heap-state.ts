@@ -9,6 +9,7 @@
  */
 
 import type {IHeapSnapshot} from '@memlab/core';
+import path from 'path';
 import {tickAnalysis} from './analysis-budget.js';
 
 export type SnapshotEnv = 'browser' | 'node' | 'unknown';
@@ -466,18 +467,77 @@ export function getCurrentHandle(): string | null {
  * `endsWith` and removes a whole class of retry that, in CLI mode, is paid for
  * with a full reload.
  *
- * Only exact and basename matches are accepted. Fuzzy/prefix matching is
- * deliberately not done: silently resolving to the wrong rung would be far
- * worse than an error, because the analysis would still produce a number.
+ * Only exact matches, equivalent spellings of the same path, and an
+ * unambiguous basename are accepted. Fuzzy/prefix matching is deliberately not
+ * done: silently resolving to the wrong rung would be far worse than an error,
+ * because the analysis would still produce a number.
  */
 export function resolveHandle(ref: string): string | null {
   if (loaded.has(ref)) return ref;
+  // An exact FILE PATH match beats every name-based guess. Handles come from
+  // `uniqueHandle`, which disambiguates a collision with a suffix, so two
+  // rounds whose snapshots share a basename (`r29/snapshots/rung_00_c0` and
+  // `r30/snapshots/rung_00_c0`) get different handles — and resolving the
+  // second one's FULL PATH by basename silently returned the first round's
+  // snapshot. That is exactly the wrong-rung outcome this function's contract
+  // says it will not produce.
+  for (const [handle, {metadata}] of loaded) {
+    if (metadata.filePath === ref) return handle;
+  }
   const base = ref.replace(/\.heapsnapshot$/i, '');
   if (base !== ref && loaded.has(base)) return base;
+  // A reference that carries a DIRECTORY names one file even when another
+  // resident shares its basename — but only if the two spellings compare
+  // equal. The byte-identical check above misses a relative path, a `./`
+  // prefix, and a path written without the `.heapsnapshot` suffix, all of
+  // which then fell through to the ambiguity refusal below for a snapshot
+  // that is resident and unambiguously identified.
+  if (path.dirname(ref) !== '.') {
+    for (const [handle, {metadata}] of loaded) {
+      if (samePathIgnoringSuffix(metadata.filePath, ref)) return handle;
+    }
+  }
   // A full path whose basename is a handle: `/tmp/run/snapshots/rung_01.heapsnapshot`.
+  // Only when it is UNAMBIGUOUS: if several residents share that basename, the
+  // caller has to say which, because picking one would be a coin flip.
   const leaf = base.split(/[/\\]/).pop();
-  if (leaf != null && leaf !== base && loaded.has(leaf)) return leaf;
+  if (leaf != null && leaf !== base && loaded.has(leaf)) {
+    if (handlesSharingBasename(ref).length <= 1) return leaf;
+    return null;
+  }
   return null;
+}
+
+/** Two spellings of the same file, `.heapsnapshot` suffix optional on either. */
+function samePathIgnoringSuffix(a: string, b: string): boolean {
+  const norm = (p: string): string =>
+    path.resolve(p.replace(/\.heapsnapshot$/i, ''));
+  return norm(a) === norm(b);
+}
+
+/**
+ * The resident handles whose snapshot file shares `ref`'s basename.
+ *
+ * `resolveHandle` returns null for an ambiguous basename, which reads to a
+ * caller exactly like "not resident" — so the operator was told the reference
+ * was neither a handle nor a readable file, for a snapshot that was resident
+ * twice over. Error paths use this to say which handles it could have meant.
+ */
+export function handlesSharingBasename(ref: string): string[] {
+  const leaf = ref
+    .replace(/\.heapsnapshot$/i, '')
+    .split(/[/\\]/)
+    .pop();
+  if (leaf == null || leaf === '') return [];
+  return [...loaded.entries()]
+    .filter(
+      ([, {metadata}]) =>
+        metadata.filePath
+          .replace(/\.heapsnapshot$/i, '')
+          .split(/[/\\]/)
+          .pop() === leaf,
+    )
+    .map(([handle]) => handle);
 }
 
 export function getSnapshotByHandle(handle: string): IHeapSnapshot | null {
