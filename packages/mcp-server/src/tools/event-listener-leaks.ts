@@ -21,6 +21,23 @@ import {
   toolResult,
 } from '../utils.js';
 
+// Container property names, NOT emitter class names: the scan looks for an
+// object that OWNS one of these and treats the target as eventName -> listeners.
+//
+// Every name here has to be enumerated, because a container this scan cannot
+// name is reported as "no accumulation found" — a confident zero that reads as
+// evidence of absence. `_subscriptionsForType` is the one that proved that
+// hurts: it is the container of the EventSubscriptionVendor emitter used
+// throughout Meta's web codebase, it was absent from this list, and the scan
+// answered "No event listener accumulation found" at min_listeners:2 on a
+// capture holding 62,780 live subscription records across 382 arrays, one of
+// them 4,155 deep. `memlab_event_registry` and `memlab_census_diff` both saw
+// that population on the same heap, so the two disagreed with no way to tell
+// which was right. Its records are {context, eventType, key, listener, remove,
+// subscriber}, which `inspectEventContainer` already destructures via the
+// `listener` / `context` aliases; the arrays are also hole-ridden, because that
+// emitter unsubscribes with `delete arr[key]` and never compacts, and holes
+// emit no element edge so the count below stays the LIVE count.
 const EVENT_PROPERTY_NAMES = new Set([
   '_events',
   '_listeners',
@@ -29,7 +46,33 @@ const EVENT_PROPERTY_NAMES = new Set([
   '_eventHandlers',
   'listeners',
   '__listeners',
+  '_subscriptionsForType',
 ]);
+
+/**
+ * Undo a compiler's class-name decoration on a property name.
+ *
+ * An exact-name match against the set above is not enough on a BUILT bundle,
+ * and this was measured rather than reasoned: on a real browser capture of a
+ * www page the container of a live 360-listener emitter is not
+ * `_subscriptionsForType` at all, it is
+ * `$EventSubscriptionVendor_subscriptionsForType` — the class-property
+ * transform prefixes the field with its declaring class (and a private `#x`
+ * becomes `$Class$p_x`, e.g. `$BaseEventEmitter$p_subscriber`). The heap held
+ * 11 `EventSubscriptionVendor` objects and `memlab_find_by_property` for the
+ * undecorated name returned nothing.
+ *
+ * So keying on the source spelling alone reproduces the very failure the name
+ * list exists to prevent — a confident zero — just one build step later. The
+ * decoration is stripped before matching, which costs one regex per candidate
+ * edge and makes the set match both the authored and the compiled spelling.
+ * The RAW name is what gets reported, so the reader sees the property that is
+ * actually in the heap.
+ */
+export function undecoratePropertyName(name: string): string {
+  const m = /^\$[A-Za-z0-9]+(?:\$p)?(_[A-Za-z0-9_]+)$/.exec(name);
+  return m != null ? m[1] : name;
+}
 
 interface ListenerEntry {
   callbackId: number;
@@ -249,7 +292,8 @@ export function registerEventListenerLeaks(server: McpServer): void {
   server.tool(
     'memlab_event_listener_leaks',
     'Detect EventEmitter-style listener accumulation — the #1 cause of memory leaks in ' +
-      'event-driven apps. Scans for: (1) objects with _events/_listeners properties (Backbone/Node.js), ' +
+      'event-driven apps. Scans for: (1) objects with _events/_listeners/_subscriptionsForType ' +
+      'properties (Backbone/Node.js, EventSubscriptionVendor), ' +
       'and (2) accumulations of {callback, context}-shaped objects (custom event systems like ' +
       'WAWebEventEmitter, Signal, etc.). Detects arrays with >N entries (accumulation), entries ' +
       'where the context/ctx object has no other referrers (zombie listeners), and multiple entries ' +
@@ -328,7 +372,13 @@ export function registerEventListenerLeaks(server: McpServer): void {
 
           for (const edge of node.references) {
             const eName = String(edge.name_or_index);
-            if (!effectiveEventProps.has(eName)) continue;
+            // Match on the undecorated name, report the raw one.
+            if (
+              !effectiveEventProps.has(eName) &&
+              !effectiveEventProps.has(undecoratePropertyName(eName))
+            ) {
+              continue;
+            }
             if (edge.toNode.id <= 3) continue;
 
             const events = inspectEventContainer(edge.toNode);
@@ -514,10 +564,23 @@ export function registerEventListenerLeaks(server: McpServer): void {
         }
 
         if (accumulations.length === 0) {
+          // This is a zero that has been wrong before, so it does not get to
+          // read as "there is no accumulation on this heap". The scan only sees
+          // containers it can NAME, and an app whose emitter names its
+          // container something not in the built-in list produces exactly this
+          // message on a heap holding tens of thousands of live records. Point
+          // at the two tools that find the population WITHOUT needing the name,
+          // and at the parameter that fixes the scan once the name is known.
           return toolResult(
             `No event listener accumulation found with >= ${min_listeners} listeners. ` +
-              `Try lowering min_listeners, or check \`memlab_find_by_property\` with property_name="callback", ` +
-              `or use \`memlab_shape_histogram\` with sort_by="count" to find high-count shapes.`,
+              `This means no *named* event container was found — it is not proof the heap has none: ` +
+              `the scan only recognizes containers whose property name it knows. ` +
+              `Before concluding there is no listener leak, cross-check with ` +
+              `\`memlab_event_registry\` (walks registries structurally, no name needed) and ` +
+              `\`memlab_census_diff\` across a ladder. If those show a population this missed, ` +
+              `re-run with extra_event_properties: ["<the container property name>"]. ` +
+              `Also try lowering min_listeners, \`memlab_find_by_property\` with property_name="callback", ` +
+              `or \`memlab_shape_histogram\` with sort_by="count" to find high-count shapes.`,
           );
         }
 
