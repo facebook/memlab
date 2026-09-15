@@ -76,11 +76,46 @@ function resolveNodeBin() {
   return process.execPath;
 }
 
+const DEFAULT_MAX_OLD_SPACE_MB = 8192;
+
+/**
+ * Old-space limit (MB) to run the SERVER with.
+ *
+ * This has to be passed as an explicit flag, because the interpreter is chosen
+ * by resolveNodeBin() and is not necessarily the one the caller's environment
+ * was set up for. But an explicit `--max-old-space-size` also OVERRIDES any
+ * `--max-old-space-size` in NODE_OPTIONS — so while this was hardcoded, the
+ * advice "restart the server with NODE_OPTIONS=--max-old-space-size=..." that
+ * the load tools print could not work, and the 8192 here was an unliftable
+ * ceiling on what the server would ever accept.
+ *
+ * It is a ceiling because `memlab_load_snapshot` derives its node/edge limits
+ * from the limit the process is ACTUALLY running with (computeDefaultCeilings),
+ * so raising this raises what loads, with no other change and no retuning of
+ * the safety estimates.
+ */
+function resolveMaxOldSpaceMB() {
+  const raw = process.env.MEMLAB_MAX_OLD_SPACE_MB;
+  if (raw == null || raw === '') {
+    return DEFAULT_MAX_OLD_SPACE_MB;
+  }
+  const n = Number(raw);
+  // Refused rather than defaulted: silently falling back would reproduce the
+  // exact confusion this replaces — a limit the operator believes they raised
+  // and did not.
+  if (!Number.isFinite(n) || n < 512) {
+    throw new Error(
+      `MEMLAB_MAX_OLD_SPACE_MB must be a number of MB >= 512, got: ${raw}`,
+    );
+  }
+  return Math.round(n);
+}
+
 class Client {
   constructor(serverPath) {
     this.proc = spawn(
       resolveNodeBin(),
-      ['--max-old-space-size=8192', serverPath],
+      [`--max-old-space-size=${resolveMaxOldSpaceMB()}`, serverPath],
       {stdio: ['pipe', 'pipe', 'pipe']},
     );
     this.nextId = 0;

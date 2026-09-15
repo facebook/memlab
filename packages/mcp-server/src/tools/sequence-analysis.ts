@@ -22,8 +22,10 @@ import memlabCore from '@memlab/core';
 const {utils: memlabUtils} = memlabCore;
 const {getFullHeapFromFile} = memlabHeapAnalysis;
 import {
+  getOldSpaceLimitMB,
   LOCAL_FILE_SIZE_LIMIT_MB,
   MANIFOLD_FETCH_SIZE_LIMIT_MB,
+  raiseHeapHint,
   resolveMaxFileSizeMB,
   resolveSnapshotPath,
 } from './load-snapshot.js';
@@ -228,7 +230,7 @@ export async function computeSequenceTrends(
       throw new Error(
         `${p} is ${sizeMB.toFixed(0)} MB — exceeds the ${effectiveMaxFileSizeMB} MB per-file safety limit. ` +
           `Raise it with ${toolName}({max_file_size_mb: ${Math.ceil(sizeMB + 100)}}), ` +
-          `or restart the MCP server with more memory (NODE_OPTIONS="--max-old-space-size=8192") if it isn't already provisioned.`,
+          `or ${raiseHeapHint(getOldSpaceLimitMB())}`,
       );
     }
     // Reuse a snapshot that is already resident rather than re-parsing it.

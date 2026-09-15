@@ -114,6 +114,35 @@ export const LOAD_BYTES_PER_EDGE = 40;
 export const HEADROOM_SAFETY_FRACTION = 0.8;
 
 /**
+ * How to actually raise this server's heap — and therefore the load ceilings,
+ * which computeDefaultCeilings derives from the limit the process is running
+ * with.
+ *
+ * Written once and parameterised, because the obvious phrasing is wrong in a
+ * way that is easy to repeat. An explicit `--max-old-space-size` on the command
+ * line OVERRIDES the same flag in NODE_OPTIONS, and both supported launchers —
+ * the memlab plugin's start.sh and bin/memlab-cli.js — pass it explicitly. An
+ * operator told only to set NODE_OPTIONS therefore changes nothing, restarts,
+ * and meets the identical ceiling; that is what made the ceiling look like a
+ * hard property of the tool rather than a configured number.
+ *
+ * The suggested value is derived from the CURRENT limit rather than fixed at
+ * 8192: telling a server already running at 8192 to restart at 8192 is exactly
+ * the dead-end advice this replaces.
+ */
+export function raiseHeapHint(currentHeapMB: number): string {
+  const doubled = currentHeapMB > 0 ? currentHeapMB * 2 : 16384;
+  const target = Math.max(16384, Math.round(doubled / 1024) * 1024);
+  return (
+    `restart the server with a larger heap (~${formatNumber(target)} MB). ` +
+    `Set MEMLAB_MAX_OLD_SPACE_MB=${target} if it is started by the memlab plugin or ` +
+    `bin/memlab-cli.js — both pass --max-old-space-size explicitly, which OVERRIDES ` +
+    `NODE_OPTIONS — or NODE_OPTIONS="--max-old-space-size=${target}" if you run ` +
+    `dist/index.js directly. Raising it raises the node/edge ceiling with it.`
+  );
+}
+
+/**
  * Projected additional heap (MB) a full load of this graph will occupy.
  * Light loads skip the dominator/retained-size arrays; the parsed graph still
  * dominates, so the discount is modest and intentionally conservative.
@@ -611,7 +640,7 @@ function largestLoadableSibling(
 export function registerLoadSnapshot(server: McpServer): void {
   server.tool(
     'memlab_load_snapshot',
-    'Load and parse a .heapsnapshot file. This builds indexes, computes the dominator tree, and calculates retained sizes. Returns a quick diagnosis highlighting potential issues. Accepts a local absolute path, a manifold:// URL, or a bare snapshot filename (resolved against the nest_server_nodejs_heap_snapshots bucket and fetched automatically). Multiple snapshots can be kept resident — pass keep_previous:true to load several for diffing/comparison; switch between them with memlab_snapshots. Cost note: the load working set is several× the file size and the dominator pass runs uninterruptibly, so large/deep snapshots are memory- and time-heavy — run the server with NODE_OPTIONS="--max-old-space-size=8192", load one snapshot at a time (omit keep_previous) on large heaps, and prefer memlab_sequence_analysis (transient per-snapshot loads) when you only need trend/growth across a ladder. A node/edge-count ceiling (max_nodes/max_edges) refuses pathologically large loads before they wedge the server; the ceiling auto-scales from the server\'s configured --max-old-space-size (an 8 GB server admits the ~1.1 GB / ~14M-node / ~55M-edge Nest tier by default), and force:true self-sizes from the header counts so a one-off oversized load needs no manual max_nodes/max_edges. A light load (light:true) skips the dominator pass the ceiling exists to bound, so the auto-scaled ceiling does not apply to it — an explicitly passed max_nodes/max_edges still does.',
+    'Load and parse a .heapsnapshot file. This builds indexes, computes the dominator tree, and calculates retained sizes. Returns a quick diagnosis highlighting potential issues. Accepts a local absolute path, a manifold:// URL, or a bare snapshot filename (resolved against the nest_server_nodejs_heap_snapshots bucket and fetched automatically). Multiple snapshots can be kept resident — pass keep_previous:true to load several for diffing/comparison; switch between them with memlab_snapshots. Cost note: the load working set is several× the file size and the dominator pass runs uninterruptibly, so large/deep snapshots are memory- and time-heavy — run the server with a large heap (MEMLAB_MAX_OLD_SPACE_MB when started by the memlab plugin or bin/memlab-cli.js, which pass --max-old-space-size explicitly and so override NODE_OPTIONS; otherwise NODE_OPTIONS="--max-old-space-size=8192"), load one snapshot at a time (omit keep_previous) on large heaps, and prefer memlab_sequence_analysis (transient per-snapshot loads) when you only need trend/growth across a ladder. A node/edge-count ceiling (max_nodes/max_edges) refuses pathologically large loads before they wedge the server; the ceiling auto-scales from the server\'s configured --max-old-space-size (an 8 GB server admits the ~1.1 GB / ~14M-node / ~55M-edge Nest tier by default), and force:true self-sizes from the header counts so a one-off oversized load needs no manual max_nodes/max_edges. A light load (light:true) skips the dominator pass the ceiling exists to bound, so the auto-scaled ceiling does not apply to it — an explicitly passed max_nodes/max_edges still does.',
     {
       file_path: z
         .string()
@@ -809,16 +838,14 @@ export function registerLoadSnapshot(server: McpServer): void {
             `1. Use a smaller snapshot from the same app if available`,
             `2. Increase the limit: memlab_load_snapshot({max_file_size_mb: ${Math.ceil(fileSizeMB + 100)}})`,
           ];
-          // Only recommend more memory when the server isn't already at 8 GB —
-          // the shipped default (feedback: the "restart with more memory" advice
-          // was a red herring when the server was already at 8 GB). An unknown
-          // limit (heapMB === 0) also satisfies this and keeps the advice, since
-          // we can't confirm the server is already provisioned.
-          if (heapMB < 8192) {
-            options.push(
-              `3. Restart the MCP server with more memory: NODE_OPTIONS="--max-old-space-size=8192"`,
-            );
-          }
+          // Offered at every heap size. This used to be gated on heapMB < 8192,
+          // because at the shipped 8192 default "restart with more memory" was
+          // a red herring — there was no supported way to get more. There is
+          // now (MEMLAB_MAX_OLD_SPACE_MB), so withholding the lever from the
+          // servers that most need it is the worse error.
+          options.push(
+            `3. To raise the safety limit itself, ${raiseHeapHint(heapMB)}`,
+          );
           return errorResult(
             new Error(
               `Snapshot file is ${formatBytes(fileStat.size)} — exceeds the ${effectiveMaxFileSizeMB} MB safety limit. ` +
@@ -912,12 +939,13 @@ export function registerLoadSnapshot(server: McpServer): void {
             `3. Load LIGHT — parses the graph but skips the dominator/retained-size pass, which is the pass this ceiling exists to bound, so the auto ceiling does not apply: memlab_load_snapshot({file_path: "${file_path}", light: true}).${explicitCeiling ? ' You passed an explicit max_nodes/max_edges, which is still honored on a light load — drop it to use the light exemption.' : ''} Enables counts, names, types, self sizes and string values (memlab_search_strings, memlab_class_histogram, memlab_search_nodes, memlab_snapshot_summary); tools needing retained sizes or retainer paths still refuse rather than reporting zeros.`,
             `4. Load it anyway with force:true — it self-sizes from these header counts, so you do NOT also need max_nodes/max_edges: memlab_load_snapshot({file_path: "${file_path}", force: true}). Expect a long, uninterruptible dominator pass.`,
           ];
-          // Only suggest more memory when the server is actually under-provisioned.
-          if (heapMB > 0 && heapMB < 8192) {
-            options.push(
-              `5. This server has only ~${formatNumber(heapMB)} MB — restart it with more memory to raise the ceiling before forcing: NODE_OPTIONS="--max-old-space-size=8192".`,
-            );
-          }
+          // The ceiling above is computed FROM heapMB, so this is the option
+          // that removes the refusal rather than working around it — offered at
+          // every heap size, including the 8192 default, which is a configured
+          // number and not a property of the tool.
+          options.push(
+            `5. Raise the ceiling instead of forcing past it: ${raiseHeapHint(heapMB)}`,
+          );
           return errorResult(
             new Error(
               `Snapshot has ${formatNumber(counts.nodeCount)} nodes / ${formatNumber(counts.edgeCount)} edges — exceeds the load ceiling ` +
@@ -987,7 +1015,7 @@ export function registerLoadSnapshot(server: McpServer): void {
                   `1. Unload snapshots you no longer need: memlab_snapshots({action: "unload", handle: "…"}).\n` +
                   `2. Load light — skips the dominator/retained-size pass: memlab_load_snapshot({file_path: "${file_path}", light: true}).\n` +
                   `3. Use a smaller/earlier snapshot, or memlab_sequence_analysis for trend questions (it holds one graph at a time).\n` +
-                  `4. Restart the server with more memory: NODE_OPTIONS="--max-old-space-size=8192".\n` +
+                  `4. Give it more room: ${raiseHeapHint(heapMB)}\n` +
                   `5. Override this projection with force:true (accepts the OOM risk).`,
               ),
             );
@@ -1047,7 +1075,6 @@ export function registerLoadSnapshot(server: McpServer): void {
             msg.includes('ENOMEM')
           ) {
             const heapMB = getOldSpaceLimitMB();
-            const already8g = heapMB >= 8192;
             return errorResult(
               new Error(
                 `Out of memory while loading ${formatBytes(fileStat.size)} snapshot. ` +
@@ -1056,9 +1083,12 @@ export function registerLoadSnapshot(server: McpServer): void {
                   `.\n\n` +
                   `Try:\n` +
                   `1. A smaller/earlier snapshot from the same app or ladder\n` +
-                  (already8g
-                    ? `2. This server is already at ~${formatNumber(heapMB)} MB — this snapshot is simply too large to load in full; use memlab_sequence_analysis for trend/growth without a full load.`
-                    : `2. Restart with more memory: NODE_OPTIONS="--max-old-space-size=8192"`),
+                  `2. memlab_sequence_analysis for trend/growth, which never holds more than one graph\n` +
+                  // Previously this arm said "already at ~8192 MB — this
+                  // snapshot is simply too large to load in full", which reads
+                  // as a property of the snapshot. It is a property of a
+                  // configured flag, and the flag is settable.
+                  `3. ${raiseHeapHint(heapMB)}`,
               ),
             );
           }
