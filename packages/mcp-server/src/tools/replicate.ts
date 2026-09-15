@@ -96,9 +96,41 @@ export function adjudicate(
   }
   const growing = runs.filter(r => r.grows);
   if (growing.length === 0) {
+    // The verdict stays NOT_REPRODUCED: the GROWTH hypothesis is what did not
+    // reproduce, and memlab_react_update_queues reads this exact verdict to
+    // separate "chains lengthening" from "queues multiplying".
+    //
+    // The old summary — "there is nothing here to attribute" — is the part that
+    // was wrong, and only in the case that matters most. When every run agrees
+    // the series is flat, the flatness has reproduced perfectly, and for a
+    // PAIRED measurement that zero is the result being sought: a queue breadth
+    // pinned at the identical value across independent runs, beside a record
+    // count that rises in both, is what proves the chains are lengthening
+    // rather than multiplying. Reported as an absence of signal, the strongest
+    // half of that pair reads like a failed measurement.
+    const deltas = runs.map(r => r.delta);
+    const spread = Math.max(...deltas) - Math.min(...deltas);
+    // Scale-relative, because "flat" means nothing in the absolute: a spread of
+    // 3 is noise on a population of 3,398 and an effect on one of 12.
+    const scale = Math.max(
+      1,
+      ...runs.map(r => Math.max(...r.values.map(v => Math.abs(v)))),
+    );
+    const agree = spread <= scale * 0.01;
+    const perRun = runs
+      .map(r => `${r.label}: net ${formatNumber(r.delta)}`)
+      .join(', ');
     return {
       verdict: 'NOT_REPRODUCED',
-      summary: `No run shows the effect (${runs.length}/${runs.length} flat or shrinking). There is nothing here to attribute.`,
+      summary: agree
+        ? `No run shows the effect, and the runs AGREE on that (${perRun}). The growth ` +
+          `hypothesis did not reproduce; the FLATNESS did, to within 1% of the series ` +
+          `scale. If this series is the paired control — a breadth or capacity measure ` +
+          `beside a population that IS rising — quote this agreement as evidence, not as ` +
+          `a missing result. If it was the effect you were looking for, it is not there.`
+        : `No run shows the effect (${runs.length}/${runs.length} flat or shrinking), and ` +
+          `they do not agree on the size of the non-effect (${perRun}). There is nothing ` +
+          `here to attribute.`,
     };
   }
   if (growing.length < runs.length) {
