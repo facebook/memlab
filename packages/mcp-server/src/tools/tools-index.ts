@@ -212,7 +212,7 @@ const GROUPS: Group[] = [
       ],
       [
         'memlab_hypothesis',
-        'State a leak hypothesis and have it checked against the ladder instead of arguing it.',
+        'Test MANY predicates against every rung in ONE pass each, with an `expect` per predicate for a PASS/FAIL column. Use it instead of hand-writing a `memlab_eval` per theory — a second forEach over a multi-million-node graph aborts on the cumulative node budget.',
       ],
       [
         'memlab_verify_fix',
@@ -242,6 +242,14 @@ const GROUPS: Group[] = [
       [
         'memlab_module_attribution',
         'Attribute bytes to the MODULE that owns them, by walking dominators up to the nearest module-registry export.',
+      ],
+      [
+        'memlab_census',
+        'Count several named populations (detached DOM, listener records, LRU cache nodes, React fibers, timers, …) across every rung in ONE pass each, with per-cycle rates and a settle verdict.',
+      ],
+      [
+        'memlab_external_strings',
+        'Attribute `system / ExternalStringData` — usually the largest class in a browser heap, and the one a retainer trace cannot explain. Names the source chunks by reading their content.',
       ],
       [
         'memlab_explain_delta',

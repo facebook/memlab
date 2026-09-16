@@ -61,6 +61,14 @@ export interface RunManifest {
   caveats: string[];
   /** Combos driven, for the report header. */
   combos: string[];
+  /**
+   * Path of the SETTLE rung, when the round captured one.
+   *
+   * Null means the round cannot distinguish retention from in-flight backlog —
+   * which is a property of the round, not a missing field, so every consumer
+   * should say UNSETTLED rather than quietly analysing the ladder alone.
+   */
+  settleRungPath: string | null;
 }
 
 /** `rung_02_c375.heapsnapshot` -> 375. */
@@ -177,6 +185,12 @@ export function loadRunManifest(runDir: string): RunManifest {
     throw new Error(`run.json at ${file} is not valid JSON: ${String(e)}`);
   }
 
+  const settleRaw = raw.settle_rung as {path?: unknown} | null | undefined;
+  const settleRungPath =
+    settleRaw != null && typeof settleRaw.path === 'string'
+      ? settleRaw.path
+      : null;
+
   const rungs = Array.isArray(raw.rungs) ? raw.rungs : [];
   if (rungs.length === 0) {
     throw new Error(
@@ -228,6 +242,7 @@ export function loadRunManifest(runDir: string): RunManifest {
     combos: asStringArray(
       (raw.config as Record<string, unknown> | undefined)?.combos,
     ),
+    settleRungPath,
   };
 }
 
