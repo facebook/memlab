@@ -285,9 +285,17 @@ export function registerSettleCheck(server: McpServer): void {
           });
         }
 
+        // Whether a baseline EXISTS, not whether the caller named one by
+        // handle. `run_dir` resolves and loads a baseline rung itself, so
+        // keying the verdict on `baseline_handle` threw away a 1.1 GB load
+        // and reported the weaker "ranks reclamation, not leaks" wording on
+        // the path that actually had the stronger evidence.
+        const hasBaseline = baseHist != null;
+        const baselineLabel = baseline_handle ?? "the run dir's baseline rung";
+
         if (rows.length === 0) {
           return toolResult(
-            `No class grew by at least ${formatNumber(min_growth)} between ${baseline_handle ?? '(no baseline)'} and ${busy_handle}. Lower min_growth, or check that the handles are in the right order (busy, then settled).`,
+            `No class grew by at least ${formatNumber(min_growth)} between ${hasBaseline ? baselineLabel : '(no baseline)'} and ${busy_handle ?? 'the last driven rung'}. Lower min_growth, or check that the rungs are in the right order (busy, then settled).`,
           );
         }
 
@@ -306,24 +314,24 @@ export function registerSettleCheck(server: McpServer): void {
           source,
           `Heap self size ${formatBytes(busyTotal)} → ${formatBytes(settledTotal)} (${settledTotal <= busyTotal ? '−' : '+'}${formatBytes(Math.abs(busyTotal - settledTotal))} reclaimed by settling).`,
           '',
-          baseline_handle == null
-            ? `**No baseline given, so this ranks reclamation, not leaks.** ${drained.length} class(es) came back almost entirely (in-flight work) and ${held.length} stayed — but "stayed" here includes every large standing population that was never part of the burst, because without a pre-activity rung there is no growth to measure the reclamation against. Pass \`baseline_handle\` to turn this into a leak verdict.`
+          !hasBaseline
+            ? `**No baseline given, so this ranks reclamation, not leaks.** ${drained.length} class(es) came back almost entirely (in-flight work) and ${held.length} stayed — but "stayed" here includes every large standing population that was never part of the burst, because without a pre-activity rung there is no growth to measure the reclamation against. Supply one to turn this into a leak verdict: pass \`baseline_handle\`, or use a \`run_dir\` whose round has more than one driven rung (the first is taken as the baseline).`
             : held.length === 0
               ? '**Everything that grew came back.** No class survived idle + GC, so the growth in this round was in-flight work, not retention. There is nothing here to fix.'
               : `**${held.length} class(es) survived idle + GC** and ${drained.length} drained. Only the survivors are leak candidates — the drained ones were backlog and should not be reported as findings.`,
           '',
         ];
 
-        const headers = baseline_handle
+        const headers = hasBaseline
           ? ['Class', 'baseline', 'busy', 'settled', 'reclaimed', 'Verdict']
           : ['Class', 'busy', 'settled', 'reclaimed', 'Verdict'];
-        const rightCols = baseline_handle
+        const rightCols = hasBaseline
           ? new Set([1, 2, 3, 4])
           : new Set([1, 2, 3]);
         const tableRows = rows.slice(0, limit).map(r => {
           const [type, name] = r.key.split('::');
           const label = `${name} (${type})`;
-          const cells = baseline_handle
+          const cells = hasBaseline
             ? [
                 label,
                 formatNumber(r.base),
@@ -337,10 +345,9 @@ export function registerSettleCheck(server: McpServer): void {
                 formatNumber(r.idle),
                 formatNumber(r.reclaimed),
               ];
-          const note =
-            baseline_handle != null
-              ? VERDICT_NOTE[r.verdict]
-              : VERDICT_NOTE_NO_BASELINE[r.verdict];
+          const note = hasBaseline
+            ? VERDICT_NOTE[r.verdict]
+            : VERDICT_NOTE_NO_BASELINE[r.verdict];
           return [...cells, `${r.verdict} — ${note}`];
         });
         lines.push(markdownTable(headers, tableRows, rightCols));
@@ -352,7 +359,7 @@ export function registerSettleCheck(server: McpServer): void {
           '',
           '_A "drained" verdict is only as good as the settle: if the capture was taken before timers, network callbacks and storage writes finished, work still in flight will read as retention. Give it 30-60s of true idle and force GC first._',
         );
-        if (held.length > 0 && baseline_handle != null) {
+        if (held.length > 0 && hasBaseline) {
           lines.push(
             '',
             '**Next:** for each survivor, `memlab_retainer_trace` on an example instance in the settled snapshot — that is the trace worth putting in a fix.',

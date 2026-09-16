@@ -16,6 +16,7 @@ import {
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapSnapshot} from '@memlab/core';
 import fs from 'fs';
+import path from 'path';
 import {z} from 'zod';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
 import memlabCore from '@memlab/core';
@@ -671,10 +672,30 @@ export function registerSequenceAnalysis(server: McpServer): void {
         // separates them is a rung captured after the app settles, and it is
         // the step most often skipped — so the absence of one is called out
         // here rather than left for the reader to remember.
-        lines.push(
-          '',
-          '⏳ **No settle rung.** Every growth figure above was measured while the app was active, so in-flight work is indistinguishable from retention here. Capture one more snapshot after ~30-60s idle with a forced GC and run `memlab_settle_check(busy_handle, settled_handle)`: classes that return to baseline were backlog, not leaks.',
-        );
+        // The round MAY already have one: the runner captures a settle rung by
+        // default and records it in run.json, and this tool deliberately keeps
+        // it out of the trend (it is not a driven rung). Printing the advice
+        // unconditionally told every settled round to go and capture the rung
+        // it had already captured, and pointed at the old handle-based
+        // signature rather than the run_dir one that resolves it for you.
+        if (inputs.manifest?.settleRungPath != null) {
+          // A manifest without a run_dir is only reachable through `paths`, so
+          // name the rung rather than emitting `{run_dir: ""}` — advice that
+          // cannot be pasted is worse than advice that names the file.
+          const how =
+            run_dir != null
+              ? `\`memlab_settle_check({run_dir: ${JSON.stringify(run_dir)}})\``
+              : "`memlab_settle_check` (pass the round's `run_dir`, or the busy and settled handles)";
+          lines.push(
+            '',
+            `⏳ This round HAS a settle rung (\`${path.basename(inputs.manifest.settleRungPath)}\`), which is excluded from the trend above because it was not driven. The figures above therefore cannot tell retention from in-flight work on their own — adjudicate them with ${how}.`,
+          );
+        } else {
+          lines.push(
+            '',
+            '⏳ **No settle rung.** Every growth figure above was measured while the app was active, so in-flight work is indistinguishable from retention here. Capture one more snapshot after ~30-60s idle with a forced GC and run `memlab_settle_check`: classes that return to baseline were backlog, not leaks.',
+          );
+        }
 
         return toolResult(
           lines.join('\n'),
