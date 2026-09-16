@@ -35,6 +35,7 @@
 
 import {spawn} from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import {fileURLToPath} from 'url';
 
@@ -77,6 +78,104 @@ function resolveNodeBin() {
 }
 
 const DEFAULT_MAX_OLD_SPACE_MB = 8192;
+// Fraction of physical RAM the server may claim when the default is used.
+const MAX_OLD_SPACE_RAM_FRACTION = 0.6;
+// Above this, more old space buys nothing for snapshot analysis.
+const MAX_OLD_SPACE_CEILING_MB = 49152;
+// Smallest limit worth starting with, and the same floor resolveMaxOldSpaceMB
+// enforces on an explicit MEMLAB_MAX_OLD_SPACE_MB.
+const MAX_OLD_SPACE_MIN_MB = 512;
+
+/**
+ * The container's memory cap in MB, or 0 when the process is not capped.
+ *
+ * `os.totalmem()` reports the HOST's RAM and knows nothing about a cgroup cap,
+ * so inside a memory-limited container 60% of the host is routinely more than
+ * the container may ever use — and the failure mode is an OOM-kill by the
+ * kernel instead of V8 refusing the load at its own ceiling, which is strictly
+ * worse because it takes the server with it. Both cgroup generations expose the
+ * cap; v2 writes "max" when unlimited. `start.sh` reads the same two files.
+ */
+function cgroupLimitMB() {
+  for (const f of [
+    '/sys/fs/cgroup/memory.max',
+    '/sys/fs/cgroup/memory/memory.limit_in_bytes',
+  ]) {
+    try {
+      const raw = fs.readFileSync(f, 'utf8').trim();
+      if (raw === 'max') {
+        continue;
+      }
+      const bytes = Number(raw);
+      // v1 spells "unlimited" as a huge sentinel rather than a word.
+      if (
+        !Number.isFinite(bytes) ||
+        bytes <= 0 ||
+        bytes >= Number.MAX_SAFE_INTEGER
+      ) {
+        continue;
+      }
+      return Math.round(bytes / (1024 * 1024));
+    } catch {
+      // Not present on this host or not readable — try the next spelling.
+    }
+  }
+  return 0;
+}
+
+/**
+ * Old-space default, sized from the machine rather than fixed at 8 GB.
+ *
+ * 8192 was a safe constant on any host, and it is also the number that made a
+ * two-snapshot comparison impossible: holding two rungs of a large capture
+ * resident measured 5.2 GB RSS, which the 8 GB limit refuses. The env var
+ * exists, but most operators never discover it, so the default has to be right
+ * on its own. Take a fraction of the memory actually available (leaving room
+ * for the browser being driven and the rest of the machine), floored at the
+ * historical default so a small host is never made worse, and capped so a very
+ * large host does not hand V8 a limit it will never use.
+ *
+ * Rounded to the nearest whole GB. `start.sh` computes the same number the same
+ * way; truncating in one and rounding in the other made the two launchers
+ * disagree on the same host (16 GB: 9830 vs 10240).
+ */
+function defaultMaxOldSpaceMB() {
+  let totalMB = 0;
+  try {
+    totalMB = Math.round(os.totalmem() / (1024 * 1024));
+  } catch {
+    totalMB = 0;
+  }
+  const cgroupMB = cgroupLimitMB();
+  const capped = cgroupMB > 0 && (totalMB <= 0 || cgroupMB < totalMB);
+  if (capped) {
+    totalMB = cgroupMB;
+  }
+  if (!Number.isFinite(totalMB) || totalMB <= 0) {
+    return DEFAULT_MAX_OLD_SPACE_MB;
+  }
+  const scaled =
+    Math.round((totalMB * MAX_OLD_SPACE_RAM_FRACTION) / 1024) * 1024;
+  if (capped) {
+    // Under a HARD cap the 8 GB floor does not apply, and the limit is held
+    // at the same 60% the uncapped path targets — not at the cap itself. A
+    // 4 GB container clamped to 4096 would tell V8 it may fill 100% of what
+    // the kernel allows, leaving nothing for the analysis process's own RSS,
+    // which is the OOM-kill this lookup exists to prevent. The GB-rounded
+    // `scaled` can round UP past 60%, so take whichever is smaller.
+    const headroom = Math.floor(cgroupMB * MAX_OLD_SPACE_RAM_FRACTION);
+    return Math.min(
+      MAX_OLD_SPACE_CEILING_MB,
+      Math.max(MAX_OLD_SPACE_MIN_MB, Math.min(scaled, headroom)),
+    );
+  }
+  // Uncapped: the historical 8192 floor stands, so a small bare-metal host is
+  // never made worse than it was before this default existed.
+  return Math.min(
+    MAX_OLD_SPACE_CEILING_MB,
+    Math.max(DEFAULT_MAX_OLD_SPACE_MB, scaled),
+  );
+}
 
 /**
  * Old-space limit (MB) to run the SERVER with.
@@ -97,7 +196,7 @@ const DEFAULT_MAX_OLD_SPACE_MB = 8192;
 function resolveMaxOldSpaceMB() {
   const raw = process.env.MEMLAB_MAX_OLD_SPACE_MB;
   if (raw == null || raw === '') {
-    return DEFAULT_MAX_OLD_SPACE_MB;
+    return defaultMaxOldSpaceMB();
   }
   const n = Number(raw);
   // Refused rather than defaulted: silently falling back would reproduce the

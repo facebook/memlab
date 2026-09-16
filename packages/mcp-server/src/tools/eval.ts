@@ -28,6 +28,7 @@ import {
   setSavedResult,
   getEvalScratch,
   getSnapshotMetadata,
+  noteAlreadyEmitted,
   shouldEmitNote,
 } from '../heap-state.js';
 import {beginAnalysisBudget} from '../analysis-budget.js';
@@ -51,6 +52,7 @@ import {
   enumerateSetElements,
   objectContentSignature,
   boundedDominatorRetainedSize,
+  suggestionsSuppressed,
 } from '../utils.js';
 
 const MAX_OUTPUT_SIZE = 50 * 1024; // 50KB
@@ -2931,7 +2933,25 @@ export async function runEval({
     // four in a row — and the recovery path (`mode:"describe_env"`) is a
     // ~10 KB document nobody reaches for mid-probe. Fifteen lines here costs
     // a fraction of that and arrives before the first mistake.
-    if (shouldEmitNote('eval:helper-cheatsheet')) {
+    // Honour the session-level suppression too. The once-per-session guard is
+    // scoped to the PROCESS, and an analysis loop that spawns a fresh server
+    // per batch therefore pays this on the first eval of every batch — which,
+    // across a long sweep, is the single largest repeated block of text the
+    // server emits. A caller that has already read it can now turn it off for
+    // good with memlab_snapshots({suppress_suggestions: true}).
+    // Order matters, and both halves mutate. `suggestionsSuppressed` ADVANCES
+    // the trailer budgets, so asking it on every eval spent one of the 12
+    // global slots on a note emitted at most once per process — starving a
+    // later tool of its own first-time trailer, and suppressing this cheat
+    // sheet outright once 12 trailers had already been printed. `noteAlreadyEmitted`
+    // is the non-marking read, so the budget is consulted only for the one
+    // call that is otherwise about to print, and the note stays unmarked when
+    // suppression wins.
+    if (
+      !noteAlreadyEmitted('eval:helper-cheatsheet') &&
+      !suggestionsSuppressed('eval') &&
+      shouldEmitNote('eval:helper-cheatsheet')
+    ) {
       footer.push(
         'helpers (once per session; `mode:"describe_env"` for full signatures): ' +
           'walk({name: pred}, {collect}) runs SEVERAL predicates in ONE pass — the ' +
