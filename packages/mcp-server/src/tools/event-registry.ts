@@ -9,8 +9,12 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
-import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
+import {
+  DEFAULT_MIN_REGISTRY_EVENTS,
+  listenersFromArray,
+  type Listener,
+} from '../emitter-shapes.js';
 import {getSnapshot} from '../heap-state.js';
 import {
   formatNumber,
@@ -21,37 +25,6 @@ import {
   ScanTimeoutError,
 } from '../utils.js';
 
-const CALLBACK_PROPS = new Set(['callback', 'fn', 'handler', 'listener']);
-const CONTEXT_PROPS = new Set(['context', 'ctx', 'this', 'target', 'scope']);
-
-interface Listener {
-  callbackId: number;
-  contextId: number;
-}
-
-// Extract {callback, context} listeners (or bare closures) from an Array node.
-function listenersFromArray(arr: IHeapNode): Listener[] {
-  const out: Listener[] = [];
-  for (const e of arr.references) {
-    if (e.type !== 'element') continue;
-    const entry = e.toNode;
-    if (entry.id <= 3) continue;
-    if (entry.type === 'closure') {
-      out.push({callbackId: entry.id, contextId: 0});
-    } else if (entry.type === 'object') {
-      let cb = 0;
-      let ctx = 0;
-      for (const pe of entry.references) {
-        const pn = String(pe.name_or_index);
-        if (CALLBACK_PROPS.has(pn)) cb = pe.toNode.id;
-        else if (CONTEXT_PROPS.has(pn)) ctx = pe.toNode.id;
-      }
-      if (cb > 0) out.push({callbackId: cb, contextId: ctx});
-    }
-  }
-  return out;
-}
-
 export function registerEventRegistry(server: McpServer): void {
   server.tool(
     'memlab_event_registry',
@@ -60,7 +33,7 @@ export function registerEventRegistry(server: McpServer): void {
       min_events: z
         .number()
         .optional()
-        .default(2)
+        .default(DEFAULT_MIN_REGISTRY_EVENTS)
         .describe(
           'Minimum number of event-name->listener-array properties for an object to count as a registry container (default 2).',
         ),

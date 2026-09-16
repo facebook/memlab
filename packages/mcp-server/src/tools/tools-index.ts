@@ -10,8 +10,14 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
-import {listToolNames} from '../tool-registry.js';
-import {errorResult, makeNamePatternTest, textResult} from '../utils.js';
+import {getRegisteredTool, listToolNames} from '../tool-registry.js';
+import {
+  errorResult,
+  makeNamePatternTest,
+  markdownTable,
+  textResult,
+  toolResult,
+} from '../utils.js';
 
 /**
  * The tool list, grouped by the QUESTION each tool answers.
@@ -479,6 +485,70 @@ const GROUPS: Group[] = [
   },
 ];
 
+/**
+ * Render a registered tool's input schema from the zod shape captured at
+ * registration time (see `recordToolHandler`). Uses the shape's own metadata
+ * rather than a hand-maintained table, so it cannot drift from the tool.
+ */
+function renderToolSchema(name: string): string {
+  const entry = getRegisteredTool(name);
+  if (entry == null) {
+    return `\`${name}\` is not registered. \`memlab_tools\` with no arguments lists every tool.`;
+  }
+  if (entry.shape == null) {
+    return `\`${name}\` takes no parameters.`;
+  }
+  const rows: string[][] = [];
+  for (const [key, raw] of Object.entries(entry.shape)) {
+    // zod keeps the useful bits on `_def`; read defensively because the shape
+    // is whatever the tool passed and this must never throw mid-report.
+    const def = (raw as {_def?: Record<string, unknown>})?._def ?? {};
+    const described =
+      typeof def.description === 'string' ? def.description : '';
+    let typeName = String(def.typeName ?? '').replace(/^Zod/, '') || '?';
+    let optional = false;
+    let dflt = '';
+    let cur: Record<string, unknown> = def;
+    for (let i = 0; i < 6; i++) {
+      const tn = String(cur.typeName ?? '');
+      if (tn === 'ZodOptional' || tn === 'ZodDefault') {
+        optional = true;
+        if (tn === 'ZodDefault' && typeof cur.defaultValue === 'function') {
+          try {
+            // `JSON.stringify(undefined)` is `undefined`, not a string, so a
+            // default factory that returns undefined would put the literal
+            // text "undefined" in the table instead of falling through to
+            // "optional".
+            dflt = JSON.stringify((cur.defaultValue as () => unknown)()) ?? '';
+          } catch {
+            dflt = '';
+          }
+        }
+        const inner = (cur.innerType as {_def?: Record<string, unknown>})?._def;
+        if (inner == null) break;
+        cur = inner;
+        typeName = String(cur.typeName ?? '').replace(/^Zod/, '') || typeName;
+      } else {
+        break;
+      }
+    }
+    rows.push([
+      `\`${key}\``,
+      typeName,
+      optional ? (dflt !== '' ? dflt : 'optional') : '**required**',
+      described.length > 160 ? described.slice(0, 157) + '…' : described,
+    ]);
+  }
+  if (rows.length === 0) {
+    return `\`${name}\` takes no parameters.`;
+  }
+  return [
+    `## \`${name}\` — input schema`,
+    '',
+    markdownTable(['Parameter', 'Type', 'Default', 'Description'], rows),
+  ].join('\n');
+}
+
 export function registerToolsIndex(server: McpServer): void {
   server.tool(
     'memlab_tools',
@@ -496,8 +566,17 @@ export function registerToolsIndex(server: McpServer): void {
         .describe(
           'Show the group(s) containing this tool name (with or without the memlab_ prefix).',
         ),
+      schema: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          "With `tool`, print that tool's INPUT SCHEMA (parameter, type, default, description) " +
+            'instead of the question groups. Without this there is no in-session way to discover ' +
+            "a tool's parameters except by passing a wrong one and reading the refusal.",
+        ),
     },
-    async ({question, tool}) => {
+    async ({question, tool, schema}) => {
       try {
         const registered = new Set(listToolNames());
         const wanted = tool
@@ -505,6 +584,14 @@ export function registerToolsIndex(server: McpServer): void {
             ? tool
             : `memlab_${tool}`
           : null;
+        // A tool's parameter list was previously undiscoverable in-session:
+        // the only way to learn it was to pass a wrong parameter and read the
+        // refusal, which costs a round trip and reads like a mistake rather
+        // than like documentation.
+        if (schema && wanted != null) {
+          return toolResult(renderToolSchema(wanted));
+        }
+
         const matchesQuestion = makeNamePatternTest(question);
         const indexed = new Set(GROUPS.flatMap(g => g.tools.map(([n]) => n)));
         const uncategorized = [...registered].filter(n => !indexed.has(n));

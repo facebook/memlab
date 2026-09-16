@@ -870,6 +870,38 @@ export function registerDetachedDom(server: McpServer): void {
                 ? ['', DEV_ONLY_FOOTNOTE, GATED_FOOTNOTE]
                 : []),
             );
+            // The single most decision-relevant question about any owner is
+            // whether cutting ONE edge actually reclaims it. A measured case in
+            // this workstream had the same detached subtree held by two
+            // independent owners, and an A/B proved that fixing either alone
+            // re-attributed the bytes 1:1 and reclaimed nothing. The full
+            // independence walk is O(V+E) per node and far too slow to run for
+            // every row here, so prefill the call instead of leaving the reader
+            // to know it exists.
+            const topOwner = sorted.find(([, st]) => st.ownerIds.size > 0);
+            if (topOwner != null) {
+              // The LARGEST owner, not whichever one happened to be inserted
+              // first: `ownerIds` is a Set in traversal order, so taking [0]
+              // names a different object on a re-capture of the same page and
+              // sends the reader's fix at an arbitrary member of the group.
+              // Ties fall back to the lowest id so the pick is total.
+              const ownerId = [...topOwner[1].ownerIds].sort((a, b) => {
+                const ra = snapshot.getNodeById(a)?.retainedSize ?? 0;
+                const rb = snapshot.getNodeById(b)?.retainedSize ?? 0;
+                return rb - ra || a - b;
+              })[0];
+              const ownerNode = snapshot.getNodeById(ownerId);
+              const refs = ownerNode?.numOfReferrers ?? 0;
+              lines.push(
+                '',
+                `**Before sizing a fix against the top owner, check it is the only door:** ` +
+                  `\`memlab_retainer_layers({node_id: ${ownerId}})\`` +
+                  (refs > 1
+                    ? ` — it has **${formatNumber(refs)} referrers**, so more than one may be keeping it alive. ` +
+                      `An object with several independent retainers RE-ATTRIBUTES rather than reclaims: cutting one edge moves the bytes to the next holder and the A/B measures zero.`
+                    : ' — it reports whether cutting one edge frees the object or merely re-attributes it.'),
+              );
+            }
             if (ownerless) {
               lines.push(
                 `_⚠ ${formatNumber(ownerless[1].count)} node(s) (${formatBytes(ownerless[1].totalRetained)}) have **no single owner** — their dominator is the GC root, so they are reachable through two or more independent paths and no one object frees them. Use \`memlab_retainer_summary\` / \`memlab_get_referrers\` to enumerate every path; all of them must be cut._`,

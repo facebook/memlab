@@ -10,8 +10,11 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapSnapshot} from '@memlab/core';
+import fs from 'fs';
+import path from 'path';
 import {z} from 'zod';
 import {getSnapshotByHandle} from '../heap-state.js';
+import {withSnapshotAt} from '../snapshot-borrow.js';
 import {
   errorResult,
   formatBytes,
@@ -72,6 +75,61 @@ const VERDICT_NOTE_NO_BASELINE: Record<Verdict, string> = {
   'still-growing': 'larger after idle than during the burst',
 };
 
+/** Where the runner writes the settle rung (see hunt_runner.Runner.settle). */
+const SETTLE_RUNG_BASENAME = 'rung_99_settle.heapsnapshot';
+
+interface SettlePair {
+  busyPath: string;
+  settledPath: string;
+  baselinePath: string | null;
+}
+
+/**
+ * Resolve (last driven rung, settle rung, baseline rung) from a run directory.
+ *
+ * Returns a human-readable string on failure rather than throwing, because the
+ * most common failure — the round has no settle rung — is not an error in the
+ * caller, it is the finding: that round cannot tell a leak from a backlog and
+ * must be recorded as UNSETTLED.
+ */
+function resolveSettlePair(runDir: string): SettlePair | string {
+  const snapsDir = path.join(runDir, 'snapshots');
+  const dir = fs.existsSync(snapsDir) ? snapsDir : runDir;
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return `Cannot read ${dir}. Pass the run directory the hunt runner wrote (the one containing run.json).`;
+  }
+  const settled = entries.find(e => e === SETTLE_RUNG_BASENAME);
+  if (settled == null) {
+    return (
+      `No settle rung (${SETTLE_RUNG_BASENAME}) in ${dir}.\n\n` +
+      'That round was driven without one, so NOTHING in it distinguishes retention ' +
+      'from in-flight backlog — two measured sweeps each published a large "leak" ' +
+      'that idle then drained by ~99%. Record the round as UNSETTLED rather than as ' +
+      'a leak, and re-drive with the runner default (--settle-minutes 7).'
+    );
+  }
+  // Ordered by the NUMERIC rung index, not lexicographically. The runner
+  // zero-pads to two digits, so a plain sort agrees with numeric order only
+  // while the index stays under 100 — past that `rung_100` sorts before
+  // `rung_99` and the wrong file is picked as busy or baseline, silently.
+  const driven = entries
+    .filter(e => /^rung_\d+_c\d+\.heapsnapshot$/.test(e))
+    .map(e => ({name: e, idx: Number(/^rung_(\d+)_/.exec(e)?.[1])}))
+    .sort((a, b) => a.idx - b.idx)
+    .map(e => e.name);
+  if (driven.length === 0) {
+    return `No driven rungs (rung_NN_cNNN.heapsnapshot) in ${dir}.`;
+  }
+  return {
+    busyPath: path.join(dir, driven[driven.length - 1]),
+    settledPath: path.join(dir, settled),
+    baselinePath: driven.length > 1 ? path.join(dir, driven[0]) : null,
+  };
+}
+
 export function registerSettleCheck(server: McpServer): void {
   server.tool(
     'memlab_settle_check',
@@ -83,13 +141,25 @@ export function registerSettleCheck(server: McpServer): void {
       'fraction meaningful rather than absolute). All snapshots must already be resident: load them with `keep_previous: true`.\n\n' +
       'Capture protocol for the settled rung: stop interacting, wait ~30-60s so timers, network callbacks and storage writes complete, force GC, then capture.',
     {
+      run_dir: z
+        .string()
+        .optional()
+        .describe(
+          'A leak-hunt run directory. Resolves the last DRIVEN rung and the ' +
+            'settle rung (rung_99_settle) from it and loads both transiently, ' +
+            'so the common case needs no handles and no prior load. The runner ' +
+            'writes that rung by default; a round whose run.json says ' +
+            '"settled": false has no settle rung and cannot be adjudicated.',
+        ),
       busy_handle: z
         .string()
+        .optional()
         .describe(
           'Handle of the snapshot taken at peak activity (immediately after the interaction burst).',
         ),
       settled_handle: z
         .string()
+        .optional()
         .describe(
           'Handle of the snapshot taken after the app went idle and GC ran.',
         ),
@@ -107,6 +177,7 @@ export function registerSettleCheck(server: McpServer): void {
       min_growth: z.number().optional().default(100),
     },
     async ({
+      run_dir,
       busy_handle,
       settled_handle,
       baseline_handle,
@@ -114,28 +185,81 @@ export function registerSettleCheck(server: McpServer): void {
       min_growth,
     }) => {
       try {
-        const busy = getSnapshotByHandle(busy_handle);
-        const settled = getSnapshotByHandle(settled_handle);
-        if (busy == null || settled == null) {
-          const missing = [
-            busy == null ? busy_handle : null,
-            settled == null ? settled_handle : null,
-          ].filter(Boolean);
-          return errorResult(
-            new Error(
-              `Not resident: ${missing.join(', ')}. Load every rung with memlab_load_snapshot({keep_previous: true}); this tool compares snapshots in memory rather than re-reading files.`,
-            ),
-          );
-        }
-        const baseline =
-          baseline_handle != null ? getSnapshotByHandle(baseline_handle) : null;
-        if (baseline_handle != null && baseline == null) {
-          return errorResult(new Error(`Not resident: ${baseline_handle}.`));
-        }
+        // run_dir is the ergonomic path: the runner already knows which rung is
+        // the last driven one and which is the settle rung, so re-deriving that
+        // by hand (and loading both with keep_previous) is pure ceremony that
+        // an operator skips — and skipping the settle comparison is exactly how
+        // a backlog gets published as a leak.
+        // Only the per-class histograms are compared, so the run_dir path can
+        // load each rung transiently and drop it. That matters: holding two
+        // multi-gigabyte graphs resident is what forces an operator to raise
+        // the old-space limit, and it is the reason this comparison was being
+        // skipped in practice.
+        let busyHist: Map<string, ClassStats>;
+        let settledHist: Map<string, ClassStats>;
+        let baseHist: Map<string, ClassStats> | null = null;
+        let source: string;
 
-        const busyHist = histogram(busy);
-        const settledHist = histogram(settled);
-        const baseHist = baseline != null ? histogram(baseline) : null;
+        if (run_dir != null) {
+          const pair = resolveSettlePair(run_dir);
+          if (typeof pair === 'string') {
+            return errorResult(new Error(pair));
+          }
+          busyHist = await withSnapshotAt(
+            pair.busyPath,
+            async (snap: IHeapSnapshot) => histogram(snap),
+          );
+          settledHist = await withSnapshotAt(
+            pair.settledPath,
+            async (snap: IHeapSnapshot) => histogram(snap),
+          );
+          if (pair.baselinePath != null) {
+            baseHist = await withSnapshotAt(
+              pair.baselinePath,
+              async (snap: IHeapSnapshot) => histogram(snap),
+            );
+          }
+          source =
+            `run_dir ${run_dir}\n` +
+            `busy   : ${path.basename(pair.busyPath)}\n` +
+            `settled: ${path.basename(pair.settledPath)}` +
+            (pair.baselinePath != null
+              ? `\nbaseline: ${path.basename(pair.baselinePath)}`
+              : '');
+        } else {
+          if (busy_handle == null || settled_handle == null) {
+            return errorResult(
+              new Error(
+                'Pass either run_dir (recommended — it resolves the rungs for you), ' +
+                  'or both busy_handle and settled_handle.',
+              ),
+            );
+          }
+          const busy = getSnapshotByHandle(busy_handle);
+          const settled = getSnapshotByHandle(settled_handle);
+          if (busy == null || settled == null) {
+            const missing = [
+              busy == null ? busy_handle : null,
+              settled == null ? settled_handle : null,
+            ].filter(Boolean);
+            return errorResult(
+              new Error(
+                `Not resident: ${missing.join(', ')}. Load every rung with memlab_load_snapshot({keep_previous: true}), or pass run_dir and let this tool load them transiently.`,
+              ),
+            );
+          }
+          const baseline =
+            baseline_handle != null
+              ? getSnapshotByHandle(baseline_handle)
+              : null;
+          if (baseline_handle != null && baseline == null) {
+            return errorResult(new Error(`Not resident: ${baseline_handle}.`));
+          }
+          busyHist = histogram(busy);
+          settledHist = histogram(settled);
+          baseHist = baseline != null ? histogram(baseline) : null;
+          source = `handles ${busy_handle} -> ${settled_handle}`;
+        }
 
         const rows: Array<{
           key: string;
@@ -179,7 +303,7 @@ export function registerSettleCheck(server: McpServer): void {
         const lines: string[] = [
           '## Settle check',
           '',
-          `Busy \`${busy_handle}\` → settled \`${settled_handle}\`${baseline_handle ? ` (baseline \`${baseline_handle}\`)` : ''}.`,
+          source,
           `Heap self size ${formatBytes(busyTotal)} → ${formatBytes(settledTotal)} (${settledTotal <= busyTotal ? '−' : '+'}${formatBytes(Math.abs(busyTotal - settledTotal))} reclaimed by settling).`,
           '',
           baseline_handle == null

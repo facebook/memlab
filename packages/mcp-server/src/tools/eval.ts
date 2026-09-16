@@ -2751,6 +2751,17 @@ export async function runEval({
         'Your code ran without error but never assigned to `result`, so there is nothing to return.\n' +
           'Assign the value you want back to `result` (do NOT use `return` at the top level), e.g.:\n' +
           '  `result = someValue;`\n' +
+          // Worth spelling out: when this code is a PROBE (memlab_ladder_probe,
+          // memlab_replicate, memlab_eval_across), the missing assignment is not
+          // a local mistake — the caller reports "a rung produced no number" and
+          // discards a multi-rung run that may have cost several minutes of
+          // loading. A measured replicate lost six snapshot loads to exactly this.
+          'If this code is a PROBE for memlab_ladder_probe / memlab_replicate / ' +
+          'memlab_eval_across, the probe must END in an assignment — ' +
+          '`result = snapshot.nodes.length;`, not `snapshot.nodes.length`. ' +
+          'A probe that returns nothing fails the whole multi-rung run after every ' +
+          'rung has already been loaded.\n' +
+          'Check a probe WITHOUT loading anything first: memlab_eval({code, mode:"lint"}).\n' +
           'Use mode:"describe_env" to see the full calling convention.',
       );
     }

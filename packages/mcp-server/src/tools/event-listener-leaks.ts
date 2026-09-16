@@ -13,6 +13,10 @@ import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
 import {
+  DEFAULT_MIN_REGISTRY_EVENTS,
+  findStructuralRegistries,
+} from '../emitter-shapes.js';
+import {
   formatBytes,
   formatNumber,
   markdownTable,
@@ -563,6 +567,100 @@ export function registerEventListenerLeaks(server: McpServer): void {
           }
         }
 
+        // STRUCTURAL FALLBACK. Everything above is keyed on a container
+        // PROPERTY NAME, and that cannot work on a minified build: on a real
+        // capture the container was reached through property `$1`, which no
+        // enumerable name list can contain and which it would be reckless to
+        // match on sight. When the named scan finds nothing, fall back to the
+        // shape — an object whose property values are arrays of listener-shaped
+        // records — which is what `memlab_event_registry` already does and why
+        // the two tools disagreed (762 hosts / 11,016 listeners vs "none").
+        let structuralNote = '';
+        if (accumulations.length === 0) {
+          // The same floor `memlab_event_registry` defaults to. This tool has
+          // no event-count knob of its own — it is keyed on listener counts —
+          // so the two paths are pinned to one constant rather than to two
+          // literals that can drift apart.
+          const registries = findStructuralRegistries(
+            snapshot,
+            DEFAULT_MIN_REGISTRY_EVENTS,
+          )
+            .filter(r => r.totalListeners >= min_listeners)
+            .sort((a, b) => b.totalListeners - a.totalListeners)
+            .slice(0, limit);
+          for (const r of registries) {
+            const allListeners: ListenerEntry[] = r.events.flatMap(e =>
+              e.listeners.map(l => ({
+                callbackId: l.callbackId,
+                callbackName: snapshot.getNodeById(l.callbackId)?.name ?? '',
+                contextId: l.contextId || null,
+                contextName:
+                  l.contextId > 0
+                    ? (snapshot.getNodeById(l.contextId)?.name ?? null)
+                    : null,
+              })),
+            );
+            const host = snapshot.getNodeById(r.hostId);
+            accumulations.push({
+              hostNodeId: r.hostId,
+              hostName: r.hostName,
+              hostType: 'object',
+              // Report the RAW property the container hangs off, even when it
+              // is a meaningless minified token: that token is the answer to
+              // "why did the named scan miss this?".
+              eventPropertyName:
+                r.containerProp != null
+                  ? `${r.containerProp} (structural)`
+                  : '(structural)',
+              eventContainerId: r.containerId,
+              totalListeners: r.totalListeners,
+              eventBreakdown: r.events
+                .sort((a, b) => b.listeners.length - a.listeners.length)
+                .slice(0, 10)
+                .map(e => ({
+                  eventName: e.name,
+                  listenerCount: e.listeners.length,
+                  sampleListeners: e.listeners.slice(0, 3).map(l => ({
+                    callbackId: l.callbackId,
+                    callbackName:
+                      snapshot.getNodeById(l.callbackId)?.name ?? '',
+                    contextId: l.contextId || null,
+                    contextName:
+                      l.contextId > 0
+                        ? (snapshot.getNodeById(l.contextId)?.name ?? null)
+                        : null,
+                  })),
+                })),
+              zombieCount: check_zombies
+                ? countZombies(allListeners, snapshot)
+                : 0,
+              duplicateCallbackCount: countDuplicateCallbacks(
+                r.events.map(e =>
+                  e.listeners.map(l => ({
+                    callbackId: l.callbackId,
+                    callbackName: '',
+                    contextId: l.contextId || null,
+                    contextName: null,
+                  })),
+                ),
+              ),
+              totalRetainedSize: host?.retainedSize ?? 0,
+              contextDistribution: analyze_contexts
+                ? analyzeContextDistribution(allListeners, snapshot)
+                : undefined,
+            });
+          }
+          if (accumulations.length > 0) {
+            structuralNote =
+              '\n_Found by the STRUCTURAL scan, not by container name: no known ' +
+              'container property matched, so these were identified by shape ' +
+              '(an object whose property values are arrays of listener-shaped ' +
+              'records). On a minified build the container property is often a ' +
+              'token like `$1`, which is why the name-keyed scan reports nothing. ' +
+              'The `Property` column shows the raw name it hangs off._\n';
+          }
+        }
+
         if (accumulations.length === 0) {
           // This is a zero that has been wrong before, so it does not get to
           // read as "there is no accumulation on this heap". The scan only sees
@@ -618,6 +716,7 @@ export function registerEventListenerLeaks(server: McpServer): void {
         ]);
 
         lines.push(markdownTable(headers, rows, rightCols));
+        if (structuralNote) lines.push(structuralNote);
         lines.push('');
 
         for (const a of accumulations.slice(0, 5)) {
