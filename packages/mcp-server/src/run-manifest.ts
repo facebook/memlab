@@ -69,6 +69,16 @@ export interface RunManifest {
    * should say UNSETTLED rather than quietly analysing the ladder alone.
    */
   settleRungPath: string | null;
+  /**
+   * Milliseconds since navigation at the moment the BASELINE rung was taken.
+   *
+   * A proxy for how saturated the V8 isolate already was. It belongs in the
+   * manifest because the same driven surface measured +281.8 selector-cache
+   * nodes/cycle on a freshly loaded page and +106.5 on one already driven for
+   * hundreds of cycles — a 2.6x spread with no code difference. Comparing two
+   * rounds' rates without it compares two different experiments.
+   */
+  isolateAgeMsAtBaseline: number | null;
 }
 
 /** `rung_02_c375.heapsnapshot` -> 375. */
@@ -191,6 +201,13 @@ export function loadRunManifest(runDir: string): RunManifest {
       ? settleRaw.path
       : null;
 
+  const ageRaw = raw.isolate_age_at_baseline as
+    {ms_since_navigation?: unknown} | null | undefined;
+  const isolateAgeMs =
+    ageRaw != null && typeof ageRaw.ms_since_navigation === 'number'
+      ? ageRaw.ms_since_navigation
+      : null;
+
   const rungs = Array.isArray(raw.rungs) ? raw.rungs : [];
   if (rungs.length === 0) {
     throw new Error(
@@ -243,6 +260,7 @@ export function loadRunManifest(runDir: string): RunManifest {
       (raw.config as Record<string, unknown> | undefined)?.combos,
     ),
     settleRungPath,
+    isolateAgeMsAtBaseline: isolateAgeMs,
   };
 }
 

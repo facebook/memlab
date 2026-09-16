@@ -25,6 +25,15 @@ import {
 import {linearFit, probeRung, type LinearFit} from './ladder-probe.js';
 import {resolveLadderPaths} from './ladder.js';
 
+/** How far the per-run net deltas may SPREAD and still be called consistent. */
+const AGREE_TOLERANCE = 0.01;
+/**
+ * How close to zero the MEAN delta must be for a consistent series to be
+ * called flat. An order of magnitude tighter than AGREE_TOLERANCE: agreement
+ * says the runs measured the same thing, only this says that thing was zero.
+ */
+const FLAT_TOLERANCE = 0.001;
+
 export interface RunFit {
   label: string;
   values: number[];
@@ -36,7 +45,11 @@ export interface RunFit {
 }
 
 export type ReplicationVerdict =
-  'REPRODUCED' | 'REPRODUCED_UNSTABLE' | 'NOT_REPRODUCED' | 'INCONCLUSIVE';
+  | 'REPRODUCED'
+  | 'REPRODUCED_UNSTABLE'
+  | 'REPRODUCED_FLAT'
+  | 'NOT_REPRODUCED'
+  | 'INCONCLUSIVE';
 
 /**
  * Does this one run show the effect at all?
@@ -96,12 +109,8 @@ export function adjudicate(
   }
   const growing = runs.filter(r => r.grows);
   if (growing.length === 0) {
-    // The verdict stays NOT_REPRODUCED: the GROWTH hypothesis is what did not
-    // reproduce, and memlab_react_update_queues reads this exact verdict to
-    // separate "chains lengthening" from "queues multiplying".
-    //
-    // The old summary — "there is nothing here to attribute" — is the part that
-    // was wrong, and only in the case that matters most. When every run agrees
+    // Two different outcomes hide under "no run grew", and collapsing them
+    // into one verdict loses the stronger of the two. When every run agrees
     // the series is flat, the flatness has reproduced perfectly, and for a
     // PAIRED measurement that zero is the result being sought: a queue breadth
     // pinned at the identical value across independent runs, beside a record
@@ -116,15 +125,46 @@ export function adjudicate(
       1,
       ...runs.map(r => Math.max(...r.values.map(v => Math.abs(v)))),
     );
-    const agree = spread <= scale * 0.01;
+    const agree = spread <= scale * AGREE_TOLERANCE;
+    // Agreement is necessary but NOT sufficient for "flat": three runs at
+    // -500, -498, -502 on a series of scale 50,000 agree to within 4, and
+    // calling that a reproduced FLATNESS asserts a population was pinned when
+    // it consistently declined. The deltas themselves have to sit near zero.
+    const meanDelta = deltas.reduce((a2, b2) => a2 + b2, 0) / deltas.length;
+    // Strictly tighter than AGREE_TOLERANCE, or the guard admits exactly what
+    // it exists to reject: at the same 1%, deltas of -500/-498/-502 on a
+    // series of scale 50,000 have |mean| == 500 == the threshold and pass.
+    const nearZero = Math.abs(meanDelta) <= scale * FLAT_TOLERANCE;
     const perRun = runs
       .map(r => `${r.label}: net ${formatNumber(r.delta)}`)
       .join(', ');
+    if (agree && !nearZero) {
+      // A consistent move that is not growth is still a reproduced effect, and
+      // it is not a flat control — but it can go either way. A DECLINE is
+      // usually eviction or a drain; a RISE that failed the growth test failed
+      // it on linearity or on the minimum delta, not on direction, so calling
+      // it a drain would state the opposite of what was measured.
+      const rose = meanDelta > 0;
+      const pct = ((Math.abs(meanDelta) / scale) * 100).toFixed(1);
+      return {
+        verdict: 'NOT_REPRODUCED',
+        summary:
+          `No run passes the growth test, but the runs do not read flat either: every one ` +
+          `moved by about ${formatNumber(Math.round(meanDelta))} in the same direction ` +
+          `(${perRun}), which is ${pct}% of the series scale. ` +
+          (rose
+            ? 'They all ROSE — consistently, but not linearly enough (or not far enough) to ' +
+              'count as the effect. Do not quote this as a flat control; re-drive with more ' +
+              'cycles, or lower `min_r2` / `min_delta` if the shape is genuinely non-linear.'
+            : 'A consistent DECLINE is its own reproduced effect — usually eviction or a ' +
+              'drain, not a leak — and it must not be quoted as a flat paired control.'),
+      };
+    }
     return {
-      verdict: 'NOT_REPRODUCED',
+      verdict: agree ? 'REPRODUCED_FLAT' : 'NOT_REPRODUCED',
       summary: agree
         ? `No run shows the effect, and the runs AGREE on that (${perRun}). The growth ` +
-          `hypothesis did not reproduce; the FLATNESS did, to within 1% of the series ` +
+          `hypothesis did not reproduce; the FLATNESS did, to within 0.1% of the series ` +
           `scale. If this series is the paired control — a breadth or capacity measure ` +
           `beside a population that IS rising — quote this agreement as evidence, not as ` +
           `a missing result. If it was the effect you were looking for, it is not there.`
@@ -193,7 +233,7 @@ export function registerReplicate(server: McpServer): void {
     'Ask whether a measured effect REPRODUCES across two or more independently-driven runs, and refuse to call it real until it does. ' +
       'This is the gate that separates a finding from a one-off, and it is the one gate that cannot be replaced by looking harder at a single run.\n\n' +
       'Give it the same numeric probe and the ladders from N separate runs (or the pre-measured `series` if the snapshots are gone). ' +
-      'It fits each run independently and returns REPRODUCED / REPRODUCED_UNSTABLE / NOT_REPRODUCED / INCONCLUSIVE.\n\n' +
+      'It fits each run independently and returns REPRODUCED / REPRODUCED_UNSTABLE / REPRODUCED_FLAT / NOT_REPRODUCED / INCONCLUSIVE. `REPRODUCED_FLAT` is its own verdict on purpose: every run agreeing the series is flat is a RESULT, not a failed measurement, and reporting it as NOT_REPRODUCED reads like the latter.\n\n' +
       'Why it exists: a detached-DOM finding once passed every other gate — r2 = 1.0000, permanent across 9 minutes of idle with forced GC, ' +
       '97% concentrated under a single dominator, dominator-deduped sizing, an app-side retainer path that `memlab_dev_artifacts` classified as production — ' +
       'and failed to reproduce on all three follow-up runs. Every one of those checks was passed by a one-off. ' +
@@ -354,7 +394,17 @@ export function registerReplicate(server: McpServer): void {
           '',
         ];
 
-        if (verdict === 'REPRODUCED' || verdict === 'REPRODUCED_UNSTABLE') {
+        if (verdict === 'REPRODUCED_FLAT') {
+          lines.push(
+            '_The FLATNESS reproduced; the growth did not. Do not file this as a leak. Do quote it if it is ' +
+              'the paired control — a measure pinned at the same value across independent runs, beside a ' +
+              'population that rises in both, is what separates "the chains are lengthening" from ' +
+              '"the queues are multiplying"._',
+          );
+        } else if (
+          verdict === 'REPRODUCED' ||
+          verdict === 'REPRODUCED_UNSTABLE'
+        ) {
           lines.push(
             '_Replication establishes that the effect is real and repeatable. It does NOT establish the cause — ' +
               'trace a sample with `memlab_retainer_trace` and rule out dev-only retention with `memlab_dev_artifacts` before attributing it._',

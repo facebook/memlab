@@ -44,6 +44,8 @@ import {
 
 interface RoundData {
   name: string;
+  /** The run dir as given, so a remediation command can be printed verbatim. */
+  dir: string;
   cycles: number;
   appDeltaMB: number | null;
   /** population -> per-cycle rate */
@@ -243,6 +245,7 @@ function readRound(dir: string): RoundData {
       : [];
   return {
     name,
+    dir,
     artifactCount: artifacts.length,
     cycles: manifest.cycles,
     appDeltaMB: parseAppDelta(budget),
@@ -306,19 +309,25 @@ export function registerCompareRounds(server: McpServer): void {
           );
         }
 
+        // Held separately so the "nothing to compare" path can keep it: every
+        // column here comes from the manifest and the budget file, none of it
+        // from the analysis-battery artifacts, so it is still valid on a sweep
+        // that has not been through the battery at all.
+        const summaryTable = markdownTable(
+          ['Round', 'Cycles', 'app_delta (MB)', 'Missing analysis'],
+          rounds.map(r => [
+            r.name,
+            formatNumber(r.cycles),
+            r.appDeltaMB == null ? '—' : r.appDeltaMB.toFixed(1),
+            [...r.missing, ...r.notes].join(', '),
+          ]),
+          new Set([1, 2]),
+        );
+
         const lines: string[] = [
           `## Round comparison — ${rounds.length} rounds`,
           '',
-          markdownTable(
-            ['Round', 'Cycles', 'app_delta (MB)', 'Missing analysis'],
-            rounds.map(r => [
-              r.name,
-              formatNumber(r.cycles),
-              r.appDeltaMB == null ? '—' : r.appDeltaMB.toFixed(1),
-              [...r.missing, ...r.notes].join(', '),
-            ]),
-            new Set([1, 2]),
-          ),
+          summaryTable,
           '',
         ];
 
@@ -420,6 +429,7 @@ export function registerCompareRounds(server: McpServer): void {
         }
 
         if (unitRateNotes.length > 0) {
+          const uniqueUnitRateNotes = [...new Set(unitRateNotes)];
           lines.push(
             '### ⚑ Unit rates — a whole number names a MECHANISM',
             '',
@@ -427,14 +437,13 @@ export function registerCompareRounds(server: McpServer): void {
               '"it grew": it says one record is stranded per interaction, which points at a specific ' +
               'call site rather than at a trend.',
             '',
-            ...[...new Set(unitRateNotes)]
-              .slice(0, NOTE_LIMIT)
-              .map(n => `- ${n}`),
-            ...truncationNote(new Set(unitRateNotes).size),
+            ...uniqueUnitRateNotes.slice(0, NOTE_LIMIT).map(n => `- ${n}`),
+            ...truncationNote(uniqueUnitRateNotes.length),
             '',
           );
         }
         if (invisibleNotes.length > 0) {
+          const uniqueInvisibleNotes = [...new Set(invisibleNotes)];
           lines.push(
             '### ⚑ Invisible in aggregate heap',
             '',
@@ -442,10 +451,8 @@ export function registerCompareRounds(server: McpServer): void {
               'called those rounds clean — a measured sweep had eight of them, with chains reaching ' +
               '9,818 records while the heap shrank.',
             '',
-            ...[...new Set(invisibleNotes)]
-              .slice(0, NOTE_LIMIT)
-              .map(n => `- ${n}`),
-            ...truncationNote(new Set(invisibleNotes).size),
+            ...uniqueInvisibleNotes.slice(0, NOTE_LIMIT).map(n => `- ${n}`),
+            ...truncationNote(uniqueInvisibleNotes.length),
             '',
           );
         }
@@ -457,13 +464,41 @@ export function registerCompareRounds(server: McpServer): void {
           r => r.missing.length >= r.artifactCount,
         );
         if (noAnalysis.length > 0) {
-          lines.push(
-            `_${noAnalysis.length} round(s) have no analysis output at all ` +
-              `(${noAnalysis.map(r => r.name).join(', ')}). Run ` +
-              '`memlab_analysis_battery({run_dir})` on them first — this tool reads what the ' +
-              'battery writes and never loads a snapshot itself._',
-            '',
-          );
+          const battery = noAnalysis
+            .map(r => `memlab_analysis_battery({run_dir: "${r.dir}"})`)
+            .join('\n');
+          // When EVERY round is unanalysed the tables above are empty, and a
+          // trailing italic note reads as a footnote to a result rather than
+          // as the reason there is no result. Say it first, and say it as a
+          // prerequisite: this tool never loads a snapshot, so there is no
+          // fallback path it could have taken instead.
+          const allMissing = noAnalysis.length === rounds.length;
+          const msg =
+            `${noAnalysis.length} round(s) have no analysis output at all ` +
+            `(${noAnalysis.map(r => r.name).join(', ')}). ` +
+            '`memlab_compare_rounds` reads only the files `memlab_analysis_battery` ' +
+            'writes into each run dir — it deliberately loads no snapshots, so a sweep ' +
+            'analysed by any other path has nothing here to compare. Run the battery ' +
+            'on them first:';
+          if (allMissing) {
+            // Only the per-population matrices are empty; the summary table is
+            // not, so it is re-emitted below the blocker rather than discarded
+            // with everything else.
+            lines.length = 0;
+            lines.push(
+              '### Nothing to compare yet',
+              '',
+              msg,
+              '',
+              '```',
+              battery,
+              '```',
+              '',
+              summaryTable,
+            );
+          } else {
+            lines.push('_' + msg + '_', '', '```', battery, '```', '');
+          }
         }
         if (failed.length > 0) {
           lines.push('### Rounds that could not be read', '');

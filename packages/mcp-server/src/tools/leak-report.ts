@@ -582,6 +582,16 @@ export function registerLeakReport(server: McpServer): void {
           lines.push(
             '',
             `**Next:** confirm the top candidate before reporting it — \`memlab_retainer_trace({node_id: ${example.id}})\` on the largest traceable \`${proseName(strongest)}\` instance in the final rung, then \`memlab_dominator_chain\` on whatever owns it. Counts alone cannot distinguish a leak from a cache that grew and will be evicted.`,
+            '',
+            // Two tools that answer the questions a finding always ends on,
+            // and that a multi-round sweep otherwise never reaches because
+            // nothing in the flow names them.
+            // The RAW class name inside the argument values, not proseName():
+            // that one collapses whitespace, truncates at 80 chars with an
+            // ellipsis and substitutes "(unnamed <type>)" for an empty name,
+            // all of which are right for prose and produce a class name that
+            // matches nothing when pasted into a tool call.
+            `Then, before it costs another round: \`memlab_finding_index({action: "check", retainer_path: "<the path the trace printed>", growing_classes: [${JSON.stringify(strongest.name)}]})\` says whether a previous round already found — or already FIXED — this exact path, and \`memlab_what_if({class_name: ${JSON.stringify(strongest.name)}})\` sizes what freeing the population would actually reclaim. "Is this new?" and "how much is it worth?" are the two questions a filing needs, and a retainer trace answers neither.`,
           );
         }
 

@@ -745,9 +745,9 @@ export function registerDevArtifacts(server: McpServer): void {
       min_retained_size: z
         .number()
         .optional()
-        .default(524288)
+        .default(65536)
         .describe(
-          'Only consider objects retaining at least this (default 512 KB).',
+          'Only consider objects retaining at least this (default 64 KB). The default was 512 KB, which reported a measured ~10 KB console-retained string as `0 B dev-only` — the exact shape of an automation artifact is many small records and no large one, so a threshold tuned for single big objects hides the whole family. Objects under the threshold are still counted and aggregated by class below the table.',
         ),
       only_dev: z
         .boolean()

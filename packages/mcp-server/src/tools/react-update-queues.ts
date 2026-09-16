@@ -442,7 +442,7 @@ export function registerReactUpdateQueues(server: McpServer): void {
           '- **Queue count rising, records-per-queue ~1** → more components are mounted. Not a leak; the population scales with the UI.',
           '- **Both rising** → separate them before concluding, or the write-up will attribute mounting to leaking.',
           '',
-          'One measured round found `REPRODUCED` on record count and `NOT_REPRODUCED` on breadth across independent runs, which is exactly what proved the chains were lengthening rather than multiplying.',
+          'One measured round found `REPRODUCED` on record count and `REPRODUCED_FLAT` on breadth across independent runs, which is exactly what proved the chains were lengthening rather than multiplying. (`REPRODUCED_FLAT` is the verdict for a breadth that agreed across runs AND sat at zero; `NOT_REPRODUCED` now means the runs disagreed, or moved consistently in one direction, so it is not the paired-control result.)',
         );
 
         if (

@@ -35,7 +35,7 @@ import {
  * not move by a single node — which is the whole argument for counting several
  * populations per rung rather than reading aggregate heap.
  */
-interface Metric {
+export interface Metric {
   name: string;
   describe: string;
   /**
@@ -49,7 +49,7 @@ interface Metric {
   match: (node: IHeapNode, props: ReadonlySet<string>) => boolean;
 }
 
-const BUILTIN: Metric[] = [
+export const BUILTIN: Metric[] = [
   {
     name: 'detached',
     describe: 'Detached DOM nodes (class name starts with "Detached ").',
@@ -152,7 +152,7 @@ interface RungCount {
   counts: Map<string, number>;
 }
 
-function countOne(
+export function countOne(
   snapshot: IHeapSnapshot,
   metrics: Metric[],
   classNames: string[],
