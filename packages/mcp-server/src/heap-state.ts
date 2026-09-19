@@ -493,9 +493,17 @@ export function resolveHandle(ref: string): string | null {
   // which then fell through to the ambiguity refusal below for a snapshot
   // that is resident and unambiguously identified.
   if (path.dirname(ref) !== '.') {
-    for (const [handle, {metadata}] of loaded) {
-      if (samePathIgnoringSuffix(metadata.filePath, ref)) return handle;
-    }
+    const pathMatches = [...loaded.entries()]
+      .filter(([, {metadata}]) =>
+        samePathIgnoringSuffix(metadata.filePath, ref),
+      )
+      .map(([handle]) => handle);
+    // Exactly one spelling of the same path is the answer; more than one means
+    // the CWD-independent suffix match below was satisfied by several residents,
+    // so refuse rather than return the first — the same coin-flip the basename
+    // branch declines.
+    if (pathMatches.length === 1) return pathMatches[0];
+    if (pathMatches.length > 1) return null;
   }
   // A full path whose basename is a handle: `/tmp/run/snapshots/rung_01.heapsnapshot`.
   // Only when it is UNAMBIGUOUS: if several residents share that basename, the
@@ -510,9 +518,26 @@ export function resolveHandle(ref: string): string | null {
 
 /** Two spellings of the same file, `.heapsnapshot` suffix optional on either. */
 function samePathIgnoringSuffix(a: string, b: string): boolean {
-  const norm = (p: string): string =>
-    path.resolve(p.replace(/\.heapsnapshot$/i, ''));
-  return norm(a) === norm(b);
+  const strip = (p: string): string => p.replace(/\.heapsnapshot$/i, '');
+  const sa = strip(a);
+  const sb = strip(b);
+  // Absolute-resolved equality is the CWD-stable case. But `path.resolve` bakes
+  // in `process.cwd()` for a RELATIVE spelling, so a `ref` typed against a CWD
+  // other than the one a snapshot was loaded from resolves to a different
+  // absolute string and misses a legitimate match. Fall back to a segment-wise
+  // path-suffix check, which does not depend on CWD; `resolveHandle` refuses a
+  // suffix shared by several residents, so this never resolves to a guess.
+  if (path.resolve(sa) === path.resolve(sb)) return true;
+  return isPathSuffix(sa, sb) || isPathSuffix(sb, sa);
+}
+
+/** True when every segment of `shorter` is a trailing run of `longer`'s. */
+function isPathSuffix(longer: string, shorter: string): boolean {
+  const longSeg = longer.split(/[/\\]/).filter(Boolean);
+  const shortSeg = shorter.split(/[/\\]/).filter(Boolean);
+  if (shortSeg.length === 0 || shortSeg.length > longSeg.length) return false;
+  const offset = longSeg.length - shortSeg.length;
+  return shortSeg.every((seg, i) => seg === longSeg[offset + i]);
 }
 
 /**

@@ -84,7 +84,14 @@ function judge(
       // means bounding the FALLS too: bounding only the rises still passed
       // 1,000 → 500 → 100, the second case this comment cites.
       const {maxStepRise, maxStepFall} = shapeOf(counts);
-      const tolerance = Math.max(1, Math.abs(counts[0]) * 0.02);
+      // 2% of the series' largest magnitude, not of `counts[0]` alone: a ladder
+      // that starts at 0 (0 → 1 → 1) would otherwise collapse the tolerance to
+      // the floor of 1 and read as "flat", when its later rungs are exactly what
+      // the verdict is about.
+      const tolerance = Math.max(
+        1,
+        Math.max(...counts.map(c => Math.abs(c))) * 0.02,
+      );
       if (maxStepRise > tolerance) {
         return {
           pass: false,

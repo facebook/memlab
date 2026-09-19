@@ -724,7 +724,13 @@ export function registerFindingIndex(server: McpServer): void {
                   ]),
                 ];
                 if (merged.length !== existing.length) combosImported++;
-                index.combos_driven[round] = merged;
+                // Skip empty merges so `import` never creates a bare, content-
+                // free `combos_driven[round]`. Such an entry does not bump
+                // `combosImported`, so with no findings the early-return below
+                // would drop it before `saveIndex` ran — leaving the in-memory
+                // index and the persisted file disagreeing over a key that
+                // carries nothing anyway.
+                if (merged.length > 0) index.combos_driven[round] = merged;
               }
             }
             const fromFile = Array.isArray(parsed)
