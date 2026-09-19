@@ -8,6 +8,7 @@
     { "path": "./packages/api" },
     { "path": "./packages/cli" },
     { "path": "./packages/memlab" },
-    { "path": "./packages/mcp-server" }
+    { "path": "./packages/mcp-server" },
+    { "path": "./packages/playwright" }
   ]
 }

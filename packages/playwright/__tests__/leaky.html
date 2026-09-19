@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+  <body>
+    <button id="leak">leak</button>
+    <button id="cleanup">cleanup</button>
+    <script>
+      window.__leaks = [];
+      document.getElementById('leak').addEventListener('click', () => {
+        // Allocate retained arrays so memlab has something to find.
+        for (let i = 0; i < 1000; i++) {
+          window.__leaks.push(new Array(100).fill({tag: 'memlab-leak-' + i}));
+        }
+      });
+      document.getElementById('cleanup').addEventListener('click', () => {
+        // Intentionally do NOT clear window.__leaks: simulates a real leak.
+      });
+    </script>
+  </body>
+</html>
