@@ -55,6 +55,19 @@ function renderToolText(res: unknown): string {
   return typeof res === 'string' ? res : JSON.stringify(res);
 }
 
+/** One step: a tool name plus its arguments. Shared by `steps` and `calls`. */
+const STEP_LIST_SCHEMA = z
+  .array(
+    z.object({
+      tool: z.string().describe('Tool name, e.g. "memlab_check_health".'),
+      args: z
+        .record(z.unknown())
+        .optional()
+        .describe('Arguments object for that tool (default {}).'),
+    }),
+  )
+  .min(1);
+
 export function registerBatch(server: McpServer): void {
   server.tool(
     'memlab_batch',
@@ -65,30 +78,31 @@ export function registerBatch(server: McpServer): void {
       "Every step's tool name AND arguments are validated before step 0 runs, so a step missing a required argument fails the batch immediately instead of after the snapshot load has been paid for. " +
       'NOTE ON TIMEOUTS: the whole batch runs under a single wall-clock guardrail, not one per step — size it with `timeout_ms` (e.g. 600000 for a load plus several whole-heap scans).',
     {
+      // A BARE STRING is accepted for `load`. The whole point of this tool is
+      // to save calls, and it cost three failed calls to discover that `load`
+      // wanted an object and `calls` was not a parameter at all — spelling the
+      // common case (`load: "<path>"`) as an error is the opposite of the job.
       load: z
-        .object({
-          file_path: z.string(),
-          alias: z.string().optional(),
-          keep_previous: z.boolean().optional(),
-          quiet: z.boolean().optional(),
-          max_file_size_mb: z.number().optional(),
-        })
+        .union([
+          z.string(),
+          z.object({
+            file_path: z.string(),
+            alias: z.string().optional(),
+            keep_previous: z.boolean().optional(),
+            quiet: z.boolean().optional(),
+            max_file_size_mb: z.number().optional(),
+          }),
+        ])
         .optional()
         .describe(
-          'Optional memlab_load_snapshot arguments to run as step 0. Omit to use the resident snapshot.',
+          'Optional memlab_load_snapshot arguments to run as step 0. A bare path string is accepted and means {file_path: "<path>"}. Omit to use the resident snapshot.',
         ),
-      steps: z
-        .array(
-          z.object({
-            tool: z.string().describe('Tool name, e.g. "memlab_check_health".'),
-            args: z
-              .record(z.unknown())
-              .optional()
-              .describe('Arguments object for that tool (default {}).'),
-          }),
-        )
-        .min(1)
-        .describe('Ordered list of tools to run after the optional load.'),
+      steps: STEP_LIST_SCHEMA.optional().describe(
+        'Ordered list of tools to run after the optional load.',
+      ),
+      calls: STEP_LIST_SCHEMA.optional().describe(
+        'Alias for `steps`, accepted because it is the word the tool description and the recipes use for the same thing.',
+      ),
       stop_on_error: z
         .boolean()
         .optional()
@@ -103,8 +117,32 @@ export function registerBatch(server: McpServer): void {
           'Wall-clock budget for the WHOLE batch (load plus every step). When it is exhausted the remaining steps are skipped and reported as such, rather than the batch running unbounded. Omit for no budget. Size it for the plan: a large load plus several whole-heap scans wants 600000+.',
         ),
     },
-    async ({load, steps, stop_on_error, timeout_ms}) => {
+    async ({load, steps, calls, stop_on_error, timeout_ms}) => {
       try {
+        // Two names for one parameter must not become two parameters. Taking
+        // `steps` and dropping `calls` would run a DIFFERENT plan than the one
+        // written, with nothing in the output saying so.
+        if (steps != null && calls != null) {
+          return errorResult(
+            '`steps` and `calls` are the same parameter under two names — pass only one. Both were given, and silently running one of them would execute a plan you did not write.',
+          );
+        }
+        const stepList = steps ?? calls;
+        if (stepList == null || stepList.length === 0) {
+          return errorResult(
+            'pass `steps` (or its alias `calls`): an ordered list of {tool, args} to run.',
+          );
+        }
+        steps = stepList;
+        // An empty path is "no load", not a load of "". Applied to BOTH
+        // spellings: normalising only the bare string left the object form
+        // `{file_path: ''}` to fail deep inside load_snapshot, after the plan
+        // had already been built and reported.
+        if (typeof load === 'string') {
+          load = load === '' ? undefined : {file_path: load};
+        } else if (load != null && load.file_path === '') {
+          load = undefined;
+        }
         const plan: Array<{tool: string; args: Record<string, unknown>}> = [];
         if (load != null) {
           plan.push({

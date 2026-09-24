@@ -32,6 +32,7 @@ import {
   describeSegmentSelection,
   SEGMENT_ARG_DESCRIPTION,
   retentionWindowCaveat,
+  isSettleRungFilename,
 } from '../run-manifest.js';
 
 /** The tool result shape the MCP SDK expects; runEval returns exactly this. */
@@ -397,11 +398,17 @@ export function registerLadderProbe(server: McpServer): void {
         .describe(
           'SEVERAL named probes measured in ONE pass over the ladder: {"detached_rows": "result = …", "listener_records": "result = …"}. Strongly preferred over calling this tool once per question — the snapshot LOAD dominates the cost, so N metrics in one call costs roughly the same as one, where N separate calls costs N times as much. Each value follows the same rules as `code`; one metric failing does not cost the others their rung.',
         ),
+      // Accepts an ARRAY too, and treats it as `cycles_per_rung`. The two
+      // ladder tools disagreed on this one parameter's type — memlab_leak_report
+      // required an array and rejected a scalar, this one required a scalar and
+      // rejected an array — so a caller moving between the two, which the skill
+      // recipe asks for on every round, hit a validation error in each
+      // direction. Neither type is wrong; accept both on both.
       cycles: z
-        .number()
+        .union([z.number(), z.array(z.number())])
         .optional()
         .describe(
-          'Interaction cycles driven between the FIRST and LAST rung. When given, the rate is reported per cycle (the number a leak is actually quoted in) and the fit is against cycle count rather than rung index. Rungs are assumed evenly spaced in cycles unless cycles_per_rung is given.',
+          'Interaction cycles driven between the FIRST and LAST rung. When given, the rate is reported per cycle (the number a leak is actually quoted in) and the fit is against cycle count rather than rung index. Rungs are assumed evenly spaced in cycles unless cycles_per_rung is given. An ARRAY is accepted as an alias for cycles_per_rung (the exact cumulative count at each rung), which is the form memlab_leak_report takes.',
         ),
       cycles_per_rung: z
         .array(z.number())
@@ -452,18 +459,61 @@ export function registerLadderProbe(server: McpServer): void {
       max_file_size_mb,
     }) => {
       try {
+        // An array in `cycles` IS a per-rung axis; normalise before anything
+        // reads it, so the rest of the tool keeps seeing a scalar.
+        let cyclesScalar: number | undefined;
+        let axisCameFromCycles = false;
+        if (Array.isArray(cycles)) {
+          // Two spellings of the axis must not become two axes. Preferring one
+          // and dropping the other fits the rate against an x-axis the caller
+          // did not ask for, and the output cannot show that it happened.
+          if (cycles_per_rung != null) {
+            return errorResult(
+              new Error(
+                'An array in `cycles` IS `cycles_per_rung` — pass one or the other. Both were given, and silently choosing between them would fit the rate against an axis you did not write.',
+              ),
+            );
+          }
+          cycles_per_rung = cycles;
+          cyclesScalar = undefined;
+          // Remembered so a length-mismatch error can name the argument the
+          // caller actually wrote. Post-normalisation the message said
+          // `cycles_per_rung`, which appears nowhere in their call.
+          axisCameFromCycles = true;
+        } else {
+          cyclesScalar = cycles;
+        }
         // One place decides the x-axis for every trend tool; see
         // ../run-manifest.ts for why reconstructing it per caller is unsafe.
-        const inputs = resolveLadderInputs({
-          run_dir,
-          segment,
-          paths,
-          cycles,
-          cycles_per_rung,
-        });
+        let inputs;
+        try {
+          inputs = resolveLadderInputs({
+            run_dir,
+            segment,
+            paths,
+            cycles: cyclesScalar,
+            cycles_per_rung,
+          });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          // Only the length-mismatch message is rewritten, and only when the
+          // axis came from `cycles`. Rewriting every throw replaced unrelated
+          // failures (a missing `run_dir`, a bad `segment`) with a new Error
+          // that lost the original type and stack.
+          if (axisCameFromCycles && msg.startsWith('cycles_per_rung')) {
+            throw new Error(
+              msg.replace(/^cycles_per_rung/, '`cycles` (as an array)'),
+            );
+          }
+          throw e;
+        }
         const {paths: resolved} = resolveLadderPaths(inputs.paths);
         cycles_per_rung = inputs.cyclesPerRung ?? undefined;
-        cycles = inputs.cycles;
+        // A single narrowed scalar from here down. `cycles` is a
+        // number|number[] union at the parameter, and reassigning the resolved
+        // scalar back into it leaves every later arithmetic use fighting the
+        // array arm of the union.
+        const cyclesResolved: number | undefined = inputs.cycles;
         const axisSource = inputs.source;
         const ladderSpanS =
           inputs.spanSeconds ?? ladderSpanSeconds(inputs.manifest);
@@ -599,16 +649,16 @@ export function registerLadderProbe(server: McpServer): void {
         const xsFor = (n: number): number[] =>
           Array.from({length: n}, (_, i) => {
             if (cycles_per_rung != null) return cycles_per_rung[i];
-            if (cycles != null) return (cycles * i) / (n - 1);
+            if (cyclesResolved != null) return (cyclesResolved * i) / (n - 1);
             return i;
           });
-        const perCycleKnown = cycles != null || cycles_per_rung != null;
+        const perCycleKnown = cyclesResolved != null || cycles_per_rung != null;
         // `cycles` alone spreads the rungs evenly over the range. That is a
         // guess about how the ladder was driven, and it silently becomes the
         // x-axis every fit is scored against.
         const axisAssumed =
           axisSource === 'assumed-even' ||
-          (cycles != null && cycles_per_rung == null);
+          (cyclesResolved != null && cycles_per_rung == null);
 
         // A control that came back non-zero anywhere proves a probe of this
         // kind can observe this heap; that is the whole claim, so one rung is
@@ -689,17 +739,53 @@ export function registerLadderProbe(server: McpServer): void {
 
           const usableXs: number[] = [];
           const usableYs: number[] = [];
+          const usableIsSettle: boolean[] = [];
           rungs.forEach((r, i) => {
             if (r.value != null) {
               usableXs.push(xs[i]);
               usableYs.push(r.value);
+              usableIsSettle.push(isSettleRungFilename(r.label));
             }
           });
-          const fit = linearFit(usableXs, usableYs);
-          const first = usableYs[0];
-          const last = usableYs[usableYs.length - 1];
+          // The settle rung sits at the SAME cycle count as the rung before it,
+          // so it is a second y at one x. The fit and the shape verdict have to
+          // agree about whether it counts, and the answer is that it does not:
+          // a rate is a statement about DRIVEN cycles, and a settle y that
+          // differs from the driven one (it usually does — a GC ran) drags the
+          // slope while the verdict describes the driven rungs only.
+          // Deduped by VALUE, not by adjacency: a hand-supplied list can
+          // repeat an x non-consecutively, and an adjacency test keeps both
+          // copies. At a shared x the DRIVEN rung wins regardless of order —
+          // keeping whichever came first assumed the settle is always last,
+          // and a settle listed first would have fitted the GC'd value while
+          // discarding the driven one.
+          const keepAt = new Map<number, number>();
+          usableXs.forEach((x, i) => {
+            const held = keepAt.get(x);
+            if (held == null || (usableIsSettle[held] && !usableIsSettle[i])) {
+              keepAt.set(x, i);
+            }
+          });
+          const distinct = usableXs.map((x, i) => keepAt.get(x) === i);
+          const fitXs = usableXs.filter((_, i) => distinct[i]);
+          const fitYs = usableYs.filter((_, i) => distinct[i]);
+          const droppedRepeatedX = usableXs.length - fitXs.length;
+          const fit = linearFit(fitXs, fitYs);
+          // One distinct x is not a ladder. linearFit on a single point
+          // reports slope 0 / r2 1.0000, which reads as a measured, perfectly
+          // clean rate — the most confident possible way to say nothing.
+          const singleX = fitXs.length < 2;
+          // Normally the header states what the fit used, so it cannot read
+          // "10 → 10 (Δ +0)" beside a positive rate when the settle y differs.
+          // On a degenerate axis the deduped series collapses to ONE point, and
+          // reporting from it would claim Δ +0 and FLAT over a table that
+          // visibly grows — so there the header describes what the reader can
+          // see, and the verdict is withheld instead.
+          const headerYs = singleX ? usableYs : fitYs;
+          const first = headerYs[0];
+          const last = headerYs[headerYs.length - 1];
           const delta = last - first;
-          const seriesFlat = Math.min(...usableYs) === Math.max(...usableYs);
+          const seriesFlat = Math.min(...headerYs) === Math.max(...headerYs);
           if (!seriesFlat) allMetricsFlat = false;
 
           const rows = rungs.map((r, i) => [
@@ -727,22 +813,41 @@ export function registerLadderProbe(server: McpServer): void {
           lines.push(
             `**${formatNumber(first)} → ${formatNumber(last)}** (Δ ${delta >= 0 ? '+' : ''}${formatNumber(delta)}) across ${usable.length} usable rung(s).`,
           );
-          if (perCycleKnown) {
+          // `singleX` is tested FIRST: when both apply, the assumed-axis text
+          // tells the reader to pass `run_dir`/`cycles_per_rung`, which fixes
+          // nothing if every rung shares one cycle count. Same withheld rate,
+          // wrong remedy.
+          if (singleX) {
             lines.push(
-              `**Rate: ${fit.slope >= 0 ? '+' : ''}${fit.slope.toFixed(3)} per cycle**, r2 = ${fit.r2.toFixed(4)}.`,
+              `**RATE UNAVAILABLE** — the ${formatNumber(usableXs.length)} usable rung(s) share a single cycle count (${formatNumber(fitXs[0] ?? 0)}), so there is no x-axis to fit against. A slope from one distinct x is 0 with r2 = 1.0000 and means nothing. Capture rungs at different cycle counts, or pass the real \`cycles_per_rung\`.`,
             );
-            // Skip the caveat on a completely flat series: no choice of
-            // x-axis changes a rate of 0 or an r2 of 1, so the note is
-            // pure noise exactly where it cannot matter.
-            if (axisAssumed && !seriesFlat) {
-              lines.push(
-                `_Cycle axis ASSUMED evenly spaced: ${formatNumber(cycles ?? 0)} cycles ` +
-                  `split equally across ${usable.length} rung(s). If the ladder was ` +
-                  'driven at uneven cycle counts, both the rate and r2 above are ' +
-                  'against the wrong x-axis — pass `cycles_per_rung` with the real ' +
-                  'per-rung counts._',
-              );
-            }
+          } else if (perCycleKnown && axisAssumed && !seriesFlat) {
+            // DO NOT print a rate against a guessed x-axis. The old behaviour
+            // printed the rate and the r2 in bold and put the caveat
+            // underneath, which reads as boilerplate — and the numbers are not
+            // approximately right, they are wrong: a measured ladder read
+            // `+2.135/cycle, r2 = 0.9424` assumed-even against `+2.000/cycle,
+            // r2 = 1.0000` on its true axis, which is a different VERDICT
+            // ("episodic" vs "dead linear"), not a rounding difference.
+            //
+            // A number that is wrong is worse than no number, so withhold it
+            // and say exactly how to get the real one. The series itself is
+            // printed above and is unaffected by the axis.
+            lines.push(
+              '**RATE UNAVAILABLE — the cycle axis is assumed, not measured.** ' +
+                `\`cycles: ${formatNumber(cyclesResolved ?? 0)}\` was split evenly across ` +
+                `${usable.length} rung(s), but rungs are placed on a schedule and a real ` +
+                'ladder is rarely evenly spaced. Re-run with `run_dir` (the axis is then ' +
+                'read from run.json) or pass `cycles_per_rung` with the real per-rung ' +
+                'counts. The series above is correct either way.',
+            );
+          } else if (perCycleKnown) {
+            lines.push(
+              `**Rate: ${fit.slope >= 0 ? '+' : ''}${fit.slope.toFixed(3)} per cycle**, r2 = ${fit.r2.toFixed(4)}.` +
+                (droppedRepeatedX > 0
+                  ? ` _(fitted on ${fitXs.length} rung(s) at distinct cycle counts; ${droppedRepeatedX} rung(s) repeat a cycle count already present and are excluded from the fit and the verdict. Usually that is the settle rung — read it with \`memlab_settle_check\` — but a hand-supplied \`cycles_per_rung\` with a duplicate drops a DRIVEN rung the same way.)_`
+                  : ''),
+            );
           } else {
             lines.push(
               `**Slope: ${fit.slope >= 0 ? '+' : ''}${fit.slope.toFixed(3)} per rung**, r2 = ${fit.r2.toFixed(4)}. ` +
@@ -750,12 +855,19 @@ export function registerLadderProbe(server: McpServer): void {
             );
           }
           lines.push('');
-          const verdictText = verdictFor(
-            usableYs,
-            fit,
-            axisAssumed,
-            visibilityVerified,
-          );
+          // The SHAPE verdict is judged on rungs at distinct cycle counts.
+          //
+          // The settle rung sits at the same cycle count as the last driven
+          // rung, because the settle drives nothing — so it is flat by
+          // construction and contributed a phantom "flat step" to every ladder
+          // that had one. Since the runner appends a settle rung by default,
+          // that was every properly-run round: a dead-linear series read back
+          // as "non-decreasing but NOT strictly increasing … growth is
+          // episodic".
+          const shapeYs = fitYs;
+          const verdictText = singleX
+            ? 'UNMEASURABLE AXIS — every rung shares one cycle count, so the series has no shape to read. The values above are real; the trend is not derivable from them.'
+            : verdictFor(shapeYs, fit, axisAssumed, visibilityVerified);
           lines.push(`**Verdict:** ${verdictText}`);
           // LINEAR is the verdict most often read as "unbounded leak". Over a
           // ladder shorter than the app's retention window it is equally

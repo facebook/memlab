@@ -19,7 +19,15 @@ import {
   toolResult,
 } from '../utils.js';
 
-export type CheckStatus = 'ok' | 'caveat' | 'blocking';
+/**
+ * `info` does NOT move the verdict.
+ *
+ * It exists for observations that are real but unresolved — a note whose truth
+ * depends on a number the runner cannot compute. Reporting those as `caveat`
+ * made the verdict CAVEATED on rounds that were fine, and a verdict that is
+ * wrong most of the time stops being read.
+ */
+export type CheckStatus = 'ok' | 'caveat' | 'blocking' | 'info';
 
 export interface AuditCheck {
   name: string;
@@ -52,6 +60,7 @@ interface RunManifest {
     absent_props?: string[];
   };
   caveats?: string[];
+  provisional_notes?: string[];
   stop_reason?: string;
 }
 
@@ -312,6 +321,17 @@ export function auditManifest(
           },
   );
 
+  const provisional = m.provisional_notes ?? [];
+  if (provisional.length > 0) {
+    checks.push({
+      status: 'info',
+      name: 'provisional (unresolved)',
+      detail:
+        `${provisional.length} observation(s) the runner could not settle, because settling them ` +
+        'needs a number that only exists after analysis. Resolve before quoting: run ' +
+        '`memlab_artifact_budget` and judge by **app_delta**, not by the post-GC total.',
+    });
+  }
   const caveats = m.caveats ?? [];
   if (caveats.length > 0) {
     checks.push({
@@ -331,6 +351,7 @@ export function auditManifest(
 
 const ICON: Record<CheckStatus, string> = {
   ok: '✅',
+  info: 'ℹ️',
   caveat: '⚠️',
   blocking: '❌',
 };
@@ -424,6 +445,21 @@ export function registerRoundAudit(server: McpServer): void {
         if ((manifest.caveats ?? []).length > 0) {
           lines.push('', '### Caveats recorded by the runner', '');
           for (const c of manifest.caveats ?? []) lines.push(`- ${c}`);
+        }
+        // Printed verbatim, like the caveats. The check above tells the reader
+        // there are N observations to resolve; without the text it is an
+        // instruction to act on something they cannot see without opening
+        // run.json by hand, which is the step this tool exists to remove.
+        if ((manifest.provisional_notes ?? []).length > 0) {
+          lines.push('', '### Provisional observations (unresolved)', '');
+          for (const n of manifest.provisional_notes ?? [])
+            lines.push(`- ${n}`);
+          lines.push(
+            '',
+            '_These are NOT caveats. The runner could not settle them because settling them needs a ' +
+              'number that only exists after analysis — resolve each one here rather than repeating it ' +
+              'in a write-up._',
+          );
         }
         return toolResult(lines.join('\n'), null);
       } catch (e) {

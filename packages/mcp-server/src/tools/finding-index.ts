@@ -57,21 +57,48 @@ import {
  * `workstream` scopes several of them side by side. The home-dir path is kept as
  * the fallback so nothing that already works breaks.
  */
+/** A `.json` suffix in any case means the override names a FILE, not a dir. */
+function isJsonPath(p: string): boolean {
+  return /\.json$/i.test(p);
+}
+
+/**
+ * A workstream becomes part of a FILENAME, so it must not be able to be a path.
+ *
+ * `findings.${workstream}.json` with a workstream of `../../x` escapes the
+ * index directory, and the index is written with mkdir -p — so an unsanitised
+ * name turns "which findings file do I read" into an arbitrary JSON write.
+ */
+function safeWorkstream(ws: string): string {
+  const cleaned = ws.replace(/[^A-Za-z0-9._-]/g, '-').replace(/^\.+/, '');
+  return cleaned === '' ? 'default' : cleaned;
+}
+
 export function resolveIndexPath(workstream?: string): string {
   const override = process.env.MEMLAB_FINDINGS_INDEX;
   if (override != null && override !== '') {
-    if (workstream == null || workstream === '') return override;
+    if (workstream == null || workstream === '') {
+      // A DIRECTORY override has to resolve to a file inside it, not to the
+      // directory. Returning the directory made the unscoped index unreadable
+      // (so every check answered NEW against a freshly seeded in-memory index)
+      // AND put sibling-index discovery in the wrong parent, so the scoped
+      // index sitting right there was never mentioned.
+      return isJsonPath(override)
+        ? override
+        : path.join(override, 'findings.json');
+    }
     // Treat the override as a directory when a workstream is named, so one
     // shared location can hold several workstreams without collision.
-    return override.endsWith('.json')
-      ? override.replace(/\.json$/, `.${workstream}.json`)
-      : path.join(override, `findings.${workstream}.json`);
+    const ws = safeWorkstream(workstream);
+    return isJsonPath(override)
+      ? override.replace(/\.json$/i, `.${ws}.json`)
+      : path.join(override, `findings.${ws}.json`);
   }
   const base = path.join(process.env.HOME ?? '/tmp', '.memlab-mcp');
   return path.join(
     base,
     workstream != null && workstream !== ''
-      ? `findings.${workstream}.json`
+      ? `findings.${safeWorkstream(workstream)}.json`
       : 'findings.json',
   );
 }
@@ -82,7 +109,7 @@ interface Finding {
   growing_classes: string[];
   first_seen_round: string;
   last_seen_round: string;
-  status: 'new' | 'known' | 'fixed' | 'retracted';
+  status: 'new' | 'known' | 'fixed' | 'retracted' | 'artifact';
   fixed_behind?: string;
   /**
    * Diffs that carry the fix, as D-numbers.
@@ -95,6 +122,18 @@ interface Finding {
   fixed_by_diffs?: string[];
   /** Whether a real before/after A/B confirmed the fix, rather than reasoning. */
   verified_by_ab?: boolean;
+  /**
+   * Whether the gate named in `fixed_behind` is actually SERVING the fix.
+   *
+   * A fix recorded as "fixed behind <gate>" reads as done, and `check` said so
+   * for a gate whose experiment had expired three weeks earlier and whose code
+   * branch had since been deleted. The result was two successive wrong
+   * recommendations ("re-allocate and A/B it", then "the mechanism is gone").
+   * A fix is only a fix while its gate is allocated AND its code still exists.
+   */
+  gate_state?: 'allocated' | 'expired' | 'deallocated' | 'code_removed';
+  /** When `gate_state` was last confirmed, so a stale answer can be spotted. */
+  gate_checked_on?: string;
   /** Why a finding was withdrawn; required in practice for `retracted`. */
   retraction_reason?: string;
   note?: string;
@@ -203,7 +242,11 @@ const IMPORTED_FINDING_SCHEMA = z.object({
   signature: z.string().optional(),
   growing_classes: z.array(z.string()).optional(),
   round: z.string().optional(),
-  status: z.enum(['new', 'known', 'fixed', 'retracted']).optional(),
+  status: z.enum(['new', 'known', 'fixed', 'retracted', 'artifact']).optional(),
+  gate_state: z
+    .enum(['allocated', 'expired', 'deallocated', 'code_removed'])
+    .optional(),
+  gate_checked_on: z.string().optional(),
   fixed_behind: z.string().optional(),
   fixed_by_diffs: z.array(z.string()).optional(),
   verified_by_ab: z.boolean().optional(),
@@ -240,10 +283,16 @@ export function importFindings(
       growing_classes: classes,
       first_seen_round: existing?.first_seen_round ?? round,
       last_seen_round: round,
-      status: raw.status ?? existing?.status ?? 'known',
+      // `new` is a check VERDICT, not a state a finding can be stored in —
+      // an entry that exists in the index is by definition not new, and
+      // storing it read back as KNOWN anyway. Normalised on the way in so
+      // what is written is what is reported.
+      status: storableStatus(raw.status ?? existing?.status),
       fixed_behind: raw.fixed_behind ?? existing?.fixed_behind,
       fixed_by_diffs: raw.fixed_by_diffs ?? existing?.fixed_by_diffs,
       verified_by_ab: raw.verified_by_ab ?? existing?.verified_by_ab,
+      gate_state: raw.gate_state ?? existing?.gate_state,
+      gate_checked_on: raw.gate_checked_on ?? existing?.gate_checked_on,
       retraction_reason: raw.retraction_reason ?? existing?.retraction_reason,
       note: raw.note ?? existing?.note,
       // An import is history, not a sighting: it must not inflate seen_count
@@ -302,6 +351,17 @@ export function fingerprintOf(signature: string, classes: string[]): string {
  * `fixed`: they are not defects to be fixed, they are populations a hunt must
  * subtract. Anything app-specific belongs in a real `action: "import"`.
  */
+/**
+ * The status an entry can actually be STORED with.
+ *
+ * `new` is a verdict `check` returns, not a state: anything present in the
+ * index has been seen before. Both write schemas accepted it, and it then read
+ * back as KNOWN — the index reporting something other than what was written.
+ */
+function storableStatus(s?: Finding['status']): Finding['status'] {
+  return s == null || s === 'new' ? 'known' : s;
+}
+
 export function builtinSeedFindings(): ImportedFinding[] {
   const seed = (
     signature: string,
@@ -311,7 +371,13 @@ export function builtinSeedFindings(): ImportedFinding[] {
     signature,
     growing_classes,
     round: 'builtin',
-    status: 'known',
+    // Every builtin seed is a measurement artifact — JIT warmup, CDP
+    // bookkeeping, a11y caches, Fast Refresh registries, the automation
+    // bridge. Seeding them as `known` meant the strongest thing the index can
+    // say ("stop, this is not app memory") was never actually said by the
+    // families it was written for; a check answered KNOWN, which only means
+    // someone has seen it before.
+    status: 'artifact',
     note,
   });
   return [
@@ -430,8 +496,11 @@ export function hasAppHistory(index: {
  * than printing a confident NEW from an index that has never been seeded.
  */
 export type FindingLookup = {
-  verdict: 'NEW' | 'KNOWN' | 'KNOWN-AND-FIXED';
+  verdict: 'NEW' | 'KNOWN' | 'KNOWN-AND-FIXED' | 'ARTIFACT' | 'RETRACTED';
   fixedBehind?: string;
+  /** Set when the hit is `fixed` and its gate is known not to be serving. */
+  gateState?: 'allocated' | 'expired' | 'deallocated' | 'code_removed';
+  gateCheckedOn?: string;
   note?: string;
   round?: string;
   related: string[];
@@ -451,8 +520,41 @@ export type LoadedFindingIndex = {
   indexPath: string;
 };
 
+/**
+ * The workstream the last `import` / `record` in this server session used.
+ *
+ * `import` writes a workstream-scoped file (findings.<ws>.json) while a later
+ * `check` with no `workstream` reads the UNSCOPED one — so a freshly seeded
+ * index still answered "NEW, and by the way this index is empty" to everything.
+ * Measured: 18 findings imported, next `check` read an 8-entry default index and
+ * printed the empty-index banner. Remembering the last scope makes the common
+ * seed-then-check sequence work without the caller repeating it.
+ */
+/**
+ * Process-global, which is safe ONLY because this server speaks stdio to one
+ * client. If it is ever given a multi-client transport, this has to move onto
+ * a per-session object — two hunts with different workstreams would otherwise
+ * overwrite each other's remembered scope and read the wrong index.
+ */
+let lastWorkstream: string | undefined;
+
+/** Exported for tests; resets the sticky scope. */
+export function setLastWorkstream(ws?: string): void {
+  lastWorkstream = ws;
+}
+
+export function stickyWorkstream(ws?: string): string | undefined {
+  return ws != null && ws !== '' ? ws : lastWorkstream;
+}
+
 export function loadFindingIndex(workstream?: string): LoadedFindingIndex {
-  const indexPath = resolveIndexPath(workstream);
+  // The remembered scope is applied HERE, not only in the tool handler. This
+  // is the read path every inline annotation goes through (`memlab_leak_report`,
+  // `memlab_auto_investigate`), and leaving it unscoped meant a bare `check`
+  // read the seeded workstream index while an annotation for the same
+  // candidate read the empty unscoped one — two different verdicts for one
+  // population, in the same session.
+  const indexPath = resolveIndexPath(stickyWorkstream(workstream));
   return {index: loadIndex(indexPath), indexPath};
 }
 
@@ -477,8 +579,22 @@ export function lookupFindingIn(
   const indexEmpty = !hasAppHistory(index);
   if (hit) {
     return {
-      verdict: hit.status === 'fixed' ? 'KNOWN-AND-FIXED' : 'KNOWN',
+      // `retracted` is mapped here, not only in the `check` renderer. Inline
+      // annotations (`memlab_leak_report`, `memlab_auto_investigate`) go
+      // through this function, and showing a withdrawn finding as KNOWN loses
+      // the one instruction that matters — that a previous round investigated
+      // it and took it back.
+      verdict:
+        hit.status === 'artifact'
+          ? 'ARTIFACT'
+          : hit.status === 'retracted'
+            ? 'RETRACTED'
+            : hit.status === 'fixed'
+              ? 'KNOWN-AND-FIXED'
+              : 'KNOWN',
       fixedBehind: hit.fixed_behind,
+      gateState: hit.gate_state,
+      gateCheckedOn: hit.gate_checked_on,
       note: hit.note,
       round: hit.first_seen_round,
       related: [],
@@ -497,19 +613,121 @@ export function lookupFindingIn(
   };
 }
 
+/**
+ * The sentence a KNOWN-AND-FIXED verdict needs when its gate is not serving.
+ *
+ * "Fixed behind <gate>" reads as done. It is only true while the gate is
+ * allocated and the code behind it still exists — and a recorded fix whose
+ * experiment had expired and whose branch had been deleted produced two
+ * successive wrong recommendations before anyone checked.
+ */
+function renderGateWarning(l: FindingLookup): string {
+  // Rendered for ANY status, not just `fixed`. A gate state recorded against
+  // a `known` or `artifact` finding was stored and then never shown, so the
+  // field silently did nothing for three of the five statuses that accept it.
+  if (l.gateState == null || l.gateState === 'allocated') return '';
+  const when = l.gateCheckedOn != null ? ` (checked ${l.gateCheckedOn})` : '';
+  const what =
+    l.gateState === 'code_removed'
+      ? 'its code branch has been REMOVED from the tree, so re-enabling the gate does nothing'
+      : `its gate is recorded as ${l.gateState.toUpperCase()}, so the fix is NOT serving`;
+  // The date belongs on every branch: gate state is a fact with an expiry, and
+  // "code_removed" is the one a reader is most likely to act on without
+  // re-checking. Omitting it here disagreed with the `check` rendering, which
+  // did print it.
+  return ` — ⚠️ ${what}${when}. Verify before planning an A/B against it.`;
+}
+
 /** One-line renderer for an inline verdict badge. */
 export function renderFindingVerdict(l: FindingLookup): string {
+  // ARTIFACT is deliberately its own verdict rather than a flavour of KNOWN.
+  // It is the single most important thing the index can say — "this population
+  // is not app memory at all" ends the investigation, where KNOWN only means
+  // "someone has seen this before". Folding the two together forced artifact
+  // seeds to be imported as `known` with the word ARTIFACT in the title, so the
+  // distinction survived only in prose a tool could not read.
+  if (l.verdict === 'ARTIFACT') {
+    return (
+      `\`ARTIFACT — not production memory\`${l.round ? ` (recorded ${l.round})` : ''}${l.note ? `: ${l.note}` : ''}` +
+      renderGateWarning(l)
+    );
+  }
+  if (l.verdict === 'RETRACTED') {
+    return (
+      `\`RETRACTED — investigated and WITHDRAWN\`${l.round ? ` (${l.round})` : ''}${l.note ? `: ${l.note}` : ''}` +
+      renderGateWarning(l)
+    );
+  }
   if (l.verdict === 'KNOWN-AND-FIXED') {
-    return `\`KNOWN-AND-FIXED\`${l.fixedBehind ? ` — fixed behind \`${l.fixedBehind}\`; confirm the gate is ON in this capture before treating it as a finding` : ''}`;
+    return (
+      `\`KNOWN-AND-FIXED\`${l.fixedBehind ? ` — fixed behind \`${l.fixedBehind}\`; confirm the gate is ON in this capture before treating it as a finding` : ''}` +
+      renderGateWarning(l)
+    );
   }
   if (l.verdict === 'KNOWN') {
-    return `\`KNOWN\`${l.round ? ` — first seen ${l.round}` : ''}${l.note ? `: ${l.note}` : ''}`;
+    return (
+      `\`KNOWN\`${l.round ? ` — first seen ${l.round}` : ''}${l.note ? `: ${l.note}` : ''}` +
+      renderGateWarning(l)
+    );
   }
   const related =
     l.related.length > 0
       ? ` (but shares a growing class with: ${l.related.slice(0, 2).join('; ')} — a lead, not an identification)`
       : '';
   return `\`NEW\`${related}`;
+}
+
+/**
+ * Other workstream indexes sitting next to the one that was just read.
+ *
+ * The failure this prevents: `import` writes `findings.<ws>.json` while a later
+ * `check` with no `workstream` reads the unscoped `findings.json`, so a freshly
+ * seeded index still answers "NEW, and this index is empty". Session
+ * stickiness fixes the common sequence, but it cannot survive a server restart
+ * — and the operator has no way to tell the two indexes apart from the output.
+ * Naming the neighbours turns a misleading verdict into an obvious one.
+ */
+function siblingWorkstreamIndexes(
+  indexPath: string,
+): Array<{workstream: string; count: number; path: string}> {
+  try {
+    const dir = path.dirname(indexPath);
+    const self = path.basename(indexPath);
+    return fs
+      .readdirSync(dir)
+      .filter(f => f !== self && /^findings\..+\.json$/i.test(f))
+      .map(f => {
+        const full = path.join(dir, f);
+        let count = 0;
+        try {
+          const raw = JSON.parse(fs.readFileSync(full, 'utf8')) as {
+            findings?:
+              | Record<string, {first_seen_round?: string}>
+              | Array<{first_seen_round?: string}>;
+          };
+          const found = raw.findings;
+          const entries = Array.isArray(found)
+            ? found
+            : Object.values(found ?? {});
+          // APP history only. Every index is created pre-seeded with the
+          // builtin artifact families, so counting raw entries advertised a
+          // never-used neighbour as "8 finding(s)" and sent the operator to a
+          // second empty index — the same misleading verdict this hint exists
+          // to prevent, one file over.
+          count = entries.filter(e => e?.first_seen_round !== 'builtin').length;
+        } catch {
+          // An unreadable neighbour is not worth failing a check over.
+        }
+        return {
+          workstream: f.replace(/^findings\./i, '').replace(/\.json$/i, ''),
+          count,
+          path: full,
+        };
+      })
+      .filter(e => e.count > 0);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -528,7 +746,7 @@ export function registerFindingIndex(server: McpServer): void {
     'memlab_finding_index',
     'Fingerprint a leak finding by its retainer path and check it against findings from previous rounds, so a hunt does not spend itself re-discovering a known or already-fixed leak. ' +
       'This is the highest-cost failure a leak hunt has: a measured round produced three findings that were all already known — two already fixed behind gates — which is an entire round spent re-deriving history. Class names cannot detect that (`Object` and `Array` top every heap); the retainer PATH can, so the fingerprint is a normalized path signature with node ids, array indices and per-capture scope ids stripped. ' +
-      'Actions: "check" fingerprints a candidate and reports NEW / KNOWN / KNOWN-AND-FIXED / RETRACTED; a RETRACTED finding is one a previous round investigated and WITHDREW (a structural population mistaken for a rate, an artifact, a measurement error) — re-deriving one costs the same round as re-deriving a fixed leak and is harder to notice, because the population really is present; "record" adds it; "import" bootstraps history in bulk from a team doc or a JSON file; "list" prints the index; "cover" records which combos a round drove, so the "do not repeat covered combos" rule stops depending on someone remembering.\n\n' +
+      'Actions: "check" fingerprints a candidate and reports NEW / KNOWN / KNOWN-AND-FIXED / RETRACTED / ARTIFACT; a RETRACTED finding is one a previous round investigated and WITHDREW (a measurement error, a structural population mistaken for a rate) — re-deriving one costs the same round as re-deriving a fixed leak and is harder to notice, because the population really is present. ARTIFACT is the stronger statement and its own verdict: the population is real and reproducible but is NOT app memory (an automation bridge, a DevTools hook, a dev-only registry), so it must be excluded from any total rather than re-investigated; "record" adds it; "import" bootstraps history in bulk from a team doc or a JSON file; "list" prints the index; "cover" records which combos a round drove, so the "do not repeat covered combos" rule stops depending on someone remembering.\n\n' +
       'IMPORTANT: a verdict of NEW is only as good as the index behind it. A newly-created index is pre-seeded with the generic ARTIFACT families (JIT warmup, CDP network/perf/console retention, a11y caches, React Fast Refresh registries, captured Error stacks, the automation bridge bundle), so the first `check` can already answer KNOWN for a population that is documented and is not app memory — but it knows nothing about YOUR app. Seed that with `action: "import"` before trusting the first `check` of a workstream. Set `MEMLAB_FINDINGS_INDEX` to a checked-in path to share the index across hosts and operators instead of keeping it in a per-machine home directory.',
     {
       action: z
@@ -556,11 +774,11 @@ export function registerFindingIndex(server: McpServer): void {
           'Round identifier (e.g. "r59"), recorded as first/last seen.',
         ),
       status: z
-        .enum(['new', 'known', 'fixed', 'retracted'])
+        .enum(['new', 'known', 'fixed', 'retracted', 'artifact'])
         .optional()
         .default('known')
         .describe(
-          'Status to record. Use "fixed" together with `fixed_behind` and `fixed_by_diffs`. Use "retracted" with `retraction_reason` for a finding that was investigated and WITHDRAWN — a structural population mistaken for a rate, an artifact, a measurement error. Without a retracted state the next round has no record that the question was already answered and re-derives it.',
+          'Status to record. Use "fixed" together with `fixed_behind` and `fixed_by_diffs`. Use "retracted" with `retraction_reason` for a finding that was investigated and WITHDRAWN — a measurement error, a structural population mistaken for a rate. Use "artifact" for a population that is REAL and reproducible but is not the app: a devtools bridge, a dev-only cache, a Fast Refresh record. The two are different instructions to the next round — "do not trust this number" versus "this number is right and belongs to the harness" — and collapsing them into "retracted" is how an artifact gets re-investigated as a candidate leak.',
         ),
       fixed_behind: z
         .string()
@@ -571,6 +789,18 @@ export function registerFindingIndex(server: McpServer): void {
         .optional()
         .describe(
           'D-numbers carrying the fix, e.g. ["D123", "D124"]. Structured because `fixed_behind` has been carrying this as prose ("D1 stacked on D2, BOTH required"), which a reader has to parse and a tool cannot reconcile.',
+        ),
+      gate_state: z
+        .enum(['allocated', 'expired', 'deallocated', 'code_removed'])
+        .optional()
+        .describe(
+          'Whether the gate in `fixed_behind` is actually SERVING the fix. "Fixed behind <gate>" reads as done, but it is only true while the gate is allocated AND its code still exists — a recorded fix whose experiment had expired and whose branch had since been deleted produced two successive wrong recommendations before anyone checked. `check` warns loudly on anything but "allocated".',
+        ),
+      gate_checked_on: z
+        .string()
+        .optional()
+        .describe(
+          'When `gate_state` was last confirmed (e.g. "2026-09-23"), so a stale answer can be spotted rather than trusted.',
         ),
       verified_by_ab: z
         .boolean()
@@ -627,6 +857,8 @@ export function registerFindingIndex(server: McpServer): void {
       fixed_behind,
       fixed_by_diffs,
       verified_by_ab,
+      gate_state,
+      gate_checked_on,
       retraction_reason,
       note,
       combos,
@@ -636,8 +868,47 @@ export function registerFindingIndex(server: McpServer): void {
       findings,
     }) => {
       try {
-        const indexPath = resolveIndexPath(workstream);
+        // A WRITE never inherits a remembered scope. Convenience for a bare
+        // `check` is worth a remembered scope; silently filing a finding into
+        // whichever index a previous call happened to touch is not — the
+        // finding lands somewhere the caller did not name and the next round
+        // does not find it. Reads may inherit; writes use what was passed.
+        const isWrite =
+          action === 'import' || action === 'record' || action === 'cover';
+        const effectiveWorkstream = isWrite
+          ? workstream
+          : stickyWorkstream(workstream);
+        // Remembered from ANY call that names one, including `check`. Updating
+        // it only on writes meant a bare check after an explicit check reverted
+        // to an older scope.
+        if (workstream != null && workstream !== '') {
+          lastWorkstream = workstream;
+        } else if (isWrite) {
+          // A bare WRITE goes to the unscoped index, so the remembered scope
+          // has to go with it. Leaving it set sent the next bare `check` to a
+          // different file than the import that had just run — the import
+          // appeared to have done nothing.
+          lastWorkstream = undefined;
+        }
+        const indexPath = resolveIndexPath(effectiveWorkstream);
         const index = loadIndex(indexPath);
+        // Printed on EVERY action. The index a call actually read is the one
+        // fact needed to tell "this candidate is new" from "I read the wrong
+        // file", and it used to appear only in the empty-index banner.
+        const indexPathLine = `_Index: \`${indexPath}\`${
+          effectiveWorkstream != null && effectiveWorkstream !== ''
+            ? ` (workstream \`${effectiveWorkstream}\`${workstream == null || workstream === '' ? ', remembered from an earlier call in this session' : ''})`
+            : ' (unscoped)'
+        }._`;
+
+        // Appended to EVERY action, not just `check`. The path is the one
+        // signal that separates "this candidate really is new" from "I read
+        // the wrong file", and a write benefits from it most — an import that
+        // landed in a neighbouring index looks identical to one that worked.
+        const result = (text: string): ReturnType<typeof toolResult> =>
+          toolResult(
+            text.includes(indexPathLine) ? text : `${text}\n\n${indexPathLine}`,
+          );
 
         if (action === 'export') {
           // The round trip `import` always implied. A previous sweep recorded
@@ -667,7 +938,7 @@ export function registerFindingIndex(server: McpServer): void {
             fs.mkdirSync(dir, {recursive: true});
           }
           const payload = {
-            workstream: workstream ?? null,
+            workstream: effectiveWorkstream ?? null,
             exported_at: new Date().toISOString(),
             findings: Object.values(idx.findings ?? {}),
             combos_driven: idx.combos_driven ?? {},
@@ -683,7 +954,7 @@ export function registerFindingIndex(server: McpServer): void {
           // recorded anything still exports a non-empty file. `hasAppHistory`
           // is the distinction that was actually wanted: generic artifact seeds
           // and no app history at all.
-          return toolResult(
+          return result(
             `Exported **${n}** finding(s)${
               workstream != null ? ` for workstream \`${workstream}\`` : ''
             } to \`${dest}\`.\n\n` +
@@ -775,7 +1046,7 @@ export function registerFindingIndex(server: McpServer): void {
           // missing argument. Reporting it as the latter sent the operator
           // looking for an argument they had in fact passed.
           if (incoming.length === 0 && combosImported === 0) {
-            return toolResult(
+            return result(
               `Nothing to import: ${
                 from != null && from !== ''
                   ? `\`${from}\` was read but yielded no usable finding, and its driven-combo coverage was already recorded`
@@ -793,7 +1064,7 @@ export function registerFindingIndex(server: McpServer): void {
           const {imported, updated, skipped} = importFindings(index, incoming);
           skipped.unshift(...fileErrors);
           saveIndex(indexPath, index);
-          return toolResult(
+          return result(
             [
               `Imported **${imported} new** and updated **${updated}** finding(s) into \`${indexPath}\`; ` +
                 `the index now holds ${formatNumber(Object.keys(index.findings).length)}.` +
@@ -814,7 +1085,7 @@ export function registerFindingIndex(server: McpServer): void {
         if (action === 'list') {
           const all = Object.values(index.findings);
           if (!hasAppHistory(index)) {
-            return toolResult(
+            return result(
               `The findings index at \`${indexPath}\` is **empty**, so every \`check\` in this ` +
                 'session will answer NEW — including for findings that are already documented ' +
                 'and already fixed. Seed it first with `action: "import"` from the workstream\'s ' +
@@ -892,7 +1163,7 @@ export function registerFindingIndex(server: McpServer): void {
             )
             .slice(-8)
             .map(([r, c]) => `${r}: ${c.join(', ')}`);
-          return toolResult(
+          return result(
             [
               `## Findings index (${formatNumber(all.length)}) — \`${indexPath}\``,
               '',
@@ -928,7 +1199,7 @@ export function registerFindingIndex(server: McpServer): void {
           if (!round) return errorResult('action "cover" requires a round.');
           index.combos_driven[round] = combos;
           saveIndex(indexPath, index);
-          return toolResult(
+          return result(
             `Recorded ${combos.length} combo(s) driven in ${round}: ${combos.join(', ') || '(none)'}.`,
           );
         }
@@ -947,12 +1218,31 @@ export function registerFindingIndex(server: McpServer): void {
             // to a real one, and it has already sent a round off to re-derive a
             // documented, already-fixed finding. Say so at the point of use.
             const indexSize = Object.keys(index.findings).length;
+            const siblings = !hasAppHistory(index)
+              ? siblingWorkstreamIndexes(indexPath)
+              : [];
             const unreliable = !hasAppHistory(index)
               ? [
                   '',
                   `> ⚠️ **The index at \`${indexPath}\` is EMPTY, so this verdict carries no information.** ` +
                     'Every candidate reads as NEW. Seed the workstream history with ' +
                     '`action: "import"` before treating a NEW here as evidence of anything.',
+                  ...(siblings.length > 0
+                    ? [
+                        '>',
+                        '> **But there is seeded history right next to it** — ' +
+                          siblings
+                            .map(
+                              sib =>
+                                `\`workstream: "${sib.workstream}"\` (${formatNumber(sib.count)} finding(s))`,
+                            )
+                            .join(', ') +
+                          '. `import` writes a workstream-scoped file and `check` ' +
+                          'defaults to the unscoped one, so this is very likely the ' +
+                          'wrong index rather than an unseeded one. Re-run `check` with ' +
+                          'that `workstream`.',
+                      ]
+                    : []),
                 ]
               : [];
             const related = relatedByClass(index, growing_classes, fingerprint);
@@ -974,7 +1264,7 @@ export function registerFindingIndex(server: McpServer): void {
                       'But if one of these is an artifact family, the population you are looking at is ' +
                       'probably not app memory, and that is worth settling before spending the round on it.',
                   ];
-            return toolResult(
+            return result(
               [
                 `## NEW finding — fingerprint \`${fingerprint}\``,
                 '',
@@ -984,33 +1274,64 @@ export function registerFindingIndex(server: McpServer): void {
                 `No previous round in this index (${formatNumber(indexSize)} finding(s)) recorded this ` +
                   'retainer path with this class set. Confirm it, then `action: "record"` so the next ' +
                   'round recognizes it.',
+                '',
+                indexPathLine,
                 ...relatedLines,
               ].join('\n'),
             );
           }
+          // Not gated on `status === 'fixed'`. A gate state recorded against
+          // an `artifact` or `known` entry warned in the inline badge and read
+          // as clean here — the same field saying two different things in the
+          // same session.
+          const gateWarning =
+            existing.gate_state != null && existing.gate_state !== 'allocated'
+              ? existing.gate_state === 'code_removed'
+                ? `\n\n> ⚠️ **The code behind \`${existing.fixed_behind ?? 'that gate'}\` has been REMOVED from the tree**` +
+                  `${existing.gate_checked_on != null ? ` (checked ${existing.gate_checked_on})` : ''}. ` +
+                  'Re-enabling the gate does nothing. Do not plan an A/B against it.'
+                : `\n\n> ⚠️ **That gate is recorded as ${existing.gate_state.toUpperCase()}**` +
+                  `${existing.gate_checked_on != null ? ` (checked ${existing.gate_checked_on})` : ''}, ` +
+                  'so the fix is NOT serving. "Fixed behind <gate>" is only true while the gate is ' +
+                  'allocated AND its code still exists — verify both before treating this as fixed ' +
+                  'or planning an A/B against it.'
+              : '';
           const label =
-            existing.status === 'fixed'
-              ? `KNOWN-AND-FIXED-BEHIND(${existing.fixed_behind ?? 'unknown gate'})`
-              : existing.status === 'retracted'
-                ? `RETRACTED (${existing.first_seen_round})`
-                : `KNOWN (${existing.first_seen_round})`;
-          return toolResult(
+            existing.status === 'artifact'
+              ? `ARTIFACT — NOT PRODUCTION MEMORY (${existing.first_seen_round})`
+              : existing.status === 'fixed'
+                ? `KNOWN-AND-FIXED-BEHIND(${existing.fixed_behind ?? 'unknown gate'})`
+                : existing.status === 'retracted'
+                  ? `RETRACTED (${existing.first_seen_round})`
+                  : `KNOWN (${existing.first_seen_round})`;
+          return result(
             [
               `## ${label} — fingerprint \`${fingerprint}\``,
               '',
               `Signature: \`${signature}\``,
               `First seen: ${existing.first_seen_round}; last seen: ${existing.last_seen_round}; seen ${existing.seen_count}×.`,
+              indexPathLine,
               existing.note ? `Note: ${existing.note}` : '',
               '',
               existing.fixed_by_diffs != null &&
               existing.fixed_by_diffs.length > 0
                 ? `Fixed by: ${existing.fixed_by_diffs.join(', ')}${existing.verified_by_ab === true ? ' (A/B verified)' : ' (NOT A/B verified — the fix is a claim, not a measured result)'}`
                 : '',
-              existing.status === 'fixed'
-                ? `**Stop here.** This leak is already fixed behind \`${existing.fixed_behind}\`. If it is still reproducing, the gate is probably not enabled in this run — verify the gating state before treating it as a finding.`
-                : existing.status === 'retracted'
-                  ? `**Stop here — this was investigated and WITHDRAWN.** ${existing.retraction_reason ?? 'No reason was recorded, which is itself worth fixing in the index.'} Re-deriving a retracted finding is the same wasted round as re-deriving a fixed one, and it is harder to notice because the population really is there. If you believe the retraction was wrong, say what new evidence changes it before reopening.`
-                  : '**This is not a new finding.** Check whether the earlier round already root-caused it before spending the rest of this one on it.',
+              existing.status === 'artifact'
+                ? '**Stop here — this population is NOT production memory.** A previous round ' +
+                  'identified it as a measurement artifact (an automation bridge, a DevTools ' +
+                  'hook, a dev-only registry, CDP bookkeeping). It will be present and may well ' +
+                  'grow, and neither fact makes it a finding. Exclude it from any total you quote.'
+                : existing.status === 'fixed'
+                  ? `**Stop here.** This leak is already fixed behind \`${existing.fixed_behind}\`. If it is still reproducing, the gate is probably not enabled in this run — verify the gating state before treating it as a finding.${gateWarning}`
+                  : existing.status === 'retracted'
+                    ? `**Stop here — this was investigated and WITHDRAWN.** ${existing.retraction_reason ?? 'No reason was recorded, which is itself worth fixing in the index.'} Re-deriving a retracted finding is the same wasted round as re-deriving a fixed one, and it is harder to notice because the population really is there. If you believe the retraction was wrong, say what new evidence changes it before reopening.`
+                    : '**This is not a new finding.** Check whether the earlier round already root-caused it before spending the rest of this one on it.',
+              // Appended outside the status branches so a gate state recorded
+              // against a non-`fixed` entry is not silently dropped. The
+              // `fixed` branch interpolates it inline, so it is skipped here
+              // rather than printed twice.
+              existing.status !== 'fixed' ? gateWarning : '',
             ]
               .filter(Boolean)
               .join('\n'),
@@ -1025,8 +1346,10 @@ export function registerFindingIndex(server: McpServer): void {
           growing_classes,
           first_seen_round: existing?.first_seen_round ?? roundId,
           last_seen_round: roundId,
-          status,
+          status: storableStatus(status),
           fixed_behind: fixed_behind ?? existing?.fixed_behind,
+          gate_state: gate_state ?? existing?.gate_state,
+          gate_checked_on: gate_checked_on ?? existing?.gate_checked_on,
           fixed_by_diffs: fixed_by_diffs ?? existing?.fixed_by_diffs,
           verified_by_ab: verified_by_ab ?? existing?.verified_by_ab,
           retraction_reason: retraction_reason ?? existing?.retraction_reason,
@@ -1060,8 +1383,8 @@ export function registerFindingIndex(server: McpServer): void {
             recorded.fixed_by_diffs.length === 0);
         const missingReason =
           status === 'retracted' && recorded.retraction_reason == null;
-        return toolResult(
-          `Recorded \`${fingerprint}\` as **${status}**${recorded.fixed_behind ? ` (behind \`${recorded.fixed_behind}\`)` : ''}` +
+        return result(
+          `Recorded \`${fingerprint}\` as **${recorded.status}**${recorded.fixed_behind ? ` (behind \`${recorded.fixed_behind}\`)` : ''}` +
             `${extras.length > 0 ? ` — ${extras.join('; ')}` : ''} for round ${roundId}. ` +
             `Signature: \`${signature}\`. The index now holds ${formatNumber(Object.keys(index.findings).length)} finding(s).` +
             (thinFix

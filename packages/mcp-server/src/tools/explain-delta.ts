@@ -133,6 +133,18 @@ export function registerExplainDelta(server: McpServer): void {
         .describe(
           'Handle of the later snapshot. Defaults to the current snapshot.',
         ),
+      // `baseline` has accepted a path for a while; `target` did not exist at
+      // all, so the documented recipe ("both rungs resident") still had to be
+      // followed by hand for the second snapshot — and loading two snapshots by
+      // hand has its own trap: the ACTIVE snapshot becomes whichever loaded
+      // last, so a follow-up memlab_eval silently runs against the baseline.
+      // Symmetry removes both problems.
+      target: z
+        .string()
+        .optional()
+        .describe(
+          'Alias for `target_handle`. Accepts a resident handle, or a file path — auto-loaded with keep_previous, exactly like `baseline`.',
+        ),
       limit: z
         .number()
         .optional()
@@ -157,12 +169,45 @@ export function registerExplainDelta(server: McpServer): void {
       baseline_handle,
       baseline: baselineAlias,
       target_handle,
+      target: targetAlias,
       limit,
       min_delta_bytes,
       include_artifacts,
     }) => {
       try {
-        let baselineRef = baseline_handle ?? baselineAlias;
+        // `??` alone keeps an empty string, which then fails as "snapshot not
+        // resident" instead of falling back to the default. A caller who
+        // passes `""` means "not given".
+        const blank = (v?: string): string | undefined =>
+          v == null || v === '' ? undefined : v;
+        // Captured BEFORE any auto-load. Loading a baseline path switches the
+        // active snapshot, so resolving the default target afterwards resolved
+        // it to the baseline that had just been loaded and failed with "the
+        // same snapshot" — for a call whose target was the snapshot the
+        // session was already on.
+        const handleBeforeLoads = getCurrentHandle();
+        // Two spellings of one argument must not silently become a choice.
+        // `cycles` vs `cycles_per_rung` errors on conflict; this preferred the
+        // `_handle` form and dropped the other without a word.
+        if (
+          blank(baseline_handle) != null &&
+          blank(baselineAlias) != null &&
+          baseline_handle !== baselineAlias
+        ) {
+          return errorResult(
+            '`baseline_handle` and `baseline` are the same argument under two names and disagree — pass one.',
+          );
+        }
+        if (
+          blank(target_handle) != null &&
+          blank(targetAlias) != null &&
+          target_handle !== targetAlias
+        ) {
+          return errorResult(
+            '`target_handle` and `target` are the same argument under two names and disagree — pass one.',
+          );
+        }
+        let baselineRef = blank(baseline_handle) ?? blank(baselineAlias);
         if (baselineRef == null) {
           return errorResult(
             'Pass `baseline_handle` (a resident snapshot handle) or `baseline` (a handle or a file path).',
@@ -197,7 +242,27 @@ export function registerExplainDelta(server: McpServer): void {
           }
           baselineRef = loaded;
         }
-        const targetHandle = target_handle ?? getCurrentHandle();
+        let targetRef = blank(target_handle) ?? blank(targetAlias);
+        if (targetRef != null) {
+          targetRef = resolveHandle(targetRef) ?? targetRef;
+          if (
+            getSnapshotByHandle(targetRef) == null &&
+            /[/\\.]/.test(targetRef)
+          ) {
+            const loadedTarget = await loadSnapshotByPath(targetRef);
+            if (loadedTarget == null) {
+              const candidates = handlesSharingBasename(targetRef);
+              return errorResult(
+                candidates.length > 1
+                  ? `\`target\` "${targetRef}" matches ${candidates.length} resident snapshots ` +
+                      `(${candidates.join(', ')}), so it cannot be resolved by name. Pass one of those handles.`
+                  : `\`target\` "${targetRef}" is neither a resident handle nor a readable snapshot file.`,
+              );
+            }
+            targetRef = loadedTarget;
+          }
+        }
+        const targetHandle = targetRef ?? handleBeforeLoads;
         if (targetHandle == null) {
           return errorResult('No current snapshot; pass target_handle.');
         }

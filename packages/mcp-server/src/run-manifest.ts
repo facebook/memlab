@@ -59,6 +59,16 @@ export interface RunManifest {
   splitAfterRung: number[];
   /** Caveats the runner recorded, verbatim. */
   caveats: string[];
+  /**
+   * Observations the runner could not settle on its own.
+   *
+   * The flatness check is the motivating case: it is computed from the post-GC
+   * TOTAL, which the skill explicitly says not to judge a round by, so shipping
+   * it as a caveat made ~18 of 20 rounds in one sweep carry a note that
+   * app_delta then contradicted. These are carried separately so an analysis
+   * can resolve them instead of quoting them.
+   */
+  provisionalNotes: string[];
   /** Combos driven, for the report header. */
   combos: string[];
   /**
@@ -85,6 +95,42 @@ export interface RunManifest {
 export function cyclesFromFilename(p: string): number | null {
   const m = /rung_\d+_c(\d+)\b/i.exec(path.basename(p));
   return m ? Number(m[1]) : null;
+}
+
+/**
+ * Is this the settle rung the runner appends after the last driven rung?
+ *
+ * It is named `rung_99_settle` rather than `rung_NN_cNNN`, so it carries no
+ * cycle count — and no cycles are driven during the settle, so its true
+ * position on the cycle axis is the same as the rung before it.
+ */
+export function isSettleRungFilename(p: string): boolean {
+  return /rung_\d+_settle\b/i.test(path.basename(p));
+}
+
+/**
+ * The cycle count a settle rung sits at: the last DRIVEN rung before it.
+ *
+ * Walking back one position is not enough. A round that settles, drives no
+ * further and settles again — or a hand-supplied list that repeats the settle —
+ * puts a settle rung immediately before a settle rung, and reading a cycle
+ * count off THAT name returns null, which drops the whole ladder back to
+ * `assumed-even`: the exact failure this function exists to prevent, moved one
+ * rung along.
+ */
+function cyclesFromPrecedingDrivenRung(
+  paths: readonly string[],
+  index: number,
+): number | null {
+  for (let i = index - 1; i >= 0; i--) {
+    if (isSettleRungFilename(paths[i])) continue;
+    // Keep going past a driven rung whose name does not parse. Returning its
+    // null gave up while an earlier rung still carried a usable count, and one
+    // null drops the WHOLE ladder to `assumed-even`.
+    const c = cyclesFromFilename(paths[i]);
+    if (c != null) return c;
+  }
+  return null;
 }
 
 /**
@@ -125,7 +171,23 @@ export function deriveCycleAxis(
         `the rungs it resolves to, not the arguments you passed.)`,
     );
   }
-  const fromNames = paths.map(cyclesFromFilename);
+  // The settle rung is named `rung_99_settle`, not `rung_NN_cNNN`, so it has no
+  // cycle count in its name. It sits at the SAME cycle count as the rung before
+  // it, because the settle drives nothing — it only idles and forces GC.
+  //
+  // Filling it in matters far more than it looks. The runner appends a settle
+  // rung to every round by default, so the natural
+  // `paths: [rung_00_c0 … rung_03_c150, rung_99_settle]` call used to fail the
+  // "every filename parsed" test on that one entry and fall all the way through
+  // to `assumed-even`. Measured on a real ladder: the assumed axis reported
+  // `+2.135/cycle, r2 = 0.9424, "episodic"` where the true axis gives
+  // `+2.000/cycle, r2 = 1.0000, LINEAR` — a wrong rate AND a different verdict,
+  // on a round that became a filed finding.
+  const fromNames = paths.map((p, i) =>
+    isSettleRungFilename(p)
+      ? cyclesFromPrecedingDrivenRung(paths, i)
+      : cyclesFromFilename(p),
+  );
   if (fromNames.every(v => v != null)) {
     const axis = fromNames as number[];
     // Only trust filenames if they are non-decreasing; a shuffled list would
@@ -134,11 +196,29 @@ export function deriveCycleAxis(
     if (monotonic) return {axis, source: 'filenames'};
   }
   if (cycles != null && paths.length > 1) {
-    const step = cycles / (paths.length - 1);
-    return {
-      axis: paths.map((_, i) => Math.round(i * step)),
-      source: 'assumed-even',
-    };
+    // A settle rung is not a driven rung, so it must not consume a slot in the
+    // even spread — placing it at max cycles put it somewhere the filenames
+    // branch would never put it, so the two branches disagreed about where the
+    // same rung sat. Spread over the DRIVEN rungs and pin each settle to the
+    // one before it.
+    const drivenCount = paths.filter(p => !isSettleRungFilename(p)).length;
+    // Fewer than two driven rungs cannot be spread over anything. Emitting an
+    // all-zero axis and calling it `assumed-even` announced a spacing that was
+    // not assumed so much as absent; `none` is the honest answer and stops the
+    // probe fitting against it.
+    if (drivenCount < 2) return {axis: null, source: 'none'};
+    const step = cycles / (drivenCount - 1);
+    const axis: number[] = [];
+    let driven = 0;
+    for (const p of paths) {
+      if (isSettleRungFilename(p)) {
+        axis.push(axis.length > 0 ? axis[axis.length - 1] : 0);
+        continue;
+      }
+      axis.push(Math.round(driven * step));
+      driven++;
+    }
+    return {axis, source: 'assumed-even'};
   }
   return {axis: null, source: 'none'};
 }
@@ -256,6 +336,7 @@ export function loadRunManifest(runDir: string): RunManifest {
         )
       : [],
     caveats: asStringArray(raw.caveats),
+    provisionalNotes: asStringArray(raw.provisional_notes),
     combos: asStringArray(
       (raw.config as Record<string, unknown> | undefined)?.combos,
     ),
