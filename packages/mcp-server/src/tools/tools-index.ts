@@ -341,6 +341,10 @@ const GROUPS: Group[] = [
         'Unbounded or oversized caches in one snapshot.',
       ],
       [
+        'memlab_persistent_structures',
+        'How many VERSIONS of a structurally-shared structure are retained (Immutable.js, Immer, RxJS) — detected by SHAPE, so it survives the minified class names a histogram cannot explain.',
+      ],
+      [
         'memlab_sparse_elements',
         'Integer-keyed objects and arrays whose elements backing store is mostly holes — waste charged to no class, so a histogram cannot see it.',
       ],

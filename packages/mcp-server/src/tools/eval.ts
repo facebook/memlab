@@ -1581,6 +1581,71 @@ export async function runEval({
     };
     const byTypename = (name: string): number[] =>
       buildClassTypeIndex().byTypename.get(name) ?? [];
+    /**
+     * Objects carrying ALL of `keys` as own properties — indexed.
+     *
+     * Shape is the only handle on a minified bundle: the interesting
+     * populations have names like `St` and `_t`, so "which objects look like
+     * this" is the question that actually gets asked, and it was the one query
+     * with no index behind it. Every shape hypothesis therefore cost a full
+     * `snapshot.nodes.forEach` with a per-node edge walk — measured at
+     * `nodes_visited: 7,564,404` and 1-2 minutes on a 435 MB heap, run ~15
+     * times across one sweep. Expensive enough that you stop forming
+     * hypotheses, which is exactly where the novel findings are.
+     *
+     * The index is built once per snapshot from a single pass and memoized
+     * next to the class index, so the first call pays what the hand-rolled
+     * walk paid and every later one is a set intersection.
+     */
+    interface ShapeIndex {
+      byKey: Map<string, number[]>;
+    }
+    const buildShapeIndex = (): ShapeIndex => {
+      const cached = scratch.__shapeIndex as ShapeIndex | undefined;
+      if (cached) return cached;
+      const byKey = new Map<string, number[]>();
+      snapshot.nodes.forEach((node: IHeapNode) => {
+        if (node.id <= 3) return;
+        if (node.type !== 'object') return;
+        for (const e of node.references) {
+          if (e.type !== 'property') continue;
+          const name = String(e.name_or_index);
+          if (name === '__proto__') continue;
+          let a = byKey.get(name);
+          if (!a) {
+            a = [];
+            byKey.set(name, a);
+          }
+          // `references` can repeat a property name (an accessor pair emits
+          // getter and setter edges), and a duplicated id would make the
+          // intersection below over-count.
+          if (a[a.length - 1] !== node.id) a.push(node.id);
+        }
+      });
+      const idx: ShapeIndex = {byKey};
+      scratch.__shapeIndex = idx;
+      return idx;
+    };
+    const byShape = (
+      keys: readonly string[],
+      opts?: {exact?: boolean; exclude?: readonly string[]},
+    ): number[] => {
+      if (keys.length === 0) return [];
+      const idx = buildShapeIndex();
+      // Intersect starting from the RAREST key, so the working set is as small
+      // as possible from the first step.
+      const lists = keys.map(k => idx.byKey.get(k) ?? []);
+      if (lists.some(l => l.length === 0)) return [];
+      lists.sort((a, b) => a.length - b.length);
+      let acc = lists[0];
+      for (let i = 1; i < lists.length && acc.length > 0; i++) {
+        const other = new Set(lists[i]);
+        acc = acc.filter(id => other.has(id));
+      }
+      const exclude = opts?.exclude ?? [];
+      if (exclude.length === 0 && opts?.exact !== true) return acc;
+      return acc.filter(id => hasShape(id, keys, opts));
+    };
     const withProp = (name: string): number[] => {
       const key = `__withProp:${name}`;
       const cached = scratch[key] as number[] | undefined;
@@ -2622,6 +2687,7 @@ export async function runEval({
       shapeSignature,
       byClass,
       byTypename,
+      byShape,
       withProp,
       aggregateRetained,
       contextOf,

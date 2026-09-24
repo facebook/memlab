@@ -24,6 +24,7 @@ import {
 } from '../utils.js';
 import {linearFit, probeRung, type LinearFit} from './ladder-probe.js';
 import {resolveLadderPaths} from './ladder.js';
+import {resolveLadderInputs} from '../run-manifest.js';
 
 /** How far the per-run net deltas may SPREAD and still be called consistent. */
 const AGREE_TOLERANCE = 0.01;
@@ -206,11 +207,17 @@ export function adjudicate(
 }
 
 const RunSchema = z.object({
+  run_dir: z
+    .string()
+    .optional()
+    .describe(
+      "This run's output directory (the one holding run.json and snapshots/). PREFERRED over `paths`: the rung paths AND the exact per-rung cycle axis are read from run.json, which is what makes two runs of DIFFERENT lengths comparable. Replication across rounds of different lengths is the normal case in a sweep — a 75-cycle round has rungs c25/c50/c75 where a 150-cycle round has c50/c100/c150, and hand-matching them by index compares the wrong pairs (or fails outright with File not found).",
+    ),
   paths: z
     .array(z.string())
     .optional()
     .describe(
-      'Ordered snapshot paths for this run, oldest first. Omit only if `series` is given.',
+      'Ordered snapshot paths for this run, oldest first. Omit only if `series` or `run_dir` is given.',
     ),
   series: z
     .array(z.number())
@@ -309,13 +316,45 @@ export function registerReplicate(server: McpServer): void {
           const runLabel = run.label ?? `run ${i + 1}`;
           let values: number[];
 
+          // A `run_dir` supplies BOTH the rung paths and the measured cycle
+          // axis. Resolving it here means two runs of different lengths are
+          // each fitted against their own real axis, so their slopes are
+          // per-cycle and therefore comparable — which is the whole point of
+          // replication and is exactly what hand-matching rungs by index gets
+          // wrong.
+          let runPaths = run.paths;
+          let runAxis = run.cycles_per_rung;
+          const hasSeries = run.series != null && run.series.length > 0;
+          // Only resolved when the paths are actually needed. A pre-measured
+          // `series` never reads a snapshot, so resolving a `run_dir` for it
+          // turned an unused, possibly stale directory into a hard failure on
+          // a code path the caller was not exercising. The axis is still taken
+          // from the manifest when one is available, since a `series` needs an
+          // x-axis just as much as a probe does.
+          if (run.run_dir != null && run.run_dir !== '') {
+            if (hasSeries) {
+              try {
+                runAxis =
+                  resolveLadderInputs({run_dir: run.run_dir}).cyclesPerRung ??
+                  runAxis;
+              } catch {
+                // A `series` run only wanted the axis; without it the caller's
+                // own `cycles_per_rung` (or none) still produces a comparison.
+              }
+            } else {
+              const inputs = resolveLadderInputs({run_dir: run.run_dir});
+              runPaths = inputs.paths;
+              runAxis = inputs.cyclesPerRung ?? runAxis;
+            }
+          }
+
           if (run.series != null && run.series.length > 0) {
             values = run.series;
           } else {
-            if (run.paths == null || run.paths.length === 0) {
+            if (runPaths == null || runPaths.length === 0) {
               return errorResult(
                 new Error(
-                  `${runLabel}: give it either \`paths\` or a pre-measured \`series\`.`,
+                  `${runLabel}: give it \`run_dir\`, \`paths\`, or a pre-measured \`series\`.`,
                 ),
               );
             }
@@ -326,7 +365,7 @@ export function registerReplicate(server: McpServer): void {
                 ),
               );
             }
-            const {paths: resolved} = resolveLadderPaths(run.paths);
+            const {paths: resolved} = resolveLadderPaths(runPaths);
             const {rungs: locals, largestMB} = resolveRungs(
               resolved,
               max_file_size_mb,
@@ -363,9 +402,8 @@ export function registerReplicate(server: McpServer): void {
             );
           }
           const xs =
-            run.cycles_per_rung != null &&
-            run.cycles_per_rung.length === values.length
-              ? run.cycles_per_rung
+            runAxis != null && runAxis.length === values.length
+              ? runAxis
               : values.map((_, j) => j);
           fits.push(classifyRun(runLabel, values, xs, min_r2, min_delta));
         }
