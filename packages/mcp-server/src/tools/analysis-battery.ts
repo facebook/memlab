@@ -87,7 +87,11 @@ function buildPlan(
     {tool: 'memlab_growth_signals', args: {}},
     {tool: 'memlab_detached_dom', args: {group_by: 'dominator'}},
     {tool: 'memlab_event_listener_leaks', args: {}},
-    {tool: 'memlab_react_update_queues', args: {}},
+    // Given the ladder rather than one rung, this returns the breadth-vs-length
+    // verdict instead of a census. Without it the battery prints a table of
+    // queue counts from which the one question the tool exists to answer —
+    // are chains LENGTHENING or are there just more hooks — cannot be read.
+    {tool: 'memlab_react_update_queues', args: {run_dir: runDir}},
     {tool: 'memlab_async_census', args: {}},
     {tool: 'memlab_retention_windows', args: {}},
   ];

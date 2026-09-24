@@ -110,6 +110,10 @@ const GROUPS: Group[] = [
         'Read the feature flags the app was actually running with, out of the capture — "was the fix even enabled here?" without circular inference.',
       ],
       [
+        'memlab_gate_fingerprint',
+        'Which experiment ARM a capture is in, when the gate is server-side-scoped and `memlab_app_config` has no flag to read — reads the arm from a population the other arm does not build.',
+      ],
+      [
         'memlab_metric',
         'Record a measurement under a name and keep it ACROSS sessions — the only way a number measured today survives to be compared next week.',
       ],

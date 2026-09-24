@@ -55,6 +55,15 @@ import {
   suggestionsSuppressed,
 } from '../utils.js';
 
+/**
+ * Cap for a class name returned by a HELPER (not a rendered table).
+ *
+ * The table renderers already truncate their cells; the helpers hand back raw
+ * rows, so a string class whose name IS its content could single-handedly
+ * exceed the whole result budget.
+ */
+const MAX_CLASS_NAME_CHARS = 120;
+
 const MAX_OUTPUT_SIZE = 50 * 1024; // 50KB
 
 function truncate(str: string, max: number): string {
@@ -1811,6 +1820,152 @@ export async function runEval({
     };
 
     /**
+     * Closures that captured a variable of a given NAME, indexed.
+     *
+     * The reverse of `contextOf`, and the question a retention hunt actually
+     * asks: not "what did this closure capture" but "who is still holding
+     * `cache`". Answering it by hand needs two hops with two different edge
+     * rules — an `internal` edge named `context` from the closure, then
+     * `context`-TYPED edges inside the scope — and getting either wrong returns
+     * a clean, convincing zero.
+     *
+     * One pass builds both directions; later calls are map lookups.
+     */
+    interface ContextSlotIndex {
+      /** slot name -> ids of the Context objects holding that slot. */
+      bySlot: Map<string, number[]>;
+      /** Context id -> ids of the closures whose scope it is. */
+      closuresOf: Map<number, number[]>;
+      /** Context id -> id of its enclosing Context, for scope-chain walks. */
+      previousOf: Map<number, number>;
+      /**
+       * `previousOf` inverted, built on first `chain: true` use and kept.
+       *
+       * Rebuilding it per call made the chain path O(contexts) every time
+       * while the helper advertised map lookups — on a heap with hundreds of
+       * thousands of scopes that is the whole cost of the question.
+       */
+      childrenOf?: Map<number, number[]>;
+    }
+    const buildContextSlotIndex = (): ContextSlotIndex => {
+      const cached = scratch.__contextSlotIndex as ContextSlotIndex | undefined;
+      if (cached) return cached;
+      const bySlot = new Map<string, number[]>();
+      const closuresOf = new Map<number, number[]>();
+      const previousOf = new Map<number, number>();
+      snapshot.nodes.forEach((node: IHeapNode) => {
+        if (node.id <= 3) return;
+        // The two halves of this pass are disjoint BY CONSTRUCTION, which is
+        // why the closure branch returns early: V8 puts captured variables on
+        // the `system / Context` object, never on the closure itself, so a
+        // closure node carries no `context`-TYPED edge to index. Walking its
+        // references a second time would cost a full extra pass over the most
+        // numerous node type in the heap to find nothing.
+        if (node.type === 'closure') {
+          for (const e of node.references) {
+            if (e.type !== 'internal') continue;
+            if (String(e.name_or_index) !== 'context') continue;
+            const ctx = e.toNode.id;
+            let a = closuresOf.get(ctx);
+            if (!a) {
+              a = [];
+              closuresOf.set(ctx, a);
+            }
+            a.push(node.id);
+            break;
+          }
+          return;
+        }
+        // Per-NODE, not per-adjacent-pair. A `previous` edge between two
+        // edges of the same slot name breaks adjacency, so the last-element
+        // check pushed one Context twice — inflating `scopes` in the census
+        // and returning duplicate ids from `byContextSlot`.
+        const slotsHere = new Set<string>();
+        for (const e of node.references) {
+          if (e.type !== 'context') continue;
+          const name = String(e.name_or_index);
+          // `previous` is the scope-chain link, not a captured variable; it
+          // would otherwise be the most common "captured name" on every heap.
+          if (name === 'previous') {
+            previousOf.set(node.id, e.toNode.id);
+            continue;
+          }
+          if (slotsHere.has(name)) continue;
+          slotsHere.add(name);
+          let a = bySlot.get(name);
+          if (!a) {
+            a = [];
+            bySlot.set(name, a);
+          }
+          a.push(node.id);
+        }
+      });
+      const idx: ContextSlotIndex = {bySlot, closuresOf, previousOf};
+      scratch.__contextSlotIndex = idx;
+      return idx;
+    };
+    const byContextSlot = (
+      name: string,
+      opts?: {returns?: 'closures' | 'scopes'; chain?: boolean},
+    ): number[] => {
+      const idx = buildContextSlotIndex();
+      const direct = idx.bySlot.get(name) ?? [];
+      if (direct.length === 0) return [];
+      const scopes = new Set(direct);
+      if (opts?.chain === true) {
+        // A variable declared in an outer function is captured THROUGH the
+        // scope chain, so a closure that holds it has an inner Context whose
+        // `previous` reaches the declaring one. Without this the obvious
+        // question — "which callbacks still hold `cache`" — under-reports.
+        let childrenOf = idx.childrenOf;
+        if (childrenOf == null) {
+          childrenOf = new Map<number, number[]>();
+          for (const [child, parent] of idx.previousOf) {
+            let a = childrenOf.get(parent);
+            if (!a) {
+              a = [];
+              childrenOf.set(parent, a);
+            }
+            a.push(child);
+          }
+          idx.childrenOf = childrenOf;
+        }
+        const queue = [...direct];
+        while (queue.length > 0) {
+          const cur = queue.pop() as number;
+          for (const child of childrenOf.get(cur) ?? []) {
+            if (scopes.has(child)) continue;
+            scopes.add(child);
+            queue.push(child);
+          }
+        }
+      }
+      if (opts?.returns === 'scopes') return [...scopes];
+      const out: number[] = [];
+      for (const scope of scopes) {
+        for (const id of idx.closuresOf.get(scope) ?? []) out.push(id);
+      }
+      return out;
+    };
+    /** Every variable name captured in this heap, by how many scopes hold it. */
+    const contextSlotCensus = (opts?: {
+      minCount?: number;
+      limit?: number;
+    }): Array<{slot: string; scopes: number; closures: number}> => {
+      const idx = buildContextSlotIndex();
+      const rows: Array<{slot: string; scopes: number; closures: number}> = [];
+      for (const [slot, scopeIds] of idx.bySlot) {
+        if (scopeIds.length < (opts?.minCount ?? 2)) continue;
+        let closures = 0;
+        for (const s of scopeIds)
+          closures += (idx.closuresOf.get(s) ?? []).length;
+        rows.push({slot, scopes: scopeIds.length, closures});
+      }
+      rows.sort((a, b) => b.scopes - a.scopes);
+      return rows.slice(0, opts?.limit ?? 50);
+    };
+
+    /**
      * Every closure class, with how many of them captured a scope.
      *
      * A per-name count alone does not separate "1,000 copies of a function" from
@@ -1973,6 +2128,11 @@ export async function runEval({
     // One-pass class histogram, cached, optionally filtered. `byClass`
     // answers "where are the X"; this answers "what is in here at all",
     // which otherwise means a full manual walk every time.
+    /** Cap a class name so one row cannot consume a whole result budget. */
+    const truncateClassName = (name: string): string =>
+      name.length <= MAX_CLASS_NAME_CHARS
+        ? name
+        : `${name.slice(0, MAX_CLASS_NAME_CHARS)}… (+${formatNumber(name.length - MAX_CLASS_NAME_CHARS)} more chars)`;
     const classCounts = (opts?: {
       pattern?: string;
       type?: string;
@@ -2006,7 +2166,16 @@ export async function runEval({
             e.selfSize += node.self_size;
           } else {
             acc.set(key, {
-              name: node.name,
+              // A growing STRING class carries its whole content as its class
+              // name, and this helper returns rows rather than rendering a
+              // table, so nothing downstream trims it. One measured
+              // `classCounts({pattern})` call returned entries so large that
+              // not a single one fit in the 51,200-byte result budget and the
+              // value came back EMPTY — the same unbounded-name defect the
+              // table renderers already guard against, surfacing on the helper
+              // path instead. The full string stays reachable through
+              // memlab_get_string on any instance.
+              name: truncateClassName(node.name),
               type: node.type,
               count: 1,
               selfSize: node.self_size,
@@ -2691,6 +2860,8 @@ export async function runEval({
       withProp,
       aggregateRetained,
       contextOf,
+      byContextSlot,
+      contextSlotCensus,
       closureCensus,
       listenerRecords,
       detachedNamed,
@@ -3453,6 +3624,8 @@ function describeEnvLines(): string[] {
     "Each of these was rewritten by hand in round after round, slightly differently each time — which makes two rounds' numbers incomparable for reasons that have nothing to do with the app, and in one case (the edge filter) returns a confident zero.",
     '- `helpers.detachedNamed(substr) -> [{id, name}]` — detached nodes whose CLASS NAME contains `substr`, with the same oddball/root filtering the detached-DOM tools apply. ⚠️ A detached node\'s name is its element or Blink class (`Detached EventListener`, `Detached blink::RegisteredEventListener`, `Detached HTMLDivElement`) and **never a `data-testid`** — filtering these for an app-level testid matches nothing on any heap. For "which UI element leaked", use `memlab_detached_dom`, which groups by nearest non-detached dominator.',
     '- `helpers.listenerRecords(callbackName?) -> [{id, callback, context}]` — objects carrying BOTH a callback-ish and a context-ish property, i.e. event-listener records. Optionally narrowed to one callback class, which is how the question is actually asked ("how many `subscribe_$0` records are held?"). Cached; the definition matches `memlab_stale_collections` exactly.',
+    '- `helpers.byContextSlot(name, {returns, chain}) -> ids[]` — the REVERSE of `contextOf`, and the question a retention hunt actually asks: not what a closure captured but WHO still holds `cache`. Returns the closure ids capturing a variable of that name (`{returns: "scopes"}` for the Context objects instead). Pass `{chain: true}` to include closures that reach the variable through an OUTER scope — without it a variable declared in an enclosing function under-reports. Indexed: one pass, then map lookups.',
+    '- `helpers.contextSlotCensus({minCount, limit}) -> [{slot, scopes, closures}]` — every captured variable name in the heap ranked by how many scopes hold it. Use it to FIND the name to pass to `byContextSlot` when the leak is a closure capture and the class names are minified.',
     '- `helpers.contextOf(nodeOrId) -> node | null` — the scope a closure captured, e.g. `system / Context / scope @767271`. **Do not hand-roll this**: the hop is an `internal` edge NAMED `context`, not a `context`-TYPED edge, so the reflexive filter returns null on every closure in the heap (see the edge-type section below). Returns null for a non-closure — note `helpers.byClass`/`nodesByClass` also match the class-NAME STRING node, so filter on `type === "closure"` before asking for a scope.',
     '- `helpers.closureCensus({minCount?, pattern?}) -> [{name, count, withScope}]` — closure classes with how many instances captured a scope. `count` alone cannot separate "1,000 copies of a function" from "1,000 copies each pinning a distinct scope", and only the second is a retention story. Cached.',
     '',

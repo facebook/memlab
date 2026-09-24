@@ -173,6 +173,45 @@ function scanUpdateQueues(
 }
 
 /**
+ * Classify a per-rung series as flat / shrink / step / linear / uneven.
+ *
+ * Endpoints alone cannot tell a leak from a first-mount cost: 0 → 900 reads the
+ * same whether the 900 arrived on rung 1 and then held, or accrued evenly. Only
+ * the second survives a per-cycle rate, and filing the first as a leak is how
+ * this family already produced one retraction.
+ */
+function seriesShape(series: readonly number[]): string {
+  if (series.length < 3) return '—';
+  const total = series[series.length - 1] - series[0];
+  const steps: number[] = [];
+  for (let i = 1; i < series.length; i++) steps.push(series[i] - series[i - 1]);
+  // Matching endpoints are not enough to call a series flat: [0, 500, 0] is a
+  // spike and a return, and labelling it `flat` is the same misreading the
+  // `shrink` branch below guards against — a reader scanning this column takes
+  // `flat` to mean "nothing happened here".
+  if (total === 0) return steps.every(d => d === 0) ? 'flat' : 'uneven';
+  // A net DECREASE is not "flat" — a population being cleaned up is the one
+  // thing a reader most wants to see next to a growing row — but it only
+  // earns the name if it actually decreases throughout. [100, 0, 200, 50]
+  // nets -50 while being pure noise, and calling that `shrink` reads as
+  // orderly cleanup.
+  if (total < 0) {
+    return steps.every(d => d <= 0) ? 'shrink' : 'uneven';
+  }
+  // Checked BEFORE the step-magnitude test. An interior decrease disqualifies
+  // every named shape here: `step` promises "jumps once and then holds" and
+  // `linear` is the one shape the table says survives a per-cycle rate, so a
+  // series that dips and recovers must not be given either label. Ordering
+  // this after the magnitude test let [0, 200, 100, 250] read as `step`.
+  if (steps.some(d => d < 0)) return 'uneven';
+  // One rung carrying nearly all of the growth is a step, however clean the
+  // endpoint-to-endpoint rate looks.
+  if (Math.max(...steps) >= total * 0.8) return 'step';
+  const flatSteps = steps.filter(d => d === 0).length;
+  return flatSteps <= 1 ? 'linear' : 'uneven';
+}
+
+/**
  * Breadth and length across a whole ladder, in one call.
  *
  * The two numbers have to be read SEPARATELY and against the same cycle axis:
@@ -278,12 +317,14 @@ async function ladderReport(args: {
     .map(name => {
       const a = firstOf(0, name);
       const z = firstOf(perRung.length - 1, name);
+      const series = perRung.map((_, i) => firstOf(i, name)?.records ?? 0);
       return {
         name,
         q0: a?.queues ?? 0,
         q1: z?.queues ?? 0,
         r0: a?.records ?? 0,
         r1: z?.records ?? 0,
+        series,
         longest: z?.longest ?? 0,
       };
     })
@@ -294,9 +335,10 @@ async function ladderReport(args: {
       [
         'Component',
         'Queues (first → last)',
-        'Records (first → last)',
+        'Records per rung',
         'Δ records',
         'Δ/cycle',
+        'Shape',
         'Longest chain',
       ],
       rows
@@ -304,15 +346,18 @@ async function ladderReport(args: {
         .map(r => [
           r.name,
           `${formatNumber(r.q0)} → ${formatNumber(r.q1)}`,
-          `${formatNumber(r.r0)} → ${formatNumber(r.r1)}`,
+          r.series.map(v => formatNumber(v)).join(' · '),
           formatNumber(r.r1 - r.r0),
           rate(r.r0, r.r1),
+          seriesShape(r.series),
           formatNumber(r.longest),
         ]),
-      new Set([3, 4, 5]),
+      new Set([3, 4, 6]),
     ),
     '',
     '_A component whose QUEUES stay flat while its RECORDS climb is lengthening one chain — the eager-bailout shape. One whose queues climb in step with its records is just mounting more hooks._',
+    '',
+    '_Read the per-rung series, not just the endpoints. A `step` jumps once and then holds — that is first-mount cost, and filing it as a leak is a retraction waiting to happen. Only `linear` survives a per-cycle rate._',
   );
 
   if (!suggestionsSuppressed('memlab_react_update_queues')) {
