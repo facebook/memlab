@@ -61,10 +61,22 @@ function buildPlan(
   cycles: number,
   finalRung: string,
   baseRung: string,
+  hasSettleRung: boolean,
 ): Step[] {
   const ladder: Step[] = [
     {tool: 'memlab_round_audit', args: {run_dir: runDir}},
     {tool: 'memlab_leak_report', args: {run_dir: runDir, limit: 14}},
+    // In the STANDARD profile, not an optional extra. The runner captures a
+    // settle rung by default and the entire backlog-vs-retention distinction
+    // rests on it, yet the battery left it out — so a round's leak list was
+    // whatever grew, settled or not. Measured across one 20-round sweep, the
+    // rounds where it was called by hand had their verdict changed EVERY
+    // time: 92,452 objects and 26.3 MB that the ladder called leaks were
+    // retired by idle + GC. Skipped, rather than failing, when the round has
+    // no settle rung.
+    ...(hasSettleRung
+      ? [{tool: 'memlab_settle_check', args: {run_dir: runDir}}]
+      : []),
     {
       tool: 'memlab_artifact_budget',
       args: {target: finalRung, baseline: baseRung},
@@ -137,7 +149,18 @@ const DIGEST_PATTERNS: ReadonlyArray<{tool: RegExp; re: RegExp; max: number}> =
       re: /not the application|^\*\*app_delta|^\| (App|TOTAL) /,
       max: 5,
     },
-    {tool: /leak_report/, re: /^\| [A-Za-z(]/, max: 9},
+    {
+      tool: /leak_report/,
+      re: /^\*\*Settle: |^> ⚠️ \*\*UNSETTLED|^\| [A-Za-z(]/,
+      max: 10,
+    },
+    // The headline, not the table: "N HELD / M DRAINED" is the one line that
+    // tells a reader whether the round's leak list means anything.
+    {
+      tool: /settle_check/,
+      re: /^\*\*\d+ class\(es\) survived|^\*\*Everything that grew came back|^\*\*No baseline given|^No settle rung/,
+      max: 2,
+    },
     {tool: /census_diff/, re: /^Totals:/, max: 4},
     {tool: /cache_analysis/, re: /^\| @|dev-only/, max: 8},
     {tool: /stale_collections/, re: /^\| @/, max: 5},
@@ -178,6 +201,7 @@ export function registerAnalysisBattery(server: McpServer): void {
     "Run a round's whole analysis in ONE call, write every tool's output to disk, and return only a digest.\n\n" +
       "The snapshot load dominates the cost of every tool, so running the standard set over one resident graph costs roughly what running three of them separately does. The reason this is a separate tool from `memlab_batch` is the OUTPUT: a batch returns every result inline, and a round's worth of tool prose is tens of thousands of tokens — which is why a twenty-round sweep is impossible to read without this. Detail goes to `<out_dir>/<tool>.txt`; the digest that comes back is the audit verdict, the app-vs-artifact split, the top growers with rate and fit, census totals and the named collections.\n\n" +
       'Give it `run_dir` and it resolves the ladder, the per-rung cycle counts and the total cycles from `run.json`, so the per-cycle axis is measured rather than assumed.\n\n' +
+      'When the round captured a settle rung, `memlab_settle_check` runs in EVERY profile and its `N HELD / M DRAINED` headline is in the digest: a ladder alone cannot tell retention from in-flight backlog, and a round without that line has a leak list that is mostly backlog.\n\n' +
       'Profiles: `standard` (ladder + leak detectors), `optimization` (adds string/shape/duplication analysis), `deep` (everything, including the slower single-snapshot passes).',
     {
       run_dir: z
@@ -231,6 +255,9 @@ export function registerAnalysisBattery(server: McpServer): void {
 
         const finalRung = manifest.paths[manifest.paths.length - 1];
         const baseRung = manifest.paths[0];
+        const hasSettleRung =
+          manifest.settleRungPath != null &&
+          fs.existsSync(manifest.settleRungPath);
         const plan = buildPlan(
           profile,
           run_dir,
@@ -238,6 +265,7 @@ export function registerAnalysisBattery(server: McpServer): void {
           manifest.cycles,
           finalRung,
           baseRung,
+          hasSettleRung,
         );
 
         const deadline =

@@ -17,6 +17,7 @@ import {
 } from '../run-manifest.js';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode} from '@memlab/core';
+import fs from 'fs';
 import {z} from 'zod';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
 const {getFullHeapFromFile} = memlabHeapAnalysis;
@@ -32,10 +33,12 @@ import {
 } from '../utils.js';
 import {artifactLabel} from '../artifact-classes.js';
 import {
+  buildHistogram,
   computeSequenceTrends,
   normalizeClassName,
   type SequenceRow,
 } from './sequence-analysis.js';
+import {withSnapshotAt} from '../snapshot-borrow.js';
 import {
   collectDevRoots,
   computeReachableWithoutDevRoots,
@@ -227,6 +230,7 @@ export function registerLeakReport(server: McpServer): void {
     'memlab_leak_report',
     'One-call leak triage across an ORDERED ladder of >=2 heap snapshots: runs the growth-trend pass, then gathers per-class EVIDENCE from the final snapshot and returns a single table — class, per-rung counts, Δ and Δ/cycle, how much of it is dev/automation-retained, the dominant retainer, and a verdict hint. ' +
       'Exists because the trend pass alone cannot tell a leak from an artifact: every hunt then ran memlab_dev_artifacts and a retainer trace by hand on each grower and joined the three outputs mentally, which is the step that gets skipped right before something is reported as a production leak. Composes memlab_sequence_analysis with memlab_dev_artifacts and a retainer sample; costs one extra snapshot load (the last rung) on top of the ladder pass. ' +
+      "When `run_dir` names a round that captured a SETTLE rung, every row also carries how much of its growth survived idle + GC, and a class that DRAINS is labelled backlog rather than a leak candidate — without that column the default table is mostly backlog (measured: one sweep's settle rungs retired 92,452 objects and 26.3 MB the ladder had called leaks). A round with no settle rung is stamped UNSETTLED. " +
       'The verdict column is a HINT, not a conclusion — confirm a candidate with memlab_retainer_trace on the example node before calling it a leak. ' +
       "The retainer column votes over the class's NEWEST instances (highest node ids = the growth cohort), NOT over its whole population: voting over the population names whoever holds the most instances, which is a large STATIC collection whenever one exists and is not what grew. Rows where the two disagree are listed under the table. Paths may be local, manifold:// URLs, or bare filenames.",
     {
@@ -291,6 +295,13 @@ export function registerLeakReport(server: McpServer): void {
         .describe(
           'Include classes that are known measurement artifacts (CDP inspector retention, V8 JIT warmup, Blink a11y caches, captured Error stacks). Default false: they are counted in a one-line summary instead of consuming evidence slots, since none of them is an app leak.',
         ),
+      include_settle: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'When `run_dir` names a round that captured a settle rung, read it and add a `settled` column: how many instances of each growing class survived idle + GC. A class that DRAINS is in-flight backlog, not a leak, and its verdict hint is downgraded accordingly. Measured across one sweep, the settle rung retired 92,452 objects and 26.3 MB that the ladder alone reported as leaks. Costs one extra rung load; set false to skip it.',
+        ),
       max_file_size_mb: z
         .number()
         .optional()
@@ -309,6 +320,7 @@ export function registerLeakReport(server: McpServer): void {
         min_growth_count,
         monotonic_only,
         include_artifacts,
+        include_settle,
         max_file_size_mb,
       },
       extra,
@@ -446,8 +458,78 @@ export function registerLeakReport(server: McpServer): void {
           }
         }
 
+        // The settle rung, when the round captured one.
+        //
+        // Without it every grower reads as a leak. Measured across one 20-round
+        // sweep, the classes this column retires were 92,452 objects and
+        // 26.3 MB — `WebLoomCore.completingTraces` went 26.3 MB / 148-of-149
+        // terminal to ZERO, `{event,timestamp}` 53,029 to 1. A round that
+        // skips this is not a round with one missing tool; it is a round whose
+        // leak list is mostly backlog.
+        // Existence-checked, in either form. A manifest can name a settle
+        // rung that was later pruned or never finished writing, and reading
+        // the path without checking turns that into an UNSETTLED banner on
+        // a round that has no settle evidence at all — while `settleError`
+        // suppresses every leak-candidate hint below it.
+        const namedSettlePath =
+          include_settle !== false
+            ? (inputs.manifest?.settleRungPath ?? null)
+            : null;
+        const settlePath =
+          namedSettlePath != null && fs.existsSync(namedSettlePath)
+            ? namedSettlePath
+            : null;
+        const settleMissing = namedSettlePath != null && settlePath == null;
+        let settledCounts: Map<string, number> | null = null;
+        let settleError: string | null = null;
+        if (settlePath != null) {
+          try {
+            settledCounts = await withSnapshotAt(settlePath, snap => {
+              const {hist} = buildHistogram(snap);
+              const out = new Map<string, number>();
+              for (const [k, v] of hist) out.set(k, v.count);
+              return out;
+            });
+          } catch (e) {
+            settleError = e instanceof Error ? e.message : String(e);
+          }
+        }
+        /**
+         * How much of a class's GROWTH survived idle + GC.
+         *
+         * Scored against the growth, not the total: a class with a large
+         * standing population that was never part of the burst would otherwise
+         * always read as "held".
+         */
+        const settleVerdict = (
+          r: SequenceRow,
+        ): {idle: number; kept: number | null; present: boolean} | null => {
+          if (settledCounts == null) return null;
+          const present = settledCounts.has(r.key);
+          const idle = settledCounts.get(r.key) ?? 0;
+          const base = r.counts[0];
+          const grew = r.counts[r.counts.length - 1] - base;
+          // CLAMPED to [0, 1]. The raw ratio is unbounded in both directions:
+          // a settle-rung population larger than the ladder's growth renders
+          // "400% held", and one below the baseline renders a negative that
+          // then reads as drained for the wrong reason. Neither is a fraction
+          // of the growth, which is what the column claims to be.
+          // `grew <= 0` used to mean "fully held" unconditionally, which
+          // says a class that ENDED at or below its baseline held all of a
+          // growth it never had. There is nothing to score there; the caller
+          // learns more from the absence of a number than from a 100%.
+          if (grew <= 0) return {idle, kept: null, present};
+          return {
+            idle,
+            kept: Math.max(0, Math.min(1, (idle - base) / grew)),
+            present,
+          };
+        };
+        const DRAIN_THRESHOLD = 0.1;
+
         const perCycle = cycles != null && cycles > 0;
         const showDevOnly = reached != null;
+        const showSettled = settledCounts != null;
         const headers = [
           'Class',
           'Type',
@@ -456,6 +538,7 @@ export function registerLeakReport(server: McpServer): void {
           ...(perCycle ? ['Δ/cycle'] : []),
           'Δ size',
           ...(showDevOnly ? ['Dev-only'] : []),
+          ...(showSettled ? ['Settled'] : []),
           'Top retainer (newest instances)',
           'Verdict hint',
         ];
@@ -464,6 +547,16 @@ export function registerLeakReport(server: McpServer): void {
 
         let leakCandidates = 0;
         let devOnlyClasses = 0;
+        let drainedClasses = 0;
+        let heldClasses = 0;
+        /** HELD rows that are also leak candidates. See the tally below. */
+        let heldCandidates = 0;
+        // Rows the settle histogram does not mention at all. For one class
+        // that is an ordinary full drain; for most of them it means the
+        // settle rung is short — truncated, or written before the app
+        // finished — and every "drained" verdict below rests on it.
+        let absentFromSettle = 0;
+        let settleRows = 0;
         // Rows where the newest instances and the population at large are held
         // by different things. That disagreement is the signal a static
         // collection is masking the accumulating one, so it is reported rather
@@ -475,14 +568,63 @@ export function registerLeakReport(server: McpServer): void {
           const isDevOnly = showDevOnly && devShare >= DEV_ONLY_SHARE;
           if (isDevOnly) devOnlyClasses++;
 
+          const settle = settleVerdict(r);
+          const drained =
+            settle != null &&
+            settle.kept != null &&
+            settle.kept <= DRAIN_THRESHOLD &&
+            r.netCount > 0;
+          // HELD is settle evidence — "this did not come back" — and a NOISY
+          // grower holds just as well as a monotonic one, so the split scores
+          // every grower the settle rung could speak to.
+          const scoredHeld =
+            settle != null && r.artifact == null && !isDevOnly && !drained;
+          if (settle != null && r.artifact == null && !isDevOnly) {
+            settleRows++;
+            if (!settle.present) absentFromSettle++;
+            if (drained) drainedClasses++;
+            else heldClasses++;
+          }
+
           let verdict: string;
           if (r.artifact != null) {
             verdict = artifactLabel(r.artifact);
           } else if (isDevOnly) {
             verdict = '🛠 dev/automation-retained (not production)';
+          } else if (drained && settle != null && !settle.present) {
+            // Absent from the settle histogram is still a drain — nothing of
+            // the class survived — but it is a drain measured by ABSENCE,
+            // and absence is also what a truncated settle rung produces.
+            // Same classification, different word, so the reader can see
+            // which evidence the verdict rests on. The round-level check
+            // below catches the case where most rows read this way.
+            verdict = '💧 absent from the settle rung — nothing survived';
+          } else if (drained) {
+            // A grower that drains is in-flight work. It must NOT carry the
+            // "LEAK candidate" hint, which is the line that gets quoted.
+            verdict = '💧 drained by settle — backlog, NOT a leak';
           } else if (r.trend === 'monotonic-up') {
-            verdict = '↑ every step — LEAK candidate';
-            leakCandidates++;
+            // "LEAK candidate" is the line that gets quoted out of this
+            // table, so it must not appear when the evidence that would
+            // separate a leak from backlog was never read. The round-level
+            // UNSETTLED banner below is not enough: nobody quotes the banner.
+            verdict =
+              settleError != null || settleMissing
+                ? '↑ every step — UNSETTLED, the settle rung could not be read'
+                : settle != null
+                  ? '↑ every step AND survived settle — LEAK candidate'
+                  : '↑ every step — LEAK candidate';
+            if (settleError == null && !settleMissing) {
+              leakCandidates++;
+              // Counted HERE, in the branch that already survived every
+              // exclusion above it, rather than re-testing the trend beside
+              // the HELD tally. Restating the conditions in two places is
+              // how the two numbers drift: a later exclusion added to this
+              // chain — a dev-only module, an idle-floor row — would be
+              // missed by the copy and the headline would claim more
+              // candidates than the footer counts.
+              if (scoredHeld) heldCandidates++;
+            }
           } else {
             verdict = 'grew net (noisy)';
           }
@@ -504,6 +646,19 @@ export function registerLeakReport(server: McpServer): void {
                       : `${(devShare * 100).toFixed(0)}%`,
                 ]
               : []),
+            ...(showSettled && settle != null
+              ? [
+                  `${formatNumber(settle.idle)} (${
+                    drained
+                      ? 'drained'
+                      : settle.kept == null
+                        ? 'nothing grew'
+                        : `${(settle.kept * 100).toFixed(0)}% held`
+                  })`,
+                ]
+              : showSettled
+                ? ['—']
+                : []),
             (() => {
               const g = growthRetainer(ev);
               if (g.populationLabel != null) {
@@ -519,6 +674,58 @@ export function registerLeakReport(server: McpServer): void {
           ];
         });
         lines.push(markdownTable(headers, tableRows, rightCols));
+
+        // The settle line goes IMMEDIATELY under the table, in the fixed
+        // "N HELD / M DRAINED" shape the digest lifts.
+        if (showSettled) {
+          lines.push(
+            '',
+            `**Settle: ${formatNumber(heldClasses)} class(es) HELD / ${formatNumber(drainedClasses)} DRAINED** ` +
+              `(against \`${(settlePath as string).replace(/^.*\//, '')}\`). ` +
+              'A DRAINED class returned to baseline after idle + GC: it was in-flight work, and reporting it ' +
+              'as a leak is the single most common false positive this tool produces. ' +
+              // One-directional, and with the candidate count beside it.
+              // "Only the HELD rows are candidates" reads as "every HELD row
+              // is a candidate", which is a different and false claim: HELD
+              // scores the settle evidence over every grower, candidacy also
+              // needs the trend. The two numbers disagreed on real output —
+              // 6 HELD against 5 candidates on one measured round — and this
+              // whole line is what the battery digest lifts.
+              `No DRAINED row is a candidate; of the ${formatNumber(heldClasses)} HELD, ` +
+              `**${formatNumber(heldCandidates)}** are candidates — the rest grew net but not at every step. ` +
+              'Read the per-class detail with `memlab_settle_check`.',
+          );
+          // A class the settle histogram never mentions scores 0 and reads as
+          // fully drained. One of those is ordinary. Most of them is a short
+          // settle rung, and then every DRAINED verdict above is an artifact
+          // of the file rather than a measurement of the app.
+          if (settleRows >= 5 && absentFromSettle > settleRows / 2) {
+            lines.push(
+              '',
+              `> ⚠️ **The settle rung may be short.** ${formatNumber(absentFromSettle)} of ${formatNumber(settleRows)} scored classes appear nowhere in it, ` +
+                'which scores each of them as fully drained. That many at once is more consistent with a truncated capture than with the app releasing all of them. ' +
+                'Check the rung opens and has a plausible node count before trusting the DRAINED rows.',
+            );
+          }
+        } else if (settleMissing) {
+          lines.push(
+            '',
+            `> ⚠️ **UNSETTLED — the settle rung is missing from disk.** The round records one at \`${namedSettlePath as string}\`, but the file is not there (pruned, or the capture was interrupted). Every row above is a grower of unknown kind. The round does not need re-driving if the file can be restored.`,
+          );
+        } else if (settleError != null) {
+          lines.push(
+            '',
+            `> ⚠️ **UNSETTLED** — the round names a settle rung but it could not be read (${settleError}), so every row above is a grower of unknown kind. Nothing here separates retention from backlog.`,
+          );
+        } else if (include_settle !== false && inputs.manifest != null) {
+          lines.push(
+            '',
+            '> ⚠️ **UNSETTLED — this round captured no settle rung**, so nothing below distinguishes a leak from ' +
+              'in-flight backlog. A burst of activity legitimately inflates promise chains, scheduler queues and ' +
+              'request buffers, and every one of those grows monotonically. Re-drive with the runner default ' +
+              '(`--settle-minutes 7`) before recording any row here as a finding.',
+          );
+        }
 
         if (content != null && Object.keys(content).length > 0) {
           const hits: string[] = [];

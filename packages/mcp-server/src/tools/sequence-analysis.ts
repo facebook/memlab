@@ -76,7 +76,16 @@ export function normalizeClassName(name: string): string {
   return name.replace(/ @\d+$/, ' @…');
 }
 
-function buildHistogram(snapshot: IHeapSnapshot): {
+/**
+ * The per-class histogram every ladder tool is keyed on.
+ *
+ * Exported so a tool comparing against an EXTRA rung (a settle rung, an idle
+ * baseline) keys it identically. Re-deriving the key by hand is how a row
+ * silently fails to match its own class: the `@<id>` normalization is part of
+ * the key, so `Context / scope @1234` and `Context / scope @5678` are one
+ * class here and two anywhere that forgets.
+ */
+export function buildHistogram(snapshot: IHeapSnapshot): {
   hist: Map<string, ClassStats>;
   nodeCount: number;
   totalSize: number;
