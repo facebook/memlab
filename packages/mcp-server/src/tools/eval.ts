@@ -9,7 +9,7 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
-import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
+import type {IHeapEdge, IHeapNode, IHeapSnapshot} from '@memlab/core';
 import {z} from 'zod';
 import fs from 'fs';
 import os from 'os';
@@ -308,11 +308,206 @@ function wrapNode(node: unknown): unknown {
   });
 }
 
+/**
+ * Edges that could not be read, for the eval currently running.
+ *
+ * Iterating `node.references` and reading `e.type` throws
+ * `TypeError: Cannot read properties of undefined (reading 'property')` on some
+ * nodes of a large heap. The throw escapes the user's `forEach` and kills the
+ * whole eval, so every full-graph probe had to be written as
+ *
+ *     let refs; try { refs = nd.references; } catch (e) { return; }
+ *     for (const e of refs) { let k, t; try { k = e.name_or_index; ... } ... }
+ *
+ * — boilerplate on the most creative tool in the server, and itself a source of
+ * bugs (a bare `catch { return }` inside a `forEach` looks like a `continue`
+ * and is not). The iterator absorbs it instead, and the count is reported so a
+ * skipped population is never silent.
+ *
+ * Module-level because `wrapNode` has no eval context; evals do not interleave
+ * (each `runEval` awaits to completion), and `resetEdgeSkips` runs at the top
+ * of every one.
+ */
+interface EdgeSkipTally {
+  iteration: number;
+  malformed: number;
+  target: number;
+  firstError: string | null;
+}
+let edgeSkips: EdgeSkipTally = {
+  iteration: 0,
+  malformed: 0,
+  target: 0,
+  firstError: null,
+};
+
+function resetEdgeSkips(): void {
+  edgeSkips = {iteration: 0, malformed: 0, target: 0, firstError: null};
+}
+
+function recordEdgeSkip(
+  kind: 'iteration' | 'malformed' | 'target',
+  err: unknown,
+): void {
+  edgeSkips[kind]++;
+  if (edgeSkips.firstError == null && err != null) {
+    edgeSkips.firstError = err instanceof Error ? err.message : String(err);
+  }
+}
+
+export function edgeSkipTotal(): number {
+  return edgeSkips.iteration + edgeSkips.malformed + edgeSkips.target;
+}
+
+/**
+ * The shape user code sees as `snapshot.__skippedEdges`.
+ *
+ * These count edge READS, not distinct edges. Several indexed helpers can
+ * walk the same node in one eval, and each of them re-validates — so one
+ * genuinely malformed edge contributes once per helper that met it. The
+ * number answers "how much of this walk was unreadable", which is the
+ * question a caller deciding whether to trust a census is asking;
+ * de-duplicating would mean keying every skipped edge and is not worth the
+ * memory on a multi-million-node graph.
+ */
+function edgeSkipReport(): Record<string, number | string | null> {
+  return {
+    total_reads: edgeSkipTotal(),
+    iteration: edgeSkips.iteration,
+    malformed: edgeSkips.malformed,
+    unreadable_target: edgeSkips.target,
+    first_error: edgeSkips.firstError,
+    note: 'counts edge READS skipped, not distinct edges — one bad edge is counted once per helper that walked it',
+  };
+}
+
+/**
+ * Run `body` over a node's raw references, surviving a malformed edge.
+ *
+ * Used by the INDEXED helpers, which walk raw nodes rather than sandbox
+ * proxies. One try/catch per node, not per edge: a throw costs that node's
+ * remaining edges and nothing else, where before it cost the whole index.
+ *
+ * The guard covers the ITERATION only. A throw out of `body` is a bug in a
+ * helper, not a malformed snapshot, and catching it here would file that bug
+ * under "N edges skipped" — a count the caller reads as damaged input and
+ * ignores. It propagates.
+ */
+/**
+ * `forEachRef`, restricted to edges whose TARGET is usable, and handing that
+ * target to the body.
+ *
+ * Most indexed helpers open with `e.toNode.id`. A target that throws, or one
+ * that is merely null, then kills the whole index build from inside a helper
+ * the caller never wrote — and the two failures look identical from outside.
+ *
+ * Kept separate from `forEachRef` because the split is real: `withProp`,
+ * `byEdgeName`, `shapeKeys` and `ownProps` read only the edge NAME, and
+ * dropping their null-target edges would shrink a census that has nothing to
+ * do with targets — trading a crash for a silent undercount.
+ */
+/** An edge's target, or null when it cannot be read. Counted either way. */
+function targetOf(edge: IHeapEdge): IHeapNode | null {
+  try {
+    const t = edge.toNode;
+    if (t == null) recordEdgeSkip('target', null);
+    return t ?? null;
+  } catch (err) {
+    recordEdgeSkip('target', err);
+    return null;
+  }
+}
+
+function forEachTargetRef(
+  node: IHeapNode,
+  body: (edge: IHeapEdge, target: IHeapNode) => boolean | void,
+): void {
+  forEachRef(node, e => {
+    let target: IHeapNode | null;
+    try {
+      target = e.toNode;
+    } catch (err) {
+      recordEdgeSkip('target', err);
+      return;
+    }
+    if (target == null) {
+      recordEdgeSkip('target', null);
+      return;
+    }
+    return body(e, target);
+  });
+}
+
+function forEachRef(
+  node: IHeapNode,
+  body: (edge: IHeapEdge) => boolean | void,
+): void {
+  let iter: Iterator<IHeapEdge>;
+  try {
+    iter = node.references[Symbol.iterator]();
+  } catch (err) {
+    recordEdgeSkip('malformed', err);
+    return;
+  }
+  for (;;) {
+    let step: IteratorResult<IHeapEdge>;
+    try {
+      step = iter.next();
+    } catch (err) {
+      recordEdgeSkip('malformed', err);
+      return;
+    }
+    if (step.done === true) return;
+    const e = step.value;
+    // The SAME validation the sandbox iterator applies. Without it a raw walk
+    // compares a non-string `.type` directly (`e.type !== 'property'`) and
+    // silently excludes the edge WITHOUT counting it — the silent-zero failure
+    // this change exists to remove, reintroduced on the indexed path.
+    if (!isReadableEdge(e)) {
+      recordEdgeSkip('malformed', null);
+      continue;
+    }
+    if (body(e) === false) return;
+  }
+}
+
+/**
+ * Is this edge readable at all? Checked once, at iteration time, so anything
+ * handed to user code is safe to destructure.
+ */
+function isReadableEdge(edge: unknown): boolean {
+  if (edge == null) return false;
+  try {
+    const e = edge as {type?: unknown; name_or_index?: unknown};
+    // A type that is not a string fails every `e.type === '…'` filter
+    // silently, which is the same silent-zero failure as a throw with none of
+    // the noise. Treat it as malformed too.
+    if (typeof e.type !== 'string') return false;
+    void e.name_or_index;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function wrapEdge(edge: unknown): unknown {
   if (edge == null) return edge;
   return new Proxy(edge as object, {
     get(target, prop, receiver) {
-      const val = Reflect.get(target, prop, receiver);
+      let val;
+      try {
+        val = Reflect.get(target, prop, receiver);
+      } catch (err) {
+        // `toNode` / `fromNode` build a node object and can fail on their own.
+        // Null is a value every caller already handles (`getNodeById` returns
+        // it), and it is counted, so a dropped target is visible in the
+        // footer rather than being a silent hole.
+        if (prop === 'toNode' || prop === 'fromNode') {
+          recordEdgeSkip('target', err);
+          return null;
+        }
+        throw err;
+      }
       if (prop === 'toNode' || prop === 'fromNode') {
         return wrapNode(val);
       }
@@ -326,12 +521,33 @@ function wrapEdgeIterable(iterable: unknown): unknown {
   const original = iterable as Iterable<unknown>;
   return {
     [Symbol.iterator]() {
-      const iter = original[Symbol.iterator]();
+      let iter: Iterator<unknown>;
+      try {
+        iter = original[Symbol.iterator]();
+      } catch (err) {
+        recordEdgeSkip('iteration', err);
+        return {next: () => ({done: true, value: undefined})};
+      }
       return {
         next() {
-          const result = iter.next();
-          if (result.done) return result;
-          return {done: false, value: wrapEdge(result.value)};
+          for (;;) {
+            let result;
+            try {
+              result = iter.next();
+            } catch (err) {
+              // The iterator cannot be advanced past a throw, so the rest of
+              // this node's edges are lost. That is still strictly better than
+              // losing the eval.
+              recordEdgeSkip('iteration', err);
+              return {done: true, value: undefined};
+            }
+            if (result.done) return result;
+            if (!isReadableEdge(result.value)) {
+              recordEdgeSkip('malformed', null);
+              continue;
+            }
+            return {done: false, value: wrapEdge(result.value)};
+          }
         },
       };
     },
@@ -345,6 +561,9 @@ function wrapSnapshot(snapshot: unknown, budget: VisitBudget): unknown {
       // that take a whole snapshot walk it with the real `forEach` and read
       // `retainedSize` off the nodes it yields, which this proxy refuses.
       if (prop === RAW_NODE) return target;
+      // Readable from inside the eval so a probe can branch on it — e.g.
+      // refuse to report a census whose walk skipped edges.
+      if (prop === '__skippedEdges') return edgeSkipReport();
       if (prop === 'getNodeById') {
         const orig = (
           target as Record<string, (...args: unknown[]) => unknown>
@@ -1044,6 +1263,7 @@ export async function runEval({
   // 20,000,000 while the error text correctly reported the graph as 8,055,593
   // nodes. Both schemas now leave it optional-with-no-default.
   mode = mode ?? 'eval';
+  resetEdgeSkips();
   const scaledTimeout = timeout_ms ?? scaledEvalTimeoutMs();
   if (ownsScanBudget === true && timeout_ms == null && scaledTimeout > 0) {
     // Raising only the VM script timeout is not enough, and the half-fix is
@@ -1363,8 +1583,16 @@ export async function runEval({
     // Read an object's own properties as a plain object: scalars inlined,
     // object-valued props as `{ref, name, type}`. Saves the repetitive
     // `for (const e of n.references) if (e.name_or_index === X)` boilerplate.
-    const describeTarget = (t: IHeapNode): unknown => {
-      if (t.isString) return t.toStringNode()?.stringValue ?? '';
+    const describeTarget = (t: IHeapNode | null): unknown => {
+      // A property whose VALUE cannot be read is still a property. Dropping
+      // the key would shrink a shape — the one thing a name-reading helper
+      // must never do — so the name survives with an unreadable value.
+      if (t == null) return {ref: null, name: '(unreadable target)'};
+      try {
+        if (t.isString) return t.toStringNode()?.stringValue ?? '';
+      } catch {
+        return {ref: t.id, name: '(unreadable string target)'};
+      }
       if (t.name === 'true') return true;
       if (t.name === 'false') return false;
       if (t.name === 'null') return null;
@@ -1391,12 +1619,12 @@ export async function runEval({
         };
       }
       const out: Record<string, unknown> = {};
-      for (const e of node.references) {
-        if (e.type !== 'property') continue;
+      forEachRef(node, e => {
+        if (e.type !== 'property') return;
         const name = String(e.name_or_index);
-        if (name === '__proto__') continue;
-        out[name] = describeTarget(e.toNode);
-      }
+        if (name === '__proto__') return;
+        out[name] = describeTarget(targetOf(e));
+      });
       if (Object.keys(out).length > 0) return out;
 
       // Fall back to a named-edge walk. Natives, closures and some internal
@@ -1405,13 +1633,13 @@ export async function runEval({
       // objects that visibly have state. Provenance is marked so a caller
       // cannot mistake these for real own-properties.
       let found = 0;
-      for (const e of node.references) {
-        if (e.type === 'element') continue;
+      forEachRef(node, e => {
+        if (e.type === 'element') return;
         const name = String(e.name_or_index);
-        if (name === '' || name === '__proto__' || /^\d+$/.test(name)) continue;
-        out[name] = describeTarget(e.toNode);
+        if (name === '' || name === '__proto__' || /^\d+$/.test(name)) return;
+        out[name] = describeTarget(targetOf(e));
         found++;
-      }
+      });
       if (found === 0) return out;
       out.__via = 'edge-walk';
       out.__note =
@@ -1444,24 +1672,24 @@ export async function runEval({
       const node = resolveNode(nodeOrId);
       if (!node) return {};
       const out: Record<string, unknown> = {};
-      for (const e of node.references) {
-        if (e.type !== 'property') continue;
+      forEachRef(node, e => {
+        if (e.type !== 'property') return;
         const name = String(e.name_or_index);
-        if (name === '__proto__') continue;
-        out[name] = describeTarget(e.toNode);
-      }
+        if (name === '__proto__') return;
+        out[name] = describeTarget(targetOf(e));
+      });
       return out;
     };
     const shapeKeys = (nodeOrId: number | {id: number}): Set<string> => {
       const node = resolveNode(nodeOrId);
       const out = new Set<string>();
       if (!node) return out;
-      for (const e of node.references) {
-        if (e.type !== 'property') continue;
+      forEachRef(node, e => {
+        if (e.type !== 'property') return;
         const name = String(e.name_or_index);
-        if (name === '__proto__') continue;
+        if (name === '__proto__') return;
         out.add(name);
-      }
+      });
       return out;
     };
     const hasShape = (
@@ -1518,24 +1746,37 @@ export async function runEval({
         // carry one; skipping the edge walk for other types keeps the
         // widened index roughly as cheap as the object-only one.
         if (node.type !== 'object') return;
-        for (const e of node.references) {
+        forEachRef(node, e => {
           if (
-            e.type === 'property' &&
-            String(e.name_or_index) === '__typename'
+            e.type !== 'property' ||
+            String(e.name_or_index) !== '__typename'
           ) {
-            const t = e.toNode;
-            const tn = t.isString ? t.toStringNode()?.stringValue : null;
-            if (tn) {
-              let b = byTypename.get(tn);
-              if (!b) {
-                b = [];
-                byTypename.set(tn, b);
-              }
-              b.push(node.id);
-            }
-            break;
+            return;
           }
-        }
+          // `isString` and `toStringNode` build on the target and can throw
+          // on their own — guarding only the `toNode` read leaves the two
+          // accessors right after it able to abort the whole index build.
+          let tn: string | null = null;
+          try {
+            const t = targetOf(e);
+            tn =
+              t != null && t.isString
+                ? (t.toStringNode()?.stringValue ?? null)
+                : null;
+          } catch (err) {
+            recordEdgeSkip('target', err);
+            return;
+          }
+          if (tn) {
+            let b = byTypename.get(tn);
+            if (!b) {
+              b = [];
+              byTypename.set(tn, b);
+            }
+            b.push(node.id);
+          }
+          return false;
+        });
       });
       const idx: ClassTypeIndex = {byClass, byTypename};
       scratch.__classTypeIndex = idx;
@@ -1561,14 +1802,17 @@ export async function runEval({
       // The constructor closure itself: a closure named exactly like the class
       // whose only outgoing named edge is `prototype`.
       if (n.type === 'closure') {
-        for (const e of n.references) {
+        let isCtor = false;
+        forEachRef(n, e => {
           if (
             e.type === 'property' &&
             String(e.name_or_index) === 'prototype'
           ) {
-            return true;
+            isCtor = true;
+            return false;
           }
-        }
+        });
+        return isCtor;
       }
       return false;
     };
@@ -1616,10 +1860,10 @@ export async function runEval({
       snapshot.nodes.forEach((node: IHeapNode) => {
         if (node.id <= 3) return;
         if (node.type !== 'object') return;
-        for (const e of node.references) {
-          if (e.type !== 'property') continue;
+        forEachRef(node, e => {
+          if (e.type !== 'property') return;
           const name = String(e.name_or_index);
-          if (name === '__proto__') continue;
+          if (name === '__proto__') return;
           let a = byKey.get(name);
           if (!a) {
             a = [];
@@ -1629,7 +1873,7 @@ export async function runEval({
           // getter and setter edges), and a duplicated id would make the
           // intersection below over-count.
           if (a[a.length - 1] !== node.id) a.push(node.id);
-        }
+        });
       });
       const idx: ShapeIndex = {byKey};
       scratch.__shapeIndex = idx;
@@ -1675,12 +1919,12 @@ export async function runEval({
         // the match, and closures do carry named property edges. Restricting
         // the walk to `object` hid them, the same way it hid non-object
         // classes from byClass.
-        for (const e of node.references) {
-          if (edgeTypes != null && !edgeTypes.has(e.type)) continue;
-          if (String(e.name_or_index) !== name) continue;
+        forEachRef(node, e => {
+          if (edgeTypes != null && !edgeTypes.has(e.type)) return;
+          if (String(e.name_or_index) !== name) return;
           ids.push(node.id);
-          break;
-        }
+          return false;
+        });
       });
       scratch[key] = ids;
       return ids;
@@ -1902,18 +2146,18 @@ export async function runEval({
         // references a second time would cost a full extra pass over the most
         // numerous node type in the heap to find nothing.
         if (node.type === 'closure') {
-          for (const e of node.references) {
-            if (e.type !== 'internal') continue;
-            if (String(e.name_or_index) !== 'context') continue;
-            const ctx = e.toNode.id;
+          forEachTargetRef(node, (e, target) => {
+            if (e.type !== 'internal') return;
+            if (String(e.name_or_index) !== 'context') return;
+            const ctx = target.id;
             let a = closuresOf.get(ctx);
             if (!a) {
               a = [];
               closuresOf.set(ctx, a);
             }
             a.push(node.id);
-            break;
-          }
+            return false;
+          });
           return;
         }
         // Per-NODE, not per-adjacent-pair. A `previous` edge between two
@@ -1921,16 +2165,16 @@ export async function runEval({
         // check pushed one Context twice — inflating `scopes` in the census
         // and returning duplicate ids from `byContextSlot`.
         const slotsHere = new Set<string>();
-        for (const e of node.references) {
-          if (e.type !== 'context') continue;
+        forEachTargetRef(node, (e, target) => {
+          if (e.type !== 'context') return;
           const name = String(e.name_or_index);
           // `previous` is the scope-chain link, not a captured variable; it
           // would otherwise be the most common "captured name" on every heap.
           if (name === 'previous') {
-            previousOf.set(node.id, e.toNode.id);
-            continue;
+            previousOf.set(node.id, target.id);
+            return;
           }
-          if (slotsHere.has(name)) continue;
+          if (slotsHere.has(name)) return;
           slotsHere.add(name);
           let a = bySlot.get(name);
           if (!a) {
@@ -1938,7 +2182,7 @@ export async function runEval({
             bySlot.set(name, a);
           }
           a.push(node.id);
-        }
+        });
       });
       const idx: ContextSlotIndex = {bySlot, closuresOf, previousOf};
       scratch.__contextSlotIndex = idx;
@@ -2046,15 +2290,16 @@ export async function runEval({
             acc.set(node.name, rec);
           }
           rec.count++;
-          for (const e of node.references) {
+          const r = rec;
+          forEachRef(node, e => {
             if (
               String(e.name_or_index) === 'context' &&
               e.type === 'internal'
             ) {
-              rec.withScope++;
-              break;
+              r.withScope++;
+              return false;
             }
-          }
+          });
         });
         all = [...acc.entries()]
           .map(([name, r]) => ({name, ...r}))
@@ -2088,18 +2333,29 @@ export async function runEval({
           [];
         snapshot.nodes.forEach((node: IHeapNode) => {
           if (node.id <= 3 || node.type !== 'object') return;
-          let cb: IHeapNode | null = null;
-          let ctx: IHeapNode | null = null;
-          for (const e of node.references) {
-            if (e.type !== 'property') continue;
+          // A holder rather than two `let`s: the assignments happen inside a
+          // callback, so TypeScript narrows the outer bindings back to `null`
+          // afterwards and the reads below become `never`.
+          const pair: {cb: IHeapNode | null; ctx: IHeapNode | null} = {
+            cb: null,
+            ctx: null,
+          };
+          forEachTargetRef(node, (e, target) => {
+            if (e.type !== 'property') return;
             const p = String(e.name_or_index);
-            if (cb == null && LISTENER_CALLBACK_PROPS.has(p)) cb = e.toNode;
-            else if (ctx == null && LISTENER_CONTEXT_PROPS.has(p))
-              ctx = e.toNode;
-            if (cb != null && ctx != null) break;
-          }
-          if (cb != null && ctx != null) {
-            found.push({id: node.id, callback: cb.name, context: ctx.name});
+            if (pair.cb == null && LISTENER_CALLBACK_PROPS.has(p)) {
+              pair.cb = target;
+            } else if (pair.ctx == null && LISTENER_CONTEXT_PROPS.has(p)) {
+              pair.ctx = target;
+            }
+            if (pair.cb != null && pair.ctx != null) return false;
+          });
+          if (pair.cb != null && pair.ctx != null) {
+            found.push({
+              id: node.id,
+              callback: pair.cb.name,
+              context: pair.ctx.name,
+            });
           }
         });
         all = found;
@@ -2609,11 +2865,11 @@ export async function runEval({
     const byReferrerEdge = (edgeName: string): number[] => {
       const hits = new Set<number>();
       snapshot.nodes.forEach(node => {
-        for (const e of node.references) {
-          if (String(e.name_or_index) !== edgeName) continue;
-          if (e.toNode.id > 3) hits.add(e.toNode.id);
-          break;
-        }
+        forEachTargetRef(node as IHeapNode, (e, target) => {
+          if (String(e.name_or_index) !== edgeName) return;
+          if (target.id > 3) hits.add(target.id);
+          return false;
+        });
       });
       return [...hits];
     };
@@ -3182,6 +3438,15 @@ export async function runEval({
       }
     } else if (budget.visited > 0) {
       footer.push(`nodes_visited: ${formatNumber(budget.visited)}`);
+      if (edgeSkipTotal() > 0) {
+        const t = edgeSkips;
+        footer.push(
+          `⚠️ skipped_edge_reads: ${formatNumber(edgeSkipTotal())} — the walk hit edges it could not read and SKIPPED them rather than failing ` +
+            `(${formatNumber(t.malformed)} malformed, ${formatNumber(t.iteration)} truncated an edge list, ${formatNumber(t.target)} unreadable target). ` +
+            `First error: ${t.firstError ?? 'none'}. This counts READS, not distinct edges — several helpers can walk the same node in one eval — so it is an upper bound on how short the counts above are. ` +
+            '`snapshot.__skippedEdges` has the same breakdown inside the eval.',
+        );
+      }
       const stride = budget.sampleEvery ?? 1;
       if (stride > 1) {
         footer.push(
@@ -3718,6 +3983,8 @@ function describeEnvLines(): string[] {
     '',
     '## IHeapEdge API',
     '`.name_or_index`, `.type` (property/element/context/internal/hidden/shortcut), `.toNode`, `.fromNode`.',
+    '',
+    '**Write the obvious loop.** `for (const e of node.references) { … }` is safe: a large heap contains edges whose `.type` throws `TypeError: Cannot read properties of undefined`, and the iterator SKIPS those rather than letting the throw escape and kill the eval. No `try`/`catch` boilerplate is needed, and none should be written — a bare `catch { return }` inside a `forEach` reads like `continue` and is not. An unreadable `.toNode`/`.fromNode` comes back as `null`. Every skip is counted: `snapshot.__skippedEdges` -> `{total_reads, iteration, malformed, unreadable_target, first_error}` inside the eval, and a non-zero total is reported as `skipped_edge_reads` in the result footer so a short count is never silent. Those are edge READS, not distinct edges — one bad edge is counted once per helper that walked it, so the total is an upper bound.',
     '',
     '### Edge TYPE vs edge NAME — the silent-zero trap',
     'These are different fields and the reflexive guess is wrong for the most-asked question. A closure and its captured scope are linked like this:',
