@@ -1196,6 +1196,86 @@ export function formatNumber(n: number): string {
   return n.toLocaleString('en-US');
 }
 
+/**
+ * A one-line, length-capped rendering of a name that may be arbitrary content.
+ *
+ * For a `string`-typed node the class NAME is the string's value, so anything
+ * that interpolates a class name into output is interpolating unbounded
+ * payload. Measured: `memlab_leak_report` produced a 42,682,152-byte file on
+ * one round against a 6,440-byte median, from a handful of multi-megabyte
+ * string names reaching the un-truncated parts of the report.
+ *
+ * Whitespace is collapsed first, and that matters as much as the length: an
+ * embedded newline breaks out of the markdown cell or bullet it sits in. The
+ * omitted length is reported so a clipped name is never mistaken for a short
+ * one.
+ */
+export function clampLabel(name: string, maxLen = 120): string {
+  const flat = name.replace(/\s+/g, ' ').trim();
+  if (flat.length <= maxLen) return flat;
+  return `${flat.slice(0, maxLen - 1)}… (+${formatNumber(
+    flat.length - maxLen + 1,
+  )} chars)`;
+}
+
+/**
+ * Last-resort size cap on an assembled report.
+ *
+ * Every individual field is clamped at the point of formatting; this is the
+ * backstop for the field nobody clamped yet. Cut on a LINE boundary — a
+ * markdown table sliced mid-row renders as garbage — and say what was dropped,
+ * because a silently short report reads as a complete one.
+ */
+export function capReportSize(text: string, maxBytes = 512 * 1024): string {
+  const total = Buffer.byteLength(text, 'utf8');
+  if (total <= maxBytes) return text;
+  const lines = text.split('\n');
+  const footerFor = (omitted: number) =>
+    `\n\n… TRUNCATED — the report was ${formatBytes(
+      total,
+    )}, over the ${formatBytes(maxBytes)} cap; ${formatNumber(
+      omitted,
+    )} line(s) omitted. This is a formatting backstop, not a data limit: a report this large almost always means an un-clamped name field carrying a multi-megabyte string value. Narrow with \`limit\`, or report it.`;
+  // The footer is part of the output, so it comes out of the same budget — a
+  // cap that the notice announcing the cap pushes you over is not a cap. The
+  // count in it is not known until the loop ends, so the allowance uses the
+  // widest it could be (every line omitted) and the real one is rendered
+  // after.
+  const reserve = Buffer.byteLength(footerFor(lines.length), 'utf8');
+  const budget = Math.max(0, maxBytes - reserve);
+  const kept: string[] = [];
+  let used = 0;
+  for (const line of lines) {
+    const cost = Buffer.byteLength(line, 'utf8') + 1;
+    if (used + cost > budget) break;
+    kept.push(line);
+    used += cost;
+  }
+  // A report whose FIRST line is already over budget — one un-clamped name
+  // field carrying a megabyte string value, which is the case this whole
+  // function exists for — would otherwise keep nothing and return a bare
+  // footer. The reader then cannot see what the report was even about. Keep
+  // a prefix of it instead, cut on a character boundary so the output is
+  // still valid UTF-8.
+  if (kept.length === 0 && lines.length > 0) {
+    // Less the ellipsis it is about to carry. Slicing to the full budget and
+    // then appending three more bytes puts the result over the cap this
+    // function exists to enforce.
+    const head = Buffer.from(lines[0], 'utf8').subarray(
+      0,
+      Math.max(0, budget - Buffer.byteLength('…', 'utf8')),
+    );
+    // A cut landing mid-character decodes to U+FFFD, which is both visible
+    // noise and three bytes wide where the truncated one was fewer.
+    kept.push(
+      new TextDecoder('utf-8', {fatal: false})
+        .decode(head)
+        .replace(/\uFFFD$/, '') + '…',
+    );
+  }
+  return kept.join('\n') + footerFor(lines.length - kept.length);
+}
+
 export function markdownTable(
   headers: string[],
   rows: string[][],

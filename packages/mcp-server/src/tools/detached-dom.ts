@@ -20,6 +20,7 @@ import {
   isNodeWorthInspecting,
   markdownTable,
   truncateNodeName,
+  clampLabel,
   errorResult,
   toolResult,
   boundedDominatorRetainedSize,
@@ -403,10 +404,15 @@ export function getFirstNonFrameworkRetainer(node: IHeapNode): string {
       from.type !== 'synthetic' &&
       from.type !== 'native'
     ) {
-      const edgeName = String(edge.name_or_index);
+      // Both halves are clamped: for a `string`-typed retainer the NAME is the
+      // string's content, and an edge name can be a long key, so an
+      // un-clamped label here carries unbounded payload into every caller's
+      // output.
+      const edgeName = clampLabel(String(edge.name_or_index), 60);
       // V8 leaves anonymous functions/objects unnamed; printing the empty
       // string renders as a leading blank that reads like a formatting bug.
-      const fromName = from.name.length > 0 ? from.name : '(anonymous)';
+      const fromName =
+        from.name.length > 0 ? clampLabel(from.name, 120) : '(anonymous)';
       return `${fromName} (${from.type}) .${edgeName}`;
     }
     cur = from;

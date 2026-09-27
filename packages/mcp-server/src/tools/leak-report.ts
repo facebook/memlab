@@ -21,6 +21,8 @@ import {z} from 'zod';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
 const {getFullHeapFromFile} = memlabHeapAnalysis;
 import {
+  capReportSize,
+  clampLabel,
   errorResult,
   formatBytes,
   formatNumber,
@@ -78,8 +80,21 @@ interface Evidence {
 // overlap wherever instances nest, so summing them reports figures larger than
 // the heap (measured: 5.9 GB of `Object` in a 200 MB heap). Net self-size delta
 // across the ladder is additive and is the growth the report is about anyway.
+/**
+ * The class name to PRINT.
+ *
+ * Clamped, because for a `string`-typed row the class name IS the string's
+ * content. Measured: one round of this tool wrote a 42,682,152-byte file
+ * against a 6,440-byte median across the same 20-round sweep, entirely from
+ * multi-megabyte string names reaching the parts of the report that did not
+ * truncate.
+ */
+const DISPLAY_NAME_MAX = 120;
+
 function displayName(row: {name: string; type: string}): string {
-  return row.name.length > 0 ? row.name : `(unnamed ${row.type})`;
+  return row.name.length > 0
+    ? clampLabel(row.name, DISPLAY_NAME_MAX)
+    : `(unnamed ${row.type})`;
 }
 
 /**
@@ -94,6 +109,12 @@ function displayName(row: {name: string; type: string}): string {
  * breaks out of the markdown bullet it was sitting in.
  */
 const PROSE_NAME_MAX = 80;
+
+/**
+ * Past this, a class name is not inlined into a copy-paste tool call at all.
+ * A CLIPPED name still reads as pasteable and matches nothing.
+ */
+const PASTEABLE_NAME_MAX = 200;
 
 function proseName(row: {name: string; type: string}): string {
   const flat = displayName(row).replace(/\s+/g, ' ').trim();
@@ -356,7 +377,7 @@ export function registerLeakReport(server: McpServer): void {
             );
           }
           return toolResult(
-            lines.join('\n'),
+            capReportSize(lines.join('\n')),
             pathsHeader(steps.map(s => s.label)),
           );
         }
@@ -487,7 +508,7 @@ export function registerLeakReport(server: McpServer): void {
               const g = growthRetainer(ev);
               if (g.populationLabel != null) {
                 retainerSplits.push(
-                  `\`${label}\`: newest → \`${g.label}\`, population at large → \`${g.populationLabel}\``,
+                  `\`${label}\`: newest → \`${clampLabel(g.label, 120)}\`, population at large → \`${clampLabel(g.populationLabel, 120)}\``,
                 );
               }
               const shown =
@@ -579,6 +600,22 @@ export function registerLeakReport(server: McpServer): void {
         if (strongest) {
           const ev = evidence.get(strongest.key) as Evidence;
           const example = ev.example as IHeapNode;
+          // The argument values below want the RAW class name, not
+          // proseName(): that one collapses whitespace, truncates with an
+          // ellipsis and substitutes "(unnamed <type>)" for an empty name, all
+          // of which are right for prose and produce a class name that matches
+          // nothing when pasted into a tool call.
+          //
+          // But "raw" is unbounded — for a string-typed row it is the string's
+          // value, and this line interpolates it TWICE. A 4 MB name therefore
+          // added 8 MB to the report. Past the cap the literal is dropped
+          // entirely rather than silently clipped: a clipped class name reads
+          // as pasteable and matches nothing, which is the worse failure.
+          const rawName = strongest.name;
+          const pasteable = rawName.length <= PASTEABLE_NAME_MAX;
+          const nameArg = pasteable
+            ? JSON.stringify(rawName)
+            : `"<the ${formatNumber(rawName.length)}-char class name — too long to inline; read it with memlab_get_node({node_id: ${example.id}})>"`;
           lines.push(
             '',
             `**Next:** confirm the top candidate before reporting it — \`memlab_retainer_trace({node_id: ${example.id}})\` on the largest traceable \`${proseName(strongest)}\` instance in the final rung, then \`memlab_dominator_chain\` on whatever owns it. Counts alone cannot distinguish a leak from a cache that grew and will be evicted.`,
@@ -586,17 +623,12 @@ export function registerLeakReport(server: McpServer): void {
             // Two tools that answer the questions a finding always ends on,
             // and that a multi-round sweep otherwise never reaches because
             // nothing in the flow names them.
-            // The RAW class name inside the argument values, not proseName():
-            // that one collapses whitespace, truncates at 80 chars with an
-            // ellipsis and substitutes "(unnamed <type>)" for an empty name,
-            // all of which are right for prose and produce a class name that
-            // matches nothing when pasted into a tool call.
-            `Then, before it costs another round: \`memlab_finding_index({action: "check", retainer_path: "<the path the trace printed>", growing_classes: [${JSON.stringify(strongest.name)}]})\` says whether a previous round already found — or already FIXED — this exact path, and \`memlab_what_if({class_name: ${JSON.stringify(strongest.name)}})\` sizes what freeing the population would actually reclaim. "Is this new?" and "how much is it worth?" are the two questions a filing needs, and a retainer trace answers neither.`,
+            `Then, before it costs another round: \`memlab_finding_index({action: "check", retainer_path: "<the path the trace printed>", growing_classes: [${nameArg}]})\` says whether a previous round already found — or already FIXED — this exact path, and \`memlab_what_if({class_name: ${nameArg}})\` sizes what freeing the population would actually reclaim. "Is this new?" and "how much is it worth?" are the two questions a filing needs, and a retainer trace answers neither.`,
           );
         }
 
         return toolResult(
-          lines.join('\n'),
+          capReportSize(lines.join('\n')),
           pathsHeader(steps.map(s => s.label)),
         );
       } catch (err) {
