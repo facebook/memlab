@@ -882,7 +882,7 @@ export function registerEval(server: McpServer): void {
             'props(nodeOrId)->{prop: scalar | {ref,name,type}} & getProp(nodeOrId, name) & shapeSignature(nodeOrId, {maxStringLen?}) (content signature for dedup checks), ' +
             'shapeKeys(nodeOrId)->Set<string> & ownProps(nodeOrId) & hasShape(nodeOrId, [names], {exact?,exclude?}) (own JS properties ONLY — USE THESE FOR SHAPE MATCHING; props() falls back to an internal-edge walk and injects length/map/__via/__note, which makes a props()-based shape test silently return zero matches), ' +
             'rootPath(nodeOrId, {maxHops?})->[{id,name,type,edge}] (GC-root path, root first — the retainer_trace walk, callable inside an eval), ' +
-            'byClass(name, {type?})->ids[] & byTypename(name)->ids[] & withProp(name)->ids[] (INDEXED lookups — built once per snapshot then memoized in a session scratch, so repeated questions are index-speed not full-scan; byClass covers EVERY node type, matching memlab_find_nodes_by_class, so closures/strings/arrays/natives are found — pass {type:"object"} to narrow. NOTE byClass also returns the CONSTRUCTOR closure and the `Foo (prototype)` object alongside the instances, and tracing one of those yields a meaningless modulesMap path; use iterByClass, whose instancesOnly defaults true, when you mean instances), ' +
+            'byClass(name, {type?})->ids[] & byTypename(name)->ids[] & withProp(name, {edgeTypes?})->ids[] & byEdgeName(name)->ids[] (INDEXED lookups — built once per snapshot then memoized in a session scratch, so repeated questions are index-speed not full-scan; byClass covers EVERY node type, matching memlab_find_nodes_by_class, so closures/strings/arrays/natives are found — pass {type:"object"} to narrow. NOTE byClass also returns the CONSTRUCTOR closure and the `Foo (prototype)` object alongside the instances, and tracing one of those yields a meaningless modulesMap path; use iterByClass, whose instancesOnly defaults true, when you mean instances. withProp matches `property` AND `context` edges by default, so a CLOSURE-CAPTURED variable is found — pass {edgeTypes:["property"]} for own properties only, and byEdgeName to ignore edge type entirely), ' +
             'aggregateRetained(ids[])->{retained,exact} (dominator-deduped retained for a SET of ids, no double-counting), ' +
             'iterByClass(name, {type?, instancesOnly?})->nodes[] & iterByType(type)->nodes[] (INDEXED iteration — no full scan; instancesOnly defaults TRUE and drops the constructor closure, the `Foo (prototype)` object and `system/SharedFunctionInfo/Foo`, which otherwise come back as class members whose only "properties" are length/map and make a per-instance loop produce garbage), ' +
             'classCounts({pattern?, type?, minCount?})->[{name,type,count,selfSize}] (one-pass histogram, cached), ' +
@@ -1137,7 +1137,7 @@ export async function runEval({
         code,
       );
       const indexed =
-        /helpers\.(byClass|byTypename|withProp|byReferrerEdge|getNode)/.test(
+        /helpers\.(byClass|byTypename|withProp|byEdgeName|byContextVar|byReferrerEdge|getNode)/.test(
           code,
         );
       const nestingDepth = maxTraversalNesting(code);
@@ -1655,27 +1655,67 @@ export async function runEval({
       if (exclude.length === 0 && opts?.exact !== true) return acc;
       return acc.filter(id => hasShape(id, keys, opts));
     };
-    const withProp = (name: string): number[] => {
-      const key = `__withProp:${name}`;
+    /**
+     * Nodes carrying an outgoing edge NAMED `name`, restricted to `edgeTypes`
+     * (null means any type).
+     */
+    const byNamedEdge = (
+      name: string,
+      edgeTypes: ReadonlySet<string> | null,
+    ): number[] => {
+      const key = `__byNamedEdge:${
+        edgeTypes == null ? '*' : [...edgeTypes].sort().join('+')
+      }:${name}`;
       const cached = scratch[key] as number[] | undefined;
       if (cached) return cached;
       const ids: number[] = [];
       snapshot.nodes.forEach((node: IHeapNode) => {
         if (node.id <= 3) return; // skip oddball/root nodes for parity with other tools
-        // Every node type is scanned: the `property` edge check below is
-        // what constrains the match, and closures do carry named property
-        // edges. Restricting the walk to `object` hid them, the same way it
-        // hid non-object classes from byClass.
+        // Every node type is scanned: the edge check below is what constrains
+        // the match, and closures do carry named property edges. Restricting
+        // the walk to `object` hid them, the same way it hid non-object
+        // classes from byClass.
         for (const e of node.references) {
-          if (e.type === 'property' && String(e.name_or_index) === name) {
-            ids.push(node.id);
-            break;
-          }
+          if (edgeTypes != null && !edgeTypes.has(e.type)) continue;
+          if (String(e.name_or_index) !== name) continue;
+          ids.push(node.id);
+          break;
         }
       });
       scratch[key] = ids;
       return ids;
     };
+    const WITH_PROP_DEFAULT_EDGE_TYPES: ReadonlySet<string> = new Set([
+      'property',
+      'context',
+    ]);
+    /**
+     * `context` is in the default set, and that is the whole point.
+     *
+     * A variable captured by a closure lives on a `system / Context / scope`
+     * node and is reached by a `context`-TYPED edge, not a `property` one. With
+     * the old `property`-only filter, `withProp('tracedInteractions')` returned
+     * `[]` for a population whose true series was 0 / 253 / 492 / 718 / 751 —
+     * and `ladder_probe` then fitted that all-zero series and certified it as a
+     * verified negative. A helper that answers "absent" for "present but
+     * captured" is worse than one that refuses the question.
+     *
+     * Widening is safe for the documented `withProp(...).filter(hasShape)`
+     * recipe: a scope node has no property edges, so `hasShape` drops it again.
+     * Pass `{edgeTypes: ['property']}` for the strict old behaviour.
+     */
+    const withProp = (
+      name: string,
+      opts?: {edgeTypes?: readonly string[]},
+    ): number[] =>
+      byNamedEdge(
+        name,
+        opts?.edgeTypes == null
+          ? WITH_PROP_DEFAULT_EDGE_TYPES
+          : new Set(opts.edgeTypes),
+      );
+    /** Every holder of an edge named `name`, whatever the edge type. */
+    const byEdgeName = (name: string): number[] => byNamedEdge(name, null);
 
     /**
      * The GC-root path for one node, as `retainer_trace` walks it — but callable
@@ -1947,6 +1987,23 @@ export async function runEval({
       }
       return out;
     };
+    /**
+     * The scopes holding a closure variable called `name`.
+     *
+     * Same index as `byContextSlot`, under the name an app author reaches for:
+     * "closure variable", not "context slot". `byContextSlot` defaults to
+     * returning the CLOSURES, which is the retention question; when the
+     * question is "how many of these are there", the scopes are the
+     * population, so that is the default here.
+     */
+    const byContextVar = (
+      name: string,
+      opts?: {returns?: 'closures' | 'scopes'; chain?: boolean},
+    ): number[] =>
+      byContextSlot(name, {
+        returns: opts?.returns ?? 'scopes',
+        chain: opts?.chain,
+      });
     /** Every variable name captured in this heap, by how many scopes hold it. */
     const contextSlotCensus = (opts?: {
       minCount?: number;
@@ -2858,9 +2915,11 @@ export async function runEval({
       byTypename,
       byShape,
       withProp,
+      byEdgeName,
       aggregateRetained,
       contextOf,
       byContextSlot,
+      byContextVar,
       contextSlotCensus,
       closureCensus,
       listenerRecords,
@@ -3194,7 +3253,7 @@ export async function runEval({
           'walk({name: pred}, {collect}) runs SEVERAL predicates in ONE pass — the ' +
           'node budget is cumulative across the eval, so two forEach passes on a ' +
           'multi-million-node graph aborts; byClass, nodesByClass, iterByClass, ' +
-          'byTypename, withProp, hasShape, shapeKeys, queryNodes, findWithin; ' +
+          'byTypename, withProp, byEdgeName, byContextVar, hasShape, shapeKeys, queryNodes, findWithin; ' +
           'retainedSize(id), retainedSizes(ids), aggregateRetained(ids) — ' +
           'node.retainedSize THROWS here; rootPath, pathBetween, owner, contextOf, ' +
           'groupReferrersByEdge, detachedNamed, listenerRecords, closureCensus; ' +
@@ -3601,7 +3660,9 @@ function describeEnvLines(): string[] {
     '- `helpers.shapeKeys(nodeOrId) -> Set<string>`, `helpers.ownProps(nodeOrId) -> {…}`, `helpers.hasShape(nodeOrId, ["a","b"], {exact?, exclude?}) -> boolean` — own JS properties ONLY (`property` edges, no `__proto__`, no fallback, no provenance keys). **This is the correct way to ask "what shape is this object".** `hasShape(id, ["element","record"], {exact: true})` is the whole test.',
     '- `helpers.rootPath(nodeOrId, {maxHops?}) -> [{id, name, type, edge}]` — the GC-root path for one node, root first, exactly as `memlab_retainer_trace` walks it. Saves hand-writing the `while (cur.hasPathEdge) cur = cur.pathEdge.fromNode` loop inside a larger eval (which gets rewritten, slightly differently, every time a probe needs to name an owner).',
     '- `helpers.shapeSignature(nodeOrId, {maxStringLen?}) -> string` — stable shallow content signature (sorted prop names + scalar values) for duplicate-record detection. Numeric values are NOT captured (see `memlab_duplicate_objects`), so records differing only in a number field hash the same.',
-    '- `helpers.byClass(name, {type?}) -> ids[]`, `helpers.byTypename(name) -> ids[]`, `helpers.withProp(name) -> ids[]` — INDEXED id lookups. The class/typename index is built once per snapshot and memoized in a session scratch, so a follow-up call is index-speed, not another full `snapshot.nodes` scan. `byClass` indexes EVERY node type (closure, string, array, native, …), matching `memlab_find_nodes_by_class`; pass `{type: "object"}` to narrow. `byTypename` is object-only because `__typename` is a JS property. (See also the `memlab_duplicate_objects` tool for a ready-made dedup report.)',
+    '- `helpers.byClass(name, {type?}) -> ids[]`, `helpers.byTypename(name) -> ids[]`, `helpers.withProp(name, {edgeTypes?}) -> ids[]` — INDEXED id lookups. The class/typename index is built once per snapshot and memoized in a session scratch, so a follow-up call is index-speed, not another full `snapshot.nodes` scan. `byClass` indexes EVERY node type (closure, string, array, native, …), matching `memlab_find_nodes_by_class`; pass `{type: "object"}` to narrow. `byTypename` is object-only because `__typename` is a JS property. (See also the `memlab_duplicate_objects` tool for a ready-made dedup report.)',
+    '- ⚠️ **`withProp` matches `property` AND `context` edges by default.** A variable a closure captured is not a property of anything — it is a `context`-typed edge on a `system / Context / scope` node — so a `property`-only match answers `[]` for a population that is plainly there, and a ladder then fits that all-zero series and calls it a verified negative. Pass `{edgeTypes: ["property"]}` when you mean own properties only. The `withProp(...).filter(hasShape)` recipe is unaffected: scopes carry no property edges, so `hasShape` drops them.',
+    '- `helpers.byEdgeName(name) -> ids[]` — every holder of an edge NAMED `name`, whatever its type (`property`, `context`, `internal`, `element`, `hidden`, …). Use when you do not know, or do not care, how the name is attached. `helpers.byContextVar(name, {returns?, chain?}) -> ids[]` is the closure-variable case spelled out: the scopes holding a captured variable of that name (`{returns: "closures"}` for the closures instead). Both are indexed.',
     '- `helpers.nodesByClass(name, {type?}) -> node[]` (alias of `iterByClass`) — the same lookup returning NODE OBJECTS. Prefer it over `byClass`: ids from `byClass` are not all resolvable through `snapshot.getNodeById` — native classes such as `AudioContext` / `OpusRecorder` come back null — so the reflexive `byClass(x).map(id => getNodeById(id).referrers)` throws `Cannot read properties of null` and needs defensive `if (!n) continue` boilerplate on every native-touching eval.',
     '- `helpers.iterByClass(name, {type?}) -> node[]` / `helpers.iterByType(type) -> node[]` — indexed iteration; no full scan, index built once per snapshot.',
     '- `helpers.classCounts({pattern?, type?, minCount?}) -> [{name, type, count, selfSize}]` — one-pass class histogram, cached; `pattern` is a case-insensitive regex (substring fallback).',
