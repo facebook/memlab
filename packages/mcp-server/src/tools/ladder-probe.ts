@@ -145,11 +145,117 @@ export function linearFit(xs: number[], ys: number[]): LinearFit {
   return {slope, intercept, r2};
 }
 
+/**
+ * How a probe reaches its population, as a set of access MECHANISMS.
+ *
+ * A visibility control is only a control if it exercises the same mechanism as
+ * the probe it is vouching for. `helpers.byClass('Object').length` — the
+ * default — proves the snapshot parses and that class lookup works. It proves
+ * nothing at all about a `withProp` probe, and the verdict text nevertheless
+ * said "verified negative rather than a blind one".
+ *
+ * Textual, and honest about it: this reads the source of the expression, not
+ * what it does. That is enough to catch the mismatch that matters, which is a
+ * control written with a different helper family.
+ */
+export const ACCESS_MECHANISMS: ReadonlyArray<{
+  id: string;
+  label: string;
+  pattern: RegExp;
+}> = [
+  {
+    id: 'edge-name',
+    label: 'edge-name lookup (withProp / byEdgeName / edgeTarget / derefPath)',
+    pattern:
+      /\b(withProp|byEdgeName|edgeTarget|derefPath|findWithin|getProp)\s*\(/,
+  },
+  {
+    id: 'shape',
+    label: 'shape matching (hasShape / byShape / shapeKeys / ownProps)',
+    pattern: /\b(hasShape|byShape|shapeKeys|ownProps|shapeSignature)\s*\(/,
+  },
+  {
+    id: 'class',
+    label: 'class-name lookup (byClass / nodesByClass / iterByClass)',
+    pattern: /\b(byClass|nodesByClass|iterByClass|classCounts|byTypename)\s*\(/,
+  },
+  {
+    id: 'context',
+    label: 'closure capture (byContextSlot / byContextVar / contextOf)',
+    pattern:
+      /\b(byContextSlot|byContextVar|contextOf|contextSlotCensus|closureCensus)\s*\(/,
+  },
+  {
+    id: 'container',
+    label: 'container enumeration (entries / mapEntries / setElements)',
+    // Anchored to a RECEIVER. Bare `entries(` also matches `Object.entries(`,
+    // which is ordinary JavaScript and not a heap-access mechanism at all —
+    // and a control containing one would then "share" this mechanism with an
+    // unrelated probe and turn a real other-path mismatch into a false
+    // `verified-same-path`, defeating the fix this file exists for.
+    pattern: /\.(entries|mapEntries|setElements|elements)\s*\(/,
+  },
+  {
+    id: 'referrer',
+    label: 'referrer walk (byReferrerEdge / groupReferrersByEdge / referrers)',
+    pattern: /\b(byReferrerEdge|groupReferrersByEdge)\s*\(|\.referrers\b/,
+  },
+  {
+    id: 'detached',
+    label: 'detached-DOM matching (detachedNamed / isRealDetached)',
+    pattern: /\b(detachedNamed|isRealDetached)\s*\(/,
+  },
+  {
+    id: 'listener',
+    label: 'listener records (listenerRecords)',
+    pattern: /\blistenerRecords\s*\(/,
+  },
+  {
+    id: 'raw-walk',
+    label: 'raw graph walk (snapshot.nodes / .references)',
+    pattern:
+      /\bsnapshot\s*\.\s*(nodes|edges)\b|\.references\b|\bhelpers\.walk\s*\(/,
+  },
+];
+
+export function accessMechanisms(code: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of ACCESS_MECHANISMS) if (m.pattern.test(code)) out.add(m.id);
+  return out;
+}
+
+export function describeMechanisms(ids: ReadonlySet<string>): string {
+  if (ids.size === 0) return 'no recognised helper';
+  return ACCESS_MECHANISMS.filter(m => ids.has(m.id))
+    .map(m => m.label)
+    .join(', ');
+}
+
+/**
+ * What the visibility control established about ONE metric.
+ *
+ * `verified-other-path` is the case this type exists for: the control returned
+ * a number, so the heap is readable, but it reached it a different way — so it
+ * says nothing about whether THIS probe can see its population.
+ */
+export type VisibilityStatus =
+  | 'blind'
+  | 'verified-same-path'
+  | 'verified-other-path'
+  /**
+   * The probe uses no helper this file knows how to classify — one added
+   * since, or a name built at runtime. Distinct from `verified-other-path`,
+   * which asserts a MISMATCH: claiming one from a failure to classify is the
+   * same false confidence, pointing the other way, as the bug this status
+   * type exists to fix.
+   */
+  | 'unclassified';
+
 export function verdictFor(
   values: number[],
   fit: LinearFit,
   axisAssumed = false,
-  visibilityVerified = false,
+  visibility: VisibilityStatus = 'blind',
 ): string {
   const n = values.length;
   const delta = values[n - 1] - values[0];
@@ -177,7 +283,7 @@ export function verdictFor(
     // So an all-zero series is reported as UNKNOWN unless the caller supplied a
     // `visibility_probe` that came back non-zero, which is the only evidence
     // available that this probe family can see anything here at all.
-    if (max === 0 && !visibilityVerified) {
+    if (max === 0 && visibility === 'blind') {
       return (
         'UNKNOWN — 0 at every rung, and the visibility control ALSO returned ' +
         '0, so this heap did not answer either probe. That is the signature of ' +
@@ -185,13 +291,38 @@ export function verdictFor(
         'not of a clean population. Do NOT record this as a negative result.'
       );
     }
+    // "verified negative" is the strongest claim this tool makes, and it is
+    // only earned by a control that reached its number the SAME way `code`
+    // does. A control on a different access path proves the snapshot is
+    // readable and nothing else — which is exactly the state in which a
+    // property-only probe reported 0 at every rung against a true series of
+    // 0 / 253 / 492 / 718 / 751 and was certified.
+    if (max === 0 && visibility === 'unclassified') {
+      return (
+        'FLAT (UNVERIFIED — the probe could not be classified) — 0 at every ' +
+        'rung. The control returned a number, so the snapshot is readable, ' +
+        'but this probe uses no helper whose access path is recognised, so ' +
+        'there is no way to tell whether the control exercised the same one. ' +
+        'Write the probe with a named helper (`byClass`, `withProp`, ' +
+        '`byShape`, `byContextVar`, …), or pass a `visibility_probe` that is ' +
+        'literally the same expression with a name known to be present.'
+      );
+    }
+    if (max === 0 && visibility === 'verified-other-path') {
+      return (
+        'FLAT (UNVERIFIED — the control uses a DIFFERENT access path) — 0 at ' +
+        'every rung. The visibility control did return a number, so the ' +
+        'snapshot is readable, but it reached it by a different mechanism than ' +
+        '`code` does, so it says nothing about whether THIS probe can see its ' +
+        'population. A probe that cannot reach its population returns exactly ' +
+        'these zeros. Pass a `visibility_probe` written with the SAME helpers ' +
+        'as `code` before recording a negative — see the access-path note above.'
+      );
+    }
     return max === 0
-      ? 'FLAT — 0 at every rung, and the visibility control confirmed a probe ' +
-          'CAN observe a non-zero population on this ladder, so this is a ' +
-          'verified negative rather than a blind one. Note the control only ' +
-          'proves the snapshot is readable; if `code` reaches its population ' +
-          'through closure capture (invisible to property/shape matching), ' +
-          'pass a `visibility_probe` that uses the SAME access path'
+      ? 'FLAT — 0 at every rung, and a visibility control on the SAME access ' +
+          'path returned a non-zero value on this ladder, so this is a ' +
+          'verified negative rather than a blind one'
       : 'FLAT — identical at every rung';
   }
   if (delta === 0) {
@@ -352,6 +483,150 @@ export async function probeRung(
   return out;
 }
 
+/**
+ * The string literals a probe matches edge NAMES against.
+ *
+ * Only the helpers that take a name are read, and only literal arguments — a
+ * name built at runtime cannot be recovered from source, and guessing would
+ * produce a diagnostic about a name the probe never asked for.
+ */
+export function extractProbedNames(code: string): string[] {
+  const out = new Set<string>();
+  const add = (s: string): void => {
+    // A backslash means the naive quote capture stopped somewhere other
+    // than the real end of the literal — `'a\\'b'` yields `a\\`. Re-probing
+    // for that truncated name finds nothing and the series reads as a
+    // verified absence of a name the probe never looked for. Dropping the
+    // candidate costs a re-probe and never a wrong certification.
+    if (s.length > 0 && s.length <= 80 && !s.includes('\\')) out.add(s);
+  };
+  const str = `(?:'([^']*)'|"([^"]*)")`;
+  // withProp('x') / byEdgeName('x') / byContextSlot('x') / byTypename('x') …
+  const single = new RegExp(
+    `\\b(?:withProp|byEdgeName|byContextSlot|byContextVar|byReferrerEdge)\\s*\\(\\s*${str}`,
+    'g',
+  );
+  // edgeTarget(id, 'x') / getProp(id, 'x') / findWithin(id, 'x')
+  const second = new RegExp(
+    `\\b(?:edgeTarget|getProp|findWithin|walkChain)\\s*\\([^,()]*,\\s*${str}`,
+    'g',
+  );
+  // hasShape(id, ['a','b']) / byShape(['a','b'])
+  const arrays = /\b(?:hasShape|byShape)\s*\([^[]*\[([^\]]*)\]/g;
+  for (const re of [single, second]) {
+    let m;
+    while ((m = re.exec(code)) != null) add(m[1] ?? m[2] ?? '');
+  }
+  let m;
+  while ((m = arrays.exec(code)) != null) {
+    for (const lit of m[1].matchAll(/'([^']*)'|"([^"]*)"/g)) {
+      add(lit[1] ?? lit[2] ?? '');
+    }
+  }
+  return [...out];
+}
+
+/**
+ * Source for the relaxed re-probe: for each candidate NAME, how many holders
+ * carry an edge of that name, broken down by edge TYPE.
+ *
+ * One full pass for every name at once. The point is to answer "is the
+ * population there at all, reached some other way?" — the single question an
+ * all-zero series cannot answer about itself.
+ */
+/**
+ * `complete: true` is assigned only after the node walk RETURNS. A scan cut
+ * short by the node budget throws out of `forEach`, so that line never runs
+ * and `parseAutoVisibility` rejects the result — "the name is absent" and "we
+ * stopped looking" must not render the same, because this probe's answer is
+ * what certifies a flat zero as a real absence.
+ */
+export function autoVisibilityCode(names: readonly string[]): string {
+  return `
+const WANT = new Set(${JSON.stringify(names)});
+const counts = {};
+let skipped = 0;
+snapshot.nodes.forEach(node => {
+  if (node.id <= 3) return;
+  let refs;
+  try { refs = node.references; } catch (e) { return; }
+  const seen = new Set();
+  for (const e of refs) {
+    let name, type;
+    try { name = String(e.name_or_index); type = e.type; } catch (x) { continue; }
+    if (!WANT.has(name)) continue;
+    const k = name + '\\u0000' + type;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    counts[name] = counts[name] || {};
+    counts[name][type] = (counts[name][type] || 0) + 1;
+  }
+});
+if (typeof snapshot.__skippedEdges === 'object' && snapshot.__skippedEdges != null) {
+  skipped = snapshot.__skippedEdges.total_reads || 0;
+}
+result = {counts, complete: true, skipped_edge_reads: skipped};`.trim();
+}
+
+/** Run one expression against one rung and hand back its raw text. */
+async function evalOnRung(
+  localPath: string,
+  code: string,
+  timeoutMs: number,
+  maxNodes: number,
+): Promise<string> {
+  let text = '';
+  await withSnapshotAt(localPath, async () => {
+    text = textOf(
+      await runEval({
+        mode: 'eval',
+        code,
+        timeout_ms: timeoutMs,
+        max_nodes: maxNodes,
+      }),
+    );
+  });
+  return text;
+}
+
+/** Pull the `{name: {edgeType: count}}` object back out of eval's text. */
+export function parseAutoVisibility(
+  text: string,
+): Record<string, Record<string, number>> | null {
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+  // The SHAPE is checked, not just "is an object". This function's answer is
+  // what certifies a zero as a real absence, and the text it reads is a whole
+  // tool result — a footer, a wrapper, an error object, anything with braces
+  // parses. A wrong shape read as an empty count table certifies the absence
+  // of a name nothing ever looked for.
+  if (parsed == null || typeof parsed !== 'object') return null;
+  const envelope = parsed as Record<string, unknown>;
+  if (envelope.complete !== true) return null;
+  const counts = envelope.counts;
+  if (counts == null || typeof counts !== 'object') return null;
+  const out: Record<string, Record<string, number>> = {};
+  for (const [name, byType] of Object.entries(
+    counts as Record<string, unknown>,
+  )) {
+    if (byType == null || typeof byType !== 'object') return null;
+    const inner: Record<string, number> = {};
+    for (const [type, n] of Object.entries(byType as Record<string, unknown>)) {
+      if (typeof n !== 'number' || !Number.isFinite(n)) return null;
+      inner[type] = n;
+    }
+    out[name] = inner;
+  }
+  return out;
+}
+
 export function registerLadderProbe(server: McpServer): void {
   server.tool(
     'memlab_ladder_probe',
@@ -420,7 +695,14 @@ export function registerLadderProbe(server: McpServer): void {
         .string()
         .optional()
         .describe(
-          'A CONTROL expression, evaluated on every rung exactly like `code`, whose value MUST be non-zero on a healthy heap — e.g. `result = helpers.byClass("Object").length`. Its only job is to answer "can a probe of this kind see anything here?". Without it, a series of 0 at every rung is reported as UNKNOWN rather than as a negative, because a probe that cannot reach its population (closure-captured variables are invisible to property/shape matching) returns exactly the same zeros as a population that never grew. Supply it whenever a zero result would be recorded as "no leak here".',
+          'A CONTROL expression, evaluated on every rung exactly like `code`, whose value MUST be non-zero on a healthy heap. Its only job is to answer "can a probe of this kind see anything here?". IT MUST USE THE SAME HELPERS AS `code`: a control written with different helpers proves only that the snapshot is readable, and an all-zero series is then reported as FLAT (UNVERIFIED) rather than as a verified negative. Without it a default class-lookup control is used, which is almost never the same access path. Supply it whenever a zero result would be recorded as "no leak here".',
+        ),
+      auto_visibility: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'On an all-zero series, re-probe the LAST rung for the edge NAMES `code` matches on, counting holders by edge TYPE, and report any name that is present in the heap by a route the probe does not index (a `context` edge for a closure-captured variable, an `internal` edge for a backing slot). This is what turns "0 everywhere" into "present, but you looked for it as a property". Costs one extra load of the last rung, and only fires when a reported metric is zero at every rung.',
         ),
       label: z
         .string()
@@ -453,6 +735,7 @@ export function registerLadderProbe(server: McpServer): void {
       cycles,
       cycles_per_rung,
       visibility_probe,
+      auto_visibility,
       label,
       timeout_ms,
       max_nodes,
@@ -675,6 +958,30 @@ export function registerLadderProbe(server: McpServer): void {
           hasVisibilityProbe &&
           visibilityValues.length > 0 &&
           !visibilityVerified;
+        // Same-path is decided per REPORTED metric, because `metrics` can hold
+        // probes written with different helper families and one control cannot
+        // vouch for all of them.
+        const controlMechanisms = accessMechanisms(visibilityCode);
+        const visibilityFor = (probeCode: string): VisibilityStatus => {
+          if (!visibilityVerified) return 'blind';
+          const mine = accessMechanisms(probeCode);
+          // Nothing recognised is not a mismatch; it is an unknown. Falling
+          // through the empty loop to 'verified-other-path' asserts the
+          // control took a DIFFERENT path, which is the same false confidence
+          // this status type exists to remove, pointing the other way.
+          if (mine.size === 0) return 'unclassified';
+          // EVERY mechanism, not any one. A probe that reaches its real
+          // population through `byContextVar` while incidentally calling
+          // `byClass` shares the second with almost any control, and one
+          // shared mechanism was enough to certify the whole probe — so the
+          // path that actually produced the zero went unchecked. The failure
+          // this direction is a spurious "paths differ" warning; the other
+          // direction is a zero published as a verified negative.
+          for (const id of mine) {
+            if (!controlMechanisms.has(id)) return 'verified-other-path';
+          }
+          return 'verified-same-path';
+        };
 
         const lines: string[] = [];
         const multi = reportedCount > 1;
@@ -712,6 +1019,9 @@ export function registerLadderProbe(server: McpServer): void {
 
         let anyUsable = false;
         let allMetricsFlat = true;
+        // Names worth re-probing: those belonging to a metric that read 0 at
+        // every rung. Collected here, resolved once after the loop.
+        const zeroSeriesNames = new Set<string>();
         for (let mi = 0; mi < reportedCount; mi++) {
           const m = metricList[mi];
           const rungs = perMetric[mi];
@@ -865,10 +1175,43 @@ export function registerLadderProbe(server: McpServer): void {
           // as "non-decreasing but NOT strictly increasing … growth is
           // episodic".
           const shapeYs = fitYs;
+          const status = visibilityFor(m.code);
           const verdictText = singleX
             ? 'UNMEASURABLE AXIS — every rung shares one cycle count, so the series has no shape to read. The values above are real; the trend is not derivable from them.'
-            : verdictFor(shapeYs, fit, axisAssumed, visibilityVerified);
+            : verdictFor(shapeYs, fit, axisAssumed, status);
           lines.push(`**Verdict:** ${verdictText}`);
+          // `every`, not `Math.max(...) === 0`. Spreading an empty array
+          // into Math.max gives -Infinity, which is not 0, so a metric that
+          // failed to measure at EVERY rung skipped the re-probe that exists
+          // to tell a real absence from an unobservable one.
+          const allZero = headerYs.length > 0 && headerYs.every(y => y === 0);
+          if (allZero) {
+            for (const n of extractProbedNames(m.code)) zeroSeriesNames.add(n);
+          }
+          if (allZero && status === 'unclassified') {
+            lines.push(
+              '',
+              '> **Access path unclassified.** The control returned a number, ' +
+                'so the snapshot is readable, but `code` reaches its ' +
+                'population through no helper this server recognises, so ' +
+                'there is no way to tell whether the control exercised the ' +
+                'same one. Rewrite the probe around a named helper, or pass ' +
+                'a `visibility_probe` that differs from it only in the name ' +
+                'it looks for.',
+            );
+          }
+          if (allZero && status === 'verified-other-path') {
+            lines.push(
+              '',
+              `> **Access paths differ.** \`code\` reaches its population by ${describeMechanisms(
+                accessMechanisms(m.code),
+              )}; the control used ${describeMechanisms(controlMechanisms)}${
+                callerVisibilityProbe
+                  ? ''
+                  : ' (the DEFAULT control — you did not pass `visibility_probe`)'
+              }.`,
+            );
+          }
           // LINEAR is the verdict most often read as "unbounded leak". Over a
           // ladder shorter than the app's retention window it is equally
           // consistent with a bounded working set.
@@ -910,6 +1253,98 @@ export function registerLadderProbe(server: McpServer): void {
               `No metric produced two usable rungs, so nothing can be fitted. See the per-metric errors above; the probe must assign a NUMBER to \`result\`.`,
             ),
           );
+        }
+
+        // An all-zero series cannot tell "absent" from "unreachable by this
+        // probe" on its own. Ask the heap directly: for every name the probe
+        // matched on, how many holders carry an edge of that name, by edge
+        // TYPE? A non-zero total is proof the population is there and the
+        // probe was looking down the wrong kind of edge.
+        if (auto_visibility !== false && zeroSeriesNames.size > 0) {
+          const names = [...zeroSeriesNames];
+          const last = locals[locals.length - 1];
+          armScanBudgetFor(effectiveTimeout);
+          let found: Record<string, Record<string, number>> | null = null;
+          let reprobeError: string | null = null;
+          try {
+            found = parseAutoVisibility(
+              await evalOnRung(
+                last.localPath,
+                autoVisibilityCode(names),
+                effectiveTimeout,
+                max_nodes,
+              ),
+            );
+          } catch (e) {
+            reprobeError = e instanceof Error ? e.message : String(e);
+          }
+          lines.push('### Auto-visibility re-probe (all-zero series)');
+          lines.push('');
+          if (reprobeError != null) {
+            lines.push(
+              `_Could not re-probe \`${last.label}\`: ${reprobeError}_`,
+              '',
+            );
+          } else if (found == null) {
+            // `parseAutoVisibility` returns null WITHOUT throwing when the
+            // eval produced nothing parseable, so `reprobeError` is null and
+            // the absence branch below would positively certify "the zero is
+            // a real absence" on the strength of a parse failure. That is the
+            // same false negative this whole feature exists to prevent.
+            lines.push(
+              `_The re-probe of \`${last.label}\` returned no parseable result, so reachability is UNDETERMINED — this is not evidence of absence. Re-run with \`auto_visibility: false\` and probe the names by hand._`,
+              '',
+            );
+          } else {
+            const present = names.filter(
+              n => Object.keys(found?.[n] ?? {}).length > 0,
+            );
+            if (present.length === 0) {
+              lines.push(
+                `No holder in \`${last.label}\` carries an edge named ${names
+                  .map(n => `\`${n}\``)
+                  .join(
+                    ', ',
+                  )} — by ANY edge type. The zero is a real absence, ` +
+                  'not a wrong access path. (This does not rule out a name built ' +
+                  'at runtime, which cannot be read out of the source.)',
+                '',
+              );
+            } else {
+              lines.push(
+                '⚠️ **The name IS in this heap.** The probe read 0 at every rung, ' +
+                  'but these holders carry an edge with that name:',
+                '',
+              );
+              lines.push(
+                markdownTable(
+                  ['Name', 'Edge type', 'Holders'],
+                  present.flatMap(n =>
+                    Object.entries(found?.[n] ?? {})
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([type, count]) => [
+                        `\`${n}\``,
+                        `\`${type}\``,
+                        formatNumber(count),
+                      ]),
+                  ),
+                ),
+              );
+              lines.push(
+                '',
+                'A `context` edge is a CLOSURE-CAPTURED variable — it is not a property ' +
+                  'of anything, so property or shape matching cannot see it; use ' +
+                  '`helpers.byContextVar(name)` or `helpers.withProp(name, {edgeTypes:["context"]})`. ' +
+                  'An `internal` / `hidden` edge is an engine backing slot (a Map `table`, ' +
+                  'an array `elements`) — reach it with `helpers.entries()` / ' +
+                  '`helpers.edgeTarget()`. `helpers.byEdgeName(name)` ignores edge type ' +
+                  'entirely and is the widest re-probe.',
+                '',
+                `_Measured on the last rung (\`${last.label}\`) only — this establishes reachability, not a rate. Re-run the probe on the right access path to get the series._`,
+                '',
+              );
+            }
+          }
         }
 
         // Every metric flat across three or more rungs is worth stopping on. A
