@@ -270,6 +270,14 @@ export function importFindings(
       skipped.push(`entry ${i}: neither retainer_path nor signature`);
       return;
     }
+    // Bulk seeding is the easiest way to pollute a shared index, because
+    // nobody reads 40 entries before importing them. Skip the bad one and
+    // name it; importing the other 39 is the useful outcome.
+    const problem = retainerPathProblem(source);
+    if (problem != null) {
+      skipped.push(`entry ${i}: not a retainer path — ${problem}`);
+      return;
+    }
     // A `signature` is already normalized by definition; normalizing again is a
     // no-op on well-formed input and repairs a hand-written one.
     const signature = normalizeRetainerPath(source);
@@ -330,6 +338,47 @@ export function normalizeRetainerPath(raw: string): string {
       .replace(/\s+/g, ' ')
       .trim()
   );
+}
+
+/**
+ * The longest retainer path worth fingerprinting.
+ *
+ * A real path printed by `memlab_retainer_trace` is a few hundred characters.
+ * Past this it is not a path.
+ */
+const RETAINER_PATH_MAX = 400;
+
+/**
+ * Why this string cannot be a retainer path, or null if it can.
+ *
+ * The index is SHARED — other rounds `check` against it — so a bad entry is
+ * not a local mistake, it is permanent pollution: the fingerprint is a hash of
+ * the signature, so the entry cannot be addressed by re-deriving the path, and
+ * removing it meant hand-editing JSON. Measured: a `retainer_path` that had
+ * accidentally captured a literal `</retainer_path> <parameter name=…>`
+ * fragment from the surrounding tool call was accepted, embedded verbatim, and
+ * fingerprinted.
+ *
+ * Refusing costs one retry. Accepting costs every later round a phantom entry.
+ */
+export function retainerPathProblem(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed === '') return 'it is empty';
+  if (/[\n\r]/.test(raw)) {
+    return 'it contains a newline — a retainer path is one line, so this is almost always two values that got concatenated';
+  }
+  if (trimmed.length > RETAINER_PATH_MAX) {
+    return `it is ${formatNumber(trimmed.length)} characters, over the ${formatNumber(RETAINER_PATH_MAX)}-character limit — a real path printed by memlab_retainer_trace is a few hundred at most, so this is carrying something other than a path`;
+  }
+  // Tool-call and XML framing. This is what leaks in when an argument is
+  // assembled by hand from a transcript.
+  const fragment = trimmed.match(
+    /<\/?(?:retainer_path|parameter|invoke|function_calls|antml:[a-z_]+)\b[^>]*>/i,
+  );
+  if (fragment != null) {
+    return `it contains the tool-call fragment \`${fragment[0]}\` — the argument captured its own markup`;
+  }
+  return null;
 }
 
 export function fingerprintOf(signature: string, classes: string[]): string {
@@ -750,15 +799,30 @@ export function registerFindingIndex(server: McpServer): void {
       'IMPORTANT: a verdict of NEW is only as good as the index behind it. A newly-created index is pre-seeded with the generic ARTIFACT families (JIT warmup, CDP network/perf/console retention, a11y caches, React Fast Refresh registries, captured Error stacks, the automation bridge bundle), so the first `check` can already answer KNOWN for a population that is documented and is not app memory — but it knows nothing about YOUR app. Seed that with `action: "import"` before trusting the first `check` of a workstream. Set `MEMLAB_FINDINGS_INDEX` to a checked-in path to share the index across hosts and operators instead of keeping it in a per-machine home directory.',
     {
       action: z
-        .enum(['check', 'record', 'list', 'cover', 'import', 'export'])
+        .enum([
+          'check',
+          'record',
+          'list',
+          'cover',
+          'import',
+          'export',
+          'amend',
+          'delete',
+        ])
         .describe(
-          '"check" (fingerprint + look up, no write), "record" (add/update), "import" (bulk-seed history), "export" (write the whole index to a file so it can be checked in), "list", "cover" (log combos driven in a round).',
+          '"check" (fingerprint + look up, no write), "record" (add/update), "amend" (edit an EXISTING entry in place, without counting a sighting), "delete" (remove an entry), "import" (bulk-seed history), "export" (write the whole index to a file so it can be checked in), "list", "cover" (log combos driven in a round). `amend` and `delete` address an entry by `fingerprint` — which is how a bad entry is repaired, since a wrong signature cannot be re-derived from a path.',
         ),
       retainer_path: z
         .string()
         .optional()
         .describe(
-          "The finding's retainer path, as printed by memlab_retainer_summary / memlab_retainer_trace. Required for check and record.",
+          "The finding's retainer path, as printed by memlab_retainer_summary / memlab_retainer_trace. Required for check and record. VALIDATED: one line, at most 400 characters, no tool-call/XML markup — the index is shared, and a malformed path is fingerprinted into it permanently.",
+        ),
+      fingerprint: z
+        .string()
+        .optional()
+        .describe(
+          'The 12-hex-character fingerprint of an existing entry, as printed by `check`, `record` and `list`. Addresses an entry for `amend` / `delete` without re-deriving its path — which is the only way to reach an entry whose recorded signature is wrong.',
         ),
       growing_classes: z
         .array(z.string())
@@ -774,11 +838,15 @@ export function registerFindingIndex(server: McpServer): void {
           'Round identifier (e.g. "r59"), recorded as first/last seen.',
         ),
       status: z
+        // NO `.default('known')`. `record` applies that default itself; a
+        // schema-level default is indistinguishable from an explicit
+        // `status: "known"` inside the handler, so `amend` — which must touch
+        // only the fields it was given — would silently reset every amended
+        // entry to `known`.
         .enum(['new', 'known', 'fixed', 'retracted', 'artifact'])
         .optional()
-        .default('known')
         .describe(
-          'Status to record. Use "fixed" together with `fixed_behind` and `fixed_by_diffs`. Use "retracted" with `retraction_reason` for a finding that was investigated and WITHDRAWN — a measurement error, a structural population mistaken for a rate. Use "artifact" for a population that is REAL and reproducible but is not the app: a devtools bridge, a dev-only cache, a Fast Refresh record. The two are different instructions to the next round — "do not trust this number" versus "this number is right and belongs to the harness" — and collapsing them into "retracted" is how an artifact gets re-investigated as a candidate leak.',
+          'Status to record; defaults to "known" for `record`, and leaves the existing value alone for `amend`. Use "fixed" together with `fixed_behind` and `fixed_by_diffs`. Use "retracted" with `retraction_reason` for a finding that was investigated and WITHDRAWN — a measurement error, a structural population mistaken for a rate. Use "artifact" for a population that is REAL and reproducible but is not the app: a devtools bridge, a dev-only cache, a Fast Refresh record. The two are different instructions to the next round — "do not trust this number" versus "this number is right and belongs to the harness" — and collapsing them into "retracted" is how an artifact gets re-investigated as a candidate leak.',
         ),
       fixed_behind: z
         .string()
@@ -851,6 +919,7 @@ export function registerFindingIndex(server: McpServer): void {
     async ({
       action,
       retainer_path,
+      fingerprint: fingerprintArg,
       growing_classes,
       round,
       status,
@@ -874,7 +943,11 @@ export function registerFindingIndex(server: McpServer): void {
         // finding lands somewhere the caller did not name and the next round
         // does not find it. Reads may inherit; writes use what was passed.
         const isWrite =
-          action === 'import' || action === 'record' || action === 'cover';
+          action === 'import' ||
+          action === 'record' ||
+          action === 'cover' ||
+          action === 'amend' ||
+          action === 'delete';
         const effectiveWorkstream = isWrite
           ? workstream
           : stickyWorkstream(workstream);
@@ -1204,8 +1277,159 @@ export function registerFindingIndex(server: McpServer): void {
           );
         }
 
+        // `amend` and `delete` address an EXISTING entry, so they take a
+        // fingerprint. That is deliberate and not merely convenient: the entry
+        // that most needs removing is one whose signature is wrong, and a
+        // wrong signature cannot be re-derived from a path.
+        if (action === 'amend' || action === 'delete') {
+          let target = fingerprintArg;
+          let resolvedBySignature = false;
+          if (target == null || target === '') {
+            if (!retainer_path) {
+              return errorResult(
+                `action "${action}" needs a \`fingerprint\` (printed by check/record/list) or a \`retainer_path\` to derive one from.`,
+              );
+            }
+            const problem = retainerPathProblem(retainer_path);
+            if (problem != null) {
+              return errorResult(
+                `\`retainer_path\` is not a retainer path: ${problem}.\n\nPass the \`fingerprint\` instead — \`memlab_finding_index({action: "list"})\` prints one per entry, and it is the only way to reach an entry whose recorded signature is itself malformed.`,
+              );
+            }
+            const signature = normalizeRetainerPath(retainer_path);
+            target = fingerprintOf(signature, growing_classes);
+            if (index.findings[target] == null) {
+              // The fingerprint folds in `growing_classes`, which defaults to
+              // `[]`. An entry recorded WITH classes was keyed with them, so
+              // addressing it by path alone derives a different fingerprint
+              // and misses — "No finding" for an entry that is plainly there.
+              // Fall back to the signature, which is what the caller actually
+              // named. Ambiguity is refused rather than guessed: two entries
+              // can share a path and differ only by class set.
+              const bySignature = Object.values(index.findings).filter(
+                f => f.signature === signature,
+              );
+              if (bySignature.length === 1) {
+                target = bySignature[0].fingerprint;
+                // `growing_classes` was DERIVATION input on this path, not an
+                // amendment. The caller passed a path and (usually) no
+                // classes; applying that empty default as a field would wipe
+                // the entry's real class list and then re-key it — losing
+                // data the caller never mentioned, in a shared index.
+                resolvedBySignature = true;
+              } else if (bySignature.length > 1) {
+                return errorResult(
+                  `${formatNumber(bySignature.length)} findings share that retainer path and differ only by \`growing_classes\`: ` +
+                    bySignature
+                      .map(
+                        f =>
+                          `\`${f.fingerprint}\` [${f.growing_classes.join(', ') || 'no classes'}]`,
+                      )
+                      .join(', ') +
+                    '. Pass the `fingerprint` of the one you mean.',
+                );
+              }
+            }
+          }
+          const entry = index.findings[target];
+          if (entry == null) {
+            return errorResult(
+              `No finding with fingerprint \`${target}\` in \`${indexPath}\`. \`action: "list"\` prints the ${formatNumber(Object.keys(index.findings).length)} entry/entries this index holds.`,
+            );
+          }
+          if (action === 'delete') {
+            delete index.findings[target];
+            saveIndex(indexPath, index);
+            return result(
+              `Deleted \`${target}\` — was **${entry.status}**, signature \`${entry.signature}\`, first seen ${entry.first_seen_round}. The index now holds ${formatNumber(Object.keys(index.findings).length)} finding(s).`,
+            );
+          }
+          // amend: edit in place. seen_count is NOT bumped — an amendment is a
+          // correction, not a sighting, and inflating the count is how a
+          // repeatedly-corrected entry comes to look well-evidenced.
+          const before = {...entry};
+          const changed: string[] = [];
+          const set = <K extends keyof typeof entry>(
+            key: K,
+            value: (typeof entry)[K] | undefined,
+          ): void => {
+            if (value === undefined) return;
+            if (JSON.stringify(entry[key]) === JSON.stringify(value)) return;
+            entry[key] = value;
+            changed.push(String(key));
+          };
+          set(
+            'status',
+            status === undefined ? undefined : storableStatus(status),
+          );
+          set(
+            'growing_classes',
+            !resolvedBySignature && growing_classes.length > 0
+              ? growing_classes
+              : undefined,
+          );
+          set('fixed_behind', fixed_behind);
+          set('fixed_by_diffs', fixed_by_diffs);
+          set('verified_by_ab', verified_by_ab);
+          set('gate_state', gate_state);
+          set('gate_checked_on', gate_checked_on);
+          set('retraction_reason', retraction_reason);
+          set('note', note);
+          set('last_seen_round', round);
+          if (changed.length === 0) {
+            return result(
+              `Nothing to amend on \`${target}\` — every field given already holds that value. Current state: **${entry.status}**, signature \`${entry.signature}\`.`,
+            );
+          }
+          // `growing_classes` participates in the fingerprint, so amending it
+          // without re-keying leaves the entry stored under a hash that can
+          // no longer be derived from its own contents: the next `check` for
+          // the same finding computes the NEW fingerprint, misses, and
+          // reports NEW. Re-key, and report the move — a fingerprint that
+          // silently changes is worse than one that changes loudly.
+          let movedTo: string | null = null;
+          const rekeyed = fingerprintOf(entry.signature, entry.growing_classes);
+          if (rekeyed !== target) {
+            // The destination key can already be taken — amending one finding
+            // into the shape of another is exactly how two entries collide.
+            // Writing through it would delete a finding nobody asked to touch,
+            // in a file shared across a whole hunt. Refuse; the amendment has
+            // not been saved, so `target` is still intact.
+            const occupant = index.findings[rekeyed];
+            if (occupant != null) {
+              return errorResult(
+                `amending \`${target}\` this way re-keys it to \`${rekeyed}\`, which is already held by a different finding (**${occupant.status}**, signature \`${occupant.signature}\`). Nothing was changed. These two are the same finding by fingerprint — merge them by hand, or amend \`${rekeyed}\` instead and delete \`${target}\`.`,
+              );
+            }
+            delete index.findings[target];
+            entry.fingerprint = rekeyed;
+            index.findings[rekeyed] = entry;
+            movedTo = rekeyed;
+          }
+          saveIndex(indexPath, index);
+          return result(
+            `Amended \`${target}\`: ${changed.join(', ')}. Now **${entry.status}**${entry.fixed_behind ? ` (behind \`${entry.fixed_behind}\`)` : ''}, seen ${entry.seen_count}× (unchanged — an amendment is not a sighting). Previous status was **${before.status}**.` +
+              (movedTo != null
+                ? `\n\n⚠️ \`growing_classes\` is part of the fingerprint, so this entry was RE-KEYED \`${target}\` → \`${movedTo}\`. Use the new fingerprint from now on; the old one no longer resolves.`
+                : ''),
+          );
+        }
+
         if (!retainer_path) {
           return errorResult(`action "${action}" requires a retainer_path.`);
+        }
+        // Validated for BOTH check and record. A malformed path that only
+        // fails on `record` still produces a confident NEW from `check`, and
+        // "NEW" on a path that is not a path is the verdict that sends a round
+        // off to investigate nothing.
+        const pathProblem = retainerPathProblem(retainer_path);
+        if (pathProblem != null) {
+          return errorResult(
+            `\`retainer_path\` is not a retainer path: ${pathProblem}.\n\n` +
+              'Refusing rather than fingerprinting it. The index is SHARED — later rounds `check` against it — ' +
+              'so a malformed entry is permanent pollution that cannot be addressed by re-deriving the path. ' +
+              'Pass the path exactly as `memlab_retainer_trace` / `memlab_retainer_summary` printed it, on one line.',
+          );
         }
         const signature = normalizeRetainerPath(retainer_path);
         const fingerprint = fingerprintOf(signature, growing_classes);
@@ -1346,7 +1570,7 @@ export function registerFindingIndex(server: McpServer): void {
           growing_classes,
           first_seen_round: existing?.first_seen_round ?? roundId,
           last_seen_round: roundId,
-          status: storableStatus(status),
+          status: storableStatus(status ?? 'known'),
           fixed_behind: fixed_behind ?? existing?.fixed_behind,
           gate_state: gate_state ?? existing?.gate_state,
           gate_checked_on: gate_checked_on ?? existing?.gate_checked_on,
