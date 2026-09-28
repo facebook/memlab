@@ -38,7 +38,106 @@ import path from 'path';
 import {z} from 'zod';
 import {loadRunManifest} from '../run-manifest.js';
 import {getRegisteredTool} from '../tool-registry.js';
+import {makeProgressReporter} from '../progress.js';
 import {errorResult, formatNumber, toolResult} from '../utils.js';
+
+/**
+ * A battery started with `async: true`, tracked so `memlab_battery_status` can
+ * report on it.
+ *
+ * Why this exists: the standard battery runs 7-10 minutes and EVERY call of it
+ * in one 20-round sweep exceeded the generic 120 s tool timeout and was
+ * backgrounded. Backgrounding works, but each one then costs a polling turn
+ * and the notification arrives interleaved with unrelated work — over a sweep
+ * that was the single largest avoidable overhead. Returning a handle
+ * immediately makes the wait explicit and pollable instead.
+ */
+interface BatteryRun {
+  id: string;
+  runDir: string;
+  profile: string;
+  outDir: string;
+  startedAt: number;
+  finishedAt: number | null;
+  totalSteps: number;
+  doneSteps: number;
+  currentTool: string | null;
+  result: string | null;
+  error: string | null;
+}
+
+const batteries = new Map<string, BatteryRun>();
+let batterySeq = 0;
+
+/**
+ * Finished runs are kept so a status poll that arrives after completion gets
+ * the RESULT rather than "unknown id" — which is the common case, since the
+ * point of the handle is to come back later. Bounded so a long session does
+ * not accumulate every battery it ever ran.
+ */
+const MAX_TRACKED_BATTERIES = 20;
+
+/**
+ * Handles dropped to hold the bound, id -> output directory.
+ *
+ * Kept so `memlab_battery_status` can tell "this ran and its handle was
+ * evicted, the files are here" from "this id was never in this process".
+ */
+const evicted = new Map<string, BatteryRun>();
+
+/**
+ * Output directories currently claimed by a running battery, resolved path
+ * -> battery id. Held for sync and async runs alike, and independent of
+ * `batteries`, so an evicted handle still blocks a second writer.
+ */
+const activeOutDirs = new Map<string, string>();
+
+/**
+ * How long a battery may hold its output directory before the claim is
+ * released anyway. Far longer than a real battery (7-10 minutes), because
+ * this exists only to stop a wedged run blocking the directory forever.
+ */
+const RESERVATION_MAX_MS = 60 * 60 * 1000;
+
+function trackBattery(run: BatteryRun): void {
+  batteries.set(run.id, run);
+  if (batteries.size <= MAX_TRACKED_BATTERIES) return;
+  // Finished runs first, oldest out: their report has been sitting there to
+  // be collected and the newest is the one most likely still wanted.
+  const finished = [...batteries.values()]
+    .filter(b => b.finishedAt != null)
+    .sort((a, b) => (a.finishedAt as number) - (b.finishedAt as number));
+  while (batteries.size > MAX_TRACKED_BATTERIES && finished.length > 0) {
+    batteries.delete((finished.shift() as BatteryRun).id);
+  }
+  // Then RUNNING ones, oldest-started first. Evicting only finished runs
+  // made the bound conditional on something outside this function: start 21
+  // batteries that are all still going and the map grows without limit,
+  // which is exactly what the docstring above promises it will not do. A
+  // running battery that is evicted keeps running and still writes its
+  // per-tool files; only the pollable handle is dropped, and the oldest one
+  // is the handle least likely to still be polled.
+  if (batteries.size <= MAX_TRACKED_BATTERIES) return;
+  const running = [...batteries.values()]
+    .filter(b => b.finishedAt == null && b.id !== run.id)
+    .sort((a, b) => a.startedAt - b.startedAt);
+  while (batteries.size > MAX_TRACKED_BATTERIES && running.length > 0) {
+    const victim = running.shift() as BatteryRun;
+    batteries.delete(victim.id);
+    // REMEMBERED, not just dropped. The detached run keeps going and
+    // writes its per-tool files, but its handle is gone — and a later
+    // status poll then took the "not in this process" branch and blamed a
+    // server restart that never happened, while the report was sitting
+    // unreachable in memory. An id and an out dir is all it takes to say
+    // what actually became of it.
+    evicted.set(victim.id, victim);
+    while (evicted.size > MAX_TRACKED_BATTERIES * 2) {
+      const first = evicted.keys().next();
+      if (first.done === true) break;
+      evicted.delete(first.value);
+    }
+  }
+}
 
 /** One step of a battery: a tool and the args it gets. */
 interface Step {
@@ -228,8 +327,15 @@ export function registerAnalysisBattery(server: McpServer): void {
         .describe(
           'Budget for the whole battery. Checked BETWEEN steps — a whole-heap pass is one synchronous block and cannot be interrupted — so the guarantee is that no NEW step starts past the deadline.',
         ),
+      async: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Return a handle IMMEDIATELY and run the battery in the background; poll it with `memlab_battery_status({battery_id})`, which hands back the full report once it is done. A standard battery is 7-10 minutes, so every call of it exceeds the generic tool timeout and is backgrounded — this makes the wait explicit and pollable instead, with no interleaved completion notification. Per-tool output still lands in `<out_dir>/<tool>.txt` as each step finishes, so a specific question can be answered before the battery is.',
+        ),
     },
-    async ({run_dir, out_dir, profile, timeout_ms}) => {
+    async ({run_dir, out_dir, profile, timeout_ms, async: runAsync}, extra) => {
       try {
         const manifest = loadRunManifest(run_dir);
         if (manifest.paths.length < 2) {
@@ -252,6 +358,31 @@ export function registerAnalysisBattery(server: McpServer): void {
         const outDir =
           out_dir ?? path.join(run_dir.replace(/\/$/, ''), 'analysis');
         fs.mkdirSync(outDir, {recursive: true});
+        // Two batteries writing one directory overwrite each other's
+        // `<tool>.txt` file by file, and the loser's report cites paths
+        // holding the winner's output — silently, since each write
+        // succeeds. The default directory is derived from `run_dir`, so
+        // this is the ordinary case of analysing one round twice at once,
+        // not an exotic one. Refused rather than interleaved.
+        //
+        // A RESERVATION, not a scan of the tracked map. Scanning missed two
+        // cases: a synchronous run is not in `batteries` while it works, and
+        // an evicted-but-still-running one has been removed from it — both
+        // keep writing to their directory. And the scan was a check the
+        // caller could pass before the other run registered. Claiming the
+        // path here, synchronously and before any await, has none of those
+        // gaps.
+        const outKey = path.resolve(outDir);
+        const heldBy = activeOutDirs.get(outKey);
+        if (heldBy != null) {
+          return errorResult(
+            new Error(
+              `Battery \`${heldBy}\` is already running and writing to \`${outDir}/\`. ` +
+                "Two batteries sharing one output directory overwrite each other's per-tool files. " +
+                `Wait for it (\`memlab_battery_status({battery_id: "${heldBy}"})\`), or pass a different \`out_dir\`.`,
+            ),
+          );
+        }
 
         const finalRung = manifest.paths[manifest.paths.length - 1];
         const baseRung = manifest.paths[0];
@@ -268,148 +399,390 @@ export function registerAnalysisBattery(server: McpServer): void {
           hasSettleRung,
         );
 
-        const deadline =
-          timeout_ms != null && timeout_ms > 0 ? Date.now() + timeout_ms : null;
-
-        const digestLines: string[] = [];
-        const written: Array<{tool: string; bytes: number; ms: number}> = [];
-        const failures: string[] = [];
-        let skipped = 0;
-        // Every step whose args name no snapshot of their own reads whatever
-        // `memlab_load_snapshot` left resident. If that load failed, running
-        // them anyway meant censusing a STALE snapshot (or none), and
-        // `digestFor` then lifted plausible-looking lines into the returned
-        // digest as though they described this round — a silently wrong answer
-        // with nothing in the output saying so.
-        const needsResidentSnapshot = (step: Step): boolean => {
-          const a = step.args as Record<string, unknown>;
-          return (
-            a.run_dir == null &&
-            a.paths == null &&
-            a.file_path == null &&
-            a.baseline == null &&
-            a.target == null
-          );
+        const progress = makeProgressReporter(extra, 'battery');
+        const tracked: BatteryRun = {
+          id: `battery-${++batterySeq}`,
+          runDir: run_dir,
+          profile,
+          outDir,
+          startedAt: Date.now(),
+          finishedAt: null,
+          totalSteps: plan.length,
+          doneSteps: 0,
+          currentTool: null,
+          result: null,
+          error: null,
         };
-        let loadFailed = false;
 
-        for (const step of plan) {
-          // A load that never RAN leaves the previous round's snapshot resident,
-          // which is the same wrong answer as a load that ran and failed — so
-          // the two skip paths below have to set `loadFailed` as well.
-          const isLoad = step.tool === 'memlab_load_snapshot';
-          if (deadline != null && Date.now() > deadline) {
-            skipped++;
-            if (isLoad) loadFailed = true;
-            continue;
-          }
-          if (loadFailed && needsResidentSnapshot(step)) {
-            skipped++;
-            failures.push(
-              `${step.tool}: skipped — the snapshot load it depends on did not succeed`,
+        // Everything below is the battery itself, extracted so it can be
+        // either awaited or detached behind a handle.
+        const execute = async (): Promise<string> => {
+          // Started HERE, not at call time. A detached run begins after the
+          // handle is returned, and with `wait_for_rungs` that can be many
+          // minutes later — so a deadline stamped at call time had already
+          // partly or wholly elapsed before the first step, and every step
+          // was skipped for a budget the battery never got to spend.
+          const deadline =
+            timeout_ms != null && timeout_ms > 0
+              ? Date.now() + timeout_ms
+              : null;
+          const digestLines: string[] = [];
+          const written: Array<{tool: string; bytes: number; ms: number}> = [];
+          const failures: string[] = [];
+          let skipped = 0;
+          // Every step whose args name no snapshot of their own reads whatever
+          // `memlab_load_snapshot` left resident. If that load failed, running
+          // them anyway meant censusing a STALE snapshot (or none), and
+          // `digestFor` then lifted plausible-looking lines into the returned
+          // digest as though they described this round — a silently wrong answer
+          // with nothing in the output saying so.
+          const needsResidentSnapshot = (step: Step): boolean => {
+            const a = step.args as Record<string, unknown>;
+            return (
+              a.run_dir == null &&
+              a.paths == null &&
+              a.file_path == null &&
+              a.baseline == null &&
+              a.target == null
             );
-            continue;
-          }
-          const entry = getRegisteredTool(step.tool);
-          if (entry == null) {
-            // A profile naming a tool this build does not have is a bug in the
-            // profile, not a reason to abandon the round.
-            failures.push(`${step.tool}: not registered in this build`);
-            if (isLoad) loadFailed = true;
-            continue;
-          }
-          const started = Date.now();
-          let text: string;
-          try {
-            const parsed =
-              entry.shape != null
-                ? z.object(entry.shape as never).parse(step.args)
-                : step.args;
-            text = textOf(await entry.handler(parsed, {}));
-          } catch (err: unknown) {
-            text = `ERROR: ${err instanceof Error ? err.message : String(err)}`;
-            failures.push(`${step.tool}: ${text.slice(0, 160)}`);
-          }
-          // Both spellings of failure: a thrown error and an error RESULT,
-          // which `errorResult` returns as text rather than throwing.
-          if (
-            step.tool === 'memlab_load_snapshot' &&
-            /^(ERROR|❌|Error:)/.test(text.trimStart())
-          ) {
-            loadFailed = true;
-          }
-          const ms = Date.now() - started;
-          const file = path.join(outDir, `${step.tool}.txt`);
-          fs.writeFileSync(file, text, 'utf8');
-          written.push({tool: step.tool, bytes: text.length, ms});
+          };
+          let loadFailed = false;
+          // One counter for "how far through the plan are we", used by BOTH
+          // the streamed phase index and the status handle. Deriving them
+          // separately — `written.length + skipped` for one, `written.length`
+          // for the other — makes them disagree the moment a step neither
+          // writes nor counts as skipped (an unregistered tool, a failed
+          // write), and a progress line that goes backwards reads as a hang.
+          let finished = 0;
 
-          const d = digestFor(step.tool, text);
-          if (d.length > 0) {
-            digestLines.push(`### ${step.tool}`, ...d, '');
+          for (const step of plan) {
+            finished++;
+            // A load that never RAN leaves the previous round's snapshot resident,
+            // which is the same wrong answer as a load that ran and failed — so
+            // the two skip paths below have to set `loadFailed` as well.
+            const isLoad = step.tool === 'memlab_load_snapshot';
+            if (deadline != null && Date.now() > deadline) {
+              skipped++;
+              if (isLoad) loadFailed = true;
+              tracked.doneSteps = finished;
+              continue;
+            }
+            if (loadFailed && needsResidentSnapshot(step)) {
+              skipped++;
+              failures.push(
+                `${step.tool}: skipped — the snapshot load it depends on did not succeed`,
+              );
+              tracked.doneSteps = finished;
+              continue;
+            }
+            const entry = getRegisteredTool(step.tool);
+            if (entry == null) {
+              // A profile naming a tool this build does not have is a bug in the
+              // profile, not a reason to abandon the round.
+              failures.push(`${step.tool}: not registered in this build`);
+              if (isLoad) loadFailed = true;
+              tracked.doneSteps = finished;
+              continue;
+            }
+            const started = Date.now();
+            tracked.currentTool = step.tool;
+            progress.phase(finished, plan.length, step.tool);
+            let text: string;
+            try {
+              const parsed =
+                entry.shape != null
+                  ? z.object(entry.shape as never).parse(step.args)
+                  : step.args;
+              text = textOf(await entry.handler(parsed, {}));
+            } catch (err: unknown) {
+              text = `ERROR: ${err instanceof Error ? err.message : String(err)}`;
+              failures.push(`${step.tool}: ${text.slice(0, 160)}`);
+            }
+            // Both spellings of failure: a thrown error and an error RESULT,
+            // which `errorResult` returns as text rather than throwing.
+            if (
+              step.tool === 'memlab_load_snapshot' &&
+              /^(ERROR|❌|Error:)/.test(text.trimStart())
+            ) {
+              loadFailed = true;
+            }
+            const ms = Date.now() - started;
+            const file = path.join(outDir, `${step.tool}.txt`);
+            try {
+              fs.writeFileSync(file, text, 'utf8');
+              written.push({tool: step.tool, bytes: text.length, ms});
+            } catch (err: unknown) {
+              // Inside the per-step boundary, like the tool call above it. A
+              // write failure — a full disk being the realistic one, and this
+              // battery is what fills disks — used to reject the whole
+              // detached promise, so `memlab_battery_status` reported FAILED
+              // with only that message and discarded every digest line
+              // already accumulated. That is the opposite of the per-step
+              // isolation the rest of this loop implements.
+              failures.push(
+                `${step.tool}: output not written — ${err instanceof Error ? err.message : String(err)}`,
+              );
+            }
+            tracked.doneSteps = finished;
+
+            const d = digestFor(step.tool, text);
+            if (d.length > 0) {
+              digestLines.push(`### ${step.tool}`, ...d, '');
+            }
           }
-        }
 
-        const lines: string[] = [
-          `## Analysis battery — \`${path.basename(run_dir.replace(/\/$/, ''))}\` (${profile})`,
-          '',
-          `${manifest.paths.length} rungs at cycles [${manifest.cyclesPerRung.join(', ')}], ` +
-            `${formatNumber(manifest.cycles)} cycles driven` +
-            (manifest.combos.length > 0
-              ? `, combos: ${manifest.combos.join(', ')}`
-              : '') +
-            '.',
-          '',
-          `**${written.length} tool(s) run**, output written to \`${outDir}/\`` +
-            (skipped > 0 ? `; ${skipped} skipped for budget` : '') +
-            (failures.length > 0 ? `; ${failures.length} failed` : '') +
-            '.',
-          '',
-        ];
-
-        if (manifest.caveats.length > 0) {
-          lines.push('**Caveats recorded by the runner:**');
-          for (const c of manifest.caveats) lines.push(`- ${c}`);
-          lines.push('');
-        }
-        if (manifest.splitAfterRung.length > 0) {
-          lines.push(
-            `> ⚠️ **LADDER SPLIT after rung ${manifest.splitAfterRung.join(', ')}** — rungs across that ` +
-              'boundary are different V8 isolates and must not be compared. Analyze each segment on its own.',
+          const lines: string[] = [
+            `## Analysis battery — \`${path.basename(run_dir.replace(/\/$/, ''))}\` (${profile})`,
             '',
-          );
-        }
+            `${manifest.paths.length} rungs at cycles [${manifest.cyclesPerRung.join(', ')}], ` +
+              `${formatNumber(manifest.cycles)} cycles driven` +
+              (manifest.combos.length > 0
+                ? `, combos: ${manifest.combos.join(', ')}`
+                : '') +
+              '.',
+            '',
+            `**${written.length} tool(s) run**, output written to \`${outDir}/\`` +
+              (skipped > 0 ? `; ${skipped} skipped for budget` : '') +
+              (failures.length > 0 ? `; ${failures.length} failed` : '') +
+              '.',
+            '',
+          ];
 
-        lines.push('## Digest', '');
-        lines.push(
-          digestLines.length > 0
-            ? digestLines.join('\n')
-            : '_No digest lines matched; read the files below._',
-        );
-        lines.push('');
+          if (manifest.caveats.length > 0) {
+            lines.push('**Caveats recorded by the runner:**');
+            for (const c of manifest.caveats) lines.push(`- ${c}`);
+            lines.push('');
+          }
+          if (manifest.splitAfterRung.length > 0) {
+            lines.push(
+              `> ⚠️ **LADDER SPLIT after rung ${manifest.splitAfterRung.join(', ')}** — rungs across that ` +
+                'boundary are different V8 isolates and must not be compared. Analyze each segment on its own.',
+              '',
+            );
+          }
 
-        if (failures.length > 0) {
-          lines.push('## Failed steps', '');
-          for (const f of failures) lines.push(`- ${f}`);
-          lines.push('');
-        }
-
-        lines.push('## Files', '');
-        for (const w of written.sort((a, b) => b.bytes - a.bytes)) {
+          lines.push('## Digest', '');
           lines.push(
-            `- \`${w.tool}.txt\` — ${formatNumber(w.bytes)} B, ${formatNumber(w.ms)} ms`,
+            digestLines.length > 0
+              ? digestLines.join('\n')
+              : '_No digest lines matched; read the files below._',
           );
-        }
-        lines.push('');
-        lines.push(
-          `_Full output for any tool is at \`${outDir}/<tool>.txt\`. The digest above is fixed and ` +
-            'small on purpose: a round should cost a bounded number of tokens to read, with the ' +
-            'detail still on disk when a specific question needs it._',
-        );
+          lines.push('');
 
-        return toolResult(lines.join('\n'));
+          if (failures.length > 0) {
+            lines.push('## Failed steps', '');
+            for (const f of failures) lines.push(`- ${f}`);
+            lines.push('');
+          }
+
+          lines.push('## Files', '');
+          for (const w of written.sort((a, b) => b.bytes - a.bytes)) {
+            lines.push(
+              `- \`${w.tool}.txt\` — ${formatNumber(w.bytes)} B, ${formatNumber(w.ms)} ms`,
+            );
+          }
+          lines.push('');
+          lines.push(
+            `_Full output for any tool is at \`${outDir}/<tool>.txt\`. The digest above is fixed and ` +
+              'small on purpose: a round should cost a bounded number of tokens to read, with the ' +
+              'detail still on disk when a specific question needs it._',
+          );
+
+          return lines.join('\n');
+        };
+
+        // Claimed for the whole life of the run, released on every exit
+        // path below.
+        activeOutDirs.set(outKey, tracked.id);
+        const release = (): void => {
+          if (activeOutDirs.get(outKey) === tracked.id) {
+            activeOutDirs.delete(outKey);
+          }
+        };
+        // A WATCHDOG, because the release paths all depend on the run
+        // settling. A step that hangs — a snapshot load wedged on a
+        // network mount is the realistic one — never resolves and never
+        // rejects, so the claim would be held for the life of the
+        // process and every later battery on that round refused. The
+        // timer is generous (well past any real battery) and unref'd so
+        // it cannot by itself keep the process alive.
+        const watchdog = setTimeout(() => {
+          if (activeOutDirs.get(outKey) === tracked.id) {
+            process.stderr.write(
+              `[battery ${tracked.id}] still holding ${outDir} after ` +
+                `${Math.round(RESERVATION_MAX_MS / 60000)} min; releasing the ` +
+                'claim so another battery can use it. The run itself was not ' +
+                'cancelled.\n',
+            );
+            activeOutDirs.delete(outKey);
+          }
+        }, RESERVATION_MAX_MS);
+        if (typeof watchdog.unref === 'function') watchdog.unref();
+        const finish = (): void => {
+          clearTimeout(watchdog);
+          release();
+        };
+
+        // Synchronous by default: a short battery answered inline is simpler
+        // than a handle nobody has to poll.
+        if (runAsync !== true) {
+          try {
+            return toolResult(await execute());
+          } finally {
+            finish();
+          }
+        }
+
+        // Guarded, so the reservation cannot outlive the attempt. If
+        // `trackBattery` throws here the handler unwinds before the
+        // completion callbacks are attached, and the claim on this
+        // directory would then be held by nothing for the life of the
+        // process — every later battery on the same round refused with a
+        // battery id that does not exist.
+        try {
+          trackBattery(tracked);
+        } catch (e) {
+          finish();
+          throw e;
+        }
+        void execute().then(
+          text => {
+            tracked.result = text;
+            tracked.finishedAt = Date.now();
+            tracked.currentTool = null;
+            finish();
+          },
+          err => {
+            const message = err instanceof Error ? err.message : String(err);
+            // To stderr as well as to the handle. The handle is in-memory
+            // and only ever read by a `memlab_battery_status` call that may
+            // never come — the caller moved on, or the run was evicted — and
+            // then the sole record of why a detached run died is gone. Every
+            // per-step line already streams here, so the terminal failure
+            // belongs in the same place.
+            process.stderr.write(
+              `[battery ${tracked.id}] FAILED: ${message}\n`,
+            );
+            tracked.error = message;
+            tracked.finishedAt = Date.now();
+            tracked.currentTool = null;
+            finish();
+          },
+        );
+        return toolResult(
+          [
+            `## Battery started — \`${tracked.id}\``,
+            '',
+            `\`${path.basename(run_dir.replace(/\/$/, ''))}\` (${profile}), ${plan.length} tool(s), writing to \`${outDir}/\`.`,
+            '',
+            `Poll it with \`memlab_battery_status({battery_id: "${tracked.id}"})\`. The full report comes back from that call once it finishes; per-tool output lands in \`${outDir}/<tool>.txt\` as each step completes, so a specific question can be answered before the whole battery is done.`,
+            '',
+            '_A standard battery is 7-10 minutes. Started this way it does not occupy the tool timeout, so there is no backgrounding and no interleaved completion notification — but nothing polls on your behalf either._',
+          ].join('\n'),
+        );
       } catch (e: unknown) {
         return errorResult(e);
       }
+    },
+  );
+
+  server.tool(
+    'memlab_battery_status',
+    'Report on a battery started with `memlab_analysis_battery({async: true})`, and return its full report once it has finished. With no `battery_id`, lists the batteries this server knows about.',
+    {
+      battery_id: z
+        .string()
+        .optional()
+        .describe(
+          'The id returned by `memlab_analysis_battery({async: true})`. Omit to list every tracked battery.',
+        ),
+    },
+    async ({battery_id}) => {
+      if (battery_id == null || battery_id === '') {
+        const all = [...batteries.values()];
+        if (all.length === 0) {
+          return toolResult(
+            'No battery has been started with `async: true` in this server process. `memlab_analysis_battery({run_dir, async: true})` starts one.',
+          );
+        }
+        return toolResult(
+          [
+            `## Batteries (${all.length})`,
+            '',
+            ...all.map(
+              b =>
+                `- \`${b.id}\` — ${path.basename(b.runDir.replace(/\/$/, ''))} (${b.profile}), ` +
+                (b.finishedAt != null
+                  ? `${b.error != null ? 'FAILED' : 'done'} in ${formatNumber(Math.round((b.finishedAt - b.startedAt) / 1000))}s`
+                  : `running, step ${b.doneSteps}/${b.totalSteps}${b.currentTool != null ? ` (${b.currentTool})` : ''}`),
+            ),
+          ].join('\n'),
+        );
+      }
+      const run = batteries.get(battery_id);
+      if (run == null) {
+        // A restarted server loses the map, and that is the likeliest cause —
+        // say so, and name the directory the work would have landed in, since
+        // the per-tool files survive the process that wrote them.
+        const dropped = evicted.get(battery_id);
+        if (dropped != null) {
+          // The evicted run kept running, and the closure that finishes it
+          // writes onto the object we are holding — so if it has since
+          // completed, the report is right here. Reporting EVICTED and
+          // pointing at the files while the full text sits in memory is a
+          // worse answer than simply returning it.
+          if (dropped.finishedAt != null && dropped.result != null) {
+            return toolResult(
+              `_(This battery's handle had been evicted to bound the tracking map — more than ${MAX_TRACKED_BATTERIES} were started — but the run completed and its report was still in memory.)_\n\n${dropped.result}`,
+            );
+          }
+          return errorResult(
+            new Error(
+              `Battery \`${battery_id}\` ran in this process but its handle was EVICTED — more than ${MAX_TRACKED_BATTERIES} batteries were started and the oldest still-running handles are dropped to bound the map. ` +
+                `${dropped.error != null ? `It then FAILED: ${dropped.error}. ` : 'It is still running or was interrupted. '}` +
+                `Its per-tool output is in \`${dropped.outDir}/\`; only the pollable report is gone. ` +
+                'Start fewer concurrent batteries, or read the files directly.',
+            ),
+          );
+        }
+        return errorResult(
+          new Error(
+            `No battery \`${battery_id}\` in this server process. ` +
+              'A server restart drops the handle (the per-tool `.txt` files on disk survive it). ' +
+              '`memlab_battery_status()` with no id lists what IS tracked.',
+          ),
+        );
+      }
+      const elapsed = Math.round(
+        ((run.finishedAt ?? Date.now()) - run.startedAt) / 1000,
+      );
+      if (run.finishedAt == null) {
+        return toolResult(
+          `## \`${run.id}\` — RUNNING (${formatNumber(elapsed)}s)\n\n` +
+            // PROCESSED, not "done". The counter advances once per plan
+            // entry so the progress line cannot go backwards, which means it
+            // also counts a step that was skipped for budget or was not
+            // registered in this build — neither of which produced output.
+            // Calling those "done" overstates what is on disk.
+            `${run.doneSteps}/${run.totalSteps} step(s) processed` +
+            (run.currentTool != null
+              ? `, now running \`${run.currentTool}\``
+              : '') +
+            `. Output so far is in \`${run.outDir}/\`.\n\n` +
+            '_Poll again rather than waiting: each completed tool has already written its full output to disk._',
+        );
+      }
+      if (run.error != null) {
+        return errorResult(
+          new Error(
+            `Battery \`${run.id}\` FAILED after ${formatNumber(elapsed)}s: ${run.error}\n\n` +
+              `${run.doneSteps}/${run.totalSteps} step(s) had been processed; whatever produced output is in ${run.outDir}/.`,
+          ),
+        );
+      }
+      return toolResult(
+        `_Battery \`${run.id}\` finished in ${formatNumber(elapsed)}s._\n\n${run.result ?? ''}`,
+      );
     },
   );
 }
