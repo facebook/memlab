@@ -179,6 +179,10 @@ const GROUPS: Group[] = [
         "What windows could BOUND this population — timeouts, TTLs, cleanup intervals? Run it before calling any growth unbounded: a ladder shorter than the app's window cannot tell a leak from a working set.",
       ],
       [
+        'memlab_shape_census_diff',
+        'Per-SHAPE growth across the ladder. Reach for this the moment a class-level tool blames `Object`: it turns "`Object` +377,959" into "`{event,timestamp}` ~0 → 53,029" in one call.',
+      ],
+      [
         'memlab_census_diff',
         'Detached-DOM and listener census at TWO rungs, diffed per class and per callback in one call.',
       ],
