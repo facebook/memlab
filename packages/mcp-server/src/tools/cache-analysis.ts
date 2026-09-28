@@ -774,46 +774,40 @@ export function registerCacheAnalysis(server: McpServer): void {
           );
         }
 
-        const hasAnyFramework = caches.some(c => c.framework !== '');
-        const hasSlotDifference = caches.some(
-          c => c.tableSlots !== c.entryCount,
-        );
         // Occupancy is only meaningful when the table's allocated capacity is
         // actually known and bigger than what is live in it.
         const occupancyOf = (c: CacheEntry): number | null =>
           c.capacitySlots > 0 && c.capacitySlots >= c.tableSlots
             ? c.tableSlots / c.capacitySlots
             : null;
-        const hasOccupancy = caches.some(c => {
-          const o = occupancyOf(c);
-          return o != null && o < 0.9;
-        });
         const staleCapacity = caches.filter(c => {
           const o = occupancyOf(c);
           return o != null && o < 0.25 && c.retainedSize >= 262144;
         });
+        // A FIXED column set, every time.
+        //
+        // Three of these columns used to appear only when some row had a
+        // value for them, so the table's shape changed between rounds of the
+        // same sweep and nothing could parse it — it had to be read by eye on
+        // every round. A missing value is `—`, which is information; a
+        // missing COLUMN is a different schema.
         const headers = [
           'ID',
           'Type',
           'Kind',
           'Entries',
-          ...(hasSlotDifference ? ['Table Slots'] : []),
-          ...(hasOccupancy ? ['Capacity', 'Occupancy'] : []),
+          'Table Slots',
+          'Capacity',
+          'Occupancy',
           'Retained',
           '% Heap',
           'Owner',
           'Property',
           'Weak?',
           'Prod?',
-          ...(hasAnyFramework ? ['Framework'] : []),
+          'Framework',
         ];
-        const numericFrom = 3;
-        const numericCount =
-          1 + (hasSlotDifference ? 1 : 0) + (hasOccupancy ? 2 : 0) + 2;
-        const rightCols = new Set<number>();
-        for (let i = numericFrom; i < numericFrom + numericCount; i++) {
-          rightCols.add(i);
-        }
+        const rightCols = new Set([3, 4, 5, 6, 7, 8]);
         const rows = caches.map(c => {
           const pct =
             totalSize > 0
@@ -824,16 +818,16 @@ export function registerCacheAnalysis(server: McpServer): void {
             c.collectionType,
             c.classification,
             formatNumber(c.entryCount),
-            ...(hasSlotDifference ? [formatNumber(c.tableSlots)] : []),
-            ...(hasOccupancy
-              ? [
-                  c.capacitySlots > 0 ? formatNumber(c.capacitySlots) : '—',
-                  (() => {
-                    const o = occupancyOf(c);
-                    return o == null ? '—' : `${(o * 100).toFixed(1)}%`;
-                  })(),
-                ]
-              : []),
+            // Unguarded. Every path that sets these produces a real count,
+            // so 0 means an EMPTY collection — rendering that as `—` reads
+            // as "not measured" and hides exactly the rows a stale-cache
+            // question is about.
+            formatNumber(c.tableSlots),
+            formatNumber(c.capacitySlots),
+            (() => {
+              const o = occupancyOf(c);
+              return o == null ? '—' : `${(o * 100).toFixed(1)}%`;
+            })(),
             formatBytes(c.retainedSize),
             pct,
             c.ownerName,
@@ -845,7 +839,7 @@ export function registerCacheAnalysis(server: McpServer): void {
             provenanceCell(
               moduleProvenanceOf(snapshot.getNodeById(c.nodeId) ?? null),
             ),
-            ...(hasAnyFramework ? [c.framework || '-'] : []),
+            c.framework || '—',
           ];
         });
         const devOnlyCount = caches.filter(
