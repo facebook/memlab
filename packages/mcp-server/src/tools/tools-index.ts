@@ -191,6 +191,10 @@ const GROUPS: Group[] = [
         'The ladder verdict: per-class growth across an ordered set of snapshots.',
       ],
       [
+        'memlab_growth_cohort',
+        'Who holds the NEWEST instances — the tail of the id range IS the growth. Reports it next to the whole population, so a static collection masking an accumulating one is visible in one call.',
+      ],
+      [
         'memlab_sequence_analysis',
         'Per-class trend across a ladder, with artifact families flagged.',
       ],
