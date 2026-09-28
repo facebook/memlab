@@ -36,6 +36,8 @@ import {
   findResidentByPath,
   retainOnlySnapshot,
   setCurrentSnapshot,
+  resetEmittedNotes,
+  shouldEmitNote,
 } from '../heap-state.js';
 import {makeProgressReporter} from '../progress.js';
 import type {SnapshotEnv} from '../heap-state.js';
@@ -44,6 +46,7 @@ import {
   formatBytes,
   formatNumber,
   truncateNodeName,
+  detectAppName,
   errorResult,
   textResult,
   suggestionsSuppressed,
@@ -806,12 +809,80 @@ function detectEnv(snapshot: IHeapSnapshot): SnapshotEnv {
   return 'unknown';
 }
 
+/**
+ * Standing observations about the APP, as distinct from this capture.
+ *
+ * The duplicated-string list and the high-instance-count list are properties
+ * of the application: they print identically on the first load and on the
+ * fortieth. Measured on a sweep that loaded the same app ~40 times, that is
+ * six lines of `"1048397182_longtail" duplicated 3,204 times` per load,
+ * useful exactly once. Per-CAPTURE observations — an anonymised snapshot, a
+ * >1 MB string, one object retaining a third of the heap — still print every
+ * time, because those can differ between rungs and change how a number is
+ * read.
+ *
+ * Scoped to the APP, not to the session.
+ *
+ * A single session-wide key suppressed a DIFFERENT application's notes: load
+ * app A, then load app B (which `keep_previous` exists to support) and B's
+ * own duplicated-string and high-instance-count values are replaced by
+ * "shown on the first load only" — values that were never shown at all.
+ *
+ * The app name when the snapshot reveals one; otherwise the directory of
+ * the path the CALLER named, which distinguishes two rounds of two apps and
+ * groups the rungs of one round.
+ *
+ * `sourcePath`, never the resolved local path. A Manifold fetch and a `.gz`
+ * rung both resolve into one shared temp directory, so keying on the
+ * resolved path collapsed every such load to a single key — and then app B's
+ * never-shown notes were suppressed as "shown on the first load only"
+ * because app A had loaded a compressed rung earlier. That is exactly the
+ * cross-app suppression this scoping exists to prevent, reintroduced by the
+ * one input that does not survive resolution. Browser heaps have no
+ * `/apps/<name>/` segment for `detectAppName`, so they take this path.
+ */
+function standingNoteKey(snapshot: IHeapSnapshot, sourcePath: string): string {
+  const app = detectAppName(snapshot);
+  // NAMESPACED. Both halves shared one `app-shape:` prefix, so a Node app
+  // called `foo` and a browser heap whose fallback directory is also `foo`
+  // produced the same key — one suppressing the other's never-shown notes,
+  // which is the cross-app suppression this scoping exists to prevent.
+  if (app != null) return `load-snapshot:app-shape:app:${app}`;
+  // No app name. The directory groups a round's rungs, which is what is
+  // wanted — but only when it is a real, specific one. A bare filename has
+  // a dirname of `.` and every `manifold://bucket/flat/x` shares one
+  // pseudo-directory, so those collapse every capture on the host into a
+  // single key and suppress one app's notes because another was loaded
+  // first. Fall back to the whole path there: showing a ladder's notes per
+  // rung is noise, showing the wrong app's nothing is a wrong answer.
+  const dir = path.dirname(sourcePath);
+  // ANY `manifold://` directory is non-specific, not just `flat/`. The
+  // bucket exposes `flat/`, `nodes/` and `tree/` mounts, so two apps
+  // fetched through the same mount shared one key and one app's
+  // never-shown notes were suppressed as already seen.
+  const specific =
+    dir !== '.' && dir !== '/' && !sourcePath.startsWith('manifold://');
+  return `load-snapshot:app-shape:path:${specific ? dir : sourcePath}`;
+}
+
 function quickDiagnosis(
   snapshot: IHeapSnapshot,
   totalSelfSize: number,
   light = false,
-): string[] {
+): {warnings: string[]; standing: string[]; standingKinds: Set<string>} {
   const warnings: string[] = [];
+  // Recorded as the notes are BUILT. The alternative — re-reading the
+  // rendered strings to guess what they were — needs a regex per category
+  // that tracks the exact wording, and the one written for instance counts
+  // looked for `x<digits>` when the notes render `<digits>×`, so it both
+  // missed its own category and matched an unrelated string value.
+  const standingKinds = new Set<string>();
+  // Always COMPUTED, never conditionally skipped. Whether they are printed
+  // is the caller's decision, and it has to be made from the notes
+  // themselves: marking the key emitted before knowing there were any meant
+  // a load with nothing to say consumed the one chance to say it, and the
+  // next load — which did have notes — printed the placeholder instead.
+  const standing: string[] = [];
 
   const largeStrings: {id: number; name: string; size: number}[] = [];
   const stringCounts = new Map<string, number>();
@@ -863,7 +934,8 @@ function quickDiagnosis(
       .slice(0, 3);
     for (const [val, count] of highDups) {
       const display = val.length > 40 ? val.slice(0, 40) + '…' : val;
-      warnings.push(`⚠ "${display}" duplicated ${formatNumber(count)} times`);
+      standing.push(`⚠ "${display}" duplicated ${formatNumber(count)} times`);
+      standingKinds.add('duplicated strings');
     }
   }
 
@@ -885,10 +957,11 @@ function quickDiagnosis(
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3);
   for (const [name, count] of anomalous) {
-    warnings.push(`⚠ ${formatNumber(count)}× \`${name}\` instances`);
+    standing.push(`⚠ ${formatNumber(count)}× \`${name}\` instances`);
+    standingKinds.add('high instance counts');
   }
 
-  return warnings;
+  return {warnings, standing, standingKinds};
 }
 
 /**
@@ -1016,6 +1089,13 @@ export function registerLoadSnapshot(server: McpServer): void {
         .describe(
           'Keep previously-loaded snapshots resident instead of replacing them (default false). Enables before/after diffing and app-to-app comparison without reloading. Each resident snapshot holds its full graph in memory — watch server RSS for very large heaps.',
         ),
+      repeat_notes: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          "Print the standing notes about the app — duplicated strings, high instance counts — again. They are shown ONCE PER APP per session, because they describe the application rather than the capture and are identical on every rung of a ladder; loading a second app shows that app's own notes.",
+        ),
       quiet: z
         .boolean()
         .optional()
@@ -1073,6 +1153,7 @@ export function registerLoadSnapshot(server: McpServer): void {
         alias,
         keep_previous,
         quiet,
+        repeat_notes,
         suppress_suggestions,
         max_file_size_mb,
         max_nodes,
@@ -1083,6 +1164,12 @@ export function registerLoadSnapshot(server: McpServer): void {
       },
       extra: unknown,
     ) => {
+      // BEFORE any early return. Reset at the diagnosis phase, this sat
+      // behind the resident-cache hit and behind every guard that returns an
+      // error, so `repeat_notes: true` on a cache hit did nothing at all and
+      // the NEXT load stayed suppressed — the flag reads as ignored. Every
+      // sibling tool resets at the top of its handler for the same reason.
+      if (repeat_notes) resetEmittedNotes();
       // 6 phases: resolve → guards → parse → (dominators | skipped) → index →
       // diagnose. Reported at boundaries only; see progress.ts for why there is
       // nothing finer-grained available.
@@ -1160,6 +1247,13 @@ export function registerLoadSnapshot(server: McpServer): void {
                   ? `Memory: ~${formatNumber(headroomHitMB)} MB of the ~${formatNumber(getOldSpaceLimitMB())} MB old-space limit free (unchanged — nothing was parsed).`
                   : '',
                 '_Pass `force_reload: true` if the file changed on disk since it was loaded._',
+                // Said out loud, because the flag otherwise reads as
+                // ignored: a cache hit runs no diagnosis, so there are no
+                // standing notes to reprint on THIS call. The reset did
+                // happen and the next real parse will show them.
+                repeat_notes
+                  ? '_`repeat_notes` was applied, but a cache hit runs no diagnosis — nothing is re-printed here. Suppression is now cleared, so the next parse of this app shows its standing notes; `force_reload: true` makes this call that parse._'
+                  : '',
               ]
                 .filter(Boolean)
                 .join('\n'),
@@ -1590,9 +1684,33 @@ export function registerLoadSnapshot(server: McpServer): void {
         }
 
         progress.phase(6, PHASES, 'running quick diagnosis');
-        const warnings = quickDiagnosis(snapshot, totalSize, light);
+        const {warnings, standing, standingKinds} = quickDiagnosis(
+          snapshot,
+          totalSize,
+          light,
+        );
         if (warnings.length > 0) {
           lines.push('', ...warnings);
+        }
+        // The key is consumed only when there IS something to suppress, so a
+        // load with no standing notes does not spend the first-load slot.
+        if (standing.length > 0) {
+          if (shouldEmitNote(standingNoteKey(snapshot, file_path))) {
+            lines.push('', ...standing);
+          } else {
+            lines.push(
+              '',
+              // Describes what is ACTUALLY in `standing`. The fixed
+              // "(duplicated strings, high instance counts)" overstated an
+              // anonymised capture, where the dup-string notes are
+              // suppressed and only instance counts remain. No fallback
+              // for an empty set: this line only renders when
+              // `standing.length > 0`, and every push into `standing`
+              // records its kind alongside, so the set cannot be empty
+              // here — a fallback would be dead text implying otherwise.
+              `_${standing.length} standing note(s) about this app (${[...standingKinds].join(', ')}) shown once per app per session — \`repeat_notes: true\` to see them again._`,
+            );
+          }
         }
         if (
           !suggestionsSuppressed('memlab_load_snapshot') &&

@@ -972,12 +972,40 @@ export function objectContentSignature(
 }
 
 /**
+ * Keyed by the snapshot object, so an entry is dropped when the snapshot is.
+ */
+const appNameCache = new WeakMap<object, {name: string | null}>();
+
+/**
  * Best-effort detection of which app a Node snapshot came from, by tallying the
  * `/app(s)/<name>/` segment in bundle paths embedded throughout the heap (string
  * node values, function/script names). Returns the most common segment, or null
  * if nothing decisive is found (Feedback round 3 §3d).
+ *
+ * Memoised per snapshot: the tally is a full `nodes.forEach` over a graph the
+ * caller has usually just walked twice already, and the answer is a stable
+ * property of the capture — so a second caller in the same load (a summary
+ * and a standing-note key, say) should not pay for it again.
  */
 export function detectAppName(snapshot: IHeapSnapshot): string | null {
+  const cached = appNameCache.get(snapshot as unknown as object);
+  if (cached != null) return cached.name;
+  const name = computeAppName(snapshot);
+  appNameCache.set(snapshot as unknown as object, {name});
+  return name;
+}
+
+/** The uncached tally. See `detectAppName`. */
+function computeAppName(snapshot: IHeapSnapshot): string | null {
+  // Stops once the answer is settled. This is a whole extra `nodes.forEach`
+  // on top of the indexing walk, the diagnosis walk and the env walk, run
+  // on every load that has standing notes — and it only needs enough hits
+  // to pick a winner, not a census. A heap with a detectable app name
+  // reaches that in the first few thousand matches; one with no matches at
+  // all (a browser heap) still costs a full pass, which is the price of
+  // proving the absence.
+  const HITS_ENOUGH = 5000;
+  let hits = 0;
   const counts = new Map<string, number>();
   const re = /\/apps?\/([A-Za-z0-9_.-]{2,40})\//;
   const skip = new Set([
@@ -998,6 +1026,10 @@ export function detectAppName(snapshot: IHeapSnapshot): string | null {
     const seg = m[1];
     if (skip.has(seg)) return;
     counts.set(seg, (counts.get(seg) ?? 0) + 1);
+    // `IHeapNodes.forEach` stops only on an explicit `false`; a bare
+    // `return` just skips the node and walks the whole graph anyway.
+    if (++hits >= HITS_ENOUGH) return false;
+    return undefined;
   });
   let best: string | null = null;
   let bestN = 0;
