@@ -275,15 +275,75 @@ const DIGEST_PATTERNS: ReadonlyArray<{tool: RegExp; re: RegExp; max: number}> =
     {tool: /app_heap/, re: /application|bundle/, max: 4},
   ];
 
-function digestFor(tool: string, text: string): string[] {
+/**
+ * Tools whose digest is a TABLE, where `digest_rows` decides how many rows to
+ * lift. Everything else has a fixed headline and is unaffected.
+ *
+ * The leak report is the one that matters: it printed 8 rows with full
+ * retainer strings on EVERY round of a sweep, and with the idle floor
+ * subtracted most rounds have one or two interesting rows. The header and
+ * separator are not rows and are not counted against the budget.
+ */
+const ROW_TABLE_TOOLS =
+  /leak_report|cache_analysis|stale_collections|growth_signals|react_update_queues/;
+
+function digestFor(tool: string, text: string, digestRows?: number): string[] {
   const spec = DIGEST_PATTERNS.find(p => p.tool.test(tool));
   if (!spec) return [];
+  const rowBudget =
+    digestRows != null && ROW_TABLE_TOOLS.test(tool) ? digestRows : null;
   const out: string[] = [];
+  let dataRows = 0;
+  let suppressed = 0;
   for (const line of text.split('\n')) {
-    if (spec.re.test(line)) {
-      out.push(line.trim());
-      if (out.length >= spec.max) break;
+    if (!spec.re.test(line)) continue;
+    const trimmed = line.trim();
+    // A markdown separator (`|---|---|`) is part of the table, not a row.
+    // It must contain a RUN of dashes: a data row whose every cell is a
+    // single `—`-less placeholder dash (`| - | - |`, which several of these
+    // tools emit for "not measured") is made of the same characters and was
+    // being classified as a separator — so it escaped the `digest_rows`
+    // budget and was neither counted nor suppressed.
+    const isDataRow =
+      trimmed.startsWith('|') && !/^\|[\s:|-]*-{3,}[\s:|-]*\|$/.test(trimmed);
+    if (rowBudget != null && isDataRow) {
+      if (dataRows >= rowBudget) {
+        suppressed++;
+        continue;
+      }
+      dataRows++;
     }
+    // Stop PUSHING at the cap, but keep scanning, so `suppressed` counts
+    // every row beyond the budget. Breaking here made the count depend on
+    // whether headlines had already filled `out`: with enough of them the
+    // note read "… 0 more row(s)" or vanished entirely, which is the
+    // opposite of the guarantee that suppression is always stated.
+    //
+    // `digest_rows` is a promise about DATA ROWS, so `spec.max` — which
+    // counts headlines and rows together — must not be able to break it. A
+    // tool emitting several headlines before its table would otherwise hand
+    // back fewer rows than asked for, and vary with how much prose came
+    // first. Rows inside the budget go in regardless; `spec.max` still
+    // governs everything else, and rows once the budget is spent.
+    // Branch on the KIND first. With a row budget active, data rows push
+    // unconditionally and could carry `out` past `spec.max` — and then a
+    // banner or audit verdict appearing AFTER the table matched no branch
+    // at all and was dropped silently, uncounted, which is the exact
+    // opposite of the guarantee that headlines are never budgeted away.
+    if (!isDataRow) {
+      if (rowBudget != null || out.length < spec.max) out.push(trimmed);
+    } else if (rowBudget != null) {
+      out.push(trimmed);
+    } else if (out.length < spec.max) {
+      out.push(trimmed);
+    } else {
+      suppressed++;
+    }
+  }
+  if (suppressed > 0) {
+    out.push(
+      `_… ${suppressed} more row(s) in \`${tool}.txt\` (\`digest_rows\`)._`,
+    );
   }
   return out;
 }
@@ -329,6 +389,15 @@ export function registerAnalysisBattery(server: McpServer): void {
         .describe(
           'Budget for the whole battery. Checked BETWEEN steps — a whole-heap pass is one synchronous block and cannot be interrupted — so the guarantee is that no NEW step starts past the deadline.',
         ),
+      digest_rows: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .default(5)
+        .describe(
+          'How many TABLE rows each row-shaped tool contributes to the digest (default 5). `memlab_leak_report` printed 8 rows with full retainer strings on every round of a sweep, and with the idle floor subtracted most rounds have one or two interesting ones. Headline lines are never budgeted away, and the full table is always in `<out_dir>/<tool>.txt`.',
+        ),
       async: z
         .boolean()
         .optional()
@@ -337,7 +406,10 @@ export function registerAnalysisBattery(server: McpServer): void {
           'Return a handle IMMEDIATELY and run the battery in the background; poll it with `memlab_battery_status({battery_id})`, which hands back the full report once it is done. A standard battery is 7-10 minutes, so every call of it exceeds the generic tool timeout and is backgrounded — this makes the wait explicit and pollable instead, with no interleaved completion notification. Per-tool output still lands in `<out_dir>/<tool>.txt` as each step finishes, so a specific question can be answered before the battery is.',
         ),
     },
-    async ({run_dir, out_dir, profile, timeout_ms, async: runAsync}, extra) => {
+    async (
+      {run_dir, out_dir, profile, timeout_ms, digest_rows, async: runAsync},
+      extra,
+    ) => {
       try {
         const manifest = loadRunManifest(run_dir);
         if (manifest.paths.length < 2) {
@@ -580,7 +652,7 @@ export function registerAnalysisBattery(server: McpServer): void {
             }
             tracked.doneSteps = finished;
 
-            const d = digestFor(step.tool, text);
+            const d = digestFor(step.tool, text, digest_rows);
             if (d.length > 0) {
               digestLines.push(`### ${step.tool}`, ...d, '');
             }
