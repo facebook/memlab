@@ -34,6 +34,7 @@
 
 import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import fs from 'fs';
+import crypto from 'crypto';
 import path from 'path';
 
 /**
@@ -123,6 +124,18 @@ export function joinShapeKey(props: readonly string[]): string {
     .join(',');
 }
 
+/**
+ * Is this rung on disk, in either form?
+ *
+ * A rung compressed by `memlab_prune_run` is still a rung — the loader
+ * resolves `<path>.gz` — so an existence check written as a bare
+ * `fs.existsSync` reports a pruned round as missing and refuses to analyse
+ * it. That would make compression a one-way door after all.
+ */
+export function snapshotExists(snapshotPath: string): boolean {
+  return fs.existsSync(snapshotPath) || fs.existsSync(`${snapshotPath}.gz`);
+}
+
 export function sidecarPathFor(snapshotPath: string): string {
   return `${snapshotPath}.memlab-index.json`;
 }
@@ -150,9 +163,14 @@ function isTuple(v: unknown, arity: number): boolean {
 export function readSidecar(snapshotPath: string): SnapshotIndex | null {
   if (!indexCacheEnabled()) return null;
   const file = sidecarPathFor(snapshotPath);
+  // A COMPRESSED rung is validated against the archive, because the
+  // uncompressed file no longer exists. `memlab_prune_run` re-keys the
+  // sidecar to the `.gz` when it compresses, so the two agree.
   let stat: fs.Stats;
   try {
-    stat = fs.statSync(snapshotPath);
+    stat = fs.existsSync(snapshotPath)
+      ? fs.statSync(snapshotPath)
+      : fs.statSync(`${snapshotPath}.gz`);
   } catch {
     return null;
   }
@@ -342,7 +360,9 @@ export function buildSnapshotIndex(
 
   let stat: fs.Stats | null = null;
   try {
-    stat = fs.statSync(snapshotPath);
+    stat = fs.existsSync(snapshotPath)
+      ? fs.statSync(snapshotPath)
+      : fs.statSync(`${snapshotPath}.gz`);
   } catch {
     stat = null;
   }
@@ -389,6 +409,43 @@ export function classMapOf(
     out.set(k, {count, selfSize});
   }
   return out;
+}
+
+/**
+ * Re-point a sidecar at the `.gz` a rung was just compressed into.
+ *
+ * Without this, compressing a round throws its cache away: the sidecar still
+ * records the size and mtime of a file that no longer exists, so every later
+ * read rejects it as stale and re-parses — the opposite of what pruning was
+ * for.
+ */
+export function rekeySidecarToArchive(snapshotPath: string): boolean {
+  const file = sidecarPathFor(snapshotPath);
+  try {
+    const gz = fs.statSync(`${snapshotPath}.gz`);
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as SnapshotIndex;
+    parsed.sourceSize = gz.size;
+    parsed.sourceMtimeMs = Math.round(gz.mtimeMs);
+    // Through a temp file. The prune compress path calls this AFTER unlinking
+    // the plain rung, so an interrupted in-place write leaves a truncated
+    // sidecar beside the only remaining copy of the data — and the sidecar is
+    // the thing that says whether that data is still valid.
+    // Random and exclusive, like every other temp this package writes. A
+    // pid-based name in a directory beside the rung can be pre-created by
+    // another local user, and two processes re-keying the same sidecar
+    // would otherwise pick the same path.
+    const tmp = `${file}.tmp.${crypto.randomBytes(9).toString('hex')}`;
+    const fd = fs.openSync(tmp, 'wx', 0o600);
+    try {
+      fs.writeFileSync(fd, JSON.stringify(parsed));
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(tmp, file);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Every sidecar sitting beside the snapshots of a run directory. */

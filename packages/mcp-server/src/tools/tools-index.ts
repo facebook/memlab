@@ -179,6 +179,10 @@ const GROUPS: Group[] = [
         "What windows could BOUND this population — timeouts, TTLs, cleanup intervals? Run it before calling any growth unbounded: a ladder shorter than the app's window cannot tell a leak from a working set.",
       ],
       [
+        'memlab_prune_run',
+        'Reclaim the disk a round occupies by gzipping its rungs (still analysable) or deleting them. A sweep is tens of GB.',
+      ],
+      [
         'memlab_battery_status',
         'Poll a `memlab_analysis_battery({async: true})` run and collect its report when it finishes.',
       ],

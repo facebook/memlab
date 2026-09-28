@@ -9,7 +9,6 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
-import fs from 'fs';
 import {z} from 'zod';
 import {
   armScanBudgetFor,
@@ -25,6 +24,7 @@ import {
   toolResult,
 } from '../utils.js';
 import {runEval, storedFnSources} from './eval.js';
+import {snapshotExists} from '../snapshot-index.js';
 import {resolveLadderPaths} from './ladder.js';
 import {
   describeCycleAxis,
@@ -911,7 +911,7 @@ export function registerLadderProbe(server: McpServer): void {
           !resolved.some(p => p === inputs.manifest?.settleRungPath)
         ) {
           const settlePath = inputs.manifest.settleRungPath;
-          if (fs.existsSync(settlePath)) {
+          if (snapshotExists(settlePath)) {
             resolved.push(settlePath);
             if (cycles_per_rung != null) {
               cycles_per_rung = [

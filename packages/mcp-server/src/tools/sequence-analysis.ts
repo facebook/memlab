@@ -226,10 +226,12 @@ export async function computeSequenceTrends(
       `rung ${rungIndex}/${resolvedPaths.length}: ${p.replace(/^.*\//, '')}`,
     );
     let local: string;
+    let sidecarBase: string;
     let fetchedFrom: string | null = null;
     try {
       const r = resolveSnapshotPath(p);
       local = r.localPath;
+      sidecarBase = r.sidecarBase;
       fetchedFrom = r.fetchedFrom;
     } catch (e) {
       throw new Error(
@@ -258,7 +260,7 @@ export async function computeSequenceTrends(
     // therefore costs a JSON read instead of a 22-43 s parse, which is the
     // dominant cost of every ladder tool and the reason the same five
     // snapshots were re-walked six times in one round.
-    const cached = readSidecar(local);
+    const cached = readSidecar(sidecarBase);
     if (cached != null) {
       steps.push({
         label: fetchedFrom ?? p.replace(/^.*\//, ''),
@@ -304,7 +306,7 @@ export async function computeSequenceTrends(
     // Written from the graph we already have open, so the sidecar costs one
     // extra pass rather than an extra parse — and the next tool over this
     // rung pays neither.
-    ensureSidecar(snapshot, local, normalizeClassName);
+    ensureSidecar(snapshot, sidecarBase, normalizeClassName);
     steps.push({
       label: fetchedFrom ?? p.replace(/^.*\//, ''),
       localPath: local,

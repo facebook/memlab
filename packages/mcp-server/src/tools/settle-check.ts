@@ -78,6 +78,16 @@ const VERDICT_NOTE_NO_BASELINE: Record<Verdict, string> = {
 /** Where the runner writes the settle rung (see hunt_runner.Runner.settle). */
 const SETTLE_RUNG_BASENAME = 'rung_99_settle.heapsnapshot';
 
+/**
+ * Three LOGICAL rung paths — always the plain `.heapsnapshot` name, even
+ * when only `<name>.gz` is on disk after a prune.
+ *
+ * That is the form the loader takes: `resolveSnapshotPath` resolves the
+ * archive transparently, and `snapshotExists` tests both forms. A consumer
+ * that instead calls `fs.existsSync`/`statSync` on one of these directly
+ * will report a pruned round as missing, which is the one way compression
+ * could still become a one-way door.
+ */
 interface SettlePair {
   busyPath: string;
   settledPath: string;
@@ -101,7 +111,12 @@ function resolveSettlePair(runDir: string): SettlePair | string {
   } catch {
     return `Cannot read ${dir}. Pass the run directory the hunt runner wrote (the one containing run.json).`;
   }
-  const settled = entries.find(e => e === SETTLE_RUNG_BASENAME);
+  // `.gz` too: a settle rung compressed by `memlab_prune_run` is still a
+  // settle rung, and matching only the exact name reported a pruned round as
+  // UNSETTLED — the strongest negative this tool emits.
+  const settled = entries.find(
+    e => e === SETTLE_RUNG_BASENAME || e === `${SETTLE_RUNG_BASENAME}.gz`,
+  );
   if (settled == null) {
     return (
       `No settle rung (${SETTLE_RUNG_BASENAME}) in ${dir}.\n\n` +
@@ -115,17 +130,24 @@ function resolveSettlePair(runDir: string): SettlePair | string {
   // zero-pads to two digits, so a plain sort agrees with numeric order only
   // while the index stays under 100 — past that `rung_100` sorts before
   // `rung_99` and the wrong file is picked as busy or baseline, silently.
-  const driven = entries
-    .filter(e => /^rung_\d+_c\d+\.heapsnapshot$/.test(e))
-    .map(e => ({name: e, idx: Number(/^rung_(\d+)_/.exec(e)?.[1])}))
-    .sort((a, b) => a.idx - b.idx)
-    .map(e => e.name);
+  //
+  // De-duplicated by the stripped name: an interrupted compress leaves
+  // `rung_NN.heapsnapshot` AND `rung_NN.heapsnapshot.gz` side by side, and
+  // counting that rung twice shifts which file is picked as busy or baseline.
+  const byName = new Map<string, number>();
+  for (const e of entries) {
+    if (!/^rung_\d+_c\d+\.heapsnapshot(\.gz)?$/.test(e)) continue;
+    byName.set(e.replace(/\.gz$/, ''), Number(/^rung_(\d+)_/.exec(e)?.[1]));
+  }
+  const driven = [...byName.entries()]
+    .sort((a, b) => a[1] - b[1])
+    .map(e => e[0]);
   if (driven.length === 0) {
     return `No driven rungs (rung_NN_cNNN.heapsnapshot) in ${dir}.`;
   }
   return {
     busyPath: path.join(dir, driven[driven.length - 1]),
-    settledPath: path.join(dir, settled),
+    settledPath: path.join(dir, settled.replace(/\.gz$/, '')),
     baselinePath: driven.length > 1 ? path.join(dir, driven[0]) : null,
   };
 }

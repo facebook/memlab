@@ -34,12 +34,14 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import {z} from 'zod';
 import {loadRunManifest} from '../run-manifest.js';
 import {getRegisteredTool} from '../tool-registry.js';
 import {makeProgressReporter} from '../progress.js';
-import {errorResult, formatNumber, toolResult} from '../utils.js';
+import {snapshotExists} from '../snapshot-index.js';
+import {errorResult, formatBytes, formatNumber, toolResult} from '../utils.js';
 
 /**
  * A battery started with `async: true`, tracked so `memlab_battery_status` can
@@ -345,7 +347,7 @@ export function registerAnalysisBattery(server: McpServer): void {
             ),
           );
         }
-        const missing = manifest.paths.filter(p => !fs.existsSync(p));
+        const missing = manifest.paths.filter(p => !snapshotExists(p));
         if (missing.length > 0) {
           return errorResult(
             new Error(
@@ -384,11 +386,64 @@ export function registerAnalysisBattery(server: McpServer): void {
           );
         }
 
+        // Free space, checked BEFORE the work rather than discovered during
+        // it. One sweep wrote 101 snapshots at 358-526 MB — ~40 GB — and
+        // nothing warned; a hunt that fills the disk mid-round loses the
+        // lease that produced the rungs, which cannot be re-captured.
+        //
+        // A compressed rung counts as what it becomes, not what it is on
+        // disk. Analysis decompresses each one to a temp file first, so
+        // summing the archive sizes reports a fifth of the space the battery
+        // is about to need — the headroom check then passes on exactly the
+        // pruned rounds where disk is already tight. 7x is the middle of the
+        // 5-10x a heap snapshot achieves, the same figure `memlab_prune_run`
+        // estimates with.
+        const GZ_EXPANSION = 7;
+        const ladderBytes = manifest.paths.reduce((sum, p) => {
+          try {
+            if (fs.existsSync(p)) return sum + fs.statSync(p).size;
+            return sum + fs.statSync(`${p}.gz`).size * GZ_EXPANSION;
+          } catch {
+            return sum;
+          }
+        }, 0);
+        // The TIGHTER of the two volumes the battery writes to. Reports land
+        // in `outDir`; a compressed rung is decompressed full-size into
+        // `os.tmpdir()`, which is very often a different filesystem (and on
+        // some hosts a small one). Checking only `outDir` reassures about a
+        // volume the decompression never touches.
+        const freeOn = (dir: string): number => {
+          try {
+            const st = fs.statfsSync(dir);
+            return Number(st.bavail) * Number(st.bsize);
+          } catch {
+            // statfs is unavailable on some platforms; no warning is better
+            // than a wrong one.
+            return -1;
+          }
+        };
+        const freeOut = freeOn(outDir);
+        const anyCompressed = manifest.paths.some(p => !fs.existsSync(p));
+        const freeTmp = anyCompressed ? freeOn(os.tmpdir()) : -1;
+        // The tighter of whichever volumes could be measured. Requiring
+        // BOTH silenced the warning entirely when `statfs` failed on the
+        // output volume — and a host where statfs fails on the volume the
+        // reports land in is not a host where disk pressure is less likely.
+        const known = [freeOut, freeTmp].filter(b => b >= 0);
+        const freeBytes = known.length > 0 ? Math.min(...known) : -1;
+        // A manifold-backed run has no local file for either form, so every
+        // stat throws and `ladderBytes` stays 0 — which reads as "no
+        // headroom needed" and silences the warning on the runs that fetch
+        // the most data. Unknown is not zero: say so instead.
+        const sizeUnknown = ladderBytes === 0 && manifest.paths.length > 0;
+        const lowDisk =
+          freeBytes >= 0 && ladderBytes > 0 && freeBytes < ladderBytes * 3;
+
         const finalRung = manifest.paths[manifest.paths.length - 1];
         const baseRung = manifest.paths[0];
         const hasSettleRung =
           manifest.settleRungPath != null &&
-          fs.existsSync(manifest.settleRungPath);
+          snapshotExists(manifest.settleRungPath);
         const plan = buildPlan(
           profile,
           run_dir,
@@ -541,6 +596,19 @@ export function registerAnalysisBattery(server: McpServer): void {
                 : '') +
               '.',
             '',
+            ...(lowDisk
+              ? [
+                  `> ⚠️ **Low disk: ${formatBytes(freeBytes)} free, against a ${formatBytes(ladderBytes)} ladder** (the tighter of the output volume and the temp volume a compressed rung expands into). ` +
+                    'Below ~3x the ladder size a sweep is at risk of dying mid-round, and a lost round costs the lease that produced it. ' +
+                    '`memlab_prune_run({run_dir, mode: "compress"})` on FINISHED rounds gzips their rungs ~5-10x and leaves them analysable.',
+                  '',
+                ]
+              : sizeUnknown
+                ? [
+                    "> ⚠️ **Disk headroom not checked**: none of this round's rungs is a local file (a `manifold://` run), so their size is not knowable before the fetch. Watch free space yourself — a sweep that fills the disk mid-round loses the lease that produced it.",
+                    '',
+                  ]
+                : []),
             `**${written.length} tool(s) run**, output written to \`${outDir}/\`` +
               (skipped > 0 ? `; ${skipped} skipped for budget` : '') +
               (failures.length > 0 ? `; ${failures.length} failed` : '') +

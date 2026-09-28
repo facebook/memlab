@@ -39,7 +39,7 @@ import {
   normalizeClassName,
   type SequenceRow,
 } from './sequence-analysis.js';
-import {withSnapshotAt} from '../snapshot-borrow.js';
+import {resolveRungs, withSnapshotAt} from '../snapshot-borrow.js';
 import {
   collectDevRoots,
   computeReachableWithoutDevRoots,
@@ -544,12 +544,33 @@ export function registerLeakReport(server: McpServer): void {
         let settleError: string | null = null;
         if (settlePath != null) {
           try {
-            settledCounts = await withSnapshotAt(settlePath, snap => {
-              const {hist} = buildHistogram(snap);
-              const out = new Map<string, number>();
-              for (const [k, v] of hist) out.set(k, v.count);
-              return out;
-            });
+            // Through `resolveRungs`, not straight to `withSnapshotAt`: a
+            // settle rung compressed by `memlab_prune_run` only resolves via
+            // the snapshot-path resolver, and reading it directly reported a
+            // pruned round as having no settle rung at all.
+            const {rungs: settleRungs} = resolveRungs(
+              [settlePath],
+              max_file_size_mb,
+            );
+            // `resolveRungs` can return an empty list — a settle rung over
+            // `max_file_size_mb` is the realistic case, and rungs here run
+            // 358-526 MB. Indexing [0] then threw a TypeError that surfaced
+            // as an opaque `settleError` instead of a sentence naming the
+            // cap.
+            if (settleRungs.length === 0) {
+              throw new Error(
+                `the settle rung at ${settlePath} did not resolve (commonly over \`max_file_size_mb\`)`,
+              );
+            }
+            settledCounts = await withSnapshotAt(
+              settleRungs[0].localPath,
+              snap => {
+                const {hist} = buildHistogram(snap);
+                const out = new Map<string, number>();
+                for (const [k, v] of hist) out.set(k, v.count);
+                return out;
+              },
+            );
           } catch (e) {
             settleError = e instanceof Error ? e.message : String(e);
           }

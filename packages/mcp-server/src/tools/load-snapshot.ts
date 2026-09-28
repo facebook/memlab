@@ -14,6 +14,8 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import v8 from 'v8';
+import zlib from 'zlib';
+import crypto from 'crypto';
 import {execFileSync} from 'child_process';
 import {z} from 'zod';
 import memlabCore from '@memlab/core';
@@ -307,14 +309,366 @@ export function resolveMaxFileSizeMB(
  * URL, or a bare snapshot filename to a local path, fetching from Manifold
  * into a temp dir when needed. Returns {localPath, fetchedFrom}.
  */
+/**
+ * Decompress `src` to `dest`, through a temp file.
+ *
+ * Streamed rather than `gunzipSync(readFileSync(...))`: a rung decompresses to
+ * hundreds of megabytes and can pass Node's single-Buffer ceiling, at which
+ * point the read that was supposed to make compression transparent throws —
+ * on exactly the largest captures, the ones worth compressing. `gzip -dc`
+ * writing straight to a file descriptor never materialises the whole thing in
+ * this process. `zlib` stays as the fallback for a host without it.
+ *
+ * Temp-then-rename because the reuse test is "exists and non-empty": an
+ * interrupted write would otherwise leave a truncated snapshot that every
+ * later load accepts as complete.
+ */
+/**
+ * Keep the decompressed-rung cache under a total size, oldest out first.
+ *
+ * These temps persist deliberately — the whole point of resolving `.gz`
+ * transparently is that the second tool to open a rung does not pay the
+ * decompression again. But nothing was ever removing them, so an analysis
+ * over a compressed sweep left one full-size copy of every rung in tmpdir:
+ * on a 40 GB sweep that is the entire saving of compressing it, given back
+ * to the same disk whose pressure prompted the prune.
+ *
+ * LRU by mtime against a byte ceiling, not a count: rungs differ by an order
+ * of magnitude in size, and a count-based cap bounds the wrong quantity.
+ */
+const GUNZIP_CACHE_BYTES = 8 * 1024 * 1024 * 1024;
+/** How long a temp is left alone after its last use. */
+const EVICT_GRACE_MS = 60 * 60 * 1000;
+/**
+ * Hard TTL for a decompressed rung, whatever the cache is sized at.
+ *
+ * These hold the captured page's contents, so "bounded in bytes" is not the
+ * same guarantee as "bounded in time" — and a sweep well under the ceiling
+ * used to keep them for the life of the host.
+ */
+const GUNZIP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+/**
+ * The same hard TTL for the FETCH cache, but a week rather than a day.
+ *
+ * The data-handling reason for a TTL applies equally; the cost of getting
+ * it wrong does not. A decompressed rung is regenerated locally in seconds,
+ * a Manifold download is gigabytes over the network, so an expiry short
+ * enough to be tidy for one is an outage for the other.
+ */
+const FETCH_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+/** Its own ceiling, so the two caches are bounded separately. */
+const FETCH_CACHE_BYTES = 8 * 1024 * 1024 * 1024;
+
+/**
+ * A per-user, owner-only directory for decompressed rungs.
+ *
+ * NOT bare `os.tmpdir()`. A heap snapshot holds the full string contents of
+ * the captured page — user ids, emails, session tokens, request payloads —
+ * and writing it into a world-readable directory at a name derived from the
+ * source path publishes all of that to every other account on a shared
+ * devserver. The directory is created 0700 and the files inside it 0600, so
+ * the cache is readable only by the user who captured it.
+ *
+ * `chmodSync` after `mkdirSync` because the mode passed to `mkdirSync` is
+ * masked by the umask, which on many hosts would leave the group bit on.
+ */
+let cacheRootOverride: string | null = null;
+
+function privateCacheDir(kind: 'gunzip' | 'fetch'): string {
+  const dir = path.join(privateCacheRoot(), kind);
+  fs.mkdirSync(dir, {recursive: true, mode: 0o700});
+  fs.chmodSync(dir, 0o700);
+  return dir;
+}
+
+/**
+ * The owner-only root, VERIFIED rather than assumed.
+ *
+ * The name is predictable and `os.tmpdir()` is world-writable, so another
+ * local account can create it first. `mkdirSync` is then a no-op, the
+ * `chmodSync` throws EPERM out through every compressed-rung resolution —
+ * and until it would have landed, snapshots are written into a directory
+ * somebody else can read. Checked with `lstat` (so a symlink pointing
+ * somewhere else is caught rather than followed) and, if it is not a real
+ * directory we own, abandoned for a random name instead of failing the
+ * load.
+ */
+function privateCacheRoot(): string {
+  if (cacheRootOverride != null) return cacheRootOverride;
+  const uid = typeof os.userInfo === 'function' ? os.userInfo().uid : -1;
+  const root = path.join(os.tmpdir(), `memlab-cache-${uid}`);
+  try {
+    fs.mkdirSync(root, {recursive: true, mode: 0o700});
+    const st = fs.lstatSync(root);
+    const ours = st.isDirectory() && !st.isSymbolicLink() && st.uid === uid;
+    if (ours) {
+      fs.chmodSync(root, 0o700);
+      return root;
+    }
+  } catch {
+    // Fall through to the private name below.
+  }
+  const fallback = path.join(
+    os.tmpdir(),
+    `memlab-cache-${uid}-${crypto.randomBytes(6).toString('hex')}`,
+  );
+  fs.mkdirSync(fallback, {recursive: true, mode: 0o700});
+  fs.chmodSync(fallback, 0o700);
+  process.stderr.write(
+    `${root} is not a directory this user owns; using ${fallback} for the snapshot cache.\n`,
+  );
+  cacheRootOverride = fallback;
+  return fallback;
+}
+
+/** Decompressed rungs — regenerable from the local `.gz` they came from. */
+function gunzipCacheDir(): string {
+  return privateCacheDir('gunzip');
+}
+
+/**
+ * Manifold downloads — a SEPARATE directory, with its own longer TTL.
+ *
+ * Both hold the same kind of data and both need the owner-only root, but
+ * they cost very different amounts to refill: a decompressed rung is one
+ * local `gzip -d` away, while a fetched one is a multi-gigabyte download.
+ * Sharing one directory put them under one 24-hour TTL and turned a cache
+ * sweep into a re-download of the whole sweep.
+ */
+function fetchCacheDir(): string {
+  return privateCacheDir('fetch');
+}
+
+function evictOldGunzipTemps(keep: string): void {
+  evictCache(gunzipCacheDir(), keep, GUNZIP_MAX_AGE_MS, GUNZIP_CACHE_BYTES);
+  // Swept on the same pass so the fetch cache is not the one place a
+  // plaintext snapshot lives forever — just on its own clock, and against
+  // its own ceiling. Sharing the decompress ceiling meant the two caches
+  // were each measured as if they were the only one, so the pair could sit
+  // at twice the bound while each looked compliant.
+  evictCache(fetchCacheDir(), keep, FETCH_MAX_AGE_MS, FETCH_CACHE_BYTES);
+}
+
+function evictCache(
+  dir: string,
+  keep: string,
+  maxAgeMs: number,
+  ceilingBytes: number,
+): void {
+  try {
+    // Only temps nothing has touched for a while. These are shared across
+    // every memlab process on the host, and a size-only rule will happily
+    // unlink the rung ANOTHER server is mid-analysis on — turning a disk
+    // tidy-up into a corrupted read somewhere else. A file older than the
+    // grace period is one no live analysis is still opening.
+    const cutoff = Date.now() - EVICT_GRACE_MS;
+    // NO name filter. `memlab-gunzip-<uid>` names the DIRECTORY; the files
+    // inside are `<hash>-<basename>`, `memlab-<basename>` for a Manifold
+    // fetch, and `<dest>.tmp.<random>` mid-write — none of which start with
+    // that prefix, so the filter matched nothing and not one byte was ever
+    // evicted. Full-size plaintext heap snapshots then accumulated with no
+    // effective TTL. This directory is created by and used only by this
+    // cache, so everything in it is a cache entry by construction.
+    const entries = fs
+      .readdirSync(dir)
+      .map(e => path.join(dir, e))
+      .filter(p => p !== keep)
+      .map(p => {
+        // Per ENTRY. Another memlab process evicting the same shared cache
+        // between this `readdir` and this `stat` is the ordinary case, not
+        // a rare one, and one ENOENT used to abort the whole pass — so the
+        // cache stopped being swept exactly when two runs were active and
+        // it was growing fastest.
+        try {
+          const st = fs.statSync(p);
+          return {path: p, size: st.size, mtimeMs: st.mtimeMs};
+        } catch {
+          return null;
+        }
+      })
+      .filter(
+        (e): e is {path: string; size: number; mtimeMs: number} => e != null,
+      )
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+    const drop = (p: string): void => {
+      try {
+        fs.unlinkSync(p);
+      } catch {
+        // In use by another process, or already gone.
+      }
+    };
+    // An absolute TTL, independent of the size ceiling. Under 8 GB nothing
+    // aged out at all, so a single decompressed rung sat in the cache
+    // indefinitely — and these files are full-size plaintext heap
+    // snapshots, which carry whatever the captured page held. A ceiling
+    // bounds disk; only a TTL bounds how long the contents live.
+    const expired = Date.now() - maxAgeMs;
+    const live = entries.filter(e => {
+      if (e.mtimeMs <= expired) {
+        drop(e.path);
+        return false;
+      }
+      return true;
+    });
+    // The ceiling is a TARGET, not a guarantee: an entry inside the grace
+    // window is skipped even when the cache is over, because unlinking a
+    // rung another process is mid-analysis on trades a disk problem for a
+    // corrupted read. A cache entirely of fresh entries therefore stays
+    // over the ceiling until they age past the grace period — which is the
+    // intended trade, and the TTL above still bounds it in the end.
+    let used = 0;
+    for (const e of live) {
+      used += e.size;
+      if (used <= ceilingBytes) continue;
+      if (e.mtimeMs > cutoff) continue;
+      drop(e.path);
+    }
+  } catch {
+    // tmpdir unreadable; a missed eviction is not worth failing a load over.
+  }
+}
+
+function gunzipToFile(src: string, dest: string): void {
+  // RANDOM, not the pid. A predictable staging path in a shared directory
+  // can be pre-created by another local user as a symlink, which redirects
+  // where the decompressed snapshot lands. `wx` then refuses to open an
+  // existing path at all, so a pre-created name fails the write instead of
+  // being followed, and 0600 keeps the contents owner-only.
+  const tmp = `${dest}.tmp.${crypto.randomBytes(9).toString('hex')}`;
+  try {
+    try {
+      const fd = fs.openSync(tmp, 'wx', 0o600);
+      try {
+        execFileSync('gzip', ['-dc', src], {stdio: ['ignore', fd, 'inherit']});
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch {
+      // Same as the compress side: the first `openSync` created `tmp`, so
+      // the `wx` below would fail EEXIST and this fallback — the only
+      // path on a host without `gzip` — could never run.
+      try {
+        fs.unlinkSync(tmp);
+      } catch {
+        // Never created.
+      }
+      // `wx` here too, matching the primary path. `writeFileSync` with a
+      // mode truncates an existing path and follows a symlink to it, so
+      // the exclusive-create guarantee was lost on exactly the host where
+      // `gzip` is missing and nobody is watching.
+      const fd = fs.openSync(tmp, 'wx', 0o600);
+      try {
+        fs.writeFileSync(
+          fd,
+          zlib.gunzipSync(fs.readFileSync(src), {
+            // The default 256 MB output cap would reject exactly the files
+            // worth compressing.
+            maxOutputLength: 8 * 1024 * 1024 * 1024,
+          }),
+        );
+      } finally {
+        fs.closeSync(fd);
+      }
+    }
+    fs.chmodSync(tmp, 0o600);
+    fs.renameSync(tmp, dest);
+  } catch (e) {
+    // Both paths failed — a truncated or corrupt archive. Without this the
+    // partial temp file is orphaned in tmpdir at close to the full size of
+    // the rung, on the disk whose pressure is why the rung was compressed.
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      // Never created, or already gone.
+    }
+    throw e;
+  }
+}
+
 export function resolveSnapshotPath(filePath: string): {
   localPath: string;
   fetchedFrom: string | null;
+  /**
+   * Where a sidecar index for this rung lives.
+   *
+   * Usually `localPath`, but NOT when the rung was served by decompressing a
+   * `.gz`: there `localPath` is a temp file whose name and mtime say nothing,
+   * and the sidecar belongs beside the archive it came from. Without this a
+   * compressed round silently loses its cache and re-parses every rung.
+   */
+  sidecarBase: string;
 } {
   // Already a local file? Use it directly.
   const asLocal = path.resolve(filePath);
   if (!filePath.startsWith('manifold://') && fs.existsSync(asLocal)) {
-    return {localPath: asLocal, fetchedFrom: null};
+    return {localPath: asLocal, fetchedFrom: null, sidecarBase: asLocal};
+  }
+
+  // A rung that was COMPRESSED to reclaim disk (see `memlab_prune_run`) is
+  // still a rung. Resolving `<path>.gz` transparently is what makes
+  // compression a safe default instead of a one-way door: a 40 GB sweep
+  // shrinks ~5-10x and every tool keeps working, paying one decompression the
+  // first time a compressed rung is opened.
+  if (!filePath.startsWith('manifold://') && fs.existsSync(`${asLocal}.gz`)) {
+    // Keyed on the FULL path, not the basename. Every round names its rungs
+    // the same way (`rung_00_c000.heapsnapshot`), so a basename-only temp
+    // file makes two rounds share one decompressed snapshot and silently
+    // serves one round's heap as the other's.
+    // The ARCHIVE's identity, not just the rung path. Keying on the path
+    // alone and testing freshness with `dest.mtime >= gz.mtime` loses on a
+    // coarse-mtime filesystem: an in-place recompress (a re-drive, a prune
+    // re-run) whose new `.gz` lands in the same 1-second tick passes the
+    // test, and one capture's heap is then served under the other's name.
+    // Folding the archive's size and mtime into the key makes that a cache
+    // MISS instead of a wrong hit.
+    let gzStat: fs.Stats | null = null;
+    try {
+      gzStat = fs.statSync(`${asLocal}.gz`);
+    } catch {
+      gzStat = null;
+    }
+    const dest = path.join(
+      gunzipCacheDir(),
+      `${crypto
+        .createHash('sha256')
+        .update(
+          `${asLocal}\u0000${gzStat?.size ?? 0}\u0000${Math.round(gzStat?.mtimeMs ?? 0)}`,
+        )
+        .digest('hex')
+        .slice(
+          0,
+          16,
+        )}-${path.basename(asLocal).replace(/[^A-Za-z0-9._-]/g, '_')}`,
+    );
+    // Reused only when it is non-empty AND no older than the archive. The
+    // temp name is keyed on the PATH, and a rung recompressed in place — a
+    // re-drive of the same round, a prune re-run — keeps that path while
+    // changing its content, so an mtime-blind reuse serves the previous
+    // capture's heap under the current capture's name.
+    const gzPath = `${asLocal}.gz`;
+    // Existence and non-emptiness only. The archive's size and mtime are
+    // already folded into `dest`, so a recompressed `.gz` resolves to a
+    // DIFFERENT temp name and cannot collide with this one — which is a
+    // stronger guarantee than the mtime comparison this replaces, and does
+    // not depend on the filesystem's timestamp resolution.
+    let fresh = false;
+    try {
+      fresh = fs.statSync(dest).size > 0;
+    } catch {
+      fresh = false;
+    }
+    // Eviction runs on EVERY resolution, not only when a decompression
+    // happens. Reusing a fresh temp is the common case on a compressed
+    // sweep, and gating the sweep on the miss path meant the cache was
+    // trimmed exactly when it was already growing and never once it had
+    // stopped — so a long analysis over already-warm temps kept the whole
+    // decompressed ladder on disk indefinitely.
+    evictOldGunzipTemps(dest);
+    if (!fresh) {
+      process.stderr.write(`Decompressing ${gzPath} → ${dest}…\n`);
+      gunzipToFile(gzPath, dest);
+    }
+    return {localPath: dest, fetchedFrom: null, sidecarBase: asLocal};
   }
 
   let manifoldKey: string | null = null;
@@ -327,7 +681,7 @@ export function resolveSnapshotPath(filePath: string): {
 
   if (!manifoldKey) {
     // Nothing we can fetch; let the caller report "file not found".
-    return {localPath: asLocal, fetchedFrom: null};
+    return {localPath: asLocal, fetchedFrom: null, sidecarBase: asLocal};
   }
 
   // A Manifold key must be bucket/key; if only a key was given, prefix bucket.
@@ -335,8 +689,10 @@ export function resolveSnapshotPath(filePath: string): {
     manifoldKey = `${DEFAULT_MANIFOLD_BUCKET}/${manifoldKey}`;
   }
 
+  // The FETCH directory: same owner-only root, different retention, because
+  // re-downloading is expensive where re-decompressing is not.
   const dest = path.join(
-    os.tmpdir(),
+    fetchCacheDir(),
     `memlab-${path.basename(manifoldKey).replace(/[^A-Za-z0-9._-]/g, '_')}`,
   );
 
@@ -347,7 +703,7 @@ export function resolveSnapshotPath(filePath: string): {
   // and avoids re-downloading multi-GB snapshots (feedback §A.1).
   if (fs.existsSync(dest) && fs.statSync(dest).size > 0) {
     process.stderr.write(`Reusing already-downloaded ${dest}\n`);
-    return {localPath: dest, fetchedFrom: manifoldKey};
+    return {localPath: dest, fetchedFrom: manifoldKey, sidecarBase: dest};
   }
 
   process.stderr.write(`Fetching ${manifoldKey} from Manifold → ${dest}…\n`);
@@ -379,7 +735,7 @@ export function resolveSnapshotPath(filePath: string): {
     }
     throw err;
   }
-  return {localPath: dest, fetchedFrom: manifoldKey};
+  return {localPath: dest, fetchedFrom: manifoldKey, sidecarBase: dest};
 }
 
 interface LargestObjInfo {
