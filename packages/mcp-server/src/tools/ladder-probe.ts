@@ -24,7 +24,7 @@ import {
   pathsHeader,
   toolResult,
 } from '../utils.js';
-import {runEval} from './eval.js';
+import {runEval, storedFnSources} from './eval.js';
 import {resolveLadderPaths} from './ladder.js';
 import {
   describeCycleAxis,
@@ -442,6 +442,7 @@ export async function probeRung(
   metrics: Array<{name: string; code: string}>,
   timeoutMs: number,
   maxNodes: number,
+  prelude?: string,
 ): Promise<Map<string, ProbeOutcome>> {
   const out = new Map<string, ProbeOutcome>();
   try {
@@ -451,6 +452,7 @@ export async function probeRung(
           const res = await runEval({
             mode: 'eval',
             code: metric.code,
+            prelude,
             timeout_ms: timeoutMs,
             max_nodes: maxNodes,
           });
@@ -542,6 +544,75 @@ export function extractProbedNames(code: string): string[] {
  * stopped looking" must not render the same, because this probe's answer is
  * what certifies a flat zero as a real absence.
  */
+/**
+ * The subset of `prelude` a probe actually reaches, as source text.
+ *
+ * The prelude is shared by every probe AND by the visibility control, so
+ * prepending it whole credited each of them with every mechanism any helper
+ * in it mentions. A control calling only `helpers.byClass` then appeared to
+ * share the `context` mechanism with a metric calling `byContextVar`, purely
+ * because some third prelude helper used one — and an all-zero metric was
+ * certified a verified negative on the strength of an unrelated control.
+ *
+ * Attribution is line-based, not a parse: a definition header opens a block
+ * and everything up to the next header belongs to it. That is enough to tell
+ * "this probe calls that helper" from "this probe was compiled beside it",
+ * and it errs toward INCLUDING a block, which keeps the classifier
+ * conservative — a probe credited with a mechanism it does not use fails the
+ * subset test and is reported unverified, never falsely verified.
+ */
+export function preludeReachedBy(
+  prelude: string | undefined,
+  probeCode: string,
+): string {
+  if (prelude == null || prelude.trim() === '') return '';
+  const blocks: Array<{name: string; text: string}> = [];
+  // TOP-LEVEL declarations only — no leading whitespace. `\s*` also matched
+  // a `const` inside a helper's body, which started a new block there and
+  // handed the rest of that helper (including the `helpers.*` call that
+  // gives it its mechanism) to the local variable's name. The helper then
+  // classified as reaching nothing, so a probe calling it lost the very
+  // mechanism this expansion exists to find.
+  const header =
+    /^(?:export\s+)?(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/;
+  for (const line of prelude.split('\n')) {
+    const m = header.exec(line);
+    if (m != null) blocks.push({name: m[1], text: line});
+    else if (blocks.length > 0) blocks[blocks.length - 1].text += '\n' + line;
+  }
+  if (blocks.length === 0) return prelude;
+  const taken = new Set<string>();
+  // To a fixpoint: a helper the probe calls may itself call another.
+  for (let changed = true; changed;) {
+    changed = false;
+    const scope =
+      probeCode +
+      '\n' +
+      blocks
+        .filter(b => taken.has(b.name))
+        .map(b => b.text)
+        .join('\n');
+    for (const b of blocks) {
+      if (taken.has(b.name)) continue;
+      // `$` ESCAPED. It is legal in a JS identifier and is also the regex
+      // end-anchor, so `$cache` compiled to a pattern matching nothing and
+      // the helper was treated as unreferenced — dropping it from the
+      // probe's classified source and, with it, the mechanism it uses.
+      // `\b` also does not fire next to `$`, so the boundaries are widened
+      // to "not an identifier character" on each side.
+      const esc = b.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (new RegExp(`(?<![\\w$])${esc}(?![\\w$])`).test(scope)) {
+        taken.add(b.name);
+        changed = true;
+      }
+    }
+  }
+  return blocks
+    .filter(b => taken.has(b.name))
+    .map(b => b.text)
+    .join('\n');
+}
+
 export function autoVisibilityCode(names: readonly string[]): string {
   return `
 const WANT = new Set(${JSON.stringify(names)});
@@ -698,6 +769,12 @@ export function registerLadderProbe(server: McpServer): void {
         .describe(
           'A CONTROL expression, evaluated on every rung exactly like `code`, whose value MUST be non-zero on a healthy heap. Its only job is to answer "can a probe of this kind see anything here?". IT MUST USE THE SAME HELPERS AS `code`: a control written with different helpers proves only that the snapshot is readable, and an all-zero series is then reported as FLAT (UNVERIFIED) rather than as a verified negative. Without it a default class-lookup control is used, which is almost never the same access path. Supply it whenever a zero result would be recorded as "no leak here".',
         ),
+      prelude: z
+        .string()
+        .optional()
+        .describe(
+          'Source run in the SAME context immediately before EVERY metric. This is where shared setup belongs: one measured call pasted an identical 200-character edge-name walk into six `metrics` entries, which is six places for it to drift. Define helpers here and call them from each probe. `visibility_probe` gets it too, so a same-access-path control costs one line.',
+        ),
       include_settle: z
         .boolean()
         .optional()
@@ -743,6 +820,7 @@ export function registerLadderProbe(server: McpServer): void {
       cycles,
       cycles_per_rung,
       visibility_probe,
+      prelude,
       include_settle,
       auto_visibility,
       label,
@@ -938,6 +1016,7 @@ export function registerLadderProbe(server: McpServer): void {
             metricList,
             effectiveTimeout,
             max_nodes,
+            prelude,
           );
           metricList.forEach((m, mi) => {
             const o = outcomes.get(m.name) ?? {
@@ -1022,15 +1101,61 @@ export function registerLadderProbe(server: McpServer): void {
         // Same-path is decided per REPORTED metric, because `metrics` can hold
         // probes written with different helper families and one control cannot
         // vouch for all of them.
-        const controlMechanisms = accessMechanisms(visibilityCode);
+        // The prelude is part of every probe's source, so a helper defined
+        // there is classified for the probe that calls it. Without this a
+        // `prelude`-based probe looks like "no recognised helper" and can
+        // never match its control.
+        // Prelude AND persisted functions. A probe body of
+        // `helpers.fn('countX')()` names no recognised helper of its own,
+        // so classifying it on its own text made it unclassified — and a
+        // control built the same way could never match it. The stored
+        // source is what will actually run, so it is what gets classified.
+        // PER PROBE, not shared. A single flag meant one metric hitting
+        // the pass limit marked every later metric unclassified too — the
+        // whole report degraded by one probe's shared-code depth.
+        //
+        // An expansion that stops early is built from a partial source, so
+        // it can miss the mechanism the probe actually reaches through —
+        // and a missed mechanism on the METRIC side makes its set a subset
+        // of the control's, which is exactly what certifies a zero. Better
+        // to report that probe unverified than to certify from a partial
+        // read.
+        const incomplete = new Set<string>();
+        const withPrelude = (probeCode: string): string => {
+          // To a FIXPOINT, because the two sources reach into each other: a
+          // prelude helper can call `helpers.fn('inner')`, and a stored
+          // function can call another stored function or a prelude helper.
+          // Expanding each once left those hops unclassified — and an
+          // all-zero probe whose real mechanism hid one hop down, sharing
+          // only an incidental `byClass` with the control, was then
+          // certified a verified negative.
+          let text = probeCode;
+          for (let i = 0; i < 8; i++) {
+            const grown = [
+              preludeReachedBy(prelude, text),
+              storedFnSources(text),
+              probeCode,
+            ]
+              .filter(p => p !== '')
+              .join('\n');
+            if (grown === text) return text;
+            text = grown;
+          }
+          // Fell out of the loop still growing.
+          incomplete.add(probeCode);
+          return text;
+        };
+        const controlMechanisms = accessMechanisms(withPrelude(visibilityCode));
         const visibilityFor = (probeCode: string): VisibilityStatus => {
           if (!visibilityVerified) return 'blind';
-          const mine = accessMechanisms(probeCode);
+          const mine = accessMechanisms(withPrelude(probeCode));
           // Nothing recognised is not a mismatch; it is an unknown. Falling
           // through the empty loop to 'verified-other-path' asserts the
           // control took a DIFFERENT path, which is the same false confidence
           // this status type exists to remove, pointing the other way.
-          if (mine.size === 0) return 'unclassified';
+          if (mine.size === 0 || incomplete.has(probeCode)) {
+            return 'unclassified';
+          }
           // EVERY mechanism, not any one. A probe that reaches its real
           // population through `byContextVar` while incidentally calling
           // `byClass` shares the second with almost any control, and one
@@ -1353,7 +1478,9 @@ export function registerLadderProbe(server: McpServer): void {
           // to tell a real absence from an unobservable one.
           const allZero = headerYs.length > 0 && headerYs.every(y => y === 0);
           if (allZero) {
-            for (const n of extractProbedNames(m.code)) zeroSeriesNames.add(n);
+            for (const n of extractProbedNames(withPrelude(m.code))) {
+              zeroSeriesNames.add(n);
+            }
           }
           if (allZero && status === 'unclassified') {
             lines.push(
@@ -1371,7 +1498,7 @@ export function registerLadderProbe(server: McpServer): void {
             lines.push(
               '',
               `> **Access paths differ.** \`code\` reaches its population by ${describeMechanisms(
-                accessMechanisms(m.code),
+                accessMechanisms(withPrelude(m.code)),
               )}; the control used ${describeMechanisms(controlMechanisms)}${
                 callerVisibilityProbe
                   ? ''

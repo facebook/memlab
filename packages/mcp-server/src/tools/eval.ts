@@ -341,6 +341,16 @@ let edgeSkips: EdgeSkipTally = {
   firstError: null,
 };
 
+/**
+ * The vm context of the eval currently running.
+ *
+ * `helpers.fn` compiles a stored source string, and it must be compiled in
+ * THIS context — a function compiled elsewhere cannot see `helpers`,
+ * `snapshot` or anything else the sandbox provides. The helpers object is
+ * built before the context exists, so the binding is late.
+ */
+let evalContext: vm.Context | null = null;
+
 function resetEdgeSkips(): void {
   edgeSkips = {iteration: 0, malformed: 0, target: 0, firstError: null};
 }
@@ -1157,6 +1167,12 @@ export function registerEval(server: McpServer): void {
         .describe(
           'TRIAGE MODE: visit only every Nth node in a `snapshot.nodes.forEach` walk (1 = every node, the default). A full-heap walk on a multi-million-node graph takes 1-2 minutes, which is enough friction that most exploratory ideas never get run at all; `sample: 200` answers "is there anything here?" in about a second, and you pay for the exact walk only once an idea looks worth it. The stride is deterministic, not random, so a follow-up question lands on the same objects. COUNTS COME BACK ~N TIMES LOW and the result is labelled an ESTIMATE — never record a sampled number as a measurement, and never conclude ABSENCE from one (a population of 50 is easily missed at stride 200).',
         ),
+      prelude: z
+        .string()
+        .optional()
+        .describe(
+          'Source run in the SAME context immediately before `code` — shared setup, without pasting it into every probe. Define functions and constants here and call them from `code`. For code that should outlive the call, `helpers.defineFn(name, src)` stores a function on disk and `helpers.fn(name)` reads it back in a later session.',
+        ),
       section: z
         .string()
         .optional()
@@ -1199,6 +1215,37 @@ function evalStorePath(): string {
   return path.join(dir, 'eval-store.json');
 }
 
+/**
+ * Source text of the `helpers.defineFn` functions a probe names.
+ *
+ * Exported for `memlab_ladder_probe`'s visibility classifier: a probe whose
+ * whole body is `helpers.fn('countX')()` mentions no recognised helper, so
+ * without the stored source it classifies as unclassified and can never
+ * match its control — even though the stored function uses `byContextVar`
+ * and the control uses the same thing.
+ */
+export function storedFnSources(code: string): string {
+  const store = readEvalStore();
+  const out: string[] = [];
+  // The literal must be the WHOLE argument — closing quote, optional
+  // whitespace, then `)`. Without the tail anchor `helpers.fn('a' + b)`
+  // matched `'a'` and pulled in a function that is not the one being
+  // called. A computed name now matches nothing, which leaves the probe
+  // unclassified rather than classified from the wrong source: the
+  // conservative direction for something that certifies a zero.
+  const re = /helpers\s*\.\s*fn\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+  let m: RegExpExecArray | null;
+  const seen = new Set<string>();
+  while ((m = re.exec(code)) != null) {
+    const name = m[1];
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const src = store['__fn:' + name];
+    if (typeof src === 'string') out.push(src);
+  }
+  return out.join('\n');
+}
+
 function readEvalStore(): Record<string, unknown> {
   try {
     const parsed = JSON.parse(fs.readFileSync(evalStorePath(), 'utf8'));
@@ -1220,6 +1267,7 @@ function writeEvalStore(store: Record<string, unknown>): void {
 export async function runEval({
   mode,
   code,
+  prelude,
   section,
   timeout_ms,
   save_as,
@@ -1232,6 +1280,8 @@ export async function runEval({
 }: {
   mode?: 'eval' | 'describe_env' | 'recipes' | 'list_saved' | 'lint';
   code?: string;
+  /** Source prepended to `code`, in the same context. */
+  prelude?: string;
   section?: string;
   timeout_ms?: number;
   save_as?: string;
@@ -1304,7 +1354,17 @@ export async function runEval({
   };
   try {
     if (mode === 'lint') {
-      return toolResult(lintEval(code ?? '', lastKnownHelperNames));
+      // `prelude` too. It is compiled and run as one script with `code`, so
+      // a typo'd helper name or a missing `result =` living in the shared
+      // definitions is a real defect in the run — and linting `code` alone
+      // reported it clean, which is the one thing lint mode exists not to
+      // do. Joined the same way execution joins them, so reported line
+      // numbers line up with what actually runs.
+      const lintSource =
+        prelude != null && prelude.trim() !== ''
+          ? `${prelude}\n;\n${code ?? ''}`
+          : (code ?? '');
+      return toolResult(lintEval(lintSource, lastKnownHelperNames));
     }
     if (mode === 'describe_env') {
       return toolResult(describeEnv(section));
@@ -1333,8 +1393,17 @@ export async function runEval({
     const currentHandle = getCurrentHandle() ?? '(none)';
 
     if (light) {
+      // The PRELUDE is executable source too. Checking only `code` let a
+      // `dominatorNode` / `pathEdge` read be moved into a prelude function
+      // and run on a light snapshot, where those reads have no backstop and
+      // come back as a misleading zero — the exact thing this check exists
+      // to refuse.
+      const executable =
+        prelude != null && prelude.trim() !== ''
+          ? `${prelude}\n${code}`
+          : (code as string);
       const needsRetention = RETENTION_IDENTIFIERS.filter(id =>
-        new RegExp(`\\b${id}\\b`).test(code),
+        new RegExp(`\\b${id}\\b`).test(executable),
       );
       if (needsRetention.length > 0) {
         return errorResult(
@@ -1353,14 +1422,23 @@ export async function runEval({
       // the honest limit of a pre-flight check, and stated as such rather
       // than implying the code was analysed.
       const meta = getSnapshotMetadata();
+      // `code` AND `prelude`. Execution runs them as one script, so a walk
+      // that lives in a prelude helper is a walk this run will do — and
+      // analysing only `code` reported "no full-heap walk detected" for a
+      // probe whose entire cost was in the shared definitions, which is
+      // the case the prelude exists to create.
+      const analysed =
+        prelude != null && prelude.trim() !== ''
+          ? `${prelude}\n${code}`
+          : (code as string);
       const fullWalk = /\b(?:snapshot\.)?(?:nodes|edges)\s*\.\s*forEach/.test(
-        code,
+        analysed,
       );
       const indexed =
         /helpers\.(byClass|byTypename|withProp|byEdgeName|byContextVar|byReferrerEdge|getNode)/.test(
-          code,
+          analysed,
         );
-      const nestingDepth = maxTraversalNesting(code);
+      const nestingDepth = maxTraversalNesting(analysed);
       const meanOutDegree =
         (meta?.edgeCount ?? 0) / Math.max(1, meta?.nodeCount ?? 1);
       // A nested `.references` walk inside a full-heap walk costs EDGE visits,
@@ -1375,6 +1453,9 @@ export async function runEval({
         [
           '## Dry run — nothing was executed',
           '',
+          prelude != null && prelude.trim() !== ''
+            ? '_The estimate covers `prelude` and `code` together, which is what a run executes._'
+            : '',
           `Snapshot: ${formatNumber(meta?.nodeCount ?? 0)} nodes, ${formatNumber(meta?.edgeCount ?? 0)} edges.`,
           `Walk budget (\`max_nodes\`): ${formatNumber(budget.max)}.`,
           '',
@@ -2998,6 +3079,110 @@ export async function runEval({
       return name == null ? Object.keys(store) : store[name];
     };
 
+    /**
+     * Named FUNCTIONS that outlive one eval.
+     *
+     * `save`/`load` and `remember`/`recall` persist DATA; there was nothing
+     * for code. The same edge-name walk was rewritten in four separate evals
+     * of one session, each time slightly differently, which is both the cost
+     * and the bug source — a walk re-derived by hand is a walk that can be
+     * re-derived wrong.
+     *
+     * Stored under a reserved prefix in the same on-disk store as `remember`,
+     * so a helper written once is available in a LATER session, not just a
+     * later call.
+     */
+    const FN_PREFIX = '__fn:';
+    const defineFn = (name: string, src: string): string => {
+      if (!/^[A-Za-z_$][\w$]*$/.test(name)) {
+        throw new Error(
+          `helpers.defineFn: "${name}" is not a usable function name. Use an identifier.`,
+        );
+      }
+      // Compile NOW, so a syntax error is reported at definition time rather
+      // than at the first use in some later probe.
+      const compiled = compileFn(name, src);
+      writeEvalStore({...readEvalStore(), [FN_PREFIX + name]: src});
+      // REPLACE the cached implementation. `fn` returns the cache before
+      // reading the store, so without this a redefinition inside one eval is
+      // invisible to that eval and visible to the next —
+      // `defineFn('f','()=>1'); fn('f')(); defineFn('f','()=>2'); fn('f')()`
+      // returned 1 here and 2 everywhere afterwards.
+      fnCache.set(name, compiled);
+      return name;
+    };
+    const fnCache = new Map<string, unknown>();
+    const compileFn = (name: string, src: string): unknown => {
+      const ctx = evalContext;
+      if (ctx == null) {
+        throw new Error(
+          'helpers.defineFn / helpers.fn are only usable from inside a running eval.',
+        );
+      }
+      // The SAME light-snapshot refusal the preflight applies to `code` and
+      // `prelude`. That check reads only those two, so a function defined
+      // on a full snapshot and recalled by name here smuggled its
+      // `dominatorNode` / `retainedSize` reference past it — and the node
+      // proxy does not refuse those on a light load, so the stored function
+      // returned confident zeros where the identical inline code is
+      // refused. Checked at compile, which is the one place every stored
+      // source passes through.
+      if (isLightSnapshot()) {
+        const needs = RETENTION_IDENTIFIERS.filter(id =>
+          new RegExp(`\\b${id}\\b`).test(src),
+        );
+        if (needs.length > 0) {
+          throw new Error(
+            `helpers.fn("${name}") references ${needs.map(i => `\`${i}\``).join(', ')}, and this snapshot was loaded in LIGHT mode. ` +
+              'Those read 0 / undefined rather than failing, so the stored function is refused for the same reason inline code would be. Reload without `light`.',
+          );
+        }
+      }
+      try {
+        return vm.runInContext(`(${src})`, ctx, {
+          filename: `memlab_eval:fn:${name}`,
+        });
+      } catch (e) {
+        throw new Error(
+          `helpers.defineFn("${name}"): the source is not a function expression — ${
+            e instanceof Error ? e.message : String(e)
+          }. Pass something like "id => helpers.props(id).foo", not a statement.`,
+        );
+      }
+    };
+    const fn = (name: string): unknown => {
+      const cached = fnCache.get(name);
+      if (cached != null) return cached;
+      const src = readEvalStore()[FN_PREFIX + name];
+      if (typeof src !== 'string') {
+        const known = Object.keys(readEvalStore())
+          .filter(k => k.startsWith(FN_PREFIX))
+          .map(k => k.slice(FN_PREFIX.length));
+        throw new Error(
+          `helpers.fn("${name}") is not defined.${
+            known.length > 0
+              ? ` Defined: ${known.join(', ')}.`
+              : ' Nothing has been defined yet — use helpers.defineFn(name, src).'
+          }`,
+        );
+      }
+      const compiled = compileFn(name, src);
+      fnCache.set(name, compiled);
+      return compiled;
+    };
+    const listFns = (): Array<{name: string; src: string}> =>
+      Object.entries(readEvalStore())
+        .filter(([k]) => k.startsWith(FN_PREFIX))
+        .map(([k, v]) => ({name: k.slice(FN_PREFIX.length), src: String(v)}));
+    const forgetFn = (name: string): boolean => {
+      const store = readEvalStore();
+      if (!(FN_PREFIX + name in store)) return false;
+      delete store[FN_PREFIX + name];
+      writeEvalStore(store);
+      fnCache.delete(name);
+      return true;
+    };
+
     // Evenly-spaced sampling, not random: two calls over the same population
     // return the same members, so a follow-up question lands on the objects
     // the first answer described. Math.random() here would silently make
@@ -3201,6 +3386,10 @@ export async function runEval({
       listSaved,
       remember,
       recall,
+      defineFn,
+      fn,
+      listFns,
+      forgetFn,
       sample,
     };
 
@@ -3269,12 +3458,46 @@ export async function runEval({
     };
 
     const context = vm.createContext(sandbox);
-    const script = new vm.Script(code, {filename: 'memlab_eval'});
+    // The prelude runs in the same context, immediately before `code`, as one
+    // script: a probe repeated across `metrics` entries is written once.
+    const source =
+      prelude != null && prelude.trim() !== ''
+        ? `${prelude}\n;\n${code}`
+        : (code as string);
+    // COMPILED FIRST, and only then published to the module-level binding.
+    // Assigning before this line meant a syntax error in `code` or `prelude`
+    // threw past the `finally` that clears it, leaving the sandbox — and
+    // through it the snapshot — reachable from module scope until the next
+    // eval happened to overwrite it. A retained heap inside the tool for
+    // finding retained heaps, reachable from a typo.
+    //
+    // Late-bound rather than passed, so `helpers.fn` can compile a stored
+    // source INSIDE this context; `fn` only runs during execution, which is
+    // after this point.
+    const script = new vm.Script(source, {filename: 'memlab_eval'});
+    evalContext = context;
     // A budget abort is a controlled stop, not a failure: whatever the code
     // had already assigned to `result` is still returned, annotated below.
     let wallClockTimedOut = false;
     try {
-      script.runInContext(context, {timeout: timeout_ms});
+      try {
+        script.runInContext(context, {timeout: timeout_ms});
+      } finally {
+        // Released as soon as the script stops, on every path.
+        //
+        // `evalContext` is a MODULE-level binding, so leaving it set keeps
+        // the whole sandbox alive after `runEval` returns: the snapshot
+        // proxy, every helper closure, the result, and whatever the eval
+        // assigned to a global. Nothing the caller does — including
+        // unloading the snapshot — can release it, and it survives until
+        // the next eval overwrites it. That is a retained heap inside the
+        // tool for finding retained heaps.
+        //
+        // `helpers.fn` only compiles DURING a run, so nothing needs it
+        // afterwards; a later call gets the next run's context.
+        evalContext = null;
+        fnCache.clear();
+      }
     } catch (err) {
       // A wall-clock timeout used to discard everything and return only
       // "Execution timed out", while a `max_nodes` overrun returned the partial
@@ -3939,6 +4162,7 @@ function describeEnvLines(): string[] {
     '- `helpers.isRealDetached(node) -> boolean` — the oddball/root filtering the detached-DOM tools apply internally, so hand-written eval counts the same set they do.',
     '- `helpers.dominates(id, {population?, limit?}) -> {count, selfSize, ids, truncated}` — what this node actually owns (bounded 500-hop dominator walk). `population` is a predicate over nodes.',
     '- `helpers.owner(idOrNode, {maxHops?}) -> {id, name, type, hops, selfSize, named} | null` — nearest dominator carrying a class identity, skipping V8 containers (`Object`, `Array`, `system / …`, `(closure)`). Minified single-letter names are KEPT: in a production bundle they are the only identity there is — pair with `memlab_identify`. `named:false` means the walk found only containers and is reporting the furthest node reached.',
+    '- `helpers.defineFn(name, src)` / `helpers.fn(name)` / `helpers.listFns()` / `helpers.forgetFn(name)` — persist CODE, not just data. `save`/`load` and `remember`/`recall` keep values; there was nothing for the edge-name walk that gets rewritten, slightly differently, in every fourth eval. `src` is a FUNCTION EXPRESSION (`"id => helpers.props(id).foo"`), compiled at definition time so a syntax error is reported there rather than inside a later probe, and compiled inside the running eval\'s context so it sees `helpers` and `snapshot`. Stored on disk, so it survives into a later session. For setup that is only needed for THIS call, pass `prelude` instead — it runs in the same context immediately before `code`, and `memlab_ladder_probe` applies it to every metric.',
     '- `helpers.remember(name, value)` / `helpers.recall(name?)` — persist a derived fact to disk (`~/.memlab/eval-store.json`, override with `MEMLAB_STATE_DIR`) and read it back in a LATER session. `save`/`load` are per-snapshot and dropped on unload, which is right for id lists (ids are per-capture) and wrong for a conclusion. `recall()` with no name lists the keys.',
     '- `helpers.sample(items, n) -> items[]` — evenly-spaced sample, NOT random: two calls over the same population return the same members, so a follow-up question lands on the objects the first answer described.',
     '- `helpers.histogram(ids, keyFn, {limit?}) -> [{key, count}]` — group-and-count over ids, sorted by count; a null/undefined key becomes `(none)` rather than being dropped.',
