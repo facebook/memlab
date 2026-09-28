@@ -9,6 +9,7 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
+import fs from 'fs';
 import {z} from 'zod';
 import {
   armScanBudgetFor,
@@ -697,6 +698,13 @@ export function registerLadderProbe(server: McpServer): void {
         .describe(
           'A CONTROL expression, evaluated on every rung exactly like `code`, whose value MUST be non-zero on a healthy heap. Its only job is to answer "can a probe of this kind see anything here?". IT MUST USE THE SAME HELPERS AS `code`: a control written with different helpers proves only that the snapshot is readable, and an all-zero series is then reported as FLAT (UNVERIFIED) rather than as a verified negative. Without it a default class-lookup control is used, which is almost never the same access path. Supply it whenever a zero result would be recorded as "no leak here".',
         ),
+      include_settle: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          "In `run_dir` mode, append the round's settle rung (`rung_99_settle`) to the ladder, measure every metric on it too, and report an `after settle` line per metric with a drained/held verdict. It is EXCLUDED from the rate and the shape verdict automatically — the settle drives no cycles, so it sits at the last driven rung's cycle count. This is the measurement that separates in-flight backlog from retention; without it a burst of promise chains, scheduler queues and request buffers reads as a linear leak.",
+        ),
       auto_visibility: z
         .boolean()
         .optional()
@@ -735,6 +743,7 @@ export function registerLadderProbe(server: McpServer): void {
       cycles,
       cycles_per_rung,
       visibility_probe,
+      include_settle,
       auto_visibility,
       label,
       timeout_ms,
@@ -792,6 +801,52 @@ export function registerLadderProbe(server: McpServer): void {
         }
         const {paths: resolved} = resolveLadderPaths(inputs.paths);
         cycles_per_rung = inputs.cyclesPerRung ?? undefined;
+        // Append the settle rung, when the round captured one and it is not
+        // already in the ladder.
+        //
+        // Measuring a population across the driven rungs AND after idle used
+        // to mean listing `paths` by hand and inventing a cycle number for the
+        // settle rung — one operator wrote `[0,175,350,475,476]`, because a
+        // rung sharing a cycle count is dropped from the fit. That is a hack,
+        // and it was done five times in one sweep. The settle rung belongs at
+        // the cycle count of the last DRIVEN rung (it drives nothing), which
+        // is exactly the duplicate-x case the fit already excludes — so the
+        // value is measured and reported without ever entering the rate.
+        let settleAppended = false;
+        // The manifest named a settle rung that is not on disk. Distinct from
+        // "captured none": the round was DRIVEN with one, and the file went
+        // missing after — pruned, or the capture was interrupted. Reporting
+        // that as "re-drive with --settle-minutes 7" sends the reader to
+        // re-run a round they already have.
+        let settleMissingPath: string | null = null;
+        // Which rung is the settle one, so the axis can give it the cycle
+        // count of the last DRIVEN rung. The duplicate x is the whole
+        // mechanism keeping it out of the fit, and it has to hold on EVERY
+        // axis: a scalar `cycles` spreads the rungs evenly over the rung
+        // COUNT, and with no cycle information the axis is the rung index —
+        // on both, an appended rung silently gets an x of its own and
+        // flattens the rate it was added to sit outside of.
+        let settleIndex: number | null = null;
+        if (
+          include_settle !== false &&
+          inputs.manifest?.settleRungPath != null &&
+          !resolved.some(p => p === inputs.manifest?.settleRungPath)
+        ) {
+          const settlePath = inputs.manifest.settleRungPath;
+          if (fs.existsSync(settlePath)) {
+            resolved.push(settlePath);
+            if (cycles_per_rung != null) {
+              cycles_per_rung = [
+                ...cycles_per_rung,
+                cycles_per_rung[cycles_per_rung.length - 1],
+              ];
+            }
+            settleIndex = resolved.length - 1;
+            settleAppended = true;
+          } else {
+            settleMissingPath = settlePath;
+          }
+        }
         // A single narrowed scalar from here down. `cycles` is a
         // number|number[] union at the parameter, and reassigning the resolved
         // scalar back into it leaves every later arithmetic use fighting the
@@ -929,12 +984,18 @@ export function registerLadderProbe(server: McpServer): void {
           rungIndex++;
         }
 
-        const xsFor = (n: number): number[] =>
-          Array.from({length: n}, (_, i) => {
-            if (cycles_per_rung != null) return cycles_per_rung[i];
-            if (cyclesResolved != null) return (cyclesResolved * i) / (n - 1);
-            return i;
+        const xsFor = (n: number): number[] => {
+          // The settle rung is not a driven rung, so it is not one of the n
+          // the even spread divides between.
+          const driven = settleIndex != null ? n - 1 : n;
+          return Array.from({length: n}, (_, i) => {
+            const at = i === settleIndex ? i - 1 : i;
+            if (cycles_per_rung != null) return cycles_per_rung[at];
+            if (cyclesResolved != null)
+              return (cyclesResolved * at) / Math.max(1, driven - 1);
+            return at;
           });
+        };
         const perCycleKnown = cyclesResolved != null || cycles_per_rung != null;
         // `cycles` alone spreads the rungs evenly over the range. That is a
         // guess about how the ladder was driven, and it silently becomes the
@@ -1077,6 +1138,20 @@ export function registerLadderProbe(server: McpServer): void {
             }
           });
           const distinct = usableXs.map((x, i) => keepAt.get(x) === i);
+          // Whether the exclusion actually applied. It only does at a SHARED
+          // x, and a settle rung listed by hand in `paths` never gets one —
+          // the append guard sees it already present, so no duplicate is
+          // created and it is fitted as though it drove cycles. Claiming the
+          // exclusion regardless is how a rate contaminated by a GC'd reading
+          // gets published as clean.
+          const settleUsableIdx = usableIsSettle.findIndex(Boolean);
+          const settleInFit = settleUsableIdx >= 0 && distinct[settleUsableIdx];
+          // Where the settle reading landed inside `fitYs`, when it was not
+          // deduped out. `fitYs` is `usableYs` filtered by `distinct`, so
+          // the position is the number of kept entries before it.
+          const settleFitIdx = settleInFit
+            ? distinct.slice(0, settleUsableIdx).filter(Boolean).length
+            : -1;
           const fitXs = usableXs.filter((_, i) => distinct[i]);
           const fitYs = usableYs.filter((_, i) => distinct[i]);
           const droppedRepeatedX = usableXs.length - fitXs.length;
@@ -1174,12 +1249,104 @@ export function registerLadderProbe(server: McpServer): void {
           // that was every properly-run round: a dead-linear series read back
           // as "non-decreasing but NOT strictly increasing … growth is
           // episodic".
+          // The settle reading, pulled out of the series so the verdict can be
+          // stated rather than inferred from a repeated row.
+          const settleRow = rungs.find(
+            r => isSettleRungFilename(r.label) && r.value != null,
+          );
           const shapeYs = fitYs;
           const status = visibilityFor(m.code);
           const verdictText = singleX
             ? 'UNMEASURABLE AXIS — every rung shares one cycle count, so the series has no shape to read. The values above are real; the trend is not derivable from them.'
             : verdictFor(shapeYs, fit, axisAssumed, status);
           lines.push(`**Verdict:** ${verdictText}`);
+          // `fitYs.length > 0` is not decoration: the fit series is the
+          // deduped driven rungs, and a ladder whose every rung failed to
+          // measure leaves it empty. `base` is then undefined, `grew` is NaN,
+          // and the row renders "(NaN% of the growth held)" beside a
+          // confident DRAINED or HELD word.
+          if (settleRow != null && fitYs.length > 0) {
+            const idle = settleRow.value as number;
+            // DRIVEN rungs only. When the settle rung was hand-listed in
+            // `paths` at a cycle count of its own it is not deduped out, so
+            // it sits inside `fitYs` — and scoring the settle value against
+            // a series that already contains it compares the reading to
+            // itself. `grew` collapses toward zero and the row reports HELD
+            // on arithmetic that has nothing to do with retention.
+            const drivenYs =
+              settleFitIdx >= 0
+                ? fitYs.filter((_, fi) => fi !== settleFitIdx)
+                : fitYs;
+            const base = drivenYs.length > 0 ? drivenYs[0] : fitYs[0];
+            const lastDriven =
+              drivenYs.length > 0 ? drivenYs[drivenYs.length - 1] : last;
+            const grew = lastDriven - base;
+            // Scored against the GROWTH, not the total: a population with a
+            // large standing baseline that was never part of the burst would
+            // otherwise always read as held.
+            // Clamped to [0, 1]. Unclamped, a settle reading below the
+            // starting baseline renders "-33% of the growth held", which is
+            // not a fraction of anything — the class released all of its
+            // growth and then some, and 0% is what that is.
+            // `grew <= 0` is NOT "fully held". A non-monotonic series whose
+            // last driven rung sits at or below the first has no growth to
+            // hold a fraction of, and forcing 1 there printed a confident
+            // "100% of the growth held" over a series that never grew —
+            // and suppressed both other verdicts while doing it.
+            const kept =
+              grew > 0 ? Math.max(0, Math.min(1, (idle - base) / grew)) : null;
+            const drained = kept != null && kept <= 0.1;
+            // Above the last DRIVEN value. Nothing "held" more than all of
+            // the growth, so a fraction over 1 is not a held fraction at
+            // all — it is the population still climbing while the settle
+            // rung was captured, and "142% of the growth held" reads as a
+            // mis-rendered percentage rather than as the finding it is.
+            const stillClimbing = grew > 0 && idle > lastDriven;
+            // Above the baseline with no net growth to explain it: the
+            // series went up and came back down, and the settle rung still
+            // sits higher than where it started.
+            const aboveBaseNoGrowth = grew <= 0 && idle > base;
+            lines.push(
+              '',
+              `**After settle: ${formatNumber(idle)}** (${
+                stillClimbing
+                  ? 'HIGHER than the last driven rung — the population was still climbing when the settle rung was captured'
+                  : kept != null
+                    ? `${(kept * 100).toFixed(0)}% of the growth held`
+                    : aboveBaseNoGrowth
+                      ? `no net growth across the driven rungs, yet the settle rung sits above the first (${formatNumber(base)})`
+                      : 'nothing grew, so there is nothing to drain'
+              }) — ${
+                drained
+                  ? '💧 **DRAINED. This is in-flight backlog, not retention** — the rate above is real and is not a leak. Do not file it.'
+                  : stillClimbing
+                    ? '**HELD, and then some.** Nothing was released during the settle; the idle period was not long enough to see this one level off, so treat the rate above as a lower bound.'
+                    : kept != null
+                      ? '**HELD.** The growth survived idle + GC, so it is retention rather than work in flight.'
+                      : aboveBaseNoGrowth
+                        ? 'NO VERDICT — the driven series is non-monotonic, so there is no growth to score this against. Read the per-rung values above directly.'
+                        : 'no verdict available.'
+              }${
+                settleInFit
+                  ? " ⚠️ **NOT excluded from the rate above**: this rung was listed in `paths` at a cycle count of its own, so the fit treated it as a driven rung. Remove it from `paths` and let `include_settle` append it, or give it the last driven rung's count in `cycles_per_rung`."
+                  : ' Excluded from the rate and the shape verdict: the settle drives no cycles.'
+              }`,
+            );
+          } else if (settleMissingPath != null) {
+            lines.push(
+              '',
+              `> ⚠️ **UNSETTLED — the settle rung is missing from disk.** The round records one at \`${settleMissingPath}\`, but the file is not there (pruned, or the capture was interrupted). The rate above cannot be told apart from in-flight backlog. The round does not need re-driving if the file can be restored.`,
+            );
+          } else if (
+            include_settle !== false &&
+            inputs.manifest != null &&
+            !settleAppended
+          ) {
+            lines.push(
+              '',
+              '> ⚠️ **UNSETTLED** — this round captured no settle rung, so the rate above cannot be told apart from in-flight backlog. Re-drive with the runner default (`--settle-minutes 7`).',
+            );
+          }
           // `every`, not `Math.max(...) === 0`. Spreading an empty array
           // into Math.max gives -Infinity, which is not 0, so a metric that
           // failed to measure at EVERY rung skipped the re-probe that exists
