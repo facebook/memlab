@@ -405,7 +405,7 @@ export function registerLeakReport(server: McpServer): void {
         cycles = inputs.cycles;
         const ladderSpanS =
           inputs.spanSeconds ?? ladderSpanSeconds(inputs.manifest);
-        const {steps, rows} = await computeSequenceTrends(paths, {
+        const {steps, rows, cachedRungs} = await computeSequenceTrends(paths, {
           minGrowthCount: min_growth_count,
           monotonicOnly: monotonic_only,
           maxFileSizeMB: max_file_size_mb,
@@ -852,6 +852,13 @@ export function registerLeakReport(server: McpServer): void {
           ];
         });
         lines.push(markdownTable(headers, tableRows, rightCols));
+
+        if (cachedRungs.length > 0) {
+          lines.push(
+            '',
+            `_${cachedRungs.length} of ${n} rung(s) were answered from a sidecar index (\`<snapshot>.memlab-index.json\`) instead of being re-parsed. The class table is unfiltered, so the numbers are the same either way. Force a re-parse with \`MEMLAB_NO_INDEX_CACHE=1\`._`,
+          );
+        }
 
         if (showIdleFloor) {
           lines.push(

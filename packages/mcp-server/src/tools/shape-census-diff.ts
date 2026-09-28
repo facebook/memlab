@@ -48,6 +48,8 @@ import {
 } from '../run-manifest.js';
 import {resolveRungs, withSnapshotAt} from '../snapshot-borrow.js';
 import {linearFit} from './ladder-probe.js';
+import {ensureSidecar, readSidecar, joinShapeKey} from '../snapshot-index.js';
+import {normalizeClassName} from './sequence-analysis.js';
 import {makeNamePatternTest} from '../utils.js';
 
 interface ShapeStats {
@@ -57,14 +59,22 @@ interface ShapeStats {
 }
 
 /**
- * The sorted property set of one object, as a stable key.
+ * The sorted property set of one object, as a stable key PLUS its real size.
  *
- * `unreadable` counts nodes whose reference list could not be walked. A
+ * The count is returned rather than re-derived by splitting the key: a
+ * property name can contain a comma, and `key.
+ *
+ * `unreadable` counts nodes whose reference list could not be walked.split(',').length` then
+ * overcounts and drops the shape below a `max_props` filter.
+ A
  * census is a COUNT, so a node dropped here is subtracted from a growth
  * figure with no trace — and if the same nodes fail on one rung and not
  * another, the difference reads as the app releasing them.
  */
-function shapeKeyOf(node: IHeapNode, unreadable: {n: number}): string | null {
+function shapeKeyOf(
+  node: IHeapNode,
+  unreadable: {n: number},
+): {key: string; propCount: number} | null {
   const names: string[] = [];
   try {
     for (const edge of node.references) {
@@ -79,7 +89,7 @@ function shapeKeyOf(node: IHeapNode, unreadable: {n: number}): string | null {
   }
   if (names.length === 0) return null;
   names.sort();
-  return names.join(',');
+  return {key: joinShapeKey(names), propCount: names.length};
 }
 
 function shapeCensus(
@@ -94,11 +104,14 @@ function shapeCensus(
     if (node.id <= 3) return;
     if (opts.className != null && node.name !== opts.className) return;
     if (nameMatches != null && !nameMatches(node.name)) return;
-    const key = shapeKeyOf(node, unreadable);
-    if (key == null) return;
+    const shape = shapeKeyOf(node, unreadable);
+    if (shape == null) return;
+    const {key, propCount} = shape;
     // A shape with hundreds of keys is a namespace object or a module map,
-    // not a record type, and its key alone would dominate the table.
-    if (key.split(',').length > opts.maxProps) return;
+    // not a record type, and its key alone would dominate the table. Counted
+    // from the property LIST, not by splitting the joined key: a property
+    // name containing a comma would otherwise inflate the count.
+    if (propCount > opts.maxProps) return;
     const e = out.get(key);
     if (e) {
       e.count++;
@@ -236,6 +249,54 @@ export function registerShapeCensusDiff(server: McpServer): void {
           namePattern: name_pattern,
           maxProps: max_props,
         };
+        /**
+         * The shape census for one rung, from the sidecar when it can be.
+         *
+         * The sidecar's shape table is UNFILTERED (it is built once, before
+         * anyone knows what will be asked), so it only answers a call with no
+         * class/name filter — but that is the common call, and it turns a
+         * 22-43 s parse per rung into a JSON read. With a filter, the graph is
+         * opened as before.
+         */
+        const censusOf = async (
+          localPath: string,
+          opts: typeof censusOpts,
+        ): Promise<Map<string, ShapeStats>> => {
+          const unfiltered = opts.className == null && opts.namePattern == null;
+          if (unfiltered) {
+            const side = readSidecar(localPath);
+            if (side != null) {
+              cachedRungs++;
+              // The count the sidecar RECORDED when it was built, so a
+              // cached rung reports the same short-walk caveat a freshly
+              // parsed one does instead of looking cleaner for having
+              // skipped the walk.
+              unreadableNodes += side.unreadableNodes ?? 0;
+              const out = new Map<string, ShapeStats>();
+              for (const [key, entry] of Object.entries(side.shapes)) {
+                const [count, selfSize, propCount] = entry;
+                // The STORED property count, with no fallback. A property
+                // name containing a comma makes `key.split(',').length` too
+                // high and drops a shape the fresh census keeps, so falling
+                // back to it would apply a different rule to exactly the
+                // shapes the stored count exists for. `readSidecar` rejects
+                // a sidecar whose tuples are not all three numbers, so this
+                // is a number.
+                if (propCount > opts.maxProps) continue;
+                out.set(key, {count, selfSize, exampleNodeId: 0});
+              }
+              return out;
+            }
+          }
+          return withSnapshotAt(localPath, snap => {
+            // Built while the graph is open anyway, so the NEXT tool over this
+            // rung pays neither a parse nor a census.
+            ensureSidecar(snap, localPath, normalizeClassName);
+            const r = shapeCensus(snap, opts);
+            unreadableNodes += r.unreadable;
+            return r.shapes;
+          });
+        };
         // One rung resident at a time. A shape census is a single O(N) pass
         // and holds only the per-shape counters, so a 6-rung ladder of
         // 500 MB captures costs wall clock and not memory.
@@ -244,12 +305,9 @@ export function registerShapeCensusDiff(server: McpServer): void {
         let settleUnreadable = 0;
         /** Shapes the settle census never mentioned — unknown, not zero. */
         let absentFromSettle = 0;
+        let cachedRungs = 0;
         for (const rung of rungs) {
-          const r = await withSnapshotAt(rung.localPath, snap =>
-            shapeCensus(snap, censusOpts),
-          );
-          perRung.push(r.shapes);
-          unreadableNodes += r.unreadable;
+          perRung.push(await censusOf(rung.localPath, censusOpts));
         }
 
         const settlePath =
@@ -272,14 +330,23 @@ export function registerShapeCensusDiff(server: McpServer): void {
             if (settleRungs.length === 0) {
               throw new Error('the settle rung could not be resolved');
             }
-            const r = await withSnapshotAt(settleRungs[0].localPath, snap =>
-              shapeCensus(snap, censusOpts),
-            );
-            settled = r.shapes;
             // Attributed to the settle rung, not folded into the ladder
             // total. The ladder warning reasons about rungs DISAGREEING with
             // each other, and the settle rung is not one of them.
-            settleUnreadable = r.unreadable;
+            //
+            // Restored in a `finally`. `censusOf` can throw part-way through
+            // a walk that has already incremented the shared counter, and a
+            // plain sequence leaves that increment on the LADDER total —
+            // where it is reported as rungs disagreeing with each other,
+            // which is a different and wrong claim about a failure that
+            // happened in the settle rung.
+            const ladderUnreadable = unreadableNodes;
+            try {
+              settled = await censusOf(settleRungs[0].localPath, censusOpts);
+            } finally {
+              settleUnreadable = unreadableNodes - ladderUnreadable;
+              unreadableNodes = ladderUnreadable;
+            }
           } catch (e) {
             settleError = e instanceof Error ? e.message : String(e);
           }
@@ -426,12 +493,19 @@ export function registerShapeCensusDiff(server: McpServer): void {
             `${r.slope >= 0 ? '+' : ''}${r.slope.toFixed(2)}`,
             r.r2.toFixed(4),
             `${r.netSize >= 0 ? '+' : ''}${formatBytes(r.netSize)}`,
-            `@${r.example}`,
+            r.example > 0 ? `@${r.example}` : '—',
           ];
         });
         const rightCols = new Set<number>();
         for (let i = 1; i < headers.length - 1; i++) rightCols.add(i);
         lines.push(markdownTable(headers, tableRows, rightCols));
+
+        if (cachedRungs > 0) {
+          lines.push(
+            '',
+            `_${cachedRungs} rung(s) answered from a sidecar index without opening the graph. A cached rung carries no \`example\` node id (ids are per-capture and the sidecar does not keep one) — re-run with \`class_filter\` or \`MEMLAB_NO_INDEX_CACHE=1\` to get one._`,
+          );
+        }
 
         if (rows.length > shown.length) {
           lines.push(

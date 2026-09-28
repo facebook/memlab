@@ -42,6 +42,7 @@ import {resolveLadderPaths} from './ladder.js';
 import {makeProgressReporter} from '../progress.js';
 import type {ProgressReporter} from '../progress.js';
 import {findResidentByPath, getSnapshotByHandle} from '../heap-state.js';
+import {classMapOf, ensureSidecar, readSidecar} from '../snapshot-index.js';
 import {resetEmittedNotes, shouldEmitNote} from '../heap-state.js';
 import {
   artifactLabel,
@@ -155,6 +156,12 @@ export interface SequenceTrends {
   // Labels of the rungs served from an already-resident snapshot instead of a
   // fresh parse. Surfaced so a slow call and a fast one are distinguishable.
   reusedHandles: string[];
+  /**
+   * Labels of the rungs answered from a SIDECAR index rather than by opening
+   * the graph at all. Reported for the same reason: a 2-second call and a
+   * 3-minute one must not look identical.
+   */
+  cachedRungs: string[];
   // Union of non-noise class keys across all steps (for new-since-baseline).
   keys: Set<string>;
 }
@@ -194,6 +201,7 @@ export async function computeSequenceTrends(
   const toolName = opts.toolName ?? 'memlab_sequence_analysis';
   const steps: SequenceStep[] = [];
   const reusedHandles: string[] = [];
+  const cachedRungs: string[] = [];
   // `paths: ["ladder:<name>"]` expands to a saved ladder (see ladder.ts), so a
   // six-rung trend call is one token instead of six absolute paths.
   const {paths: resolvedPaths} = resolveLadderPaths(paths);
@@ -243,6 +251,26 @@ export async function computeSequenceTrends(
           `or ${raiseHeapHint(getOldSpaceLimitMB())}`,
       );
     }
+    // A valid sidecar answers this pass WITHOUT opening the graph.
+    //
+    // The trend needs a per-class count and a heap total, nothing else — and
+    // that is exactly what the sidecar holds. A rung already analysed once
+    // therefore costs a JSON read instead of a 22-43 s parse, which is the
+    // dominant cost of every ladder tool and the reason the same five
+    // snapshots were re-walked six times in one round.
+    const cached = readSidecar(local);
+    if (cached != null) {
+      steps.push({
+        label: fetchedFrom ?? p.replace(/^.*\//, ''),
+        localPath: local,
+        hist: classMapOf(cached),
+        nodeCount: cached.nodeCount,
+        totalSize: cached.totalSelfSize,
+      });
+      cachedRungs.push(fetchedFrom ?? p.replace(/^.*\//, ''));
+      continue;
+    }
+
     // Reuse a snapshot that is already resident rather than re-parsing it.
     // Parsing a 250 MB capture costs tens of seconds, and the common call
     // shape is a ladder whose rungs the caller already loaded to look at
@@ -273,6 +301,10 @@ export async function computeSequenceTrends(
           })
         : await getFullHeapFromFile(local));
     const {hist, nodeCount, totalSize} = buildHistogram(snapshot);
+    // Written from the graph we already have open, so the sidecar costs one
+    // extra pass rather than an extra parse — and the next tool over this
+    // rung pays neither.
+    ensureSidecar(snapshot, local, normalizeClassName);
     steps.push({
       label: fetchedFrom ?? p.replace(/^.*\//, ''),
       localPath: local,
@@ -328,7 +360,7 @@ export async function computeSequenceTrends(
     return b.netSize - a.netSize;
   });
 
-  return {steps, rows, keys, reusedHandles};
+  return {steps, rows, keys, reusedHandles, cachedRungs};
 }
 
 /**
@@ -436,15 +468,13 @@ export function registerSequenceAnalysis(server: McpServer): void {
         const inputs = resolveLadderInputs({run_dir, segment, paths, cycles});
         paths = inputs.paths;
         cycles = inputs.cycles;
-        const {steps, rows, keys, reusedHandles} = await computeSequenceTrends(
-          paths,
-          {
+        const {steps, rows, keys, reusedHandles, cachedRungs} =
+          await computeSequenceTrends(paths, {
             minGrowthCount: min_growth_count,
             monotonicOnly: monotonic_only,
             maxFileSizeMB: max_file_size_mb,
             progress: makeProgressReporter(extra, 'sequence_analysis'),
-          },
-        );
+          });
 
         const n = steps.length;
         const first = steps[0].hist;
@@ -480,6 +510,12 @@ export function registerSequenceAnalysis(server: McpServer): void {
           formatBytes(s.totalSize),
         ]);
         lines.push(markdownTable(totalHeaders, totalRows, new Set([2, 3])));
+        if (cachedRungs.length > 0) {
+          lines.push(
+            '',
+            `_${cachedRungs.length} of ${n} rung(s) were answered from a sidecar index (\`<snapshot>.memlab-index.json\`) WITHOUT opening the graph. Delete the sidecars, or set \`MEMLAB_NO_INDEX_CACHE=1\`, to force a re-parse._`,
+          );
+        }
         if (reusedHandles.length > 0) {
           lines.push(
             '',
