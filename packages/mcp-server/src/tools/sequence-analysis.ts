@@ -78,6 +78,26 @@ export function normalizeClassName(name: string): string {
 }
 
 /**
+ * Split a `<type>::<name>` class key back into its two parts.
+ *
+ * The name can ITSELF contain `::` — every Blink native class does
+ * (`Detached blink::HTMLDivElement`) — so a plain
+ * `const [type, name] = key.split('::')` silently truncates at the first
+ * separator. Measured in `memlab_settle_check`: three distinct classes all
+ * rendered as `Detached blink (native)`, three identical adjacent rows with
+ * different numbers and no way to tell which was which.
+ *
+ * Shared rather than re-derived, because the correct form
+ * (`parts.slice(1).join('::')`) is easy to write and easier to forget.
+ */
+export function splitClassKey(key: string): {type: string; name: string} {
+  const sep = key.indexOf('::');
+  return sep < 0
+    ? {type: '', name: key}
+    : {type: key.slice(0, sep), name: key.slice(sep + 2)};
+}
+
+/**
  * The per-class histogram every ladder tool is keyed on.
  *
  * Exported so a tool comparing against an EXTRA rung (a settle rung, an idle

@@ -30,6 +30,7 @@ import {
   pathsHeader,
   toolResult,
 } from '../utils.js';
+import {splitClassKey} from './sequence-analysis.js';
 
 interface ClassStats {
   count: number;
@@ -313,9 +314,7 @@ export function registerDiffSnapshots(server: McpServer): void {
           }
           if (hide_zero_size_delta && sizeDelta === 0) continue;
 
-          const parts = key.split('::');
-          const type = parts[0];
-          const name = parts.slice(1).join('::');
+          const {type, name} = splitClassKey(key);
 
           if (!include_value_classes && isValueNamedStringClass(type, name)) {
             if (countDelta > 0) {

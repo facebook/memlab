@@ -30,6 +30,7 @@ import {
   errorResult,
   toolResult,
 } from '../utils.js';
+import {splitClassKey} from './sequence-analysis.js';
 
 function sanitizeForTable(s: string): string {
   return s.replace(/[\n\r\t]/g, ' ').replace(/\|/g, '¦');
@@ -237,7 +238,7 @@ export function registerQuickDiagnosis(server: McpServer): void {
           : ['Class', 'Type', 'Count', 'Retained ≤ (upper)', '% Heap ≤'];
         const classRightCols = new Set([2, 3, 4]);
         const classRows = classSorted.map(v => {
-          const rawName = v.key.split('::').slice(1).join('::');
+          const rawName = splitClassKey(v.key).name;
           const name = truncateNodeName(
             rawName,
             v.type,

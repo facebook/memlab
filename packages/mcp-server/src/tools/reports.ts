@@ -27,6 +27,7 @@ import {
   toolResult,
 } from '../utils.js';
 import type {OutputMode} from '../utils.js';
+import {splitClassKey} from './sequence-analysis.js';
 
 // --- Detached DOM analysis ---
 
@@ -507,7 +508,7 @@ function runClassHistogram(limit: number): string {
   const headers = ['Class', 'Type', 'Count', 'Self Size'];
   const rightCols = new Set([2, 3]);
   const rows = sorted.map(([key, v]) => {
-    const name = key.split('::').slice(1).join('::');
+    const name = splitClassKey(key).name;
     return [
       name,
       v.type,

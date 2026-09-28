@@ -22,7 +22,7 @@ import {
   markdownTable,
   toolResult,
 } from '../utils.js';
-import {normalizeClassName} from './sequence-analysis.js';
+import {normalizeClassName, splitClassKey} from './sequence-analysis.js';
 
 interface ClassStats {
   count: number;
@@ -351,7 +351,7 @@ export function registerSettleCheck(server: McpServer): void {
           ? new Set([1, 2, 3, 4])
           : new Set([1, 2, 3]);
         const tableRows = rows.slice(0, limit).map(r => {
-          const [type, name] = r.key.split('::');
+          const {type, name} = splitClassKey(r.key);
           const label = `${name} (${type})`;
           const cells = hasBaseline
             ? [

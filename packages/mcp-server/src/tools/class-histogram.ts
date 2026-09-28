@@ -26,6 +26,7 @@ import {
   boundedDominatorRetainedSize,
   makeNamePatternTest,
 } from '../utils.js';
+import {splitClassKey} from './sequence-analysis.js';
 
 export function registerClassHistogram(server: McpServer): void {
   server.tool(
@@ -276,7 +277,7 @@ export function registerClassHistogram(server: McpServer): void {
         let cumRetained = 0;
         let shownEstimate = false;
         const rows = sorted.map(v => {
-          const rawName = v.key.split('::').slice(1).join('::');
+          const rawName = splitClassKey(v.key).name;
           const name = truncateNodeName(
             rawName,
             v.type,
@@ -336,7 +337,7 @@ export function registerClassHistogram(server: McpServer): void {
           if (highCount.length > 0) {
             lines.push('', '**Suggested next steps:**');
             for (const v of highCount.slice(0, 3)) {
-              const name = v.key.split('::').slice(1).join('::');
+              const name = splitClassKey(v.key).name;
               lines.push(
                 `- ${formatNumber(v.count)} \`${name}\` instances — use \`memlab_find_nodes_by_class("${name}")\` to inspect, \`memlab_retainer_summary("${name}")\` to find common retainer patterns, or \`memlab_retainer_trace\` on a sample node`,
               );

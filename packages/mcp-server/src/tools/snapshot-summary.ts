@@ -22,6 +22,7 @@ import {
   errorResult,
   toolResult,
 } from '../utils.js';
+import {splitClassKey} from './sequence-analysis.js';
 
 export function registerSnapshotSummary(server: McpServer): void {
   server.tool(
@@ -178,12 +179,12 @@ export function registerSnapshotSummary(server: McpServer): void {
             '**Potential anomalies** (classes with ≥5,000 instances):',
           );
           for (const [key, v] of anomalies) {
-            const name = key.split('::').slice(1).join('::');
+            const name = splitClassKey(key).name;
             lines.push(`- ${formatNumber(v.count)}× \`${name}\` (${v.type})`);
           }
           // Check for correlated high-count groups
-          const highCountNames = anomalies.map(([key]) =>
-            key.split('::').slice(1).join('::'),
+          const highCountNames = anomalies.map(
+            ([key]) => splitClassKey(key).name,
           );
           if (highCountNames.length >= 2) {
             const counts = anomalies.map(([, v]) => v.count);
