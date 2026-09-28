@@ -262,6 +262,43 @@ async function ladderReport(args: {
       ? ((last - first) / cycleSpan).toFixed(3)
       : '—';
 
+  /**
+   * Records per QUEUE per cycle — the number that transfers between surfaces.
+   *
+   * `Δ/cycle` is a property of this round: it scales with how many instances
+   * happened to be mounted, so it predicts nothing about another surface or
+   * about production. Divided by the queue count it becomes the per-instance
+   * cost, and a sweep's best result was exactly this quantity turned into a
+   * product law — `records/cycle = mounted queues × events per cycle`,
+   * verified to 0.04–0.2% on three surfaces. The tool already printed both
+   * factors side by side; it was one division away from printing the law.
+   *
+   * Measured: `ChatRowChatItem` read 13 queues and +13.000 records/cycle.
+   * That the quotient is an INTEGER is the mechanism — one record per
+   * instance per event — so it is flagged rather than left to be noticed.
+   */
+  const INTEGER_TOLERANCE = 0.01;
+  const perQueuePerCycle = (
+    first: number,
+    last: number,
+    queues: number,
+  ): string => {
+    if (cycleSpan == null || cycleSpan <= 0) return '—';
+    if (queues <= 0) return '—';
+    const v = (last - first) / cycleSpan / queues;
+    const nearest = Math.round(v);
+    // ABSOLUTE, not relative to `nearest`. A relative window widens with
+    // the quotient — at nearest = 99 it is ±0.99 — so 99.400 printed as
+    // "exactly 99/instance/event", asserting the exact per-instance
+    // mechanism this flag exists to reveal about a value that visibly is
+    // not an integer. The claim is "this is a whole number", so the
+    // tolerance has to be a fixed distance from one.
+    const exact = nearest !== 0 && Math.abs(v - nearest) <= INTEGER_TOLERANCE;
+    return exact
+      ? `**${v.toFixed(3)}** ← exactly ${nearest}/instance/event`
+      : v.toFixed(3);
+  };
+
   const lines: string[] = [
     '## React update queues across the ladder',
     '',
@@ -338,6 +375,7 @@ async function ladderReport(args: {
         'Records per rung',
         'Δ records',
         'Δ/cycle',
+        'Δ/cycle/queue',
         'Shape',
         'Longest chain',
       ],
@@ -349,11 +387,14 @@ async function ladderReport(args: {
           r.series.map(v => formatNumber(v)).join(' · '),
           formatNumber(r.r1 - r.r0),
           rate(r.r0, r.r1),
+          perQueuePerCycle(r.r0, r.r1, r.q1),
           seriesShape(r.series),
           formatNumber(r.longest),
         ]),
-      new Set([3, 4, 6]),
+      new Set([3, 4, 5, 7]),
     ),
+    '',
+    '_`Δ/cycle/queue` is the number that TRANSFERS. `Δ/cycle` scales with how many instances this round happened to mount, so it predicts nothing about another surface or about production; per instance per cycle is the unit cost, and multiplying it by the mounted count on any surface predicts that surface. A quotient that lands on a whole number is the mechanism itself — "one record per instance per event" — and is flagged inline._',
     '',
     '_A component whose QUEUES stay flat while its RECORDS climb is lengthening one chain — the eager-bailout shape. One whose queues climb in step with its records is just mounting more hooks._',
     '',
@@ -374,7 +415,7 @@ async function ladderReport(args: {
 export function registerReactUpdateQueues(server: McpServer): void {
   server.tool(
     'memlab_react_update_queues',
-    'The React eager-bailout leak family as one report. A `useState` update whose eager comparison bails out still leaves its record on `queue.pending`, which then never drains — four separate findings in this workstream have been that same shape, and each round re-derived the same three things by hand. This returns: how many queues hold a pending chain (BREADTH), how long each chain is (LENGTH), and which component owns it. The breadth-vs-length split is the part that decides the finding — a flat queue count with growing records is accumulation in existing queues, which is the leak; a rising queue count with one record each is just more hooks mounted, which is not. Getting that backwards is the difference between a filing and a retraction. Pass `run_dir` (or `paths`) to read a WHOLE LADDER in one call: breadth and length per rung, the per-cycle rate for each component, and the breadth-vs-length verdict — otherwise that comparison has to be assembled by hand from N single-snapshot calls.',
+    'The React eager-bailout leak family as one report. A `useState` update whose eager comparison bails out still leaves its record on `queue.pending`, which then never drains — four separate findings in this workstream have been that same shape, and each round re-derived the same three things by hand. This returns: how many queues hold a pending chain (BREADTH), how long each chain is (LENGTH), and which component owns it. The breadth-vs-length split is the part that decides the finding — a flat queue count with growing records is accumulation in existing queues, which is the leak; a rising queue count with one record each is just more hooks mounted, which is not. Getting that backwards is the difference between a filing and a retraction. Pass `run_dir` (or `paths`) to read a WHOLE LADDER in one call: breadth and length per rung, the per-cycle rate for each component, and the breadth-vs-length verdict — otherwise that comparison has to be assembled by hand from N single-snapshot calls. The ladder table also reports `Δ/cycle/queue`, the PER-INSTANCE rate: that is the number that transfers between surfaces and predicts production cost, since `Δ/cycle` alone scales with however many instances this round happened to mount. A quotient landing on a whole number is the mechanism ("one record per instance per event") and is flagged inline.',
     {
       max_chain: z
         .number()
