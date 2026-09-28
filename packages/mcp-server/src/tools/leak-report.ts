@@ -18,6 +18,7 @@ import {
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode} from '@memlab/core';
 import fs from 'fs';
+import path from 'path';
 import {z} from 'zod';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
 const {getFullHeapFromFile} = memlabHeapAnalysis;
@@ -124,6 +125,50 @@ function proseName(row: {name: string; type: string}): string {
   return flat.length > PROSE_NAME_MAX
     ? `${flat.slice(0, PROSE_NAME_MAX - 1)}…`
     : flat;
+}
+
+/**
+ * The idle control round sitting next to this one, if a sweep left one there.
+ *
+ * A sweep drives an idle control round once and names it for what it is
+ * (`r239-idle`, `idle-control`, …). Finding it automatically is the difference
+ * between the floor being subtracted on every round and it being subtracted on
+ * the rounds someone remembered — measured, that was none of twenty.
+ *
+ * Deliberately conservative: only a SIBLING directory, only one whose name
+ * contains "idle", and only one that has a run.json. More than one match is
+ * refused rather than guessed, since picking the wrong control silently
+ * changes every rate in the table.
+ */
+export function findIdleSibling(runDir: string): string | null {
+  const self = path.resolve(runDir.replace(/\/$/, ''));
+  const parent = path.dirname(self);
+  if (parent === self) return null;
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(parent);
+  } catch {
+    return null;
+  }
+  // A TOKEN, not a substring, and a directory. `/idle/i` also matches
+  // `idle-notes`, and a single such sibling holding a run.json would silently
+  // become the floor every row is ranked against — the exact corruption the
+  // docstring above warns about.
+  const hits = entries
+    .filter(e => /(^|[-_.])idle([-_.]|$)/i.test(e))
+    .map(e => path.join(parent, e))
+    .filter(p => {
+      if (p === self) return false;
+      try {
+        return (
+          fs.statSync(p).isDirectory() &&
+          fs.existsSync(path.join(p, 'run.json'))
+        );
+      } catch {
+        return false;
+      }
+    });
+  return hits.length === 1 ? hits[0] : null;
 }
 
 function modalRetainer(nodes: readonly IHeapNode[]): {
@@ -295,6 +340,19 @@ export function registerLeakReport(server: McpServer): void {
         .describe(
           'Include classes that are known measurement artifacts (CDP inspector retention, V8 JIT warmup, Blink a11y caches, captured Error stacks). Default false: they are counted in a one-line summary instead of consuming evidence slots, since none of them is an app leak.',
         ),
+      baseline_run_dir: z
+        .string()
+        .optional()
+        .describe(
+          'An IDLE control round — the same app, driven by nothing. Its per-class per-cycle rate becomes a FLOOR: each row gets an "Above idle floor?" column and the table is ranked by EXCESS over idle rather than by absolute rate. Measured on one app, `system / Map` +2.83/cyc, `Array` +2.08, `system / Context / scope` +2.06, `(object elements)` +1.40 and `(enum cache)` +0.94 grow with ZERO interaction, and every driven round then listed those same classes as leak candidates. Only the first and last rung of the control are read (2 loads).',
+        ),
+      auto_baseline: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'With no explicit `baseline_run_dir`, look for a sibling run directory of `run_dir` whose name contains "idle" and use it as the control. A sweep names its idle round that way by convention, so the floor is subtracted without anyone remembering to ask. Set false to disable the search.',
+        ),
       include_settle: z
         .boolean()
         .optional()
@@ -320,6 +378,8 @@ export function registerLeakReport(server: McpServer): void {
         min_growth_count,
         monotonic_only,
         include_artifacts,
+        baseline_run_dir,
+        auto_baseline,
         include_settle,
         max_file_size_mb,
       },
@@ -527,9 +587,82 @@ export function registerLeakReport(server: McpServer): void {
         };
         const DRAIN_THRESHOLD = 0.1;
 
+        // The IDLE floor.
+        //
+        // An idle control round establishes what this app allocates with no
+        // interaction at all — on one app `system / Map` +2.83/cycle, `Array`
+        // +2.08, `system / Context / scope` +2.06, `(object elements)` +1.40,
+        // `(enum cache)` +0.94. Every driven round then listed those same
+        // classes as `↑ every step — LEAK candidate`, and they were filtered
+        // by eye, twenty times.
+        const idleDir =
+          baseline_run_dir ??
+          (auto_baseline !== false && run_dir != null
+            ? findIdleSibling(run_dir)
+            : null);
+        let idleRate: Map<string, number> | null = null;
+        let idleLabel: string | null = null;
+        let idleError: string | null = null;
+        if (idleDir != null) {
+          try {
+            const control = resolveLadderInputs({run_dir: idleDir});
+            const controlCycles =
+              control.cycles != null && control.cycles > 0
+                ? control.cycles
+                : null;
+            if (controlCycles == null) {
+              throw new Error(
+                'the control round records no cycle count, so it has no rate',
+              );
+            }
+            // FIRST and LAST rung only. The floor is a rate, and two points
+            // give one; loading a whole second ladder to refine a subtraction
+            // would cost more than the report it is annotating.
+            //
+            // Two DISTINCT points. A one-rung control indexes the same path at
+            // both ends, which compares a snapshot to itself: every delta is
+            // 0, so the floor is 0 everywhere and the report says "idle floor
+            // subtracted" having subtracted nothing. A floor that silently
+            // reads 0 is worse than no floor — it certifies every grower.
+            if (control.paths.length < 2) {
+              throw new Error(
+                `the control round has ${control.paths.length} rung(s); a rate needs two`,
+              );
+            }
+            const ends = [
+              control.paths[0],
+              control.paths[control.paths.length - 1],
+            ];
+            const {rows: controlRows} = await computeSequenceTrends(ends, {
+              minGrowthCount: 1,
+              maxFileSizeMB: max_file_size_mb,
+              toolName: 'memlab_leak_report (idle floor)',
+            });
+            idleRate = new Map(
+              controlRows.map(r => [r.key, r.netCount / controlCycles]),
+            );
+            idleLabel = `${idleDir.replace(/\/$/, '').replace(/^.*\//, '')} (${formatNumber(controlCycles)} cycles)`;
+          } catch (e) {
+            idleError = e instanceof Error ? e.message : String(e);
+          }
+        }
+
         const perCycle = cycles != null && cycles > 0;
         const showDevOnly = reached != null;
         const showSettled = settledCounts != null;
+        const showIdleFloor = idleRate != null && perCycle;
+        /** This class's per-cycle rate minus the idle control's. */
+        const excessOverIdle = (r: SequenceRow): number | null => {
+          if (!showIdleFloor || cycles == null) return null;
+          return r.netCount / (cycles as number) - (idleRate?.get(r.key) ?? 0);
+        };
+        // Ranked by EXCESS, so the rows at the top are the ones the driving
+        // caused. Absolute rate puts the idle floor first on every round.
+        if (showIdleFloor) {
+          candidates.sort(
+            (a, b) => (excessOverIdle(b) ?? 0) - (excessOverIdle(a) ?? 0),
+          );
+        }
         const headers = [
           'Class',
           'Type',
@@ -539,6 +672,7 @@ export function registerLeakReport(server: McpServer): void {
           'Δ size',
           ...(showDevOnly ? ['Dev-only'] : []),
           ...(showSettled ? ['Settled'] : []),
+          ...(showIdleFloor ? ['Above idle floor?'] : []),
           'Top retainer (newest instances)',
           'Verdict hint',
         ];
@@ -557,6 +691,7 @@ export function registerLeakReport(server: McpServer): void {
         // finished — and every "drained" verdict below rests on it.
         let absentFromSettle = 0;
         let settleRows = 0;
+        let idleFloorClasses = 0;
         // Rows where the newest instances and the population at large are held
         // by different things. That disagreement is the signal a static
         // collection is masking the accumulating one, so it is reported rather
@@ -569,6 +704,38 @@ export function registerLeakReport(server: McpServer): void {
           if (isDevOnly) devOnlyClasses++;
 
           const settle = settleVerdict(r);
+          const excess = excessOverIdle(r);
+          // "At the floor" means the driving added nothing this class was not
+          // doing anyway. A 5% margin, because the two rounds are different
+          // captures of the same app and an exact tie never happens.
+          // The band is |excess| against the ABSOLUTE rate. Against the
+          // signed rate it inverts for a shrinking class — a negative
+          // tolerance no |excess| can be under — so such a row escapes both
+          // floor bands and is re-published as a leak candidate.
+          //
+          // |excess|, not excess. The one-sided test is true for every row
+          // whose excess is at most 5% of its rate — which includes rows
+          // growing FAR SLOWER than idle (a large negative excess). Those
+          // were labelled "at the idle floor — grows without interaction",
+          // which is not what that verdict means, and were dropped from the
+          // leak count on the strength of it.
+          const atIdleFloor =
+            excess != null &&
+            cycles != null &&
+            Math.abs(excess) <=
+              0.05 * Math.abs(r.netCount / (cycles as number));
+          // Outside the band on the LOW side: idle alone produces more of
+          // this class than the driven round did. Without its own branch that
+          // row falls through to `monotonic-up` and is published as a LEAK
+          // candidate, which is the opposite of what the control showed.
+          // `>= 0`, not `> 0`. A class with net zero and a positive idle
+          // rate has an |excess| band of exactly 0 — nothing can sit inside
+          // it — so it escaped `atIdleFloor` too and fell through to LEAK
+          // candidate, while the control says idle alone produces MORE of it
+          // than the driven round did.
+          const belowIdleFloor =
+            excess != null && !atIdleFloor && excess < 0 && r.netCount >= 0;
+          if (atIdleFloor || belowIdleFloor) idleFloorClasses++;
           const drained =
             settle != null &&
             settle.kept != null &&
@@ -603,6 +770,10 @@ export function registerLeakReport(server: McpServer): void {
             // A grower that drains is in-flight work. It must NOT carry the
             // "LEAK candidate" hint, which is the line that gets quoted.
             verdict = '💧 drained by settle — backlog, NOT a leak';
+          } else if (atIdleFloor) {
+            verdict = '⏸ at the idle floor — grows without interaction';
+          } else if (belowIdleFloor) {
+            verdict = '⏸ BELOW the idle floor — idle alone produces more';
           } else if (r.trend === 'monotonic-up') {
             // "LEAK candidate" is the line that gets quoted out of this
             // table, so it must not appear when the evidence that would
@@ -659,6 +830,13 @@ export function registerLeakReport(server: McpServer): void {
               : showSettled
                 ? ['—']
                 : []),
+            ...(showIdleFloor
+              ? [
+                  excess == null
+                    ? '—'
+                    : `${excess >= 0 ? '+' : ''}${excess.toFixed(2)}/cyc (idle +${(idleRate?.get(r.key) ?? 0).toFixed(2)})`,
+                ]
+              : []),
             (() => {
               const g = growthRetainer(ev);
               if (g.populationLabel != null) {
@@ -674,6 +852,25 @@ export function registerLeakReport(server: McpServer): void {
           ];
         });
         lines.push(markdownTable(headers, tableRows, rightCols));
+
+        if (showIdleFloor) {
+          lines.push(
+            '',
+            `**Idle floor subtracted** against \`${idleLabel}\`: rows are ranked by EXCESS over the control, ` +
+              `not by absolute rate, and ${formatNumber(idleFloorClasses)} class(es) sit at or below the floor — they grow ` +
+              'at least as fast with no interaction at all, so the driving did not cause them.',
+          );
+        } else if (idleError != null) {
+          lines.push(
+            '',
+            `> ⚠️ The idle control at \`${idleDir}\` could not be read (${idleError}), so the rates below are absolute and include whatever this app allocates while doing nothing.`,
+          );
+        } else if (idleRate != null && !perCycle) {
+          lines.push(
+            '',
+            '> ⚠️ An idle control was found but the cycle axis of THIS round is unknown, so there is no per-cycle rate to subtract it from. Pass `run_dir` or `cycles`.',
+          );
+        }
 
         // The settle line goes IMMEDIATELY under the table, in the fixed
         // "N HELD / M DRAINED" shape the digest lifts.
