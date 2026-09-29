@@ -361,6 +361,124 @@ function textOf(result: unknown): string {
     .join('\n');
 }
 
+/**
+ * Three to five SPECIFIC next calls, derived from what the battery found.
+ *
+ * Not a menu. Of 120 shipped tools one measured 20-round sweep used about 20
+ * and never called `memlab_tools` at all, so it never discovered
+ * `memlab_compare_rounds`, `memlab_hunt_report`, `memlab_rate_model`,
+ * `memlab_hypothesis`, `memlab_population_diff`, `memlab_retainer_layers` or
+ * `memlab_trace_all` — several of which it then hand-rolled. The fix is not
+ * more documentation: the battery already knows what it found, and
+ * `memlab_detached_dom` proves the pattern works ("check it is the only door:
+ * `memlab_retainer_layers({node_id: N})`" with the real id filled in is what
+ * made that tool get used at all).
+ *
+ * Every suggestion here is therefore conditional on evidence in THIS round's
+ * output and carries the argument already filled in. A suggestion that would
+ * be true of any round is left out.
+ */
+function nextCalls(runDir: string, perTool: Map<string, string>): string[] {
+  const out: string[] = [];
+  // Resolved once, and used in every emitted call. The suggestions are meant
+  // to be copy-pasted, and a relative `run_dir` resolves against whatever cwd
+  // the next call is made from — which quietly points a follow-up at a
+  // different round than the one this battery measured.
+  const self = path.resolve(runDir.replace(/\/$/, ''));
+  const leak = perTool.get('memlab_leak_report') ?? '';
+  const settle = perTool.get('memlab_settle_check') ?? '';
+
+  // 1. A monotonic grower with a concrete example node: is that retainer the
+  //    only door, or one of several?
+  const exampleId = /memlab_retainer_trace\(\{node_id: (\d+)\}\)/.exec(leak);
+  if (exampleId != null && /LEAK candidate/.test(leak)) {
+    out.push(
+      `\`memlab_retainer_layers({node_id: ${exampleId[1]}})\` — the leak report names ONE retainer for the top candidate. ` +
+        'A population with several independent holders does not shrink when the nearest one is fixed.',
+    );
+  }
+
+  // 2. The class-level answer is `Object`, which names nothing.
+  if (/^\| Object\s+\| object/m.test(leak)) {
+    out.push(
+      `\`memlab_shape_census_diff({run_dir: "${self}", class_filter: "Object"})\` — the top grower is \`Object\`, ` +
+        'so the class name says nothing. Per-SHAPE growth splits it into record types in one call.',
+    );
+  }
+
+  // 3. Classes that survived idle + GC are the only ones worth tracing.
+  const held = /\*\*(\d+) class\(es\) survived idle \+ GC\*\*/.exec(settle);
+  if (held != null && Number(held[1]) > 0) {
+    // A REAL class name, lifted out of the first `held` row of the table
+    // the settle check just printed. A `"<a HELD class>"` placeholder is
+    // the one thing this whole section exists not to emit: a suggestion the
+    // reader has to go and complete is a suggestion they will skip.
+    // Escaped on the way out, not sanitised here. The name is scraped from
+    // a rendered table and a JS class name can legally contain a quote or a
+    // backslash — raw interpolation then produced a call that does not
+    // parse, which defeats the point of filling the argument in at all.
+    const heldRow = /^\|\s*([^|]+?)\s*\([a-z]+\)\s*\|.*\|\s*held\s+—/m.exec(
+      settle,
+    );
+    const heldClass = heldRow?.[1];
+    out.push(
+      heldClass != null
+        ? `\`memlab_trace_all({class_name: ${JSON.stringify(heldClass)}, sample_target: 40})\` — ${held[1]} class(es) survived the settle, this one among them. ` +
+            'Those are the leak candidates; trace the whole population rather than a sample, since the minority path is the finding.'
+        : `\`memlab_trace_all({class_name: "<a class from the HELD rows of \`memlab_settle_check.txt\`>", sample_target: 40})\` — ${held[1]} class(es) survived the settle. ` +
+            'Those are the leak candidates; trace the whole population rather than a sample, since the minority path is the finding.',
+    );
+  } else if (settle === '') {
+    out.push(
+      `\`memlab_settle_check({run_dir: "${self}"})\` — this round has no settle rung, so nothing here separates retention from in-flight backlog. Re-drive with \`--settle-minutes 7\`.`,
+    );
+  }
+
+  // 4. Sibling rounds in the same sweep.
+  // Both sides RESOLVED. `d` is parent-joined and `runDir` may be relative,
+  // so comparing them raw never matched: the current round counted itself as
+  // its own sibling, inflating the count and listing the round twice in the
+  // suggestion it produced.
+  const parent = path.dirname(self);
+  let siblings: string[] = [];
+  try {
+    siblings = fs
+      .readdirSync(parent)
+      .map(e => path.resolve(parent, e))
+      .filter(d => d !== self && fs.existsSync(path.join(d, 'run.json')));
+  } catch {
+    siblings = [];
+  }
+  if (siblings.length >= 1) {
+    // `self`, not `runDir`. The siblings are absolute, so a relative
+    // `run_dir` produces a copy-pasteable call whose first entry is resolved
+    // against the CALLER's cwd and the rest against this one — the two agree
+    // only by luck, and when they do not the comparison silently runs over a
+    // different round than the battery just measured.
+    const SAMPLE_MAX = 3;
+    const sample = [self, ...siblings].slice(0, SAMPLE_MAX);
+    out.push(
+      `\`memlab_compare_rounds({run_dirs: ${JSON.stringify(sample)}})\` — ${siblings.length + 1} rounds share \`${parent}\`${siblings.length + 1 > SAMPLE_MAX ? `; the call above names the first ${SAMPLE_MAX}, add the rest` : ''}. ` +
+        'A per-cycle rate that lands on a whole number, and a population that grew while `app_delta` was negative, are both invisible in one round.',
+    );
+  }
+  if (siblings.length >= 3) {
+    out.push(
+      `\`memlab_hunt_report({run_dirs: ${JSON.stringify([self, ...siblings])}})\` — ${siblings.length + 1} rounds is a sweep; the write-up is a tool call, not a document to assemble by hand.`,
+    );
+  }
+
+  // 5. An idle control sitting unused next to this round.
+  const idle = siblings.find(d => /idle/i.test(path.basename(d)));
+  if (idle != null && !/Idle floor subtracted/.test(leak)) {
+    out.push(
+      `\`memlab_leak_report({run_dir: "${self}", baseline_run_dir: "${idle}"})\` — there is an idle control next door ` +
+        'and this report did not subtract it. Some of the rows above may be what the app allocates with no interaction at all.',
+    );
+  }
+  return out.slice(0, 5);
+}
+
 export function registerAnalysisBattery(server: McpServer): void {
   server.tool(
     'memlab_analysis_battery',
@@ -753,6 +871,12 @@ export function registerAnalysisBattery(server: McpServer): void {
               `- \`${w.tool}.txt\` — ${formatNumber(w.bytes)} B, ${formatNumber(w.ms)} ms`,
             );
           }
+          const suggestions = nextCalls(run_dir, perToolText);
+          if (suggestions.length > 0) {
+            lines.push('', '## Next', '');
+            for (const sug of suggestions) lines.push(`- ${sug}`);
+          }
+
           lines.push('');
           lines.push(
             `_Full output for any tool is at \`${outDir}/<tool>.txt\`. The digest above is fixed and ` +
