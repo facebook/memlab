@@ -35,6 +35,7 @@ import fs from 'fs';
 import path from 'path';
 import {z} from 'zod';
 import {loadRunManifest} from '../run-manifest.js';
+import {readSidecar} from '../snapshot-index.js';
 import {
   errorResult,
   formatNumber,
@@ -48,6 +49,16 @@ interface RoundData {
   dir: string;
   cycles: number;
   appDeltaMB: number | null;
+  /**
+   * Detached nodes in the BASELINE rung, from the sidecar index.
+   *
+   * A cross-round detached comparison is only meaningful between rounds that
+   * started from comparable states. Measured on one sweep, baseline detached
+   * counts were ~900 for rounds r239-r248 and ~127,400 from r251 on, because
+   * an intermittent stranded document realm was present at bring-up — any
+   * detached comparison spanning that boundary is noise.
+   */
+  baselineDetached: number | null;
   /** population -> per-cycle rate */
   rates: Map<string, number>;
   /** component -> longest pending chain */
@@ -243,11 +254,20 @@ function readRound(dir: string): RoundData {
     leak != null && rates.size === 0
       ? ['leak_report has no Δ/cycle column']
       : [];
+  // From the SIDECAR, never by opening a snapshot: this tool's contract is
+  // that comparing twenty rounds does not mean re-reading eighty captures.
+  // Absent when the round was never analysed, which is reported as `—`
+  // rather than as zero.
+  const baselineDetached =
+    manifest.paths.length > 0
+      ? (readSidecar(manifest.paths[0])?.detachedCount ?? null)
+      : null;
   return {
     name,
     dir,
     artifactCount: artifacts.length,
     cycles: manifest.cycles,
+    baselineDetached,
     appDeltaMB: parseAppDelta(budget),
     rates,
     chains: parseChains(queues),
@@ -314,21 +334,63 @@ export function registerCompareRounds(server: McpServer): void {
         // from the analysis-battery artifacts, so it is still valid on a sweep
         // that has not been through the battery at all.
         const summaryTable = markdownTable(
-          ['Round', 'Cycles', 'app_delta (MB)', 'Missing analysis'],
+          [
+            'Round',
+            'Cycles',
+            'app_delta (MB)',
+            'Baseline detached',
+            'Missing analysis',
+          ],
           rounds.map(r => [
             r.name,
             formatNumber(r.cycles),
             r.appDeltaMB == null ? '—' : r.appDeltaMB.toFixed(1),
+            r.baselineDetached == null ? '—' : formatNumber(r.baselineDetached),
             [...r.missing, ...r.notes].join(', '),
           ]),
-          new Set([1, 2]),
+          new Set([1, 2, 3]),
         );
+
+        // A cross-round DETACHED comparison is only meaningful between rounds
+        // that started from comparable states, and nothing said when they did
+        // not. Measured: baselines of ~900 for r239-r248 and ~127,400 from
+        // r251 on, because an intermittent stranded document realm appeared at
+        // bring-up. Every detached comparison across that boundary was noise,
+        // and the boundary was invisible.
+        const DETACHED_SPREAD_LIMIT = 10;
+        // `!= null`, not `> 0`. A baseline of ZERO is a measurement, and the
+        // most extreme one there is: a round that started with no detached
+        // nodes against one that started with 127,400 is the very comparison
+        // this warns about, and excluding the zero made it the one case that
+        // passed silently.
+        const detachedKnown = rounds.filter(r => r.baselineDetached != null);
+        let detachedWarning: string | null = null;
+        if (detachedKnown.length >= 2) {
+          const counts = detachedKnown.map(r => r.baselineDetached as number);
+          const lo = Math.min(...counts);
+          const hi = Math.max(...counts);
+          // A zero floor makes any positive count an unbounded ratio, so it
+          // is compared against the limit directly rather than through a
+          // division by zero.
+          if (lo === 0 ? hi > 0 : hi > lo * DETACHED_SPREAD_LIMIT) {
+            const loRound = detachedKnown.find(r => r.baselineDetached === lo);
+            const hiRound = detachedKnown.find(r => r.baselineDetached === hi);
+            detachedWarning =
+              `⚠ **These rounds did not start from comparable states.** Baseline detached counts span ` +
+              `${formatNumber(lo)} (\`${loRound?.name}\`) to ${formatNumber(hi)} (\`${hiRound?.name}\`)` +
+              `${lo === 0 ? ' — one round started with NONE' : ` — ${(hi / lo).toFixed(0)}x`}. ` +
+              'Any DETACHED comparison across that boundary is noise: a stranded ' +
+              'document realm present at bring-up in some rounds and not others moves the baseline by orders ' +
+              'of magnitude. Compare within a group of similar baselines, or re-drive the odd ones.';
+          }
+        }
 
         const lines: string[] = [
           `## Round comparison — ${rounds.length} rounds`,
           '',
           summaryTable,
           '',
+          ...(detachedWarning != null ? [detachedWarning, ''] : []),
         ];
 
         const unitRateNotes: string[] = [];
@@ -495,6 +557,12 @@ export function registerCompareRounds(server: McpServer): void {
               '```',
               '',
               summaryTable,
+              // Kept on this path too. It comes from the manifests and the
+              // sidecars, not from the battery's output, so it is valid
+              // exactly when the rest of this branch says there is nothing to
+              // compare — and it is the one thing that would change how the
+              // comparison is READ once the battery has run.
+              ...(detachedWarning != null ? ['', detachedWarning] : []),
             );
           } else {
             lines.push('_' + msg + '_', '', '```', battery, '```', '');

@@ -18,6 +18,7 @@ import {
   markdownTable,
   toolResult,
 } from '../utils.js';
+import {readSidecar} from '../snapshot-index.js';
 
 /**
  * `info` does NOT move the verdict.
@@ -332,6 +333,69 @@ export function auditManifest(
         '`memlab_artifact_budget` and judge by **app_delta**, not by the post-GC total.',
     });
   }
+  // Reported as a CHECKED ROW, not left in the manifest. It is the number
+  // that decides whether this round's detached figures can be compared with
+  // any other round's, and on one sweep the baseline moved from ~900 to
+  // ~127,400 mid-sweep — an intermittent stranded document realm at bring-up
+  // — while every cross-round detached comparison carried on as if nothing
+  // had changed.
+  // The FIRST rung specifically, not the first one that happens to have a
+  // readable path. Filtering and then taking `[0]` silently promoted rung 1
+  // to "baseline" when rung 0's entry was malformed — and this row's whole
+  // purpose is to say what the round STARTED at, so a number from the wrong
+  // rung is worse here than no number.
+  const rungEntries = Array.isArray(m.rungs)
+    ? (m.rungs as Array<{path?: unknown}>)
+    : [];
+  // Non-EMPTY, not merely a string. `typeof x === 'string'` accepts `""`
+  // and `"   "`, which then go to `readSidecar` as a path and come back
+  // null — reported as "not computed yet" rather than as the malformed
+  // manifest entry it is.
+  const rawBaseline =
+    rungEntries.length > 0 && typeof rungEntries[0].path === 'string'
+      ? rungEntries[0].path
+      : null;
+  const baselinePath =
+    rawBaseline != null && rawBaseline.trim() !== '' ? rawBaseline : null;
+  const baselineDetached =
+    baselinePath != null
+      ? (readSidecar(baselinePath)?.detachedCount ?? null)
+      : null;
+  if (baselineDetached != null) {
+    checks.push({
+      name: 'baseline detached',
+      status: 'info',
+      detail:
+        `${formatNumber(baselineDetached)} detached node(s) in the baseline rung. ` +
+        'Quote it with any detached figure from this round: a round that started with a ' +
+        'stranded document realm cannot be compared against one that did not.',
+    });
+  } else if (baselinePath == null && rungEntries.length > 0) {
+    checks.push({
+      name: 'baseline detached',
+      status: 'caveat',
+      detail:
+        "the first rung in run.json has no readable `path`, so the round's " +
+        'starting detached count cannot be established. Any detached figure ' +
+        'from this round is therefore not comparable with another round.',
+    });
+  } else if (rungs.length > 0) {
+    // Stated, not omitted. The sidecar is written by the ANALYSIS tools and
+    // this audit runs before them, so on a fresh round the count genuinely
+    // does not exist yet — and a row that silently vanishes reads as "this
+    // round has nothing to declare" rather than "ask again later".
+    checks.push({
+      name: 'baseline detached',
+      status: 'info',
+      detail:
+        'not computed yet — the count comes from the sidecar index that ' +
+        '`memlab_leak_report` / `memlab_shape_census_diff` write on their first ' +
+        'pass over this round. Re-run this audit after the battery to get it, and ' +
+        'quote it with any detached figure: a round that started with a stranded ' +
+        'document realm cannot be compared against one that did not.',
+    });
+  }
+
   const caveats = m.caveats ?? [];
   if (caveats.length > 0) {
     checks.push({
