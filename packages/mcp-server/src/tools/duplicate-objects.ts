@@ -319,17 +319,30 @@ export function registerDuplicateObjects(server: McpServer): void {
             .filter(Boolean)
             .join(' + ') || 'all objects';
 
+        // The HEADLINE is the CONFIRMED number.
+        //
+        // It used to lead with the collapse ratio and the total across all
+        // three tiers — "644,326 instances collapse to 86,514 groups (7.4x) of
+        // 20.9 MB" — and only the body split that into CONFIRMED 753.4 KB /
+        // PARTIAL 12.5 MB / SHAPE-ONLY 5.0 MB, while itself saying shape-only
+        // "is not a win". That headline was ~28x the reclaimable figure, and
+        // the two largest groups behind it were shape-only. A first line that
+        // has to be corrected by the third is a first line that gets quoted.
         const lines: string[] = [
           `## Duplicate objects — ${scopeLabel}`,
           '',
-          `**${formatNumber(scopeCount)}** instances in scope collapse to **${formatNumber(distinct)}** signature groups ` +
-            `(ratio **${(scopeCount / Math.max(1, distinct)).toFixed(1)}×**) of ${formatBytes(scopeSelf)} total self size.`,
+          `**Reclaimable by deduplication: ~${formatBytes(totalReclaimable)}** ` +
+            '— CONFIRMED only, i.e. groups where every property was comparable. ' +
+            'This is the number to quote.',
           '',
-          `- **CONFIRMED duplicate content** (every property was comparable): **~${formatBytes(totalReclaimable)}**`,
-          `- PARTIAL (some properties could not be compared — an upper bound, verify a sample before quoting): ` +
+          `- PARTIAL (some properties could not be compared — an UPPER BOUND, verify a sample before quoting): ` +
             `~${formatBytes(partialBytes)} across ${formatNumber(partialGroups)} group(s)`,
           `- SHAPE ONLY (every property is a generic \`=o\`/\`=n\` marker — **not a win, do not quote**): ` +
             `~${formatBytes(shapeOnlyBytes)} across ${formatNumber(shapeOnlyGroups)} group(s)`,
+          '',
+          `_Scope: ${formatNumber(scopeCount)} instances collapsing to ${formatNumber(distinct)} signature groups ` +
+            `(${(scopeCount / Math.max(1, distinct)).toFixed(1)}x) of ${formatBytes(scopeSelf)} total self size. ` +
+            'The collapse ratio counts PARTIAL and SHAPE-ONLY groups too, so it is a description of the population, not a saving._',
           '',
         ];
 
