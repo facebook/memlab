@@ -490,6 +490,109 @@ export function registerCompareRounds(server: McpServer): void {
           );
         }
 
+        // The join nobody could do: which class grew HERE and nowhere else?
+        //
+        // With twenty rounds there was no way to ask "which class grew in
+        // round X but not in the idle control, and not in any clean round?"
+        // — and that is where the remaining findings are, because a class
+        // that grows in every round is the app's floor and a class that
+        // grows in exactly one is caused by that round's surface. Every
+        // input is already on disk; nothing here loads a snapshot.
+        const REGRESSION_MIN_RATE = 0.5;
+        // EVERY idle-named round, not the first. A sweep commonly carries
+        // more than one control, and with only the first excluded the
+        // second was disqualifying nothing and was itself eligible to be
+        // reported as a surface finding — the app's own floor published as
+        // a per-surface leak.
+        const idleRounds = rounds.filter(r => /idle/i.test(r.name));
+        const isIdle = (r: (typeof rounds)[number]) => idleRounds.includes(r);
+        const populations = new Set<string>();
+        for (const r of rounds)
+          for (const k of r.rates.keys()) populations.add(k);
+        const uniqueGrowers: Array<{
+          population: string;
+          round: string;
+          rate: number;
+          elsewhere: number;
+          unmeasured: number;
+        }> = [];
+        for (const pop of populations) {
+          // `has`, not `?? 0`. A population absent from a round's leak
+          // report was NOT measured at zero there — the report only lists
+          // classes over its own growth threshold — and treating absence as
+          // flatness made a class seen in exactly one round qualify as a
+          // unique grower on the strength of rounds that never looked at it.
+          const measured = rounds.filter(r => r.rates.has(pop));
+          const growing = measured.filter(
+            r => (r.rates.get(pop) as number) >= REGRESSION_MIN_RATE,
+          );
+          if (growing.length !== 1) continue;
+          // Growing in the IDLE control is disqualifying however few rounds
+          // it appears in: that is the app's floor, not this surface's cost.
+          if (isIdle(growing[0])) continue;
+          if (
+            idleRounds.some(r => (r.rates.get(pop) ?? 0) >= REGRESSION_MIN_RATE)
+          ) {
+            continue;
+          }
+          // Two counts, because they are different evidence and the old
+          // single one conflated them. `rounds.length - 1` claimed every
+          // other round was FLAT — including the idle control, which the
+          // check above excludes precisely because it is not a surface
+          // round, and including rounds whose leak report never listed the
+          // population at all.
+          //
+          // Both are reported rather than one being made a filter: a leak
+          // report only lists classes over its own growth threshold, so
+          // "not measured" is the common case and requiring corroboration
+          // would silence the section on exactly the data it is for.
+          const others = rounds.filter(r => r !== growing[0] && !isIdle(r));
+          const flatIn = others.filter(r => r.rates.has(pop)).length;
+          uniqueGrowers.push({
+            population: pop,
+            round: growing[0].name,
+            rate: growing[0].rates.get(pop) as number,
+            elsewhere: flatIn,
+            unmeasured: others.length - flatIn,
+          });
+        }
+        uniqueGrowers.sort((a, b) => b.rate - a.rate);
+        if (uniqueGrowers.length > 0) {
+          lines.push(
+            '### ⚑ Grew in ONE round only',
+            '',
+            `These populations grew at >= ${REGRESSION_MIN_RATE}/cycle in exactly one of the ${rounds.length} rounds and ` +
+              'in none of the others' +
+              (idleRounds.length > 0
+                ? `, including the idle control${idleRounds.length > 1 ? 's' : ''} ${idleRounds.map(r => `\`${r.name}\``).join(', ')}.`
+                : '. **No idle control was found among these rounds**, so a population that grows with no interaction at all would still appear here — name one `*idle*` and re-run.') +
+              " A class that grows in every round is the app's floor; one that grows in exactly " +
+              "one is caused by that round's surface, and that is the shortest path to a cause.",
+            '',
+            markdownTable(
+              [
+                'Population',
+                'Round',
+                'Δ/cycle there',
+                'Measured flat in',
+                'Not measured in',
+              ],
+              uniqueGrowers
+                .slice(0, NOTE_LIMIT)
+                .map(u => [
+                  u.population,
+                  u.round,
+                  u.rate.toFixed(2),
+                  `${formatNumber(u.elsewhere)} round(s)`,
+                  `${formatNumber(u.unmeasured)} round(s)`,
+                ]),
+              new Set([2, 3, 4]),
+            ),
+            ...truncationNote(uniqueGrowers.length),
+            '',
+          );
+        }
+
         if (unitRateNotes.length > 0) {
           const uniqueUnitRateNotes = [...new Set(unitRateNotes)];
           lines.push(
