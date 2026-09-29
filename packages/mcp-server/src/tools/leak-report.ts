@@ -45,12 +45,28 @@ import {
   computeReachableWithoutDevRoots,
 } from './dev-artifacts.js';
 import {getFirstNonFrameworkRetainer} from './detached-dom.js';
+import {
+  DEV_ONLY_FOOTNOTE,
+  GATED_FOOTNOTE,
+  moduleProvenanceOf,
+} from '../dev-modules.js';
 import {makeProgressReporter} from '../progress.js';
 
 // Nodes kept per candidate class for the retainer sample. Small on purpose: the
 // question is "what shape of thing holds these", and a handful of instances
 // answers it — walking thousands would cost more than the trend pass itself.
 const MAX_SAMPLES_PER_CLASS = 8;
+
+/**
+ * Instances per class the dev-MODULE provenance walk runs on.
+ *
+ * Its own budget, not shared with the retainer sample: the walk climbs up to
+ * 12 path edges per node, and running it over a 300,000-member class would
+ * cost more than the trend pass it annotates. Counting it against the
+ * retainer window made the denominator vary per class, so the majority test
+ * below compared against a number that was not the number sampled.
+ */
+const PROVENANCE_SAMPLES = 8;
 const RETAINER_SAMPLES = 3;
 
 // A class whose instances are overwhelmingly dev-root-retained is a measurement
@@ -62,6 +78,23 @@ const DEV_ONLY_SHARE = 0.8;
 interface Evidence {
   total: number;
   devOnly: number;
+  /**
+   * Samples whose shortest path runs through a dev-only or flag-gated MODULE.
+   *
+   * A different check from `devOnly`, which counts instances retained through
+   * a dev ROOT (a console handle, a Fast Refresh registry). A dev-only module
+   * holding ordinary references passes that check completely —
+   * `memlab_cache_analysis` added this test for exactly that reason, and
+   * caught a 12.7 MB Map with it. `traceVisualCompletionMetrics` cost one
+   * sweep four separate filings of the same browser-tools interop before
+   * anyone noticed it was not the app.
+   */
+  devModule: number;
+  gatedModule: number;
+  /** How many instances the provenance walk was actually run on. */
+  provSampled: number;
+  devWhy: string | null;
+  gatedWhy: string | null;
   // Only instances with a retainer path are sampled: the sample exists to be
   // walked upward, and a node with no path edge yields "(unknown)" every time.
   samples: IHeapNode[];
@@ -470,6 +503,11 @@ export function registerLeakReport(server: McpServer): void {
           evidence.set(c.key, {
             total: 0,
             devOnly: 0,
+            devModule: 0,
+            gatedModule: 0,
+            provSampled: 0,
+            devWhy: null,
+            gatedWhy: null,
             samples: [],
             newest: [],
             example: null,
@@ -507,6 +545,32 @@ export function registerLeakReport(server: McpServer): void {
             ev.example = node;
           }
         });
+        // Provenance over the NEWEST instances, once the window is final.
+        //
+        // Doing it inside the walk sampled the first N nodes in traversal
+        // order — the OLDEST of the class — while the retainer column
+        // deliberately votes on the highest-id (newest) window. A class
+        // mixing old dev-held instances with newly leaking ones was then
+        // classified from the wrong half, in either direction. Both columns
+        // now describe the same cohort.
+        for (const ev of evidence.values()) {
+          for (const node of ev.newest.slice(0, PROVENANCE_SAMPLES)) {
+            ev.provSampled++;
+            const prov = moduleProvenanceOf(node);
+            // One reason PER CATEGORY. A single shared field took whichever
+            // non-prod hit came first, so a class mixing both could render
+            // "dev-only MODULE (<a gated reason>)" — the verdict from the
+            // majority, the explanation from the minority.
+            if (prov.prodReachable === 'no') {
+              ev.devModule++;
+              ev.devWhy = ev.devWhy ?? prov.why ?? prov.module;
+            } else if (prov.prodReachable === 'gated') {
+              ev.gatedModule++;
+              ev.gatedWhy = ev.gatedWhy ?? prov.why ?? prov.module;
+            }
+          }
+        }
+
         // The biggest traceable instance is the most informative one to walk, so
         // put it at the head of every retainer sample.
         for (const ev of evidence.values()) {
@@ -670,6 +734,18 @@ export function registerLeakReport(server: McpServer): void {
 
         const perCycle = cycles != null && cycles > 0;
         const showDevOnly = reached != null;
+        // Only when something was actually flagged: an all-`—` column on every
+        // report is the cost of a check that usually finds nothing.
+        const MIN_PROVENANCE_SAMPLE = 3;
+        const isDevModuleOnly = (e: Evidence): boolean =>
+          e.provSampled >= MIN_PROVENANCE_SAMPLE &&
+          e.devModule + e.gatedModule >= DEV_ONLY_SHARE * e.provSampled;
+        // The same rule the VERDICT uses, not "any sample hit at all". A
+        // lone 1-of-8 hit is below the share and the minimum sample, so it
+        // produces no verdict and no banner — but it still forced the
+        // column onto every row of every report, which is the all-`—`
+        // column this condition exists to avoid.
+        const showDevModule = [...evidence.values()].some(isDevModuleOnly);
         const showSettled = settledCounts != null;
         const showIdleFloor = idleRate != null && perCycle;
         /** This class's per-cycle rate minus the idle control's. */
@@ -693,6 +769,7 @@ export function registerLeakReport(server: McpServer): void {
           'Δ size',
           ...(showDevOnly ? ['Dev-only'] : []),
           ...(showSettled ? ['Settled'] : []),
+          ...(showDevModule ? ['Dev module'] : []),
           ...(showIdleFloor ? ['Above idle floor?'] : []),
           'Top retainer (newest instances)',
           'Verdict hint',
@@ -713,6 +790,10 @@ export function registerLeakReport(server: McpServer): void {
         let absentFromSettle = 0;
         let settleRows = 0;
         let idleFloorClasses = 0;
+        let devModuleClasses = 0;
+        /** Of those, how many were driven by each category — the banner differs. */
+        let devOnlyDriven = 0;
+        let gatedDriven = 0;
         // Rows where the newest instances and the population at large are held
         // by different things. That disagreement is the signal a static
         // collection is masking the accumulating one, so it is reported rather
@@ -725,6 +806,41 @@ export function registerLeakReport(server: McpServer): void {
           if (isDevOnly) devOnlyClasses++;
 
           const settle = settleVerdict(r);
+          // At least 80% NON-PRODUCTION — dev-only and flag-gated together.
+          //
+          // Counting only `devModule` let a class that is 8/8 GATED fall
+          // through to `LEAK candidate` while the table beside it printed
+          // `0/8 (+8 gated)`, which is the report contradicting itself. The
+          // two carry different remedies but the same fact here: this is not
+          // what a production user runs.
+          //
+          // 80%, and the same threshold the dev-ROOT column uses: a class can
+          // legitimately mix a few devtools-held instances with real data. On
+          // a small sample that is strict — 3 of 3 at `provSampled = 3` — so
+          // it is stated as a share rather than described as a majority.
+          const provSampled = ev.provSampled;
+          // A MINIMUM sample, and unknowns count against the share.
+          //
+          // `provSampled` counts every instance walked, including the ones
+          // `moduleProvenanceOf` could not attribute within its hop budget —
+          // and those are already in the denominator, so they correctly
+          // dilute rather than inflate. What was missing is a floor: at
+          // provSampled = 1 a single hit is 100%, so one traceable instance
+          // behind a devtools module suppressed the whole class as
+          // non-production. Three is the smallest sample where the 80% share
+          // means anything.
+          const devModuleOnly = isDevModuleOnly(ev);
+          // A TIE goes to gated, not dev-only. The two remedies are
+          // opposite — dev-only says "must not be filed", gated says "real
+          // leak, fix it" — so an even 4-dev / 4-gated split reported with
+          // `>=` told the reader to drop a finding half the evidence says
+          // to keep. Between two wrong answers, the one that keeps a real
+          // leak on the list is the recoverable one.
+          if (devModuleOnly) {
+            devModuleClasses++;
+            if (ev.devModule > ev.gatedModule) devOnlyDriven++;
+            else gatedDriven++;
+          }
           const excess = excessOverIdle(r);
           // "At the floor" means the driving added nothing this class was not
           // doing anyway. A 5% margin, because the two rounds are different
@@ -765,9 +881,25 @@ export function registerLeakReport(server: McpServer): void {
           // HELD is settle evidence — "this did not come back" — and a NOISY
           // grower holds just as well as a monotonic one, so the split scores
           // every grower the settle rung could speak to.
+          // `devModuleOnly` excluded too. The verdict chain drops those
+          // rows before the candidate branch, so they could be counted as
+          // HELD while never being counted as candidates — and the line
+          // "of the N HELD, X are candidates — the rest grew net but not
+          // at every step" then explained them with a reason that is not
+          // theirs. Scored rows are now exactly the rows candidacy is
+          // decided among.
           const scoredHeld =
-            settle != null && r.artifact == null && !isDevOnly && !drained;
-          if (settle != null && r.artifact == null && !isDevOnly) {
+            settle != null &&
+            r.artifact == null &&
+            !isDevOnly &&
+            !devModuleOnly &&
+            !drained;
+          if (
+            settle != null &&
+            r.artifact == null &&
+            !isDevOnly &&
+            !devModuleOnly
+          ) {
             settleRows++;
             if (!settle.present) absentFromSettle++;
             if (drained) drainedClasses++;
@@ -779,6 +911,11 @@ export function registerLeakReport(server: McpServer): void {
             verdict = artifactLabel(r.artifact);
           } else if (isDevOnly) {
             verdict = '🛠 dev/automation-retained (not production)';
+          } else if (devModuleOnly) {
+            verdict =
+              ev.devModule >= ev.gatedModule
+                ? `🛠 dev-only MODULE (${ev.devWhy ?? 'not production'})`
+                : `🛠 flag-gated MODULE (${ev.gatedWhy ?? 'off in production'})`;
           } else if (drained && settle != null && !settle.present) {
             // Absent from the settle histogram is still a drain — nothing of
             // the class survived — but it is a drain measured by ABSENCE,
@@ -851,6 +988,22 @@ export function registerLeakReport(server: McpServer): void {
               : showSettled
                 ? ['—']
                 : []),
+            ...(showDevModule
+              ? [
+                  // The NON-PROD share, which is what the verdict is
+                  // derived from. Printing `devModule/provSampled` put a
+                  // numerator that excludes gated over a denominator that
+                  // includes it, so a fully gated class read `0/8 (+8
+                  // gated)` — 0% — beside a non-production verdict.
+                  provSampled === 0
+                    ? '—'
+                    : `${ev.devModule + ev.gatedModule}/${provSampled}${
+                        ev.gatedModule > 0
+                          ? ` (${ev.devModule} dev + ${ev.gatedModule} gated)`
+                          : ''
+                      }`,
+                ]
+              : []),
             ...(showIdleFloor
               ? [
                   excess == null
@@ -873,6 +1026,38 @@ export function registerLeakReport(server: McpServer): void {
           ];
         });
         lines.push(markdownTable(headers, tableRows, rightCols));
+
+        if (devModuleClasses > 0) {
+          // Branched by CATEGORY, because the two remedies are opposite.
+          // "They do not exist in a production build and must not be filed"
+          // is true of a dev-only module and false of a flag-gated one — a
+          // gated row IS production code behind a gate that is off, so the
+          // leak is real and worth fixing. A gated-only report was printing
+          // the dev-only banner and the dev-only footnote, telling the
+          // reader to drop a finding they should have kept, and
+          // `GATED_FOOTNOTE` was never emitted at all.
+          if (devOnlyDriven > 0) {
+            lines.push(
+              '',
+              `⚠ **${formatNumber(devOnlyDriven)} class(es) are reached only through a dev-only MODULE.** ` +
+                'They do not exist in a production build and must not be filed. ' +
+                'One sweep filed the same browser-tools interop population four separate times.',
+              '',
+              DEV_ONLY_FOOTNOTE,
+            );
+          }
+          if (gatedDriven > 0) {
+            lines.push(
+              '',
+              `⚠ **${formatNumber(gatedDriven)} class(es) are reached only through a FLAG-GATED module.** ` +
+                'That code ships — the leak is real and worth fixing — but it runs behind a gate that is off for ' +
+                'approximately all production traffic, so these bytes are not what a production user carries. ' +
+                "Check the gate's pass rate before quoting the number as production impact.",
+              '',
+              GATED_FOOTNOTE,
+            );
+          }
+        }
 
         if (cachedRungs.length > 0) {
           lines.push(
@@ -1004,6 +1189,9 @@ export function registerLeakReport(server: McpServer): void {
         lines.push(
           '',
           `**${formatNumber(leakCandidates)} leak candidate(s)** of ${formatNumber(candidates.length)} growing class(es) examined` +
+            (devModuleClasses > 0
+              ? `; ${formatNumber(devModuleClasses)} ruled out as reached only through a non-production MODULE`
+              : '') +
             (devOnlyClasses > 0
               ? `; ${formatNumber(devOnlyClasses)} ruled out as dev/automation-retained`
               : '') +
@@ -1023,12 +1211,17 @@ export function registerLeakReport(server: McpServer): void {
         // Point at the single next call for the strongest candidate rather than
         // a menu: the failure mode this tool exists to fix is a plausible
         // grower being reported without anyone tracing it.
-        const strongest = candidates.find(
-          r =>
-            r.artifact == null &&
-            r.trend === 'monotonic-up' &&
-            evidence.get(r.key)?.example != null,
-        );
+        // NOT a row the table just disowned. This filtered artifacts only,
+        // so a report whose top row reads "dev-only MODULE — must not be
+        // filed" still closed by telling the reader to retainer-trace it.
+        const strongest = candidates.find(r => {
+          const e = evidence.get(r.key);
+          if (e == null || e.example == null) return false;
+          if (r.artifact != null || r.trend !== 'monotonic-up') return false;
+          if (isDevModuleOnly(e)) return false;
+          const devShare = e.total > 0 ? e.devOnly / e.total : 0;
+          return !(showDevOnly && devShare >= DEV_ONLY_SHARE);
+        });
         if (strongest) {
           const ev = evidence.get(strongest.key) as Evidence;
           const example = ev.example as IHeapNode;
