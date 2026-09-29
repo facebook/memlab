@@ -9,13 +9,14 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
-import type {IHeapSnapshot} from '@memlab/core';
+import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import fs from 'fs';
 import path from 'path';
 import {z} from 'zod';
 import {getSnapshotByHandle} from '../heap-state.js';
 import {withSnapshotAt} from '../snapshot-borrow.js';
 import {
+  clampLabel,
   errorResult,
   formatBytes,
   formatNumber,
@@ -152,6 +153,142 @@ function resolveSettlePair(runDir: string): SettlePair | string {
   };
 }
 
+/**
+ * Where the retainer path of a node ENDS, on the GC-root side.
+ *
+ * Grouping the survivors of a settle by this is the question the settle
+ * leaves open: a class that held is a candidate, and whether its instances
+ * share ONE root or several decides whether there is one fix or many. Done by
+ * hand on two populations in one sweep and decisive both times — 14 of 14 on
+ * a single path meant a single root cause.
+ */
+function retainerSignature(node: IHeapNode): string {
+  let cur: IHeapNode | null = node;
+  const seen = new Set<number>([node.id]);
+  // The nearest NAMED hops, target-ward first, then reversed for reading.
+  //
+  // Not the literal top of the path: every path ends at `(GC roots)` or a
+  // `Window`, so grouping there puts every class in one bucket and the
+  // question — do these instances share an owner? — goes unanswered. Three
+  // hops is what distinguishes `OwnerA.items` from `OwnerB.items` while still
+  // collapsing per-instance noise.
+  const hops: string[] = [];
+  let depth = 0;
+  while (cur != null && cur.hasPathEdge && depth++ < 64 && hops.length < 3) {
+    const edge = cur.pathEdge;
+    if (edge == null) break;
+    const from: IHeapNode = edge.fromNode;
+    if (seen.has(from.id)) break;
+    seen.add(from.id);
+    if (
+      from.type !== 'synthetic' &&
+      from.name.length > 0 &&
+      !from.name.startsWith('(') &&
+      !from.name.startsWith('system /')
+    ) {
+      const edgeName = String(edge.name_or_index);
+      // Collapse on the edge TYPE, not on the name looking numeric. The
+      // point is to fold array positions — `arr[0]`, `arr[1]` — into one
+      // bucket so per-instance noise groups; a `property` edge that happens
+      // to be named `0` is a distinct own property of a plain object, and
+      // folding it merged owners that share nothing but a digit.
+      hops.push(
+        edge.type === 'element'
+          ? `${from.name}[i]`
+          : `${from.name}.${edgeName}`,
+      );
+    }
+    cur = from;
+  }
+  if (hops.length === 0) return '(no named retainer)';
+  return clampLabel(hops.reverse().join(' > '), 70);
+}
+
+/**
+ * For each HELD class, where its instances' retainer paths end.
+ *
+ * One extra FULL load of the settled rung (the histogram passes above are
+ * light and carry no path edges), which is why it is opt-in.
+ */
+async function traceHeldClasses(
+  settledPath: string,
+  heldKeys: readonly string[],
+  sampleTarget: number,
+): Promise<Map<string, Array<{head: string; count: number}>>> {
+  const want = new Set(heldKeys);
+  // Two phases over ONE load: collect ids, then trace an EVEN sample of them.
+  //
+  // Taking the first N encountered is what a one-pass version does, and it is
+  // wrong for exactly the population this exists to describe: a class held by
+  // two owners is laid out owner by owner, so the first 30 instances are all
+  // from the first owner and the split — the finding — reads as 100% on one
+  // path.
+  const MAX_IDS_PER_CLASS = 200000;
+  const idsByClass = new Map<string, number[]>();
+  // Instances SEEN per class, which is not `ids.length` once the cap binds.
+  const seen = new Map<string, number>();
+  // Per class, keep every `stride`-th instance. Doubles each time the buffer
+  // fills — see the note at the retention site.
+  const strideByClass = new Map<string, number>();
+  const out = new Map<string, Array<{head: string; count: number}>>();
+  await withSnapshotAt(settledPath, (snap: IHeapSnapshot) => {
+    snap.nodes.forEach((node: IHeapNode) => {
+      if (node.id <= 3) return;
+      if (!node.hasPathEdge) return;
+      const key = `${node.type}::${normalizeClassName(node.name)}`;
+      if (!want.has(key)) return;
+      let ids = idsByClass.get(key);
+      if (ids == null) {
+        ids = [];
+        idsByClass.set(key, ids);
+      }
+      seen.set(key, (seen.get(key) ?? 0) + 1);
+      // Keep every `stride`-th instance, and double the stride (halving what
+      // is already held) whenever the buffer fills. The sample that survives
+      // is spread evenly across the WHOLE population at every population
+      // size, which is the property this needs: a class laid out owner by
+      // owner must still show its later owners, or the split that is the
+      // finding reads as 100% on one path.
+      //
+      // Front-truncation keeps the first 200k and a rolling `n % cap`
+      // overwrite keeps the LAST 200k — both are layout-order slices, which
+      // is the bias the even sampling below exists to remove, reintroduced
+      // one level up. Stride-doubling is not a slice, and unlike a random
+      // reservoir it is deterministic: two runs over the same snapshot
+      // sample the same instances, so a follow-up question lands on the
+      // objects the first answer described.
+      const n = seen.get(key) as number;
+      const stride = strideByClass.get(key) ?? 1;
+      if ((n - 1) % stride !== 0) return;
+      ids.push(node.id);
+      if (ids.length >= MAX_IDS_PER_CLASS) {
+        let j = 0;
+        for (let i = 0; i < ids.length; i += 2) ids[j++] = ids[i];
+        ids.length = j;
+        strideByClass.set(key, stride * 2);
+      }
+    });
+    for (const [key, ids] of idsByClass) {
+      const take = Math.min(sampleTarget, ids.length);
+      const step = ids.length / take;
+      const heads = new Map<string, number>();
+      for (let i = 0; i < take; i++) {
+        const node = snap.getNodeById(ids[Math.floor(i * step)]);
+        if (node == null) continue;
+        const head = retainerSignature(node);
+        heads.set(head, (heads.get(head) ?? 0) + 1);
+      }
+      out.set(
+        key,
+        [...heads.entries()]
+          .map(([head, count]) => ({head, count}))
+          .sort((a, b) => b.count - a.count),
+      );
+    }
+  });
+  return out;
+}
+
 export function registerSettleCheck(server: McpServer): void {
   server.tool(
     'memlab_settle_check',
@@ -197,6 +334,22 @@ export function registerSettleCheck(server: McpServer): void {
         .default(25)
         .describe('Maximum classes to report (default 25).'),
       min_growth: z.number().optional().default(100),
+      trace_held: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'For every class that SURVIVED idle + GC, sample its instances in the settled rung and group them by where their retainer path ENDS. A class whose instances all share one root head has one root cause and one fix; a class spread across several has several. This was done by hand on two populations in one sweep and was decisive both times (14/14 on one path). Costs one extra FULL load of the settled rung — the histogram passes are light and carry no path edges — which is why it is opt-in. Only meaningful with a baseline, i.e. via `run_dir`.',
+        ),
+      trace_sample: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .default(40)
+        .describe(
+          'Instances per held class to trace when `trace_held` is set (default 40).',
+        ),
     },
     async ({
       run_dir,
@@ -205,6 +358,8 @@ export function registerSettleCheck(server: McpServer): void {
       baseline_handle,
       limit,
       min_growth,
+      trace_held,
+      trace_sample,
     }) => {
       try {
         // run_dir is the ergonomic path: the runner already knows which rung is
@@ -221,6 +376,11 @@ export function registerSettleCheck(server: McpServer): void {
         let settledHist: Map<string, ClassStats>;
         let baseHist: Map<string, ClassStats> | null = null;
         let source: string;
+        // Only the `run_dir` path knows a FILE for the settled rung, and the
+        // trace needs to re-open it with path edges. A handle-based call
+        // therefore cannot trace, and says so rather than tracing the wrong
+        // graph.
+        let settledPathForTrace: string | null = null;
 
         if (run_dir != null) {
           const pair = resolveSettlePair(run_dir);
@@ -241,6 +401,7 @@ export function registerSettleCheck(server: McpServer): void {
               async (snap: IHeapSnapshot) => histogram(snap),
             );
           }
+          settledPathForTrace = pair.settledPath;
           source =
             `run_dir ${run_dir}\n` +
             `busy   : ${path.basename(pair.busyPath)}\n` +
@@ -381,10 +542,80 @@ export function registerSettleCheck(server: McpServer): void {
           '',
           '_A "drained" verdict is only as good as the settle: if the capture was taken before timers, network callbacks and storage writes finished, work still in flight will read as retention. Give it 30-60s of true idle and force GC first._',
         );
+        if (trace_held && held.length > 0 && settledPathForTrace != null) {
+          // Only the classes that will be RENDERED. The trace is the
+          // expensive half of an already-expensive extra full load — id
+          // collection plus per-class sampling — and computing it for held
+          // classes past `limit` produced results the table then discarded.
+          const tracedKeys = held.slice(0, limit).map(r => r.key);
+          // Isolated. `trace_held` is an OPT-IN extra — a second full load of
+          // the settled rung, with path edges, which is the heaviest thing
+          // this tool can be asked to do and the likeliest to run out of
+          // memory. The HELD/DRAINED verdict above it is already computed and
+          // is the answer the caller came for; losing it to a failure in an
+          // add-on turns a slow success into a total one.
+          // `null` rather than an early return. Returning here skipped the
+          // "Next" guidance at the end of the tool — so the one output that
+          // most needs a next step, the one whose trace just failed, was the
+          // only one that did not get one.
+          let heads: Map<string, Array<{head: string; count: number}>> | null =
+            null;
+          try {
+            heads = await traceHeldClasses(
+              settledPathForTrace,
+              tracedKeys,
+              trace_sample,
+            );
+          } catch (e) {
+            lines.push(
+              '',
+              `> ⚠️ **\`trace_held\` failed** (${e instanceof Error ? e.message : String(e)}). It re-opens the settled rung with path edges, which is a second full load; the HELD/DRAINED verdict above did not need it and stands. Retry with a lower \`limit\`, or trace one class with \`memlab_retainer_trace\`.`,
+            );
+          }
+          if (heads != null) {
+            lines.push('', '### Where the survivors are rooted', '');
+            lines.push(
+              markdownTable(
+                [
+                  'Class',
+                  'Sampled',
+                  'Dominant retainer path',
+                  'Share',
+                  'Distinct paths',
+                ],
+                held.slice(0, limit).map(r => {
+                  const rows = heads.get(r.key) ?? [];
+                  const total = rows.reduce((sum, h) => sum + h.count, 0);
+                  const top = rows[0];
+                  const {name} = splitClassKey(r.key);
+                  return [
+                    clampLabel(name, 44),
+                    formatNumber(total),
+                    top == null ? '—' : top.head,
+                    top == null || total === 0
+                      ? '—'
+                      : `${((top.count / total) * 100).toFixed(0)}%`,
+                    formatNumber(rows.length),
+                  ];
+                }),
+                new Set([1, 3, 4]),
+              ),
+            );
+            lines.push(
+              '',
+              '_One distinct path at 100% means ONE root cause and one fix. Several mean several — and a fix ' +
+                'that closes the largest leaves the rest retaining the population. Each path is the nearest three ' +
+                'NAMED hops, root-ward first; the literal top of a path is always `(GC roots)` and groups nothing. ' +
+                'A class with 0 sampled has no traceable instance in the settled rung._',
+            );
+          }
+        }
         if (held.length > 0 && hasBaseline) {
           lines.push(
             '',
-            '**Next:** for each survivor, `memlab_retainer_trace` on an example instance in the settled snapshot — that is the trace worth putting in a fix.',
+            trace_held
+              ? '**Next:** `memlab_retainer_trace` on an example instance behind the dominant head above — that is the trace worth putting in a fix.'
+              : '**Next:** for each survivor, `memlab_retainer_trace` on an example instance in the settled snapshot — that is the trace worth putting in a fix. `trace_held: true` groups every survivor by root-path head in one call instead.',
           );
         }
         return toolResult(lines.join('\n'));
