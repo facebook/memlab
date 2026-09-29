@@ -2139,6 +2139,89 @@ export async function runEval({
     const byEdgeName = (name: string): number[] => byNamedEdge(name, null);
 
     /**
+     * EVERY holder of `name`, with its target and that target's size.
+     *
+     * The plural case, made the default. A name in an app is rarely held
+     * once: `tracedInteractions` had three holders, and a probe that resolved
+     * the name and then `break`s on the first — which is how anyone writes it
+     * — measured ONE of the three and reported 1 where the population was
+     * 1,206. Summing across holders is correct and is the thing nobody
+     * remembers to do, so the helper returns the list and the caller has to
+     * choose explicitly.
+     */
+    const allByEdgeName = (
+      name: string,
+      opts?: {edgeTypes?: readonly string[]; countEntries?: boolean},
+    ): Array<{
+      holder: number;
+      holderName: string;
+      holderType: string;
+      edgeType: string;
+      target: number | null;
+      targetName: string | null;
+      entries: number | null;
+    }> => {
+      const want = opts?.edgeTypes == null ? null : new Set(opts.edgeTypes);
+      const countEntries = opts?.countEntries !== false;
+      const out: Array<{
+        holder: number;
+        holderName: string;
+        holderType: string;
+        edgeType: string;
+        target: number | null;
+        targetName: string | null;
+        entries: number | null;
+      }> = [];
+      for (const id of byNamedEdge(name, want)) {
+        const holder = snapshot.getNodeById(id);
+        if (holder == null) continue;
+        // One row per (holder, TARGET). A holder can carry the same name on
+        // more than one edge — a `property` and an `element` spelled alike —
+        // and each match pushed its own row, so the `entries` the docs tell
+        // callers to sum counted that container twice. Two edges of one
+        // name to two DIFFERENT targets are genuinely two things and both
+        // still appear; this only collapses the repeat.
+        const seenTargets = new Set<number>();
+        forEachRef(holder, e => {
+          if (want != null && !want.has(e.type)) return;
+          if (String(e.name_or_index) !== name) return;
+          const target = e.toNode;
+          if (target != null) {
+            if (seenTargets.has(target.id)) return;
+            seenTargets.add(target.id);
+          }
+          out.push({
+            holder: id,
+            holderName: holder.name,
+            holderType: holder.type,
+            edgeType: e.type,
+            target: target?.id ?? null,
+            targetName: target?.name ?? null,
+            // The size of what is BEHIND the name, which is the number the
+            // probe was after. Skippable, because it walks each container.
+            //
+            // Guarded: `entries` walks a container and can throw on one
+            // malformed target, which aborted the whole helper — losing
+            // every row already collected because one holder out of
+            // thousands was unreadable. `null` is the value this field
+            // already carries for "not counted".
+            entries:
+              countEntries && target != null ? safeEntryCount(target) : null,
+          });
+        });
+      }
+      return out;
+    };
+
+    const safeEntryCount = (target: IHeapNode): number | null => {
+      try {
+        return entries(target).length;
+      } catch {
+        return null;
+      }
+    };
+
+    /**
      * The GC-root path for one node, as `retainer_trace` walks it — but callable
      * from inside an eval.
      *
@@ -3453,6 +3536,7 @@ export async function runEval({
       byShape,
       withProp,
       byEdgeName,
+      allByEdgeName,
       aggregateRetained,
       contextOf,
       byContextSlot,
@@ -3838,7 +3922,7 @@ export async function runEval({
           'walk({name: pred}, {collect}) runs SEVERAL predicates in ONE pass — the ' +
           'node budget is cumulative across the eval, so two forEach passes on a ' +
           'multi-million-node graph aborts; byClass, nodesByClass, iterByClass, ' +
-          'byTypename, withProp, byEdgeName, byContextVar, hasShape, shapeKeys, queryNodes, findWithin; ' +
+          'byTypename, withProp, byEdgeName, allByEdgeName, byContextVar, hasShape, shapeKeys, queryNodes, findWithin; ' +
           'retainedSize(id), retainedSizes(ids), aggregateRetained(ids) — ' +
           'node.retainedSize THROWS here; rootPath, pathBetween, owner, contextOf, ' +
           'groupReferrersByEdge, detachedNamed, listenerRecords, closureCensus; ' +
@@ -4247,6 +4331,7 @@ function describeEnvLines(): string[] {
     '- `helpers.shapeSignature(nodeOrId, {maxStringLen?}) -> string` — stable shallow content signature (sorted prop names + scalar values) for duplicate-record detection. Numeric values are NOT captured (see `memlab_duplicate_objects`), so records differing only in a number field hash the same.',
     '- `helpers.byClass(name, {type?}) -> ids[]`, `helpers.byTypename(name) -> ids[]`, `helpers.withProp(name, {edgeTypes?}) -> ids[]` — INDEXED id lookups. The class/typename index is built once per snapshot and memoized in a session scratch, so a follow-up call is index-speed, not another full `snapshot.nodes` scan. `byClass` indexes EVERY node type (closure, string, array, native, …), matching `memlab_find_nodes_by_class`; pass `{type: "object"}` to narrow. `byTypename` is object-only because `__typename` is a JS property. (See also the `memlab_duplicate_objects` tool for a ready-made dedup report.)',
     '- ⚠️ **`withProp` matches `property` AND `context` edges by default.** A variable a closure captured is not a property of anything — it is a `context`-typed edge on a `system / Context / scope` node — so a `property`-only match answers `[]` for a population that is plainly there, and a ladder then fits that all-zero series and calls it a verified negative. Pass `{edgeTypes: ["property"]}` when you mean own properties only. The `withProp(...).filter(hasShape)` recipe is unaffected: scopes carry no property edges, so `hasShape` drops them.',
+    '- `helpers.allByEdgeName(name, {edgeTypes?, countEntries?}) -> [{holder, holderName, holderType, edgeType, target, targetName, entries}]` — EVERY holder of that name, with what it points at and how many entries that container has. The plural case as the default: a name is rarely held once (`tracedInteractions` had three holders), and a probe that resolves the name and then `break`s on the first — which is how it gets written — measured ONE of three and reported 1 for a population of 1,206. Sum `entries` across the rows, or pick a holder deliberately.',
     '- `helpers.byEdgeName(name) -> ids[]` — every holder of an edge NAMED `name`, whatever its type (`property`, `context`, `internal`, `element`, `hidden`, …). Use when you do not know, or do not care, how the name is attached. `helpers.byContextVar(name, {returns?, chain?}) -> ids[]` is the closure-variable case spelled out: the scopes holding a captured variable of that name (`{returns: "closures"}` for the closures instead). Both are indexed.',
     '- `helpers.nodesByClass(name, {type?}) -> node[]` (alias of `iterByClass`) — the same lookup returning NODE OBJECTS. Prefer it over `byClass`: ids from `byClass` are not all resolvable through `snapshot.getNodeById` — native classes such as `AudioContext` / `OpusRecorder` come back null — so the reflexive `byClass(x).map(id => getNodeById(id).referrers)` throws `Cannot read properties of null` and needs defensive `if (!n) continue` boilerplate on every native-touching eval.',
     '- `helpers.iterByClass(name, {type?}) -> node[]` / `helpers.iterByType(type) -> node[]` — indexed iteration; no full scan, index built once per snapshot.',
