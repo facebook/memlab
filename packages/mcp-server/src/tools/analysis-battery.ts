@@ -37,6 +37,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import {z} from 'zod';
+import type {RunManifest} from '../run-manifest.js';
 import {loadRunManifest} from '../run-manifest.js';
 import {getRegisteredTool} from '../tool-registry.js';
 import {makeProgressReporter} from '../progress.js';
@@ -175,6 +176,17 @@ function buildPlan(
       args: {target: finalRung, baseline: baseRung},
     },
     {tool: 'memlab_round_audit', args: {run_dir: runDir}},
+    // `run_dir`, deliberately, NOT the pinned `paths`.
+    //
+    // Passing explicit paths would fix the mid-battery drift below — and
+    // measured on a real round it silently cost the whole settle analysis:
+    // `resolveLadderInputs` reads the settle rung from the manifest, which
+    // only `run_dir` supplies, so a pinned call produced no HELD/DRAINED
+    // split and no UNSETTLED banner either. That split is the check that
+    // stops in-flight backlog being filed as a leak, which is the single
+    // most common false positive this battery produces. Drift needs
+    // `wait_for_rungs` on a still-driving round and is reported below;
+    // losing the settle evidence would happen on every run.
     {tool: 'memlab_leak_report', args: {run_dir: runDir, limit: 14}},
     // In the STANDARD profile, not an optional extra. The runner captures a
     // settle rung by default and the entire backlog-vs-retention distinction
@@ -479,6 +491,130 @@ function nextCalls(runDir: string, perTool: Map<string, string>): string[] {
   return out.slice(0, 5);
 }
 
+/** `run.json` parsed, or null while it is not a complete JSON document. */
+function parseRunJson(file: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The manifest, but only once it is COMPLETE and lists `want` rungs.
+ *
+ * `hunt_runner.capture_rung` writes `<rung>.ready` and only then calls
+ * `write_manifest`, which truncates run.json in place (`open(path, "w")`) and
+ * streams JSON into it. So the instant the marker count is satisfied is
+ * precisely when run.json is most likely to be half-written, and reading it
+ * straight through `loadRunManifest` aborts the whole battery with "not valid
+ * JSON" on a file that is complete a millisecond later.
+ *
+ * Parsing here first keeps that torn read retryable while a structurally wrong
+ * manifest — no rungs, a rung with no cycle count — still fails immediately
+ * instead of burning the caller's whole wait budget on a defect no amount of
+ * waiting fixes.
+ */
+function readSettledManifest(runDir: string, want: number): RunManifest | null {
+  const file = runDir.endsWith('.json')
+    ? runDir
+    : path.join(runDir, 'run.json');
+  const raw = parseRunJson(file);
+  if (raw == null) return null;
+  if (!Array.isArray(raw.rungs) || raw.rungs.length < want) return null;
+  try {
+    return loadRunManifest(runDir);
+  } catch (e: unknown) {
+    // `loadRunManifest` re-reads the file, so a rewrite can still land between
+    // the parse above and its own read. A file that no longer parses is that
+    // race and is worth another poll; anything else is a real defect.
+    if (parseRunJson(file) == null) return null;
+    throw e;
+  }
+}
+
+/**
+ * Block until `want` rungs have a `.ready` marker beside them AND run.json has
+ * caught up with them.
+ *
+ * The runner writes `<rung>.ready` when a capture completes, precisely so
+ * rung N can be analysed while N+1 is still being driven. Nothing in the
+ * analysis tools ever watched for it, so in practice analysis started when
+ * the whole round ended — the overlap the convention exists for was never
+ * taken.
+ *
+ * The manifest is part of the wait rather than a check after it because the
+ * markers and run.json are written by different steps: waiting on the markers
+ * alone hands back a round whose manifest is either mid-rewrite or still a
+ * rung short, and both of those are states the remaining budget would have
+ * resolved on its own.
+ *
+ * Polls rather than watches: a run directory can be on a network filesystem
+ * where inotify does not fire, and a 2-second poll against a rung that takes
+ * minutes is free.
+ */
+async function waitForReadyRungs(
+  runDir: string,
+  want: number,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<{ready: number; elapsedMs: number; manifest: RunManifest | null}> {
+  const started = Date.now();
+  const dirs = [path.join(runDir.replace(/\/$/, ''), 'snapshots'), runDir];
+  const countReady = (): number => {
+    for (const dir of dirs) {
+      let entries: string[];
+      try {
+        entries = fs.readdirSync(dir);
+      } catch {
+        continue;
+      }
+      // DRIVEN rungs only. `hunt_runner.settle()` also writes
+      // `rung_99_settle.heapsnapshot.ready`, but the settle capture is
+      // recorded under `settle_rung` in run.json and never appears in
+      // `manifest.paths` — so counting it let `wait_for_rungs: 4` be
+      // satisfied by three ladder rungs plus the settle marker, and the
+      // manifest-length check below then failed with advice to retry that
+      // no amount of retrying could satisfy. The two counts have to mean
+      // the same thing.
+      const n = entries.filter(e =>
+        /^rung_\d+_c\d+\.heapsnapshot\.ready$/.test(e),
+      ).length;
+      if (n > 0) return n;
+    }
+    return 0;
+  };
+  for (;;) {
+    // Cancellation FIRST, before the success return. Checking it only
+    // after meant a request cancelled during the final sleep still came
+    // back "ready" and went on to run the whole battery — the one moment
+    // where returning success is most expensive to be wrong about.
+    if (signal?.aborted === true) {
+      throw new Error(
+        `the request was cancelled while waiting for ${want} ready rung(s).`,
+      );
+    }
+    const ready = countReady();
+    if (ready >= want) {
+      const settled = readSettledManifest(runDir, want);
+      if (settled != null) {
+        return {ready, elapsedMs: Date.now() - started, manifest: settled};
+      }
+    }
+    const elapsedMs = Date.now() - started;
+    if (elapsedMs >= timeoutMs) return {ready, elapsedMs, manifest: null};
+    // The sleep is CLAMPED to what is left of the budget, and the count is
+    // re-checked after it. A flat 2 s could overshoot `wait_timeout_ms` —
+    // and with a budget under 2 s the wait slept past its own deadline
+    // before ever looking a second time, so a short timeout behaved like
+    // a single check followed by a fixed delay.
+    const remaining = timeoutMs - elapsedMs;
+    await new Promise(r =>
+      setTimeout(r, Math.max(0, Math.min(2000, remaining))),
+    );
+  }
+}
+
 export function registerAnalysisBattery(server: McpServer): void {
   server.tool(
     'memlab_analysis_battery',
@@ -512,6 +648,23 @@ export function registerAnalysisBattery(server: McpServer): void {
         .describe(
           'Budget for the whole battery. Checked BETWEEN steps — a whole-heap pass is one synchronous block and cannot be interrupted — so the guarantee is that no NEW step starts past the deadline.',
         ),
+      wait_for_rungs: z
+        .number()
+        .int()
+        .min(2)
+        .optional()
+        .describe(
+          'Wait until this many rungs have a `.ready` marker AND run.json lists them, before starting, instead of failing on a round still being driven. The runner writes `<rung>.ready` as each capture completes, which is what makes "analyse rung N while N+1 is driving" possible — but nothing in the analysis tools watched for it, so analysis could only begin once the whole round was over. The manifest is part of the wait because the runner rewrites run.json in place after writing the marker, so the moment the markers are satisfied is exactly when that file may be half-written. Times out after `wait_timeout_ms` and reports how many rungs it saw. The wait happens BEFORE the plan is built (the plan is derived from run.json, which is not final until the rungs are), so it also precedes the handle returned by `async` — see that parameter.',
+        ),
+      wait_timeout_ms: z
+        .number()
+        .int()
+        .min(1000)
+        .optional()
+        .default(900000)
+        .describe(
+          'How long `wait_for_rungs` waits before giving up (default 15 min). A rung is minutes of driving, so the default is deliberately long; the poll is cheap.',
+        ),
       digest_rows: z
         .number()
         .int()
@@ -526,15 +679,51 @@ export function registerAnalysisBattery(server: McpServer): void {
         .optional()
         .default(false)
         .describe(
-          'Return a handle IMMEDIATELY and run the battery in the background; poll it with `memlab_battery_status({battery_id})`, which hands back the full report once it is done. A standard battery is 7-10 minutes, so every call of it exceeds the generic tool timeout and is backgrounded — this makes the wait explicit and pollable instead, with no interleaved completion notification. Per-tool output still lands in `<out_dir>/<tool>.txt` as each step finishes, so a specific question can be answered before the battery is.',
+          'Return a handle IMMEDIATELY and run the battery in the background; poll it with `memlab_battery_status({battery_id})`, which hands back the full report once it is done. A standard battery is 7-10 minutes, so every call of it exceeds the generic tool timeout and is backgrounded — this makes the wait explicit and pollable instead, with no interleaved completion notification. Per-tool output still lands in `<out_dir>/<tool>.txt` as each step finishes, so a specific question can be answered before the battery is. One exception to IMMEDIATELY: with `wait_for_rungs` the call first blocks for up to `wait_timeout_ms` (default 15 min), because the battery cannot be planned before run.json lists the rungs it will read.',
         ),
     },
     async (
-      {run_dir, out_dir, profile, timeout_ms, digest_rows, async: runAsync},
+      {
+        run_dir,
+        out_dir,
+        profile,
+        timeout_ms,
+        digest_rows,
+        wait_for_rungs,
+        wait_timeout_ms,
+        async: runAsync,
+      },
       extra,
     ) => {
       try {
-        const manifest = loadRunManifest(run_dir);
+        let manifest: RunManifest;
+        if (wait_for_rungs != null) {
+          const waited = await waitForReadyRungs(
+            run_dir,
+            wait_for_rungs,
+            wait_timeout_ms,
+            (extra as {signal?: AbortSignal} | undefined)?.signal,
+          );
+          if (waited.manifest == null) {
+            const secs = formatNumber(Math.round(waited.elapsedMs / 1000));
+            return errorResult(
+              new Error(
+                waited.ready < wait_for_rungs
+                  ? `waited ${secs}s for ${wait_for_rungs} ready rung(s) and saw ${waited.ready}. ` +
+                      'The runner writes `<rung>.ready` as each capture completes; a round that has stopped writing them has ' +
+                      'either finished with fewer rungs than expected or died. Check the runner, or re-run without ' +
+                      '`wait_for_rungs` to analyse what is there.'
+                  : `waited ${secs}s: ${wait_for_rungs} ready rung(s) arrived, but run.json never settled into a complete ` +
+                      'manifest listing that many. The runner rewrites it in place after each capture, so a half-written read ' +
+                      'is retried for the rest of the budget — exhausting that budget means the round is writing markers ' +
+                      'without extending the manifest. Check the runner, or drop `wait_for_rungs` to analyse what is listed.',
+              ),
+            );
+          }
+          manifest = waited.manifest;
+        } else {
+          manifest = loadRunManifest(run_dir);
+        }
         if (manifest.paths.length < 2) {
           return errorResult(
             new Error(
@@ -870,6 +1059,34 @@ export function registerAnalysisBattery(server: McpServer): void {
             lines.push(
               `- \`${w.tool}.txt\` — ${formatNumber(w.bytes)} B, ${formatNumber(w.ms)} ms`,
             );
+          }
+          // The ladder can GROW under an overlapping battery. `wait_for_rungs`
+          // exists to start while the runner is still driving, and the
+          // per-step tools re-read `run.json` when they run — so a capture
+          // completing mid-battery means later steps measured a longer
+          // ladder than the header describes. Detected and stated rather
+          // than silently mixed: the numbers are each correct, they are
+          // just not all about the same round.
+          try {
+            const after = loadRunManifest(run_dir);
+            const settleArrived =
+              manifest.settleRungPath == null && after.settleRungPath != null;
+            if (after.paths.length !== manifest.paths.length || settleArrived) {
+              lines.push(
+                '',
+                `> ⚠️ **The ladder changed while this battery ran** — run.json listed ${formatNumber(manifest.paths.length)} rung(s) at the start and ${formatNumber(after.paths.length)} at the end. ` +
+                  (settleArrived
+                    ? 'A SETTLE rung also arrived after the plan was built, so `memlab_settle_check` was not run and the notes above may say this round has none — it does now. '
+                    : '') +
+                  'Every step reads the round when it runs, so later steps saw the longer ladder while the header and the census endpoints above describe the shorter one. ' +
+                  'The steps are each internally consistent; they are not all about the same set of rungs. ' +
+                  'Re-run once the round is finished for a single consistent set.',
+              );
+            }
+          } catch {
+            // The manifest became unreadable mid-run; the per-step output
+            // already stands on its own and a failed re-read is not worth
+            // discarding it for.
           }
           const suggestions = nextCalls(run_dir, perToolText);
           if (suggestions.length > 0) {
