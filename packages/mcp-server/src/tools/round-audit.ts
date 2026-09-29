@@ -38,6 +38,17 @@ export interface AuditCheck {
 
 interface RunManifest {
   run_id?: string;
+  /**
+   * Milliseconds since navigation when the BASELINE rung was taken.
+   *
+   * A proxy for how saturated the V8 isolate already was, and the runner has
+   * logged it since it started recording it — as a LOG LINE. Two rounds of
+   * the same driven surface measured +281.8 selector-cache nodes/cycle on a
+   * freshly loaded page and +106.5 on one already driven for hundreds of
+   * cycles: a 2.6x spread with no code difference. Comparing those two rates
+   * compares two different experiments, and nothing in the audit said so.
+   */
+  isolate_age_at_baseline?: {ms_since_navigation?: number} | null;
   totals?: {cycles?: number; ok?: number; fail?: number};
   rungs?: Array<{index?: number; path?: string; isolate_restarted?: boolean}>;
   steps?: Record<
@@ -393,6 +404,45 @@ export function auditManifest(
         'pass over this round. Re-run this audit after the battery to get it, and ' +
         'quote it with any detached figure: a round that started with a stranded ' +
         'document realm cannot be compared against one that did not.',
+    });
+  }
+
+  const isolateAgeMs = m.isolate_age_at_baseline?.ms_since_navigation;
+  // NaN and a negative sentinel both pass `typeof === 'number'`, and both
+  // then render as an age under the threshold — so a value the runner could
+  // not determine is reported as "effectively a fresh load", which is the
+  // reassuring answer and the one that makes two incomparable rounds look
+  // comparable.
+  if (
+    typeof isolateAgeMs === 'number' &&
+    Number.isFinite(isolateAgeMs) &&
+    isolateAgeMs >= 0
+  ) {
+    // A threshold, not just a number. "Comparable at comparable isolate age"
+    // is unactionable without one, and a page driven for minutes before the
+    // baseline is a materially different experiment from a fresh load.
+    const seconds = isolateAgeMs / 1000;
+    const WARM_ISOLATE_S = 120;
+    checks.push({
+      name: 'baseline isolate age',
+      status: seconds >= WARM_ISOLATE_S ? 'caveat' : 'info',
+      detail:
+        `${formatNumber(Math.round(seconds))}s since navigation when the baseline rung was taken. ` +
+        (seconds >= WARM_ISOLATE_S
+          ? 'This isolate was already WARM. Rates measured here are not comparable with a round ' +
+            'baselined on a fresh load — the same surface measured +281.8 nodes/cycle fresh and ' +
+            '+106.5 warm, a 2.6x spread with no code difference. Quote the age with the rate.'
+          : 'Effectively a fresh load. Quote it with the rate: rounds are only comparable at ' +
+            'comparable isolate age.'),
+    });
+  } else if (isolateAgeMs !== undefined) {
+    checks.push({
+      name: 'baseline isolate age',
+      status: 'caveat',
+      detail:
+        `the round recorded \`${String(isolateAgeMs)}\` as the isolate age, which is not a duration. ` +
+        'Rounds are only comparable at comparable isolate age, and this one cannot be placed — ' +
+        'treat its rate as uncomparable rather than as a fresh-load measurement.',
     });
   }
 
