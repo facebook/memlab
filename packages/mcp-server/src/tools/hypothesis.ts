@@ -17,6 +17,8 @@ import memlabHeapAnalysis from '@memlab/heap-analysis';
 const {getFullHeapFromFile} = memlabHeapAnalysis;
 import {resolveSnapshotPath} from './load-snapshot.js';
 import {resolveLadderPaths} from './ladder.js';
+import {resolveLadderInputs} from '../run-manifest.js';
+import {classifyArtifact} from '../artifact-classes.js';
 import {
   errorResult,
   formatBytes,
@@ -150,6 +152,115 @@ function trendOf(counts: number[]): string {
   return 'flat';
 }
 
+/**
+ * The questions every leak-hunt round asks, as predicates.
+ *
+ * A measured round carried ~15 candidate explanations and tested four,
+ * because writing fifteen predicates by hand is fifteen chances to mistype a
+ * class name. Every round asks the same opening set — is this contaminated
+ * by a known artifact family? is it a DOM leak? is it listeners? is it
+ * promises or timers? — and the answers are one walk each, shared.
+ *
+ * Every entry states its `expect`, so the output is PASS/FAIL rather than
+ * counts to interpret — and every label is phrased as the CLEAN-round
+ * expectation, so PASS always means "nothing to see here". Labelling them as
+ * the hypothesis instead ("Maps accumulate" … PASS) reads as a confirmation
+ * of the thing that did not happen. The artifact families come from `artifact-classes.ts`
+ * rather than from a list written here, so they cannot drift apart: an
+ * `absent` PASS means the round is clean of that family, and a FAIL means a
+ * population that must be excluded from any total.
+ */
+const AUTO_HYPOTHESES: ReadonlyArray<{
+  label: string;
+  predicate: string;
+  expect: Expectation;
+}> = [
+  {
+    label: 'clean of V8 JIT warmup',
+    predicate: "artifact === 'warmup'",
+    expect: 'absent',
+  },
+  {
+    label: 'clean of a11y cache (automation-inflated)',
+    predicate: "artifact === 'ax'",
+    expect: 'absent',
+  },
+  {
+    label: 'clean of CDP network log',
+    predicate: "artifact === 'cdp-network'",
+    expect: 'absent',
+  },
+  {
+    label: 'clean of CDP performance timeline',
+    predicate: "artifact === 'cdp-perf'",
+    expect: 'absent',
+  },
+  {
+    label: 'clean of CDP console retention',
+    predicate: "artifact === 'cdp-console'",
+    expect: 'absent',
+  },
+  {
+    label: 'clean of captured Error stacks',
+    predicate: "artifact === 'stack-capture'",
+    expect: 'absent',
+  },
+  {
+    label: 'clean of dev-only / automation modules',
+    // Every alternative anchored, inside ONE group. Alternation binds
+    // looser than `^`, so the original anchored only `BrowserTools` and
+    // `__REACT_DEVTOOLS`; the rest matched anywhere in a name, and a string
+    // node's class name IS its content — any string mentioning `webdriver`
+    // or `playwright` then failed an `expect: 'absent'` probe and reported
+    // the round as automation-contaminated.
+    predicate:
+      '/^(?:BrowserTools|DevToolsInterop|\\$RefreshSig\\$|\\$RefreshReg\\$|RefreshRuntime|__REACT_DEVTOOLS|webdriver|puppeteer|playwright)/.test(node.name)',
+    expect: 'absent',
+  },
+  {
+    label: 'detached DOM does NOT grow',
+    predicate: "node.name.startsWith('Detached ') || node.is_detached === true",
+    expect: 'flat',
+  },
+  {
+    label: 'Promises do NOT accumulate',
+    predicate: "node.name === 'Promise'",
+    expect: 'flat',
+  },
+  {
+    label: 'timer / scheduler closures do NOT accumulate',
+    predicate:
+      "node.type === 'closure' && /Timeout|Interval|scheduler|Scheduler/.test(node.name)",
+    expect: 'flat',
+  },
+  {
+    label: 'Maps do NOT accumulate',
+    predicate: "node.name === 'Map' && node.type === 'object'",
+    expect: 'flat',
+  },
+  {
+    label: 'Sets do NOT accumulate',
+    predicate: "node.name === 'Set' && node.type === 'object'",
+    expect: 'flat',
+  },
+  {
+    label: 'no string over 1 MB is retained',
+    predicate:
+      "(node.type === 'string' || node.type === 'concatenated string') && node.self_size > 1048576",
+    expect: 'absent',
+  },
+  {
+    label: 'only one Window realm',
+    predicate: '/^Window /.test(node.name)',
+    expect: 'flat',
+  },
+  {
+    label: 'WeakMaps do NOT accumulate',
+    predicate: "node.name === 'WeakMap'",
+    expect: 'flat',
+  },
+];
+
 export function registerHypothesis(server: McpServer): void {
   server.tool(
     'memlab_hypothesis',
@@ -158,9 +269,27 @@ export function registerHypothesis(server: McpServer): void {
       'Set group_by_shape to break matches down by property shape per rung instead of a single count, which answers "WHICH variant of this class is the one accumulating?" — the shape sweep that otherwise required a separate pass. Snapshots are loaded one at a time and released, so a long ladder is memory-safe.\n\n' +
       'Give each entry in `predicates` an `expect` (`grows` / `flat` / `absent` / `present`) to get a PASS/FAIL column instead of counts to interpret. A measured round carried ~15 candidate explanations and tested four, because a table of fifteen count-rows still has to be read against what you thought would happen, one row at a time. Stating the prediction up front also stops the counts from deciding, after the fact, what they showed.',
     {
+      run_dir: z
+        .string()
+        .optional()
+        .describe(
+          "A leak-hunt round's output directory. Resolves the rung list from run.json, so `paths` does not have to be typed out — and is what `auto` needs.",
+        ),
+      auto: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Run the STANDARD opening hypothesis set instead of supplying predicates: the known artifact families (JIT warmup, a11y cache, CDP network/perf/console, captured Error stacks, dev-only modules — each expected ABSENT, so a FAIL names a population to exclude from any total) plus the structural questions every round asks (detached DOM, Promises, timer closures, Maps, Sets, a >1 MB string, extra Window realms, WeakMaps). One measured round carried ~15 candidate explanations and tested four, because writing fifteen predicates by hand is fifteen chances to mistype a class name. All of them share one walk per rung.',
+        ),
       paths: z
+        // No `.min(1)`. `paths` became optional when `run_dir` was added,
+        // and the handler already answers an empty list with the message
+        // that names BOTH ways to supply a ladder — a schema rejection
+        // pre-empts it with a generic "array must contain at least 1
+        // element" that mentions neither.
         .array(z.string())
-        .min(1)
+        .optional()
         .describe(
           'Ordered snapshot paths (oldest first). Local paths, manifold:// URLs, bare filenames, or a single ["ladder:<name>"] reference to a ladder saved with memlab_ladder.',
         ),
@@ -187,7 +316,7 @@ export function registerHypothesis(server: McpServer): void {
         .string()
         .optional()
         .describe(
-          'JavaScript expression over `node` returning a boolean, e.g. `node.name === "Map" && node.retainedSize > 10000`, or `node.type === "closure" && node.name.includes("chat")`. Evaluated in a sandbox with no I/O; only the node is exposed. Compiled once and applied per node, so keep it cheap — avoid walking `node.references` for every node in a multi-million-node heap.',
+          'JavaScript expression over `node` returning a boolean, e.g. `node.name === "Map" && node.retainedSize > 10000`, or `node.type === "closure" && node.name.includes("chat")`. Also in scope: `artifact`, this node\'s dev/automation family as a string ("warmup", "ax", "cdp-network", "cdp-perf", "cdp-console", "stack-capture", or "" for none) — so `artifact === "warmup"` matches the warm-up artifacts without restating their name patterns. Evaluated in a sandbox with no I/O; `node` and `artifact` are the only things exposed. Compiled once and applied per node, so keep it cheap — avoid walking `node.references` for every node in a multi-million-node heap.',
         ),
       group_by_shape: z
         .boolean()
@@ -207,6 +336,8 @@ export function registerHypothesis(server: McpServer): void {
         .describe('Per-file size ceiling in MB; see memlab_load_snapshot.'),
     },
     async ({
+      run_dir,
+      auto,
       paths,
       predicate,
       predicates,
@@ -215,6 +346,41 @@ export function registerHypothesis(server: McpServer): void {
       max_file_size_mb,
     }) => {
       try {
+        // `run_dir` resolves the ladder, and `auto` supplies the predicates.
+        // Both are conveniences over the same machinery below, so an `auto`
+        // run is byte-for-byte a `predicates` run with a list nobody had to
+        // type.
+        if (run_dir != null && run_dir !== '') {
+          // Named, not swallowed by the outer handler. `resolveLadderInputs`
+          // throws for a missing directory, an absent or malformed run.json
+          // and a rung with no cycle count — four different operator
+          // mistakes that all arrive here as one unlabelled error, at the
+          // top of a tool whose next move is a multi-minute ladder walk.
+          try {
+            paths = resolveLadderInputs({run_dir}).paths;
+          } catch (e) {
+            return errorResult(
+              `could not read the ladder from \`${run_dir}\`: ${e instanceof Error ? e.message : String(e)}\n\n` +
+                'Pass the round directory that holds `run.json` (the hunt runner writes it), or list the rungs directly with `paths`.',
+            );
+          }
+        }
+        if (paths == null || paths.length === 0) {
+          return errorResult(
+            'Pass `run_dir` (recommended — it reads the rung list from run.json) or `paths`.',
+          );
+        }
+        if (auto) {
+          if (
+            predicate != null ||
+            (predicates != null && predicates.length > 0)
+          ) {
+            return errorResult(
+              '`auto` supplies the predicate set; passing `predicate`/`predicates` as well leaves it ambiguous which set the verdict is about. Run them as two calls, or drop `auto` and include the standard ones yourself.',
+            );
+          }
+          predicates = AUTO_HYPOTHESES.map(h => ({...h}));
+        }
         const batch = predicates != null && predicates.length > 0;
         if (batch && predicate != null) {
           return errorResult(
@@ -230,21 +396,36 @@ export function registerHypothesis(server: McpServer): void {
           ? (predicates ?? [])
           : [{label: predicate as string, predicate: predicate as string}];
 
-        const tests: Array<(node: IHeapNode) => boolean> = [];
+        const tests: Array<(node: IHeapNode, artifact: string) => boolean> = [];
         for (const spec of specs) {
           try {
-            // Compiled ONCE, in a context with nothing in it: the predicate gets
-            // the node it is called with and no ambient capability.
+            // Compiled ONCE, in a context with NOTHING in it.
+            //
+            // The artifact family arrives as a second ARGUMENT rather than
+            // as a callable in the context. A host function in the context
+            // hands the predicate `fn.constructor` — a `Function` from the
+            // host realm — and `classifyArtifact.constructor('return
+            // process')()` then returns the real `process`. Passing the
+            // already-computed string keeps `artifact-classes.ts` as the one
+            // definition of those families without adding that reference.
+            //
+            // This bounds MISTAKES, not an attacker: `node` is itself a host
+            // object, so `node.constructor.constructor` reaches the same
+            // realm, and `vm` is not a security boundary in Node in any
+            // case. The predicate comes from whoever is already calling this
+            // server, who has `memlab_eval` — an arbitrary-code tool by
+            // design. The empty context is worth keeping because it makes a
+            // typo'd global fail loudly instead of resolving to something.
             tests.push(
               vm.runInNewContext(
-                `(function(node){ return !!(${spec.predicate}); })`,
-                Object.create(null),
+                `(function(node, artifact){ return !!(${spec.predicate}); })`,
+                vm.createContext(Object.create(null)),
                 {timeout: 1000},
-              ) as (node: IHeapNode) => boolean,
+              ) as (node: IHeapNode, artifact: string) => boolean,
             );
           } catch (e) {
             return errorResult(
-              `Could not compile predicate${batch ? ` "${spec.label}"` : ''}: ${e instanceof Error ? e.message : String(e)}. It must be a JavaScript EXPRESSION over \`node\` (no statements, no return).`,
+              `Could not compile predicate${batch ? ` "${spec.label}"` : ''}: ${e instanceof Error ? e.message : String(e)}. It must be a JavaScript EXPRESSION over \`node\` and \`artifact\` (no statements, no return).`,
             );
           }
         }
@@ -280,15 +461,30 @@ export function registerHypothesis(server: McpServer): void {
           // on the first node would otherwise still walk every remaining node in
           // a multi-million-node heap before the error is reported. Throwing a
           // sentinel out of the callback actually stops the walk.
+          // Only when a predicate actually reads it. `classifyArtifact`
+          // runs a pattern set per node, and on a multi-million-node heap
+          // that is a full extra pass charged to every caller — including
+          // the majority whose predicates never mention `artifact`.
+          const wantsArtifact = specs.some(sp =>
+            /\bartifact\b/.test(sp.predicate),
+          );
           class AbortWalk extends Error {}
           const shapes = specs.map(() => new Map<string, number>());
           try {
             snapshot.nodes.forEach(node => {
               scanned++;
+              // Once per NODE, not once per node per test. `auto` runs 15
+              // predicates over a multi-million-node heap, so classifying
+              // inside the inner loop ran the pattern set 15x more often
+              // than it needs to for an answer that cannot differ between
+              // tests of the same node.
+              const artifact = wantsArtifact
+                ? (classifyArtifact(node.name) ?? '')
+                : '';
               for (let t = 0; t < tests.length; t++) {
                 let hit = false;
                 try {
-                  hit = tests[t](node);
+                  hit = tests[t](node, artifact);
                 } catch (e) {
                   // Report the predicate's own failure rather than a silent
                   // zero: a predicate that throws on the first node would
