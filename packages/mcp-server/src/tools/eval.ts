@@ -133,12 +133,29 @@ export function shrinkResult(
   droppedEntries: number;
   keptEntries: number;
 } {
+  // BYTES, matching the parameter's name and the `max_result_bytes` the
+  // caller sets. `.length` is UTF-16 code units, so a result of non-ASCII
+  // class names measured as comfortably under a cap it was actually over —
+  // and every clip derived from it was short by the same factor.
   const size = (v: unknown): number => {
     try {
-      return JSON.stringify(v)?.length ?? 0;
+      return Buffer.byteLength(JSON.stringify(v) ?? '', 'utf8');
     } catch {
-      return String(v).length;
+      return Buffer.byteLength(String(v), 'utf8');
     }
+  };
+  /** Clip a string to a byte budget, on a character boundary. */
+  const clipToBytes = (text: string, budget: number): string => {
+    if (Buffer.byteLength(text, 'utf8') <= budget) return text;
+    const head = Buffer.from(text, 'utf8').subarray(
+      0,
+      Math.max(0, budget - Buffer.byteLength('…', 'utf8')),
+    );
+    return (
+      new TextDecoder('utf-8', {fatal: false})
+        .decode(head)
+        .replace(/\uFFFD$/, '') + '…'
+    );
   };
   if (size(value) <= maxBytes) {
     return {value, truncated: false, droppedEntries: 0, keptEntries: -1};
@@ -207,12 +224,91 @@ export function shrinkResult(
     if (size(entries.take(mid)) <= maxBytes) lo = mid;
     else hi = mid - 1;
   }
-  shrunk = entries.take(lo);
+  if (lo > 0) {
+    shrunk = entries.take(lo);
+    return {
+      value: shrunk,
+      truncated: true,
+      droppedEntries: entries.length - lo,
+      keptEntries: lo,
+    };
+  }
+
+  // Not even ONE entry fits. Returning the empty container here is the worst
+  // available answer: `{}` or `[]` is byte-identical to a genuine empty
+  // census, which is the same shape as a probe that could not reach its
+  // population — the failure this whole file has been hardening against.
+  //
+  // So return the first entry with its VALUE clipped, and the total count
+  // beside it. A clipped sample shows what the entries look like (which is
+  // usually enough to see that they are far too big) and cannot be mistaken
+  // for a result.
+  const note = `no entry fit in ${maxBytes} bytes; showing the FIRST one, clipped`;
+  // The KEY is clipped too, and the wrapper is paid for out of the same
+  // budget. Clipping only the value left this unbounded in the one case it
+  // exists for: a string node's class name IS its content, so an entry keyed
+  // on a multi-megabyte string returned a multi-megabyte "clipped" sample.
+  const overhead = size({__truncated: note, __entries: entries.length}) + 16;
+  const clipTo = Math.max(64, Math.floor((maxBytes - overhead) / 2));
+  const first = entries.take(1);
+  // Serialised ONCE, and defensively. This called `size(v)` — a full
+  // `JSON.stringify` — and then stringified the same value again, which on
+  // the multi-megabyte value this path exists for is two of the most
+  // expensive operations in the function back to back. `size` also
+  // tolerates a value `JSON.stringify` refuses (a circular structure, a
+  // BigInt) by falling back to `String(v)`; the second call did not, so a
+  // value `size` had happily measured could throw here.
+  const clip = (v: unknown): unknown => {
+    let text: string;
+    try {
+      text = JSON.stringify(v) ?? String(v);
+    } catch {
+      text = String(v);
+    }
+    return Buffer.byteLength(text, 'utf8') > clipTo
+      ? clipToBytes(text, clipTo)
+      : v;
+  };
+  const clipKey = (k: string): string => clipToBytes(k, clipTo);
+  let sample: unknown;
+  if (Array.isArray(first)) {
+    sample = [clip(first[0])];
+  } else if (first != null && typeof first === 'object') {
+    const [k, v] = Object.entries(first as Record<string, unknown>)[0] ?? [
+      '(none)',
+      null,
+    ];
+    sample = {[clipKey(k)]: clip(v)};
+  } else {
+    sample = clip(first);
+  }
+  const wrapped = {
+    __truncated: note,
+    __entries: entries.length,
+    __sample: sample,
+  };
+  // Last resort, and the last resort is itself checked. Both halves are
+  // clipped, but multi-byte escaping in `JSON.stringify` can still carry
+  // the encoded form past the ceiling — and a cap that the truncation
+  // notice itself breaches is not a cap. If even the placeholder does not
+  // fit, the note goes on its own: an entry count and a reason will always
+  // be smaller than anything they describe.
+  const placeholder = {
+    __truncated: note,
+    __entries: entries.length,
+    __sample: '(the first entry does not fit even clipped)',
+  };
+  const bounded =
+    size(wrapped) <= maxBytes
+      ? wrapped
+      : size(placeholder) <= maxBytes
+        ? placeholder
+        : {__entries: entries.length, __truncated: 'over the size cap'};
   return {
-    value: shrunk,
+    value: bounded,
     truncated: true,
-    droppedEntries: entries.length - lo,
-    keptEntries: lo,
+    droppedEntries: entries.length,
+    keptEntries: 0,
   };
 }
 
@@ -3606,8 +3702,9 @@ export async function runEval({
       footer.push(
         `⚠️ truncated: true — the result exceeded ${formatNumber(budgetBytes)} bytes` +
           (nothingFit
-            ? `, and NOT EVEN ONE of the ${formatNumber(shrunk.droppedEntries)} entries fit inside it, ` +
-              'so the value above is EMPTY. Nothing was kept — do not read it as a leading subset. ' +
+            ? `, and NOT EVEN ONE of the ${formatNumber(shrunk.droppedEntries)} entries fit inside it. ` +
+              'The value above is NOT a result: it is `__entries`, the real count, and — when even a ' +
+              'clipped first entry did not fit — nothing else. Do not read it as a leading subset. ' +
               'A single entry is larger than the whole budget, so raise `max_result_bytes` ' +
               'substantially or return less per entry.'
             : shrunk.droppedEntries > 0
