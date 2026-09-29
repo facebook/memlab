@@ -165,6 +165,15 @@ function buildPlan(
   hasSettleRung: boolean,
 ): Step[] {
   const ladder: Step[] = [
+    // FIRST, deliberately. On one app 59-75% of the heap is not the
+    // application at all, and `app_delta` ran between 7% and 86% of the
+    // post-GC total depending on the round — so every other number in the
+    // battery is read against it, and reading them first means reading them
+    // without it. It was also the most under-used tool in the set.
+    {
+      tool: 'memlab_artifact_budget',
+      args: {target: finalRung, baseline: baseRung},
+    },
     {tool: 'memlab_round_audit', args: {run_dir: runDir}},
     {tool: 'memlab_leak_report', args: {run_dir: runDir, limit: 14}},
     // In the STANDARD profile, not an optional extra. The runner captures a
@@ -178,10 +187,6 @@ function buildPlan(
     ...(hasSettleRung
       ? [{tool: 'memlab_settle_check', args: {run_dir: runDir}}]
       : []),
-    {
-      tool: 'memlab_artifact_budget',
-      args: {target: finalRung, baseline: baseRung},
-    },
     {
       tool: 'memlab_census_diff',
       args: {baseline: baseRung, target: finalRung, top_n: 30},
@@ -555,6 +560,10 @@ export function registerAnalysisBattery(server: McpServer): void {
               : null;
           const digestLines: string[] = [];
           const written: Array<{tool: string; bytes: number; ms: number}> = [];
+          // Kept so the report can quote a headline out of a tool's full
+          // output rather than re-deriving it from the digest's clipped
+          // lines.
+          const perToolText = new Map<string, string>();
           const failures: string[] = [];
           let skipped = 0;
           // Every step whose args name no snapshot of their own reads whatever
@@ -635,6 +644,9 @@ export function registerAnalysisBattery(server: McpServer): void {
             }
             const ms = Date.now() - started;
             const file = path.join(outDir, `${step.tool}.txt`);
+            // Recorded BEFORE the write: the app_delta headline is lifted
+            // from this map, and a failed disk write is no reason to lose it.
+            perToolText.set(step.tool, text);
             try {
               fs.writeFileSync(file, text, 'utf8');
               written.push({tool: step.tool, bytes: text.length, ms});
@@ -658,9 +670,29 @@ export function registerAnalysisBattery(server: McpServer): void {
             }
           }
 
+          // The one number every other number is read against, lifted out of
+          // `artifact_budget` and put ABOVE the digest. A figure that has to
+          // be found in section four is a figure that gets skipped, and then
+          // a +44 MB app_delta hides behind a +1.5 MB post-GC total (or the
+          // reverse).
+          const appDeltaLine = (() => {
+            const text = perToolText.get('memlab_artifact_budget');
+            if (text == null) return null;
+            const m = /^\*\*app_delta:.*$/m.exec(text);
+            return m ? m[0] : null;
+          })();
+
           const lines: string[] = [
             `## Analysis battery — \`${path.basename(run_dir.replace(/\/$/, ''))}\` (${profile})`,
             '',
+            ...(appDeltaLine != null
+              ? [
+                  appDeltaLine +
+                    ' — the application-side change, and the number every other figure below is read against. ' +
+                    'The post-GC total is not it: on one round app_delta was +44.2 MB while the total moved +1.5 MB.',
+                  '',
+                ]
+              : []),
             `${manifest.paths.length} rungs at cycles [${manifest.cyclesPerRung.join(', ')}], ` +
               `${formatNumber(manifest.cycles)} cycles driven` +
               (manifest.combos.length > 0
