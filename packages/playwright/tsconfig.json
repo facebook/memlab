@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "target": "ES2022"
+  },
+  "include": ["src/**/*"],
+  "references": [{"path": "../core"}, {"path": "../api"}]
+}
