@@ -77,8 +77,10 @@ export function registerRateModel(server: McpServer): void {
   server.tool(
     'memlab_rate_model',
     'Is this population UNBOUNDED, or is it a working set whose size is just a function of how fast the harness drove?\n\n' +
-      'Fits both models to one series — a straight line, and a saturating curve `plateau * (1 - exp(-cycles/tau))` — ' +
-      'and reports which the data actually supports, the implied plateau, and the implied retention window in cycles.\n\n' +
+      'Fits a straight line, a saturating curve `plateau * (1 - exp(-cycles/tau))`, and (with 4+ rungs) a one-time ' +
+      'step followed by a line, and reports which the data actually supports, the implied plateau, and the implied ' +
+      'retention window in cycles. A first-mount step followed by steady growth is reported as POST-STEP LINEAR, ' +
+      'never as a plateau.\n\n' +
       'This is the distinction a short ladder cannot make and a long one makes for free. A population held by a ' +
       'time-boxed grace period (a temporary retain, a TTL cache, an in-flight window) is EXACTLY linear early — its ' +
       'size is rate x window and the window has not elapsed yet — so a 4,000-cycle ladder scores it r2 ~ 1.0 and it ' +
@@ -201,6 +203,18 @@ export function registerRateModel(server: McpServer): void {
         const sat = fitSaturating(axis, values);
         const last = values[values.length - 1];
         const lastX = axis[axis.length - 1];
+        // First-mount work (a component tree, a cache warmed once) lands
+        // between rung 0 and rung 1 and is not repeated. A saturating curve
+        // fits that step-then-line shape well, so without this model the step
+        // reads as the "rise" and the constant slope after it as the
+        // "plateau": measured, a ladder called RATE-DRIVEN at plateau 5,912
+        // reached 9,165 at twice the cycles. Needs three post-step rungs.
+        const post =
+          values.length >= 4 ? linearFit(axis.slice(1), values.slice(1)) : null;
+        const stepSize =
+          post != null
+            ? values[1] - values[0] - post.slope * (axis[1] - axis[0])
+            : 0;
 
         const lines: string[] = [
           `## Rate model — ${label != null ? `\`${label}\`` : 'population'}`,
@@ -208,6 +222,15 @@ export function registerRateModel(server: McpServer): void {
           markdownTable(
             ['Model', 'Fit (r2)', 'Parameters'],
             [
+              ...(post != null
+                ? [
+                    [
+                      'Step + linear (rung 0 excluded)',
+                      post.r2.toFixed(4),
+                      `step ${stepSize >= 0 ? '+' : ''}${formatNumber(Math.round(stepSize))}, then ${post.slope >= 0 ? '+' : ''}${post.slope.toFixed(3)} per cycle`,
+                    ],
+                  ]
+                : []),
               [
                 'Unbounded (linear)',
                 lin.r2.toFixed(4),
@@ -236,8 +259,30 @@ export function registerRateModel(server: McpServer): void {
         const peak = Math.max(...values);
         const reachedFraction = sat.plateau > 0 ? peak / sat.plateau : 0;
         const tauWithinLadder = sat.tau <= lastX;
-        const saturates =
+        // A curve that bends early can still be growing at the end. "Plateau
+        // observed" needs the last two per-cycle deltas both well under the
+        // steepest earlier one; a tail that stopped rising counts even when
+        // nothing earlier rose either (steepest = 0).
+        const perCycle = values
+          .slice(1)
+          .map((v, i) =>
+            axis[i + 1] > axis[i]
+              ? (v - values[i]) / (axis[i + 1] - axis[i])
+              : 0,
+          );
+        const steepest = Math.max(...perCycle.slice(0, -2), 0);
+        const plateauObserved =
+          perCycle.length >= 3 &&
+          perCycle.slice(-2).every(d => d <= 0 || d < 0.2 * steepest);
+        const curveFits =
           margin > 0.02 && reachedFraction > 0.6 && tauWithinLadder;
+        const postStepLinear =
+          post != null &&
+          post.r2 >= 0.95 &&
+          post.r2 >= sat.r2 &&
+          post.slope > 0 &&
+          stepSize > 2 * post.slope * (axis[1] - axis[0]);
+        const saturates = curveFits && plateauObserved && !postStepLinear;
 
         // A flat series fits a straight line PERFECTLY: `linearFit` short-
         // circuits to r2 = 1 when the values never vary, and a cleanly
@@ -255,8 +300,35 @@ export function registerRateModel(server: McpServer): void {
         const grows =
           lin.slope > 0 && fittedRise > 0.05 * Math.max(Math.abs(meanY), 1);
         let unbounded = false;
+        let slope = lin.slope;
 
-        if (saturates) {
+        if (postStepLinear && post != null) {
+          unbounded = true;
+          slope = post.slope;
+          lines.push(
+            `**POST-STEP LINEAR — a one-time step, then a per-cycle leak of ${post.slope.toFixed(3)} per cycle.** ` +
+              `Rung 0 → 1 jumped by about ${formatNumber(Math.round(stepSize))} beyond the trend; from rung 1 on ` +
+              `the series is a straight line (r2 ${post.r2.toFixed(4)}` +
+              (curveFits
+                ? `, against ${sat.r2.toFixed(4)} for the saturating curve, whose "plateau" is the step`
+                : '') +
+              '). The step is first-mount cost and is not a leak; the slope after it is, and it has no ceiling in this data.',
+            '',
+          );
+        } else if (curveFits && !plateauObserved) {
+          lines.push(
+            `**NOT YET BOUNDED — the curve bends, but the ladder is still climbing.** The saturating model fits ` +
+              `(r2 ${sat.r2.toFixed(4)}), yet the last two rungs grew at ` +
+              `${perCycle
+                .slice(-2)
+                .map(d => d.toFixed(3))
+                .join(
+                  ' and ',
+                )} per cycle against ${steepest.toFixed(3)} at the steepest — not under 20% of it. ` +
+              'A plateau has not been observed. Extend the ladder before calling this a working set.',
+            '',
+          );
+        } else if (saturates) {
           lines.push(
             `**RATE-DRIVEN — this is a working set, not an unbounded leak.** The saturating model fits ` +
               `better (r2 ${sat.r2.toFixed(4)} vs ${lin.r2.toFixed(4)}), the ladder reached ` +
@@ -336,7 +408,7 @@ export function registerRateModel(server: McpServer): void {
         // verdict above just rejected. What a real user accrues PER HOUR is the
         // actionable figure, and it was computed by hand in every write-up.
         if (unbounded && production_cycles_per_minute != null) {
-          const perHour = lin.slope * production_cycles_per_minute * 60;
+          const perHour = slope * production_cycles_per_minute * 60;
           lines.push(
             '### At a production interaction rate',
             '',
