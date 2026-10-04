@@ -22,7 +22,8 @@ import {
   pathsHeader,
   toolResult,
 } from '../utils.js';
-import {resolveLadderPaths} from './ladder.js';
+import {resolveRunOrPaths} from './ladder.js';
+import {SEGMENT_ARG_DESCRIPTION} from '../run-manifest.js';
 import {resolveMaxFileSizeMB, resolveSnapshotPath} from './load-snapshot.js';
 
 const {utils: memlabUtils} = memlabCore;
@@ -255,10 +256,21 @@ export function registerCollectionTrend(server: McpServer): void {
       'Measured examples from one hunt: undoStack 5 → 2,205, allFamiliesByID 3 → 16,367, LoggerImpl.logs 8,790 → 20,700 — all invisible to a single-snapshot view. ' +
       'Loads each rung transiently in LIGHT mode (one graph resident at a time), so it is safe on ladders too large to hold in memory at once.',
     {
+      run_dir: z
+        .string()
+        .optional()
+        .describe(
+          "A leak-hunt round's output directory. Supplies the rungs and the cycle axis from run.json, instead of `paths` and `cycles`.",
+        ),
+      segment: z
+        .union([z.number().int().nonnegative(), z.literal('all')])
+        .optional()
+        .describe(SEGMENT_ARG_DESCRIPTION),
       paths: z
         .array(z.string())
+        .optional()
         .describe(
-          'Ordered snapshot paths, OLDEST FIRST. A single ["ladder:<name>"] element expands to a saved ladder (see memlab_ladder).',
+          'Ordered snapshot paths, OLDEST FIRST. A single ["ladder:<name>"] element expands to a saved ladder (see memlab_ladder). Not needed with `run_dir`.',
         ),
       locators: z
         .array(z.string())
@@ -276,9 +288,13 @@ export function registerCollectionTrend(server: McpServer): void {
         .optional()
         .describe('Per-file size limit override (MB).'),
     },
-    async ({paths, locators, cycles, max_file_size_mb}) => {
+    async ({run_dir, segment, paths, locators, cycles, max_file_size_mb}) => {
       try {
-        const {paths: resolvedPaths, ladder} = resolveLadderPaths(paths);
+        const {
+          paths: resolvedPaths,
+          ladder,
+          cyclesPerRung,
+        } = resolveRunOrPaths({run_dir, segment, paths});
         if (resolvedPaths.length < 2) {
           return errorResult(
             `memlab_collection_trend needs at least 2 snapshots; got ${resolvedPaths.length}. A trend cannot be read from one rung — use memlab_cache_analysis for a single snapshot.`,
@@ -292,9 +308,12 @@ export function registerCollectionTrend(server: McpServer): void {
         const parsed = locators.map(parseLocator);
         const effectiveCycles =
           cycles ??
-          (ladder?.cycles != null && resolvedPaths.length > 1
-            ? ladder.cycles / (resolvedPaths.length - 1)
-            : undefined);
+          (cyclesPerRung != null && cyclesPerRung.length >= 2
+            ? (cyclesPerRung[cyclesPerRung.length - 1] - cyclesPerRung[0]) /
+              (cyclesPerRung.length - 1)
+            : ladder?.cycles != null && resolvedPaths.length > 1
+              ? ladder.cycles / (resolvedPaths.length - 1)
+              : undefined);
 
         const {labels, perRung} = await measureLadder(
           resolvedPaths,
@@ -383,7 +402,7 @@ export function registerCollectionTrend(server: McpServer): void {
         if (effectiveCycles) {
           lines.push(
             '',
-            `_Δ/cycle assumes ${formatNumber(Math.round(effectiveCycles))} interaction cycle(s) between consecutive rungs${cycles == null ? ' (from the saved ladder)' : ''}._`,
+            `_Δ/cycle assumes ${formatNumber(Math.round(effectiveCycles))} interaction cycle(s) between consecutive rungs${cycles == null ? (cyclesPerRung != null ? ' (mean gap from run.json)' : ' (from the saved ladder)') : ''}._`,
           );
         } else {
           lines.push(

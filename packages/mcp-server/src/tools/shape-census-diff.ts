@@ -483,11 +483,13 @@ export function registerShapeCensusDiff(server: McpServer): void {
             `+${formatNumber(r.net)}`,
             ...(settled != null
               ? [
-                  `${formatNumber(r.idle as number)} (${
-                    drained
-                      ? 'drained'
-                      : `${((r.kept as number) * 100).toFixed(0)}% held`
-                  })`,
+                  r.idle == null || r.kept == null
+                    ? '— (absent)'
+                    : `${formatNumber(r.idle)} (${
+                        drained
+                          ? 'drained'
+                          : `${(r.kept * 100).toFixed(0)}% held`
+                      })`,
                 ]
               : []),
             `${r.slope >= 0 ? '+' : ''}${r.slope.toFixed(2)}`,

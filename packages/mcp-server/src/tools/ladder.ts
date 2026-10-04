@@ -20,6 +20,7 @@ import {
   toolResult,
 } from '../utils.js';
 import {peekSnapshotCounts, resolveSnapshotPath} from './load-snapshot.js';
+import {resolveLadderInputs} from '../run-manifest.js';
 
 /**
  * Named snapshot ladders, and the provenance of the captures in them.
@@ -116,6 +117,35 @@ export function resolveLadderPaths(paths: string[]): {
     );
   }
   return {paths: ladder.paths, ladder};
+}
+
+/**
+ * The rung list for a trend tool, from a leak-hunt round (`run_dir`, with
+ * `segment`) or from explicit `paths` / `["ladder:<name>"]`. Every ladder tool
+ * should take both; a tool that only took `paths` refused `run_dir` outright.
+ * `cyclesPerRung` is the measured cumulative axis when a run manifest has one.
+ */
+export function resolveRunOrPaths(args: {
+  run_dir?: string;
+  segment?: number | 'all';
+  paths?: string[];
+}): {paths: string[]; cyclesPerRung: number[] | null; ladder: Ladder | null} {
+  if (args.run_dir != null && args.run_dir !== '') {
+    const inputs = resolveLadderInputs({
+      run_dir: args.run_dir,
+      segment: args.segment,
+    });
+    return {
+      paths: inputs.paths,
+      cyclesPerRung: inputs.cyclesPerRung,
+      ladder: null,
+    };
+  }
+  if (args.paths == null || args.paths.length === 0) {
+    throw new Error('pass `run_dir` (a leak-hunt round) or `paths`.');
+  }
+  const {paths, ladder} = resolveLadderPaths(args.paths);
+  return {paths, cyclesPerRung: null, ladder};
 }
 
 function describe(l: Ladder): string[] {
