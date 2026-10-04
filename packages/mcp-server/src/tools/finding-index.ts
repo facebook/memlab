@@ -136,6 +136,8 @@ interface Finding {
   gate_checked_on?: string;
   /** Why a finding was withdrawn; required in practice for `retracted`. */
   retraction_reason?: string;
+  /** Short human name for the finding, e.g. "chat-list contextMenuOpened queue". */
+  title?: string;
   note?: string;
   seen_count: number;
 }
@@ -251,7 +253,11 @@ const IMPORTED_FINDING_SCHEMA = z.object({
   fixed_by_diffs: z.array(z.string()).optional(),
   verified_by_ab: z.boolean().optional(),
   retraction_reason: z.string().optional(),
+  title: z.string().optional(),
   note: z.string().optional(),
+  // Accepted as an alias so the same JSON object works in `import` and
+  // `record`; a team doc that writes `notes` lost them silently before.
+  notes: z.string().optional(),
 });
 
 type ImportedFinding = z.infer<typeof IMPORTED_FINDING_SCHEMA>;
@@ -302,7 +308,8 @@ export function importFindings(
       gate_state: raw.gate_state ?? existing?.gate_state,
       gate_checked_on: raw.gate_checked_on ?? existing?.gate_checked_on,
       retraction_reason: raw.retraction_reason ?? existing?.retraction_reason,
-      note: raw.note ?? existing?.note,
+      title: raw.title ?? existing?.title,
+      note: raw.note ?? raw.notes ?? existing?.note,
       // An import is history, not a sighting: it must not inflate seen_count
       // for a finding this operator has never actually observed.
       seen_count: existing?.seen_count ?? 1,
@@ -409,6 +416,98 @@ export function fingerprintOf(signature: string, classes: string[]): string {
  */
 function storableStatus(s?: Finding['status']): Finding['status'] {
   return s == null || s === 'new' ? 'known' : s;
+}
+
+interface RecordInput {
+  retainer_path: string;
+  growing_classes: string[];
+  round?: string;
+  status?: Finding['status'];
+  fixed_behind?: string;
+  gate_state?: Finding['gate_state'];
+  gate_checked_on?: string;
+  fixed_by_diffs?: string[];
+  verified_by_ab?: boolean;
+  retraction_reason?: string;
+  title?: string;
+  note?: string;
+}
+
+interface RecordOutcome {
+  finding: Finding;
+  requested: Finding['status'] | undefined;
+}
+
+/** One sighting: add or update the entry and count it. Does not save. */
+function recordFinding(index: FindingIndex, r: RecordInput): RecordOutcome {
+  const signature = normalizeRetainerPath(r.retainer_path);
+  const fingerprint = fingerprintOf(signature, r.growing_classes);
+  const existing = index.findings[fingerprint];
+  const roundId = r.round ?? 'unknown';
+  index.findings[fingerprint] = {
+    fingerprint,
+    signature,
+    growing_classes: r.growing_classes,
+    first_seen_round: existing?.first_seen_round ?? roundId,
+    last_seen_round: roundId,
+    status: storableStatus(r.status ?? 'known'),
+    fixed_behind: r.fixed_behind ?? existing?.fixed_behind,
+    gate_state: r.gate_state ?? existing?.gate_state,
+    gate_checked_on: r.gate_checked_on ?? existing?.gate_checked_on,
+    fixed_by_diffs: r.fixed_by_diffs ?? existing?.fixed_by_diffs,
+    verified_by_ab: r.verified_by_ab ?? existing?.verified_by_ab,
+    retraction_reason: r.retraction_reason ?? existing?.retraction_reason,
+    title: r.title ?? existing?.title,
+    note: r.note ?? existing?.note,
+    seen_count: (existing?.seen_count ?? 0) + 1,
+  };
+  return {finding: index.findings[fingerprint], requested: r.status};
+}
+
+/**
+ * The confirmation line for one recorded finding.
+ *
+ * Echoes the status the caller ASKED for. `new` is stored as `known` (see
+ * `storableStatus`), and printing "as **known**" in reply to `status: "new"`
+ * read as the tool ignoring the argument.
+ */
+function describeRecorded({finding: f, requested}: RecordOutcome): string {
+  const extras: string[] = [];
+  if (f.fixed_by_diffs != null && f.fixed_by_diffs.length > 0) {
+    extras.push(`fixed by ${f.fixed_by_diffs.join(', ')}`);
+  }
+  if (f.verified_by_ab === true) extras.push('A/B verified');
+  if (f.retraction_reason != null) {
+    extras.push(`retracted: ${f.retraction_reason}`);
+  }
+  const statusText =
+    requested === 'new'
+      ? `**new** (first seen ${f.first_seen_round}; stored as \`known\` so the next \`check\` recognizes it)`
+      : `**${f.status}**`;
+  // A fix recorded with no gate, no diffs and no A/B is a claim with nothing
+  // behind it. Checked against the MERGED record, which may inherit a gate or
+  // diff list from an earlier recording.
+  const thinFix =
+    requested === 'fixed' &&
+    f.fixed_behind == null &&
+    (f.fixed_by_diffs == null || f.fixed_by_diffs.length === 0);
+  const missingReason =
+    requested === 'retracted' && f.retraction_reason == null;
+  return (
+    `Recorded \`${f.fingerprint}\`${f.title ? ` (${f.title})` : ''} as ${statusText}` +
+    `${f.fixed_behind ? ` (behind \`${f.fixed_behind}\`)` : ''}` +
+    `${extras.length > 0 ? ` — ${extras.join('; ')}` : ''} for round ${f.last_seen_round}. ` +
+    `Signature: \`${f.signature}\`.` +
+    (thinFix
+      ? '\n\n⚠️ Recorded as fixed with neither a gate nor a diff. A later `check` will say ' +
+        'KNOWN-AND-FIXED and stop a hunt, with no way to confirm the fix is actually live — ' +
+        'add `fixed_behind` and/or `fixed_by_diffs`.'
+      : '') +
+    (missingReason
+      ? '\n\n⚠️ Retracted with no `retraction_reason`. The point of the retracted state is to stop ' +
+        'the next round re-deriving the finding; without the reason it cannot.'
+      : '')
+  );
 }
 
 export function builtinSeedFindings(): ImportedFinding[] {
@@ -882,10 +981,17 @@ export function registerFindingIndex(server: McpServer): void {
         .describe(
           'Why the finding was withdrawn. Required in practice for status "retracted" — a retraction with no reason cannot stop the next round re-deriving it.',
         ),
+      title: z
+        .string()
+        .optional()
+        .describe(
+          'Short human name for the finding, shown by `check` and `list`.',
+        ),
       note: z
         .string()
         .optional()
         .describe('Free-text note stored with the finding.'),
+      notes: z.string().optional().describe('Alias of `note`.'),
       combos: z
         .array(z.string())
         .optional()
@@ -913,7 +1019,7 @@ export function registerFindingIndex(server: McpServer): void {
         .array(IMPORTED_FINDING_SCHEMA)
         .optional()
         .describe(
-          'For action "import": findings passed inline, for seeding straight from a team doc without writing a file first.',
+          'For action "import": findings passed inline, for seeding straight from a team doc without writing a file first. For action "record": a batch, each entry recorded as a sighting exactly as a single `record` would be (top-level `round`, `status`, `fixed_behind`, `fixed_by_diffs`, `verified_by_ab`, `gate_state`, `gate_checked_on` and `retraction_reason` apply to entries without their own; `title` and `note` are per entry). Both accept the same fields: retainer_path|signature, growing_classes, round, status, title, note|notes, fixed_behind, fixed_by_diffs, verified_by_ab, gate_state, gate_checked_on, retraction_reason.',
         ),
     },
     async ({
@@ -929,7 +1035,9 @@ export function registerFindingIndex(server: McpServer): void {
       gate_state,
       gate_checked_on,
       retraction_reason,
+      title,
       note,
+      notes,
       combos,
       workstream,
       from,
@@ -1223,9 +1331,10 @@ export function registerFindingIndex(server: McpServer): void {
             f.growing_classes.slice(0, 3).join(', ') || '—',
             `${f.first_seen_round}${f.last_seen_round !== f.first_seen_round ? `→${f.last_seen_round}` : ''}`,
             String(f.seen_count),
-            f.signature.length > 60
-              ? f.signature.slice(0, 57) + '…'
-              : f.signature,
+            (() => {
+              const label = f.title != null ? cellSafe(f.title) : f.signature;
+              return label.length > 60 ? label.slice(0, 57) + '…' : label;
+            })(),
           ]);
           // Sort by round id rather than trusting object insertion order: a
           // re-recorded round moves in the object and "the last 8" silently
@@ -1247,7 +1356,7 @@ export function registerFindingIndex(server: McpServer): void {
                   'Classes',
                   'Rounds',
                   'Seen',
-                  'Signature',
+                  'Title / signature',
                 ],
                 rows,
                 new Set([4]),
@@ -1415,8 +1524,61 @@ export function registerFindingIndex(server: McpServer): void {
           );
         }
 
+        if (action === 'record' && findings != null && findings.length > 0) {
+          const lines: string[] = [];
+          const skipped: string[] = [];
+          findings.forEach((f, i) => {
+            const source = f.retainer_path ?? f.signature;
+            const problem =
+              source == null || source === ''
+                ? 'neither retainer_path nor signature'
+                : retainerPathProblem(source);
+            if (problem != null || source == null) {
+              skipped.push(`entry ${i}: ${problem ?? 'no path'}`);
+              return;
+            }
+            lines.push(
+              '- ' +
+                describeRecorded(
+                  recordFinding(index, {
+                    ...f,
+                    retainer_path: source,
+                    growing_classes: f.growing_classes ?? [],
+                    round: f.round ?? round,
+                    status: f.status ?? status,
+                    fixed_behind: f.fixed_behind ?? fixed_behind,
+                    fixed_by_diffs: f.fixed_by_diffs ?? fixed_by_diffs,
+                    verified_by_ab: f.verified_by_ab ?? verified_by_ab,
+                    gate_state: f.gate_state ?? gate_state,
+                    gate_checked_on: f.gate_checked_on ?? gate_checked_on,
+                    retraction_reason: f.retraction_reason ?? retraction_reason,
+                    note: f.note ?? f.notes,
+                  }),
+                ),
+            );
+          });
+          if (lines.length > 0) saveIndex(indexPath, index);
+          return result(
+            [
+              `Recorded ${lines.length} of ${findings.length} finding(s); the index now holds ${formatNumber(Object.keys(index.findings).length)}.`,
+              '',
+              ...lines,
+              ...(skipped.length > 0
+                ? [
+                    '',
+                    `Skipped ${skipped.length}:`,
+                    ...skipped.map(x => `- ${x}`),
+                  ]
+                : []),
+            ].join('\n'),
+          );
+        }
+
         if (!retainer_path) {
-          return errorResult(`action "${action}" requires a retainer_path.`);
+          return errorResult(
+            `action "${action}" requires a retainer_path` +
+              (action === 'record' ? ' (or a `findings` batch).' : '.'),
+          );
         }
         // Validated for BOTH check and record. A malformed path that only
         // fails on `record` still produces a confident NEW from `check`, and
@@ -1532,6 +1694,7 @@ export function registerFindingIndex(server: McpServer): void {
             [
               `## ${label} — fingerprint \`${fingerprint}\``,
               '',
+              ...(existing.title ? [`Title: ${existing.title}`] : []),
               `Signature: \`${signature}\``,
               `First seen: ${existing.first_seen_round}; last seen: ${existing.last_seen_round}; seen ${existing.seen_count}×.`,
               indexPathLine,
@@ -1563,63 +1726,24 @@ export function registerFindingIndex(server: McpServer): void {
         }
 
         // record
-        const roundId = round ?? 'unknown';
-        index.findings[fingerprint] = {
-          fingerprint,
-          signature,
+        const recorded = recordFinding(index, {
+          retainer_path,
           growing_classes,
-          first_seen_round: existing?.first_seen_round ?? roundId,
-          last_seen_round: roundId,
-          status: storableStatus(status ?? 'known'),
-          fixed_behind: fixed_behind ?? existing?.fixed_behind,
-          gate_state: gate_state ?? existing?.gate_state,
-          gate_checked_on: gate_checked_on ?? existing?.gate_checked_on,
-          fixed_by_diffs: fixed_by_diffs ?? existing?.fixed_by_diffs,
-          verified_by_ab: verified_by_ab ?? existing?.verified_by_ab,
-          retraction_reason: retraction_reason ?? existing?.retraction_reason,
-          note: note ?? existing?.note,
-          seen_count: (existing?.seen_count ?? 0) + 1,
-        };
+          round,
+          status,
+          fixed_behind,
+          gate_state,
+          gate_checked_on,
+          fixed_by_diffs,
+          verified_by_ab,
+          retraction_reason,
+          title,
+          note: note ?? notes,
+        });
         saveIndex(indexPath, index);
-        const recorded = index.findings[fingerprint];
-        const extras: string[] = [];
-        if (
-          recorded.fixed_by_diffs != null &&
-          recorded.fixed_by_diffs.length > 0
-        ) {
-          extras.push(`fixed by ${recorded.fixed_by_diffs.join(', ')}`);
-        }
-        if (recorded.verified_by_ab === true) extras.push('A/B verified');
-        if (recorded.retraction_reason != null) {
-          extras.push(`retracted: ${recorded.retraction_reason}`);
-        }
-        // A fix recorded with no gate, no diffs and no A/B is a claim with
-        // nothing behind it, and the next round has no way to tell that from a
-        // verified one. Say so at the moment of recording, where it is cheap to
-        // fix, rather than leaving it to be discovered when the leak reappears.
-        // Against the MERGED record, not the raw args: the record inherits a
-        // gate or a diff list from the previous recording, so a re-record that
-        // only updates the round would otherwise be told it has neither.
-        const thinFix =
-          status === 'fixed' &&
-          recorded.fixed_behind == null &&
-          (recorded.fixed_by_diffs == null ||
-            recorded.fixed_by_diffs.length === 0);
-        const missingReason =
-          status === 'retracted' && recorded.retraction_reason == null;
         return result(
-          `Recorded \`${fingerprint}\` as **${recorded.status}**${recorded.fixed_behind ? ` (behind \`${recorded.fixed_behind}\`)` : ''}` +
-            `${extras.length > 0 ? ` — ${extras.join('; ')}` : ''} for round ${roundId}. ` +
-            `Signature: \`${signature}\`. The index now holds ${formatNumber(Object.keys(index.findings).length)} finding(s).` +
-            (thinFix
-              ? '\n\n⚠️ Recorded as fixed with neither a gate nor a diff. A later `check` will say ' +
-                'KNOWN-AND-FIXED and stop a hunt, with no way to confirm the fix is actually live — ' +
-                'add `fixed_behind` and/or `fixed_by_diffs`.'
-              : '') +
-            (missingReason
-              ? '\n\n⚠️ Retracted with no `retraction_reason`. The point of the retracted state is to stop ' +
-                'the next round re-deriving the finding; without the reason it cannot.'
-              : ''),
+          describeRecorded(recorded) +
+            ` The index now holds ${formatNumber(Object.keys(index.findings).length)} finding(s).`,
         );
       } catch (err) {
         return errorResult(err);
