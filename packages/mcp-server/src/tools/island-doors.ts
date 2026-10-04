@@ -22,6 +22,7 @@ import {
   toolResult,
 } from '../utils.js';
 import {collectDevRoots, type DevRoots} from './dev-artifacts.js';
+import {devEdgeReason} from '../dev-edges.js';
 
 /**
  * A live -> island edge: one reason the island is still reachable, and one
@@ -265,9 +266,10 @@ function buildDominatedIsland(
  * filter hid them":
  *
  *  - **weak** edges do not retain;
- *  - **dev/automation roots** are treated as sinks, so anything reachable only
- *    through the DevTools console, the a11y cache or a dev global is not
- *    counted as production retention;
+ *  - **dev/automation roots** are treated as sinks, and **dev edges**
+ *    (`_owner` on a DEV element, `_debug*`, Fast Refresh, dev-only modules)
+ *    are not followed, so anything reachable only through them is not counted
+ *    as production retention;
  *  - **WeakMap ephemeron** key->value edges are followed ONLY once the key is
  *    known reachable. This is conditional on purpose. Refusing them outright is
  *    wrong — a WeakMap value IS retained when its key is live — and a blanket
@@ -283,6 +285,8 @@ function findDoors(
   const doors = new Map<string, Door>();
   const excluded: Excluded = {devOnly: 0, weak: 0, deadKeyEphemeron: 0};
   const stack: IHeapNode[] = [];
+  // Targets of refused dev edges, where the dev-only walk below starts.
+  const devEdgeTargets: IHeapNode[] = [];
   // Ephemeron edges whose key was not yet known reachable when we met them.
   let deferred: Array<{from: IHeapNode; edge: IHeapEdge; keyId: number}> = [];
 
@@ -350,6 +354,11 @@ function findDoors(
       if (island.has(to.id)) excluded.weak++;
       return;
     }
+    if (devEdgeReason(edge.name_or_index, from) != null) {
+      if (island.has(to.id)) excluded.devOnly++;
+      else devEdgeTargets.push(to);
+      return;
+    }
     const eph = parseEphemeronEdge(String(edge.name_or_index));
     if (eph != null && !reachedById.has(eph.keyId)) {
       deferred.push({from, edge, keyId: eph.keyId});
@@ -397,14 +406,32 @@ function findDoors(
     if (to != null && island.has(to.id)) excluded.deadKeyEphemeron++;
   }
 
-  // Anything in the island that a dev root points at directly.
+  // Crossings into the island from anything reachable only through a dev root
+  // or dev edge. Counting only the dev root's DIRECT pointers reported 0 for a
+  // Fast Refresh path (`$RefreshSig$ -> allSignaturesByType -> getCustomHooks
+  // -> ... -> div`), which read as "no dev retention" next to an empty door
+  // list.
+  const devVisited = new Set<number>();
+  const devStack: IHeapNode[] = [];
+  const pushDev = (n: IHeapNode) => {
+    if (reachedById.has(n.id) && !devRoots.byId.has(n.id)) return;
+    if (island.has(n.id) || devVisited.has(n.id)) return;
+    devVisited.add(n.id);
+    devStack.push(n);
+  };
   for (const [rootId] of devRoots.byId) {
-    tickAnalysis();
     const root = snapshot.getNodeById(rootId);
-    if (root == null) continue;
-    root.forEachReference((edge: IHeapEdge) => {
+    if (root != null) pushDev(root);
+  }
+  for (const n of devEdgeTargets) pushDev(n);
+  while (devStack.length > 0) {
+    tickAnalysis();
+    const node = devStack.pop() as IHeapNode;
+    node.forEachReference((edge: IHeapEdge) => {
       const to = edge.toNode;
-      if (to != null && island.has(to.id)) excluded.devOnly++;
+      if (to == null || edge.type === 'weak') return;
+      if (island.has(to.id)) excluded.devOnly++;
+      else pushDev(to);
     });
   }
 
@@ -415,7 +442,7 @@ export function registerIslandDoors(server: McpServer): void {
   server.tool(
     'memlab_island_doors',
     'List EVERY production-reachable reference into an island, not just the shortest one. `memlab_retainer_trace` answers "why is this object alive by ONE path"; an island normally has several independent holders, and fixing whichever happens to be nearest a GC root reclaims nothing because the next one still pins it.\n\n' +
-      'The island can be a DETACHED subtree (`island_mode: "detached"`, the default) or a LIVE one: `"reachable"` takes everything the seeds reach, which is how to ask "what are all the independent references into this accumulator\'s value set?", and `"dominated"` takes what the seeds exclusively own, which answers "who holds this accumulator". Walks forward from the GC roots refusing to enter the island, so each edge that crosses in is one reference a fix must remove. Refuses weak edges and dev/automation roots (DevTools console, a11y cache, dev globals), and follows a WeakMap key->value edge only when the key is itself reachable — conditionally, because a WeakMap value IS retained while its key is live. Every refusal is counted, so "no doors" is distinguishable from "the filter hid them". Run this BEFORE writing a fix, and again after, to show each door is closed.',
+      'The island can be a DETACHED subtree (`island_mode: "detached"`, the default) or a LIVE one: `"reachable"` takes everything the seeds reach, which is how to ask "what are all the independent references into this accumulator\'s value set?", and `"dominated"` takes what the seeds exclusively own, which answers "who holds this accumulator". Walks forward from the GC roots refusing to enter the island, so each edge that crosses in is one reference a fix must remove. Refuses weak edges, dev/automation roots (DevTools console, a11y cache, dev globals) and dev edges (React DEV `_owner`/`_debug*`, Fast Refresh, devtools modules), and follows a WeakMap key->value edge only when the key is itself reachable — conditionally, because a WeakMap value IS retained while its key is live. Every refusal is counted, so "no doors" is distinguishable from "the filter hid them". Run this BEFORE writing a fix, and again after, to show each door is closed.',
     {
       seed_class: z
         .string()
@@ -623,7 +650,11 @@ export function registerIslandDoors(server: McpServer): void {
                   '(pass `include_blink: true` to list them). JavaScript cannot close these — the ' +
                   'browsing context itself has not been torn down. Confirm by driving several cycles: if the ' +
                   'population stays at one rather than growing, this is one lingering context, not an accumulating leak.'
-              : '> **No doors found at all**, which means the island is not reachable from the GC roots ' +
+              : excluded.devOnly > 0
+                ? `> **Dev-only: no production door.** All ${formatNumber(excluded.devOnly)} crossing(s) into the island ` +
+                  'come through a dev/automation root or a dev edge (React DEV `_owner`/`_debug*`, Fast Refresh, a ' +
+                  'devtools module). The island does not exist in a production build — do not write a product fix for it.'
+                : '> **No doors found at all**, which means the island is not reachable from the GC roots ' +
                   'through any strong non-dev edge. Before reading that as "already collectable", check the ' +
                   'exclusion counts below — a zero here is far more often a filter that is too aggressive than ' +
                   'a genuinely unreachable island.',
@@ -651,9 +682,9 @@ export function registerIslandDoors(server: McpServer): void {
                 'weak references never keep an object alive',
               ],
               [
-                'dev/automation root',
+                'dev/automation root or dev edge',
                 formatNumber(excluded.devOnly),
-                'DevTools console, a11y cache and dev globals are absent in production',
+                'DevTools console, a11y cache, dev globals, React DEV edges (`_owner`, `_debug*`), Fast Refresh and dev-only modules are absent in production',
               ],
               [
                 'WeakMap, key unreachable',

@@ -26,6 +26,7 @@ import {
   ephemeronCaveat,
 } from '../utils.js';
 import type {RetainerTreeStep} from '../utils.js';
+import {devEdgeReason, shortestPathAvoidingDevEdges} from '../dev-edges.js';
 
 // async/await desugars to a repeating retainer ladder: each suspended `await`
 // frame is a `Promise → system / Context → Generator` triplet, and a deep async
@@ -99,7 +100,7 @@ function countIndependentHolders(node: IHeapNode): {
 export function registerRetainerTrace(server: McpServer): void {
   server.tool(
     'memlab_retainer_trace',
-    'Get the shortest path from a GC root to a specific heap node. This shows why the object is retained in memory by walking the pathEdge chain. Use memlab_retainer_summary to trace multiple instances of a class and group by common retainer patterns. Use memlab_get_referrers / memlab_get_references to explore incoming/outgoing edges from a node.',
+    'Get the shortest path from a GC root to a specific heap node. This shows why the object is retained in memory by walking the pathEdge chain. Use memlab_retainer_summary to trace multiple instances of a class and group by common retainer patterns. Use memlab_get_referrers / memlab_get_references to explore incoming/outgoing edges from a node. When the path crosses an edge only a DEV build has (React `_owner`/`_debug*`, Fast Refresh, a devtools module or console handle), it says so and prints the shortest path that avoids such edges, or that none exists.',
     {
       node_id: z.number().describe('The numeric ID of the heap node'),
       max_depth: z
@@ -351,6 +352,46 @@ export function registerRetainerTrace(server: McpServer): void {
           if (!eph) continue;
           lines.push(ephemeronCaveat(eph, i === reverseItems.length - 1), '');
           break;
+        }
+
+        // The shortest path is not the production path when it runs through
+        // an edge only a DEV build has. Measured: detached islands traced
+        // `children -> _owner -> _debugStack -> ChatImpl` and were read as
+        // production leaks.
+        const devHop = reverseItems.find(
+          it =>
+            it.edgeName != null && devEdgeReason(it.edgeName, it.node) != null,
+        );
+        if (devHop != null) {
+          const prod = shortestPathAvoidingDevEdges(node);
+          const hops =
+            prod.kind === 'found'
+              ? prod.steps.map((st, i) =>
+                  i === 0
+                    ? st.node.name
+                    : `.${prod.steps[i - 1].edgeName} → ${st.node.name} @${st.node.id}`,
+                )
+              : [];
+          const prodLine =
+            prod.kind === 'found'
+              ? `Production path (${hops.length} nodes, no dev edges): ` +
+                (hops.length <= 12
+                  ? hops
+                  : [
+                      ...hops.slice(0, 4),
+                      `… ${hops.length - 10} more …`,
+                      ...hops.slice(-6),
+                    ]
+                ).join(' ')
+              : prod.kind === 'none'
+                ? `**Production path: none.** Every path to @${node_id} runs through a dev edge, so it does not exist in a production build.`
+                : 'Production path: undecided (search stopped at 500,000 nodes).';
+          lines.push(
+            `⚠ **This path passes a DEV edge**: \`${devHop.node.name}\` → \`.${devHop.edgeName}\` ` +
+              `(${devEdgeReason(devHop.edgeName, devHop.node)}), which a production build does not have.`,
+            prodLine,
+            '',
+          );
         }
 
         if (show_sizes) {

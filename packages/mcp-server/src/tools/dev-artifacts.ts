@@ -28,21 +28,7 @@ import {
   REACT_REFRESH_REGISTRY_EDGE_NAMES,
   REACT_REFRESH_SIGNATURE_GATE_PROP,
 } from '../artifact-classes.js';
-
-// Globals installed by browser dev tools / extensions. Anything retained ONLY
-// through one of these would be garbage-collected in production — it's a
-// profiling artifact, not a real leak (Feedback round 2 §6).
-const DEV_GLOBAL_EDGE_NAMES = new Set([
-  '__REACT_DEVTOOLS_GLOBAL_HOOK__',
-  '__REACT_DEVTOOLS_ATTACH__',
-  '__REDUX_DEVTOOLS_EXTENSION__',
-  '__REDUX_DEVTOOLS_EXTENSION_COMPAT__',
-  '__VUE_DEVTOOLS_GLOBAL_HOOK__',
-  '__MOBX_DEVTOOLS_GLOBAL_HOOK__',
-  '__APOLLO_DEVTOOLS_GLOBAL_HOOK__',
-  '__RECOIL_DEVTOOLS_EXTENSION__',
-  'Debug', // window.Debug — common debugging handle (e.g. WhatsApp Web)
-]);
+import {DEV_GLOBAL_EDGE_NAMES, devEdgeReason} from '../dev-edges.js';
 
 // React Fast Refresh (react-refresh) bookkeeping, installed on the global by the
 // DEV-only runtime. `$RefreshSig$` / `$RefreshReg$` close over the refresh
@@ -216,7 +202,8 @@ export type DevRootCategory =
   | 'devGlobal'
   | 'reactDebugStack'
   | 'reactFastRefresh'
-  | 'harness';
+  | 'harness'
+  | 'devEdge';
 
 const CATEGORY_LABEL: Record<DevRootCategory, string> = {
   console: 'DevTools console (CDP inspector)',
@@ -225,6 +212,7 @@ const CATEGORY_LABEL: Record<DevRootCategory, string> = {
   reactDebugStack: 'React DEV owner stack (_debugStack)',
   reactFastRefresh: 'React Fast Refresh registry ($RefreshSig$)',
   harness: 'automation/devtools bridge (test harness)',
+  devEdge: 'React DEV / devtools edge (_owner, _debug*, dev module)',
 };
 
 /**
@@ -492,6 +480,9 @@ export function computeReachableWithoutDevRoots(
     node.forEachReference((edge: IHeapEdge) => {
       const to = edge.toNode;
       if (reached[to.nodeIndex]) return;
+      // A dev EDGE is refused, not its target: `_owner` points at a live fiber
+      // the app reaches by other paths.
+      if (devEdgeReason(edge.name_or_index, node) != null) return;
       reached[to.nodeIndex] = 1;
       // Mark the dev root reached (it is held by a real global handle) but do
       // NOT follow its edges — anything reachable only through it is dev-only.
@@ -514,6 +505,7 @@ const CATEGORY_BIT: Record<DevRootCategory, number> = {
   reactDebugStack: 8,
   reactFastRefresh: 16,
   harness: 32,
+  devEdge: 64,
 };
 
 /**
@@ -544,15 +536,23 @@ export function summarizeDevOnly(
   const devOnlyIds = new NumericSet();
   let nodes = 0;
 
-  // Seed: dev-only successors of each dev root, tagged with that root's family.
+  // Seed: dev-only successors of each dev root, tagged with that root's family,
+  // and dev-only targets of refused dev edges.
   snapshot.nodes.forEach(node => {
     const cat = categoryById.get(node.id);
-    if (cat == null || !byId.has(node.id)) return;
-    const bit = CATEGORY_BIT[cat];
+    const isRoot = cat != null && byId.has(node.id);
     node.forEachReference((edge: IHeapEdge) => {
       const to = edge.toNode;
       if (reached[to.nodeIndex]) return; // production-reachable, not an artifact
-      if ((mask[to.nodeIndex] & bit) !== 0) return;
+      let bit = 0;
+      if (isRoot) bit = CATEGORY_BIT[cat];
+      else if (
+        !byId.has(to.id) &&
+        devEdgeReason(edge.name_or_index, node) != null
+      ) {
+        bit = CATEGORY_BIT.devEdge;
+      }
+      if (bit === 0 || (mask[to.nodeIndex] & bit) !== 0) return;
       mask[to.nodeIndex] |= bit;
       stack.push(to);
     });
@@ -616,7 +616,8 @@ function findDevRootVia(node: IHeapNode, devRoots: DevRoots): string | null {
     const edge: IHeapEdge | null = cur.pathEdge;
     if (!edge) break;
     const from: IHeapNode = edge.fromNode;
-    const via = devRoots.byId.get(from.id);
+    const via =
+      devRoots.byId.get(from.id) ?? devEdgeReason(edge.name_or_index, from);
     if (via != null) return via;
     if (seen.has(from.id)) break;
     seen.add(from.id);
@@ -640,7 +641,9 @@ export function classifyDevOnly(
   reached?: Uint8Array,
   maxWalk = 1000,
 ): {devOnly: boolean; via: string | null} {
-  if (devRoots.byId.size === 0) return {devOnly: false, via: null};
+  if (devRoots.byId.size === 0 && reached == null) {
+    return {devOnly: false, via: null};
+  }
   if (reached != null) {
     if (reached[node.nodeIndex]) return {devOnly: false, via: null};
     return {
