@@ -343,7 +343,7 @@ export function registerLeakReport(server: McpServer): void {
         .record(z.number())
         .optional()
         .describe(
-          'Counts of the CONTENT the driven surface contains — e.g. {"chats": 19, "messages": 40}. When given, each grower\'s net delta is also divided by these, and any ratio landing on a whole number is called out. This is what turns a number into a mechanism: a class growing by exactly one unit per chat is leaking a whole chat list per cycle, and scales with the user\'s data rather than with time.',
+          'Counts of the CONTENT the driven surface contains — e.g. {"chats": 19, "messages": 40}. Read from run.json `environment.content` when `run_dir` is given and this is not. When given, each grower\'s net delta is also divided by these, and any ratio landing on a whole number is called out. This is what turns a number into a mechanism: a class growing by exactly one unit per chat is leaking a whole chat list per cycle, and scales with the user\'s data rather than with time.',
         ),
       limit: z
         .number()
@@ -436,6 +436,11 @@ export function registerLeakReport(server: McpServer): void {
         });
         paths = inputs.paths;
         cycles = inputs.cycles;
+        // The runner measures the account it drove; asking the caller to
+        // copy those counts back in meant they were almost never passed.
+        const contentFromRun =
+          content == null && inputs.manifest?.content != null;
+        if (contentFromRun) content = inputs.manifest?.content ?? undefined;
         const ladderSpanS =
           inputs.spanSeconds ?? ladderSpanSeconds(inputs.manifest);
         const {steps, rows, cachedRungs} = await computeSequenceTrends(paths, {
@@ -1147,6 +1152,21 @@ export function registerLeakReport(server: McpServer): void {
                   `(${formatNumber(r.netCount)} / ${formatNumber(content[key])}).`,
               );
             }
+          }
+          if (contentFromRun) {
+            lines.push(
+              '',
+              `_Content counts from run.json \`environment.content\`: ${Object.entries(
+                content,
+              )
+                .map(([k, n]) => `${k} ${formatNumber(n)}`)
+                .join(
+                  ', ',
+                )}${inputs.manifest?.viewport ? ` (viewport ${inputs.manifest.viewport})` : ''}` +
+                (hits.length > 0
+                  ? '._'
+                  : '; no growing class grew by a whole number per unit of them._'),
+            );
           }
           if (hits.length > 0) {
             lines.push(

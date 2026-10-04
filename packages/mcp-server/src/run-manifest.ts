@@ -89,6 +89,15 @@ export interface RunManifest {
    * rounds' rates without it compares two different experiments.
    */
   isolateAgeMsAtBaseline: number | null;
+  /**
+   * Counts of what the driven account contained (`environment.content`, e.g.
+   * `{chats: 89, mounted_rows: 21}`), as the runner measured them. Per-instance
+   * rates scale with these: two accounts measured +4.000 and +16.000 per sweep
+   * for the same leak because one mounted four times as many rows.
+   */
+  content: Record<string, number> | null;
+  /** Viewport the round was driven at, e.g. "1920x1080". */
+  viewport: string | null;
 }
 
 /** `rung_02_c375.heapsnapshot` -> 375. */
@@ -324,6 +333,7 @@ export function loadRunManifest(runDir: string): RunManifest {
 
   const elapsed = typeof raw.elapsed_s === 'number' ? raw.elapsed_s : null;
 
+  const environment = raw.environment as Record<string, unknown> | undefined;
   return {
     paths,
     cyclesPerRung,
@@ -342,7 +352,19 @@ export function loadRunManifest(runDir: string): RunManifest {
     ),
     settleRungPath,
     isolateAgeMsAtBaseline: isolateAgeMs,
+    content: numericRecord(environment?.content),
+    viewport:
+      typeof environment?.viewport === 'string' ? environment.viewport : null,
   };
+}
+
+function numericRecord(v: unknown): Record<string, number> | null {
+  if (v == null || typeof v !== 'object') return null;
+  const out: Record<string, number> = {};
+  for (const [k, n] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof n === 'number' && Number.isFinite(n) && n >= 0) out[k] = n;
+  }
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 /** A run of rungs captured inside ONE V8 isolate. */
