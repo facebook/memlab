@@ -49,6 +49,7 @@ import {
   filterLargestObjects,
   queryNodes,
   enumerateMapEntries,
+  flattenString,
   enumerateSetElements,
   objectContentSignature,
   boundedDominatorRetainedSize,
@@ -1204,6 +1205,7 @@ export function registerEval(server: McpServer): void {
             'isOrphaned(nodeId, ownershipEdgeNames[]), countUniqueTargets(arrayNodeId, propName), ' +
             'retainedSize(id)->number, retainedSizes(ids[])->Record<id,bytes> (an OBJECT keyed by id, NOT an array — index it as sizes[id] or Object.values(sizes)), ' +
             'mapEntries(mapId, limit?)->[{key,value}] & setElements(setId, limit?)->[brief] (correct Map/Set/WeakMap enumeration — handles browser internal-typed slots AND SMI-value gaps, so you never re-derive it wrong), ' +
+            'stringValue(nodeOrId, {maxLen?, slices?: "parent"|"marker"})->string (text of a flat, `(concatenated string)` or `(sliced string)` node; a slice is returned as its whole parent because the snapshot records no offset, or as `‹slice›` with slices:"marker"), ' +
             'props(nodeOrId)->{prop: scalar | {ref,name,type}} & getProp(nodeOrId, name) & shapeSignature(nodeOrId, {maxStringLen?}) (content signature for dedup checks), ' +
             'shapeKeys(nodeOrId)->Set<string> & ownProps(nodeOrId) & hasShape(nodeOrId, [names], {exact?,exclude?}) (own JS properties ONLY — USE THESE FOR SHAPE MATCHING; props() falls back to an internal-edge walk and injects length/map/__via/__note, which makes a props()-based shape test silently return zero matches), ' +
             'rootPath(nodeOrId, {maxHops?})->[{id,name,type,edge}] (GC-root path, root first — the retainer_trace walk, callable inside an eval), ' +
@@ -1723,6 +1725,22 @@ export async function runEval({
       if (nodeOrId == null) return null;
       const id = typeof nodeOrId === 'number' ? nodeOrId : nodeOrId.id;
       return snapshot.getNodeById(id);
+    };
+
+    // The text of a flat, concatenated or sliced string; '' for a non-string.
+    // A slice comes back as its whole parent (the snapshot records no offset).
+    const stringValue = (
+      nodeOrId: number | {id: number},
+      opts: {maxLen?: number; slices?: 'parent' | 'marker'} = {},
+    ): string => {
+      const node = resolveNode(nodeOrId);
+      if (node == null || !node.isString) return '';
+      return flattenString(
+        node,
+        opts.maxLen ?? 10_000,
+        undefined,
+        opts.slices ?? 'parent',
+      ).value;
     };
 
     // Correctly enumerate Map/WeakMap entries and Set elements via the shared
@@ -3524,6 +3542,7 @@ export async function runEval({
       nodeBrief,
       mapEntries,
       setElements,
+      stringValue,
       props,
       getProp,
       ownProps,
@@ -4324,6 +4343,7 @@ function describeEnvLines(): string[] {
     '- Standard JS built-ins (Array, Object, Map, Set, JSON, Math, RegExp, …). No require/process/fs/network.',
     '',
     '## Collection / shape / index helpers (prefer these over hand-rolling)',
+    '- `helpers.stringValue(nodeOrId, {maxLen=10000, slices="parent"}) -> string` — text of any string node. Flattens `(concatenated string)` ropes and reads a `(sliced string)` as its whole parent (the snapshot records no slice offset); `slices: "marker"` renders `‹slice›` instead, for grouping. `toStringNode().stringValue` returns `<sliced string of @id>` for a slice and throws on a broken rope.',
     '- `helpers.mapEntries(mapId, limit=1000) -> [{key, value}]` and `helpers.setElements(setId, limit=1000) -> [brief]` — CORRECT Map/Set/WeakMap enumeration. Handles browser `internal`-typed backing slots and SMI-value gaps (naive `type === "element"` filtering or positional `[i],[i+1]` pairing silently returns 0 / mispairs). Each brief is `{id, name, type, self_size, retained_size, string}`.',
     "- `helpers.props(nodeOrId) -> {prop: scalar | {ref, name, type}}` and `helpers.getProp(nodeOrId, name)` — read an object's own properties without the `for (const e of n.references) …` boilerplate. Number-valued props surface as a ref to a `smi number`/`heap number` node; their actual numeric value is not in the snapshot format. ⚠️ **`props()` is for INSPECTION, not for SHAPE MATCHING** — on a node with no `property` edges it falls back to a named internal/shortcut/hidden edge walk and adds `length`/`map`/`__via`/`__note`, so a shape test written against `Object.keys(props(id))` returns ZERO matches on objects that plainly have the shape. Use the next line for that.",
     '- `helpers.shapeKeys(nodeOrId) -> Set<string>`, `helpers.ownProps(nodeOrId) -> {…}`, `helpers.hasShape(nodeOrId, ["a","b"], {exact?, exclude?}) -> boolean` — own JS properties ONLY (`property` edges, no `__proto__`, no fallback, no provenance keys). **This is the correct way to ask "what shape is this object".** `hasShape(id, ["element","record"], {exact: true})` is the whole test.',

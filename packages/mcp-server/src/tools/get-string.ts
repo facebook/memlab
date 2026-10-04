@@ -13,6 +13,7 @@ import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
 import {
+  flattenString,
   formatBytes,
   formatNodeInline,
   errorResult,
@@ -23,113 +24,37 @@ function resolveStringValue(
   node: IHeapNode,
   maxLen: number,
 ): {value: string; truncated: boolean; encoding: string} {
-  // Try the standard stringValue API first
-  if (node.isString) {
-    const strNode = node.toStringNode();
-    if (strNode) {
-      const val = strNode.stringValue;
-      if (val.length > maxLen) {
-        return {
-          value: val.slice(0, maxLen),
-          truncated: true,
-          encoding: 'direct',
-        };
-      }
-      return {value: val, truncated: false, encoding: 'direct'};
-    }
+  const flat = flattenString(node, maxLen);
+  const isRope =
+    node.type === 'concatenated string' ||
+    (node.type !== 'string' &&
+      (node.name === '(concatenated string)' || node.name === '(cons string)'));
+  const isSlice =
+    node.type === 'sliced string' ||
+    (node.type !== 'string' && node.name === '(sliced string)');
+  const kind = isRope
+    ? 'concatenated'
+    : isSlice
+      ? 'sliced'
+      : node.type === 'string'
+        ? 'direct'
+        : 'unknown';
+  const notes: string[] = [];
+  if (flat.approximate) {
+    notes.push(
+      `contains ${flat.slicedParents.length} slice(s) shown as their WHOLE parent ` +
+        `(${flat.slicedParents
+          .slice(0, 3)
+          .map(id => `@${id}`)
+          .join(', ')}) — the snapshot records no slice offset`,
+    );
   }
-
-  // For concatenated strings, walk the first/second tree
-  if (
-    node.name === '(concatenated string)' ||
-    node.type === 'concatenated string'
-  ) {
-    return resolveConcatenatedString(node, maxLen);
-  }
-
-  // For sliced strings, resolve the parent and extract the slice
-  if (node.name === '(sliced string)' || node.type === 'sliced string') {
-    return resolveSlicedString(node, maxLen);
-  }
-
-  // For cons strings (another name for concatenated)
-  if (node.name === '(cons string)') {
-    return resolveConcatenatedString(node, maxLen);
-  }
-
-  return {value: '', truncated: false, encoding: 'unknown'};
-}
-
-function resolveConcatenatedString(
-  node: IHeapNode,
-  maxLen: number,
-): {value: string; truncated: boolean; encoding: string} {
-  const parts: string[] = [];
-  let totalLen = 0;
-  let truncated = false;
-
-  function walk(n: IHeapNode): void {
-    if (truncated) return;
-
-    // If this node is a flat string, get its value directly
-    if (n.isString) {
-      const strNode = n.toStringNode();
-      if (strNode) {
-        const val = strNode.stringValue;
-        if (totalLen + val.length > maxLen) {
-          parts.push(val.slice(0, maxLen - totalLen));
-          totalLen = maxLen;
-          truncated = true;
-          return;
-        }
-        parts.push(val);
-        totalLen += val.length;
-        return;
-      }
-    }
-
-    // Walk first and second edges for concatenated/cons strings
-    let first: IHeapNode | null = null;
-    let second: IHeapNode | null = null;
-
-    for (const edge of n.references) {
-      const name = String(edge.name_or_index);
-      if (name === 'first') first = edge.toNode;
-      else if (name === 'second') second = edge.toNode;
-    }
-
-    if (first) walk(first);
-    if (second) walk(second);
-  }
-
-  walk(node);
-  return {value: parts.join(''), truncated, encoding: 'concatenated'};
-}
-
-function resolveSlicedString(
-  node: IHeapNode,
-  maxLen: number,
-): {value: string; truncated: boolean; encoding: string} {
-  // Sliced strings have a "parent" edge pointing to the original string
-  for (const edge of node.references) {
-    const name = String(edge.name_or_index);
-    if (name === 'parent') {
-      const parent = edge.toNode;
-      const resolved = resolveStringValue(parent, maxLen * 2);
-      // The sliced string is a substring of the parent.
-      // V8 stores offset and length internally, but the snapshot API
-      // exposes the stringValue directly via toStringNode() which should
-      // already handle this. If we got here, toStringNode() didn't work,
-      // so return the parent's full value as context.
-      return {
-        value: resolved.value,
-        truncated: resolved.truncated,
-        encoding: `sliced (from parent @${parent.id}, ${formatBytes(parent.self_size)})`,
-      };
-    }
-  }
-
-  return {value: '', truncated: false, encoding: 'sliced (parent not found)'};
+  if (flat.broken) notes.push('part of the rope could not be read');
+  return {
+    value: flat.value,
+    truncated: flat.truncated,
+    encoding: notes.length > 0 ? `${kind}; ${notes.join('; ')}` : kind,
+  };
 }
 
 function getStringStructure(

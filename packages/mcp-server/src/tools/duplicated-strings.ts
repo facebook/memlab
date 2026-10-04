@@ -9,11 +9,14 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
+import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
 import {withAnonymizedBanner} from '../anonymized-snapshot.js';
 import {
+  flattenString,
   formatBytes,
+  formatNumber,
   errorResult,
   toolResult,
   looksLikeFailurePayload,
@@ -21,6 +24,69 @@ import {
 } from '../utils.js';
 import {classifyNonProductionString} from '../artifact-classes.js';
 import {buildStringIndex, stringIndexIsCached} from '../string-index.js';
+
+const ROPE_PREFIX_CHARS = 120;
+
+/**
+ * `(concatenated string)` ROOTS (ropes no other rope holds as `first` /
+ * `second`) grouped by their first characters. A rope's own text is never a
+ * flat string, so it is absent from the per-value table however many copies
+ * exist.
+ */
+function concatenatedFamilies(
+  snapshot: IHeapSnapshot,
+  minCount: number,
+  limit: number,
+  includeNodeIds: boolean,
+): string {
+  const families = new Map<
+    string,
+    {count: number; retained: number; example: number; truncated: boolean}
+  >();
+  snapshot.nodes.forEach((node: IHeapNode) => {
+    if (node.type !== 'concatenated string') return;
+    for (const e of node.referrers) {
+      const name = String(e.name_or_index);
+      if (
+        (name === 'first' || name === 'second') &&
+        e.fromNode.type === 'concatenated string'
+      ) {
+        return;
+      }
+    }
+    const flat = flattenString(node, ROPE_PREFIX_CHARS, 5_000, 'marker');
+    if (flat.value === '') return;
+    const f = families.get(flat.value);
+    if (f) {
+      f.count++;
+      f.retained += node.retainedSize;
+    } else {
+      families.set(flat.value, {
+        count: 1,
+        retained: node.retainedSize,
+        example: node.id,
+        truncated: flat.truncated,
+      });
+    }
+  });
+  const top = [...families.entries()]
+    .filter(([, f]) => f.count >= minCount)
+    .sort((a, b) => b[1].retained - a[1].retained)
+    .slice(0, limit);
+  if (top.length === 0) return '';
+  return (
+    `\n\n### Concatenated strings by leading text (${formatNumber(top.length)} famil${top.length === 1 ? 'y' : 'ies'})\n\n` +
+    top
+      .map(
+        ([prefix, f]) =>
+          `- **${formatNumber(f.count)}×** ${formatBytes(f.retained)} retained — "${prefix.replace(/\s+/g, ' ').slice(0, ROPE_PREFIX_CHARS)}${f.truncated ? '…' : ''}"` +
+          (includeNodeIds ? ` e.g. \`@${f.example}\`` : ''),
+      )
+      .join('\n') +
+    '\n\n_Grouped by the first ' +
+    `${ROPE_PREFIX_CHARS} characters; \`‹slice›\` marks a sliced substring. Read one in full with \`memlab_get_string\` or \`helpers.stringValue(id)\`._`
+  );
+}
 
 export function registerDuplicatedStrings(server: McpServer): void {
   server.tool(
@@ -40,6 +106,13 @@ export function registerDuplicatedStrings(server: McpServer): void {
         .describe(
           'Minimum number of copies to include (default 2). Increase to focus on heavily duplicated strings (e.g., 100).',
         ),
+      concatenated: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'Also group `(concatenated string)` ropes by their leading text (default true). The flat-string table cannot see them: a stack trace or log line built with `+` is a rope, and 1,068 copies of one 9 KB Error stack read as nothing there.',
+        ),
       include_node_ids: z
         .boolean()
         .optional()
@@ -48,7 +121,7 @@ export function registerDuplicatedStrings(server: McpServer): void {
           'Include example node IDs in the output for follow-up with retainer_summary. Omitted by default to save ~20-30 tokens per entry.',
         ),
     },
-    async ({limit, min_count, include_node_ids}) => {
+    async ({limit, min_count, concatenated, include_node_ids}) => {
       try {
         const snapshot = getSnapshot();
 
@@ -248,7 +321,15 @@ export function registerDuplicatedStrings(server: McpServer): void {
         // the expensive scan is shared rather than repeated.
         const relatedNote = `\n\n_This is the raw per-VALUE duplication table. \`memlab_intern_opportunities\` groups the same strings by property x parent shape and estimates what a canonical intern pool would actually reclaim (accounting for co-retention and the length cap) — use it to decide whether to write the fix, and this to see the values. It reuses this snapshot's string scan${reused ? ', which was itself already cached' : ''}, so running both costs one pass over the string nodes, not two._`;
 
-        const body = `Duplicated strings (${summaryLine}):\n\n${lines.join('\n')}\n\n**Total interning savings: ${formatBytes(totalSavings)}** (if each string were stored only once, harness content excluded)${harnessNote}${suggestionsSuppressed('memlab_duplicated_strings') ? '' : relatedNote}`;
+        const ropeSection = concatenated
+          ? concatenatedFamilies(
+              snapshot,
+              min_count,
+              Math.min(limit, 10),
+              include_node_ids,
+            )
+          : '';
+        const body = `Duplicated strings (${summaryLine}):\n\n${lines.join('\n')}\n\n**Total interning savings: ${formatBytes(totalSavings)}** (if each string were stored only once, harness content excluded)${harnessNote}${ropeSection}${suggestionsSuppressed('memlab_duplicated_strings') ? '' : relatedNote}`;
         return toolResult(
           withAnonymizedBanner(
             snapshot,

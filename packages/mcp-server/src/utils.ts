@@ -861,6 +861,114 @@ export function collectBackingSlots(node: IHeapNode): BackingSlot[] {
 }
 
 /**
+ * The text of any string node: flat, concatenated (cons rope) or sliced.
+ *
+ * `toStringNode().stringValue` from @memlab/core throws on a rope with a
+ * non-string child and returns `<sliced string of @id>` for a sliced string,
+ * so a stack trace stored as a rope of slices could not be read: the 9.4 MB
+ * `Error: Converting to a string…` family kept its caller frame unknown.
+ *
+ * A snapshot records a sliced string's parent but not its offset or length, so
+ * a slice is rendered as its WHOLE parent and `approximate` is set. With
+ * `slices: 'marker'` it is rendered as `‹slice›` instead, which keeps two stack
+ * frames that differ only in their sliced URL apart when grouping. The walk
+ * stops at `maxLen` characters rather than flattening a multi-megabyte rope.
+ */
+export const SLICE_MARKER = '‹slice›';
+
+export function flattenString(
+  node: IHeapNode,
+  maxLen = 10_000,
+  maxSteps = 1_000_000,
+  slices: 'parent' | 'marker' = 'parent',
+): {
+  value: string;
+  truncated: boolean;
+  approximate: boolean;
+  slicedParents: number[];
+  broken: boolean;
+} {
+  let value = '';
+  let truncated = false;
+  let broken = false;
+  const slicedParents: number[] = [];
+  const stack: IHeapNode[] = [node];
+  let steps = 0;
+  while (stack.length > 0) {
+    if (value.length >= maxLen) {
+      truncated = true;
+      break;
+    }
+    if (++steps > maxSteps) {
+      truncated = true;
+      break;
+    }
+    const n = stack.pop() as IHeapNode;
+    if (
+      n.type === 'concatenated string' ||
+      (n.type !== 'string' &&
+        (n.name === '(concatenated string)' || n.name === '(cons string)'))
+    ) {
+      let first: IHeapNode | null = null;
+      let second: IHeapNode | null = null;
+      for (const e of n.references) {
+        const name = String(e.name_or_index);
+        if (name === 'first') first = e.toNode;
+        else if (name === 'second') second = e.toNode;
+      }
+      if (first == null && second == null) broken = true;
+      if (second != null) stack.push(second);
+      if (first != null) stack.push(first);
+      continue;
+    }
+    if (
+      n.type === 'sliced string' ||
+      (n.type !== 'string' && n.name === '(sliced string)')
+    ) {
+      let parent: IHeapNode | null = null;
+      for (const e of n.references) {
+        if (String(e.name_or_index) === 'parent') parent = e.toNode;
+      }
+      if (parent == null) {
+        broken = true;
+        continue;
+      }
+      if (!slicedParents.includes(parent.id)) slicedParents.push(parent.id);
+      if (slices === 'marker') {
+        if (value.length + SLICE_MARKER.length > maxLen) {
+          truncated = true;
+          break;
+        }
+        value += SLICE_MARKER;
+      } else stack.push(parent);
+      continue;
+    }
+    if (n.type === 'string') {
+      const room = maxLen - value.length;
+      if (n.name.length > room) {
+        value += n.name.slice(0, room);
+        truncated = true;
+        break;
+      }
+      value += n.name;
+      continue;
+    }
+    broken = true;
+  }
+  if (value.length > maxLen) {
+    value = value.slice(0, maxLen);
+    truncated = true;
+  }
+  return {
+    value,
+    truncated,
+    approximate: slicedParents.length > 0,
+    slicedParents,
+    broken,
+  };
+}
+
+/**
  * Enumerate a Map/WeakMap's (key, value) entries.
  *
  * V8 lays each entry out as consecutive slots `[key, value, chain]` (the chain
