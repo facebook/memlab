@@ -92,6 +92,56 @@ export function findModuleRegistries(snapshot: IHeapSnapshot): Registry[] {
   return out;
 }
 
+const MODULE_FACTORY_PREFIX = '$module_';
+
+/**
+ * Module SCOPES, by node id: each Haste module's top-level `system / Context`
+ * (and its record), named by the module.
+ *
+ * Module-scope state — a cache `Map`, a pending-timers table — lives in the
+ * context the module factory created, not under the module's exports. That
+ * context is shared by every closure the module defines, so no export
+ * dominates it and the registry walk alone attributed ~3% of a WhatsApp Web
+ * heap. The link is exact: the factory `$module_<Name>`'s SharedFunctionInfo
+ * points at the same ScopeInfo (`name_or_scope_info`) as the context the
+ * factory created (`scope_info`).
+ */
+export function findModuleScopes(snapshot: IHeapSnapshot): Map<number, string> {
+  const moduleByScopeInfo = new Map<number, string>();
+  const out = new Map<number, string>();
+  snapshot.nodes.forEach((node: IHeapNode) => {
+    if (node.type !== 'closure') return;
+    if (!node.name.startsWith(MODULE_FACTORY_PREFIX)) return;
+    const name = node.name.slice(MODULE_FACTORY_PREFIX.length);
+    for (const e of node.references) {
+      if (String(e.name_or_index) !== 'shared') continue;
+      for (const se of e.toNode.references) {
+        const k = String(se.name_or_index);
+        if (
+          (k === 'name_or_scope_info' || k === 'scope_info') &&
+          se.toNode.name.endsWith('ScopeInfo')
+        ) {
+          moduleByScopeInfo.set(se.toNode.id, name);
+        }
+      }
+    }
+    for (const e of node.referrers) {
+      if (String(e.name_or_index) === 'factory') out.set(e.fromNode.id, name);
+    }
+  });
+  if (moduleByScopeInfo.size === 0) return out;
+  snapshot.nodes.forEach((node: IHeapNode) => {
+    if (!node.name.startsWith('system / Context')) return;
+    for (const e of node.references) {
+      if (String(e.name_or_index) !== 'scope_info') continue;
+      const mod = moduleByScopeInfo.get(e.toNode.id);
+      if (mod != null) out.set(node.id, mod);
+      break;
+    }
+  });
+  return out;
+}
+
 interface ModuleStat {
   module: string;
   selfBytes: number;
@@ -106,8 +156,9 @@ interface ModuleStat {
 export function attributeByModule(
   snapshot: IHeapSnapshot,
   registries: Registry[],
+  scopes: Map<number, string> = new Map(),
 ): {stats: ModuleStat[]; attributed: number; unattributed: number} {
-  const moduleOf = new Map<number, string>();
+  const moduleOf = new Map<number, string>(scopes);
   for (const r of registries) {
     for (const [id, name] of r.moduleByNodeId) moduleOf.set(id, name);
   }
@@ -174,7 +225,7 @@ export function attributeByModule(
 export function registerModuleAttribution(server: McpServer): void {
   server.tool(
     'memlab_module_attribution',
-    'Attribute heap bytes to the MODULE that owns them, by walking the dominator tree up to the nearest module-registry export. ' +
+    'Attribute heap bytes to the MODULE that owns them, by walking the dominator tree up to the nearest module-registry export or module SCOPE (the top-level closure context a Haste `$module_<Name>` factory created, matched through its ScopeInfo — which is where module-level caches and tables actually live). ' +
       'Exists because in a bundled app the retainer path of every module-scope singleton begins with the same generic prefix — `Window -> require -> .context -> modulesMap -> <Module>` — which is shared by everything in the heap and therefore attributes NOTHING. ' +
       'A measured round sampled 12 instances of a growing class, saw that all 12 "route through modulesMap", and filed the growth as a known module-registry leak; in fact three unrelated telemetry modules were each accumulating and the registry was just the road to all of them. The sampling tool had reported "0.0% sampled" and refused to name a cause — the generic prefix is what made the wrong answer look confirmed. ' +
       'This reports the module name instead, so "the heap grew" becomes "WebLoom +63 MB, InteractionTracingMetrics +23 MB". Use it whenever a retainer trace bottoms out in a module registry.',
@@ -205,7 +256,8 @@ export function registerModuleAttribution(server: McpServer): void {
           );
         }
         const registries = findModuleRegistries(snapshot);
-        if (registries.length === 0) {
+        const scopes = findModuleScopes(snapshot);
+        if (registries.length === 0 && scopes.size === 0) {
           return errorResult(
             'No module registry found in this snapshot. This tool looks for a bundler registry bound as ' +
               [...MODULE_REGISTRY_EDGE_NAMES].map(n => `\`${n}\``).join(' / ') +
@@ -216,6 +268,7 @@ export function registerModuleAttribution(server: McpServer): void {
         const {stats, attributed, unattributed} = attributeByModule(
           snapshot,
           registries,
+          scopes,
         );
         let rows = stats.filter(s => s.selfBytes >= min_bytes);
         if (name_pattern != null && name_pattern.length > 0) {
@@ -234,12 +287,14 @@ export function registerModuleAttribution(server: McpServer): void {
         const lines: string[] = [
           '## Heap attributed by owning module',
           '',
-          `Registries found: ${registries
-            .map(
-              r =>
-                `\`${r.edgeName}\` (${formatNumber(r.moduleByNodeId.size)} modules)`,
-            )
-            .join(', ')}`,
+          `Registries found: ${
+            registries
+              .map(
+                r =>
+                  `\`${r.edgeName}\` (${formatNumber(r.moduleByNodeId.size)} modules)`,
+              )
+              .join(', ') || 'none'
+          } · module scopes matched to a factory: ${formatNumber(scopes.size)}`,
           `Attributed to a module: **${formatBytes(attributed)}**` +
             (total > 0
               ? ` (${((attributed / total) * 100).toFixed(1)}%)`
