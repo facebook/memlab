@@ -9,7 +9,8 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
-import type {IHeapNode, IHeapEdge} from '@memlab/core';
+import type {IHeapNode, IHeapEdge, IHeapSnapshot} from '@memlab/core';
+import memlabCore from '@memlab/core';
 import {z} from 'zod';
 import {
   DEV_ONLY_FOOTNOTE,
@@ -18,6 +19,9 @@ import {
 } from '../dev-modules.js';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {
+  boundedDominatorRetainedSize,
+  enumerateMapEntries,
+  enumerateSetElements,
   formatBytes,
   formatNumber,
   markdownTable,
@@ -27,6 +31,8 @@ import {
   suggestionsSuppressed,
 } from '../utils.js';
 
+const {NumericSet} = memlabCore;
+
 interface CacheEntry {
   nodeId: number;
   collectionType: string;
@@ -34,6 +40,14 @@ interface CacheEntry {
   tableSlots: number;
   capacitySlots: number;
   retainedSize: number;
+  /**
+   * Dominator-deduped retained size of the entries themselves (null when not
+   * measured). Exceeds `retainedSize` when the entries are also reachable from
+   * somewhere else: the container then dominates almost nothing, yet clearing
+   * it is still what releases them once the other holder lets go.
+   */
+  entriesRetained: number | null;
+  entriesRetainedExact: boolean;
   selfSize: number;
   ownerName: string;
   ownerEdge: string;
@@ -309,6 +323,60 @@ function countEntries(node: IHeapNode): {
   return {entries: count, tableSlots: count, capacitySlots: count};
 }
 
+/** Entries measured per collection; past this the figure is a lower bound. */
+const MAX_ENTRIES_MEASURED = 20000;
+
+/**
+ * Dominator-deduped retained size of a collection's entries (Map keys and
+ * values, WeakMap values, Set elements, Array elements).
+ *
+ * A container's own retained size counts only what it EXCLUSIVELY dominates.
+ * When every value is also reachable from another holder — a traced-interaction
+ * map whose records sit in a timeline too, an index over objects a store also
+ * owns — the container dominates nothing but its table: measured on a real
+ * heap, 14 KB container vs 5.1 MB of entries. Ranking by container size alone
+ * buried that collection under the 512 KB default.
+ */
+function entriesRetainedOf(
+  node: IHeapNode,
+  snapshot: IHeapSnapshot,
+): {retained: number; exact: boolean} | null {
+  const targets: IHeapNode[] = [];
+  if (node.name === 'Map' || node.name === 'WeakMap') {
+    for (const e of enumerateMapEntries(node)) {
+      if (node.name === 'Map') targets.push(e.key);
+      if (e.value) targets.push(e.value);
+    }
+  } else if (node.name === 'Set' || node.name === 'WeakSet') {
+    targets.push(...enumerateSetElements(node));
+  } else if (node.name === 'Array') {
+    for (const edge of node.references) {
+      if (edge.type === 'element' && edge.toNode.id > 3) {
+        targets.push(edge.toNode);
+      }
+    }
+  } else {
+    return null;
+  }
+  const ids = new NumericSet();
+  let capped = false;
+  for (const t of targets) {
+    if (ids.has(t.id)) continue;
+    if (ids.size >= MAX_ENTRIES_MEASURED) {
+      capped = true;
+      break;
+    }
+    ids.add(t.id);
+  }
+  const out = boundedDominatorRetainedSize(ids, snapshot);
+  return {retained: out.retained, exact: out.exact && !capped};
+}
+
+/** What a collection holds, whichever of the two measures is larger. */
+function heldSize(c: CacheEntry): number {
+  return Math.max(c.retainedSize, c.entriesRetained ?? 0);
+}
+
 function hasWeakRefEntries(node: IHeapNode): boolean {
   for (const edge of node.references) {
     if (edge.toNode.name === 'WeakRef' || edge.toNode.name === 'WeakMap') {
@@ -405,7 +473,7 @@ function sampleCacheEntries(
 export function registerCacheAnalysis(server: McpServer): void {
   server.tool(
     'memlab_cache_analysis',
-    'Detect unbounded caches — Map, Set, and Array objects that are large and likely missing eviction logic. The #1 cause of Node.js memory leaks. Reports entry count, retained size, owner object, and whether entries use WeakRef. Use this after memlab_auto_investigate or memlab_check_health flags suspicious collections.',
+    'Detect unbounded caches — Map, Set, and Array objects that are large and likely missing eviction logic. The #1 cause of Node.js memory leaks. Reports entry count, retained size of the entries (dominator-deduped, so values also held elsewhere still count) and of the container, owner object, and whether entries use WeakRef. Use this after memlab_auto_investigate or memlab_check_health flags suspicious collections.',
     {
       limit: z
         .number()
@@ -423,7 +491,9 @@ export function registerCacheAnalysis(server: McpServer): void {
         .number()
         .optional()
         .default(524288)
-        .describe('Minimum retained size in bytes (default 512 KB)'),
+        .describe(
+          'Minimum size in bytes, met by either the container or its entries (default 512 KB)',
+        ),
       collection_types: z
         .array(z.string())
         .optional()
@@ -500,7 +570,7 @@ export function registerCacheAnalysis(server: McpServer): void {
           if (node.type !== 'object') return;
           // Size-independent path: a collection that is long enough to matter is
           // examined even when it is small in bytes (see approxEntryCount).
-          const bigEnough = node.retainedSize >= min_retained_size;
+          let bigEnough = node.retainedSize >= min_retained_size;
           if (!bigEnough && approxEntryCount(node) < min_entries) return;
 
           const {
@@ -509,6 +579,10 @@ export function registerCacheAnalysis(server: McpServer): void {
             capacitySlots,
           } = countEntries(node);
           if (entryCount < min_entries) return;
+          const measured = entriesRetainedOf(node, snapshot);
+          if (!bigEnough && (measured?.retained ?? 0) >= min_retained_size) {
+            bigEnough = true;
+          }
           if (!bigEnough) {
             // Long but cheap. Reported in its own section rather than mixed into
             // the ranked table, whose ordering and thresholds callers rely on.
@@ -531,6 +605,8 @@ export function registerCacheAnalysis(server: McpServer): void {
             tableSlots,
             capacitySlots,
             retainedSize: node.retainedSize,
+            entriesRetained: measured?.retained ?? null,
+            entriesRetainedExact: measured?.exact ?? true,
             selfSize: node.self_size,
             ownerName: owner.name,
             ownerEdge: owner.edge,
@@ -546,7 +622,7 @@ export function registerCacheAnalysis(server: McpServer): void {
 
           let inserted = false;
           for (let i = 0; i < caches.length; i++) {
-            if (entry.retainedSize > caches[i].retainedSize) {
+            if (heldSize(entry) > heldSize(caches[i])) {
               caches.splice(i, 0, entry);
               inserted = true;
               break;
@@ -615,7 +691,7 @@ export function registerCacheAnalysis(server: McpServer): void {
           const insertCache = (entry: CacheEntry) => {
             let inserted = false;
             for (let i = 0; i < caches.length; i++) {
-              if (entry.retainedSize > caches[i].retainedSize) {
+              if (heldSize(entry) > heldSize(caches[i])) {
                 caches.splice(i, 0, entry);
                 inserted = true;
                 break;
@@ -675,6 +751,8 @@ export function registerCacheAnalysis(server: McpServer): void {
               // a meaningless 100%.
               capacitySlots: dataEntryCount,
               retainedSize: node.retainedSize,
+              entriesRetained: null,
+              entriesRetainedExact: true,
               selfSize: node.self_size,
               ownerName: owner.name,
               ownerEdge: owner.edge,
@@ -715,6 +793,8 @@ export function registerCacheAnalysis(server: McpServer): void {
                 tableSlots: target.edge_count,
                 capacitySlots: target.edge_count,
                 retainedSize: target.retainedSize,
+                entriesRetained: null,
+                entriesRetainedExact: true,
                 selfSize: target.self_size,
                 ownerName: node.name,
                 ownerEdge: propName,
@@ -799,6 +879,7 @@ export function registerCacheAnalysis(server: McpServer): void {
           'Table Slots',
           'Capacity',
           'Occupancy',
+          'Entries Retained',
           'Retained',
           '% Heap',
           'Owner',
@@ -807,11 +888,11 @@ export function registerCacheAnalysis(server: McpServer): void {
           'Prod?',
           'Framework',
         ];
-        const rightCols = new Set([3, 4, 5, 6, 7, 8]);
+        const rightCols = new Set([3, 4, 5, 6, 7, 8, 9]);
         const rows = caches.map(c => {
           const pct =
             totalSize > 0
-              ? ((c.retainedSize / totalSize) * 100).toFixed(1) + '%'
+              ? ((heldSize(c) / totalSize) * 100).toFixed(1) + '%'
               : '-';
           return [
             `@${c.nodeId}`,
@@ -828,6 +909,9 @@ export function registerCacheAnalysis(server: McpServer): void {
               const o = occupancyOf(c);
               return o == null ? '—' : `${(o * 100).toFixed(1)}%`;
             })(),
+            c.entriesRetained == null
+              ? '—'
+              : `${c.entriesRetainedExact ? '' : '≥'}${formatBytes(c.entriesRetained)}`,
             formatBytes(c.retainedSize),
             pct,
             c.ownerName,
@@ -848,10 +932,7 @@ export function registerCacheAnalysis(server: McpServer): void {
               .prodReachable === 'no',
         ).length;
 
-        const totalRetained = caches.reduce(
-          (sum, c) => sum + c.retainedSize,
-          0,
-        );
+        const totalRetained = caches.reduce((sum, c) => sum + heldSize(c), 0);
         const cacheLike = caches.filter(
           c => c.classification === 'cache-like',
         ).length;
@@ -859,9 +940,9 @@ export function registerCacheAnalysis(server: McpServer): void {
         if (summary_only) {
           return toolResult(
             [
-              `Cache analysis: ${caches.length} large collection(s) (${cacheLike} cache-like, ${caches.length - cacheLike} plain collection/working-set), ${formatBytes(totalRetained)} total retained`,
+              `Cache analysis: ${caches.length} large collection(s) (${cacheLike} cache-like, ${caches.length - cacheLike} plain collection/working-set), ${formatBytes(totalRetained)} total held`,
               '',
-              `Largest: \`${caches[0].ownerName}\` — ${formatNumber(caches[0].entryCount)} entries, ${formatBytes(caches[0].retainedSize)}.`,
+              `Largest: \`${caches[0].ownerName}\` — ${formatNumber(caches[0].entryCount)} entries, ${formatBytes(heldSize(caches[0]))}.`,
               '',
               `_summary_only: the ${formatNumber(rows.length)}-row ranked table and the per-entry samples are withheld. Re-run with \`summary_only: false\` for them._`,
             ].join('\n'),
@@ -869,9 +950,11 @@ export function registerCacheAnalysis(server: McpServer): void {
         }
 
         const lines = [
-          `Cache analysis: ${caches.length} large collection(s) (${cacheLike} cache-like, ${caches.length - cacheLike} plain collection/working-set), ${formatBytes(totalRetained)} total retained`,
+          `Cache analysis: ${caches.length} large collection(s) (${cacheLike} cache-like, ${caches.length - cacheLike} plain collection/working-set), ${formatBytes(totalRetained)} total held`,
           '',
           markdownTable(headers, rows, rightCols),
+          '',
+          '_Ranked by the larger of **Entries Retained** (dominator-deduped size of the keys/values) and **Retained** (what the container alone dominates). Entries Retained far above Retained means the entries are also held elsewhere: clearing the collection is necessary but not sufficient. `≥` = lower bound (entry walk capped)._',
           '',
           ...(devOnlyCount > 0
             ? [
