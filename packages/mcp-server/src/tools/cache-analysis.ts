@@ -17,6 +17,10 @@ import {
   moduleProvenanceOf,
   provenanceCell,
 } from '../dev-modules.js';
+import {
+  formatProductionPath,
+  shortestPathAvoidingDevEdges,
+} from '../dev-edges.js';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {
   boundedDominatorRetainedSize,
@@ -889,6 +893,49 @@ export function registerCacheAnalysis(server: McpServer): void {
           'Framework',
         ];
         const rightCols = new Set([3, 4, 5, 6, 7, 8, 9]);
+        // A module name on the shortest path is a hint, not proof: the same
+        // Map was called dev-only here and production-real in an earlier
+        // hand analysis, and nothing printed let a reader decide. Confirm by
+        // looking for a path that avoids every dev edge.
+        const provenance = new Map<
+          number,
+          {cell: string; devOnly: boolean; evidence: string | null}
+        >();
+        for (const c of caches) {
+          const node = snapshot.getNodeById(c.nodeId) ?? null;
+          const prov = moduleProvenanceOf(node);
+          if (prov.prodReachable !== 'no' || node == null) {
+            provenance.set(c.nodeId, {
+              cell: provenanceCell(prov),
+              devOnly: false,
+              evidence: null,
+            });
+            continue;
+          }
+          const via = `\`${prov.module ?? '?'}\` (${prov.why ?? 'dev module'})`;
+          const prod = shortestPathAvoidingDevEdges(snapshot, node);
+          if (prod.kind === 'found') {
+            provenance.set(c.nodeId, {
+              cell: '⚠️ dev module on path, but production-reachable',
+              devOnly: false,
+              evidence:
+                `- \`@${c.nodeId}\` ${c.ownerName}.${c.ownerEdge}: shortest path runs through ${via}, ` +
+                `but a path with no dev edge exists, so it is NOT dev-only: ${formatProductionPath(prod.steps)}`,
+            });
+          } else if (prod.kind === 'undecided') {
+            provenance.set(c.nodeId, {
+              cell: provenanceCell(prov),
+              devOnly: false,
+              evidence: `- \`@${c.nodeId}\` ${c.ownerName}.${c.ownerEdge}: shortest path runs through ${via}; production path: undecided (analysis budget ran out before the search finished)`,
+            });
+          } else {
+            provenance.set(c.nodeId, {
+              cell: provenanceCell(prov),
+              devOnly: true,
+              evidence: `- \`@${c.nodeId}\` ${c.ownerName}.${c.ownerEdge}: dev-only via ${via}; production path: none`,
+            });
+          }
+        }
         const rows = caches.map(c => {
           const pct =
             totalSize > 0
@@ -920,17 +967,16 @@ export function registerCacheAnalysis(server: McpServer): void {
             // A dev-only MODULE holding ordinary references passes
             // `memlab_dev_artifacts`, which only sees dev ROOTS. See
             // ../dev-modules.ts for the 12.7 MB Map this exists to catch.
-            provenanceCell(
-              moduleProvenanceOf(snapshot.getNodeById(c.nodeId) ?? null),
-            ),
+            provenance.get(c.nodeId)?.cell ?? '',
             c.framework || '—',
           ];
         });
         const devOnlyCount = caches.filter(
-          c =>
-            moduleProvenanceOf(snapshot.getNodeById(c.nodeId) ?? null)
-              .prodReachable === 'no',
+          c => provenance.get(c.nodeId)?.devOnly === true,
         ).length;
+        const provenanceEvidence = caches
+          .map(c => provenance.get(c.nodeId)?.evidence)
+          .filter((e): e is string => e != null);
 
         const totalRetained = caches.reduce((sum, c) => sum + heldSize(c), 0);
         const cacheLike = caches.filter(
@@ -964,6 +1010,9 @@ export function registerCacheAnalysis(server: McpServer): void {
                 DEV_ONLY_FOOTNOTE,
                 '',
               ]
+            : []),
+          ...(provenanceEvidence.length > 0
+            ? ['**Dev-module evidence:**', ...provenanceEvidence, '']
             : []),
           ...(staleCapacity.length > 0
             ? [

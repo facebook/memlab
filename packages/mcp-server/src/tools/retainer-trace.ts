@@ -26,7 +26,11 @@ import {
   ephemeronCaveat,
 } from '../utils.js';
 import type {RetainerTreeStep} from '../utils.js';
-import {devEdgeReason, shortestPathAvoidingDevEdges} from '../dev-edges.js';
+import {
+  devEdgeReason,
+  formatProductionPath,
+  shortestPathAvoidingDevEdges,
+} from '../dev-edges.js';
 
 // async/await desugars to a repeating retainer ladder: each suspended `await`
 // frame is a `Promise → system / Context → Generator` triplet, and a deep async
@@ -363,29 +367,14 @@ export function registerRetainerTrace(server: McpServer): void {
             it.edgeName != null && devEdgeReason(it.edgeName, it.node) != null,
         );
         if (devHop != null) {
-          const prod = shortestPathAvoidingDevEdges(node);
-          const hops =
-            prod.kind === 'found'
-              ? prod.steps.map((st, i) =>
-                  i === 0
-                    ? st.node.name
-                    : `.${prod.steps[i - 1].edgeName} → ${st.node.name} @${st.node.id}`,
-                )
-              : [];
+          const prod = shortestPathAvoidingDevEdges(snapshot, node);
           const prodLine =
             prod.kind === 'found'
-              ? `Production path (${hops.length} nodes, no dev edges): ` +
-                (hops.length <= 12
-                  ? hops
-                  : [
-                      ...hops.slice(0, 4),
-                      `… ${hops.length - 10} more …`,
-                      ...hops.slice(-6),
-                    ]
-                ).join(' ')
-              : prod.kind === 'none'
-                ? `**Production path: none.** Every path to @${node_id} runs through a dev edge, so it does not exist in a production build.`
-                : 'Production path: undecided (search stopped at 500,000 nodes).';
+              ? `Production path (${prod.steps.length} nodes, no dev edges): ` +
+                formatProductionPath(prod.steps)
+              : prod.kind === 'undecided'
+                ? '**Production path: undecided.** The analysis budget ran out before the search finished (raise `MEMLAB_ANALYSIS_TIMEOUT_MS` to settle it).'
+                : `**Production path: none.** Every path to @${node_id} runs through a dev edge, so it does not exist in a production build.`;
           lines.push(
             `⚠ **This path passes a DEV edge**: \`${devHop.node.name}\` → \`.${devHop.edgeName}\` ` +
               `(${devEdgeReason(devHop.edgeName, devHop.node)}), which a production build does not have.`,

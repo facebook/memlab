@@ -28,7 +28,12 @@ import {
   REACT_REFRESH_REGISTRY_EDGE_NAMES,
   REACT_REFRESH_SIGNATURE_GATE_PROP,
 } from '../artifact-classes.js';
-import {DEV_GLOBAL_EDGE_NAMES, devEdgeReason} from '../dev-edges.js';
+import {
+  DEV_GLOBAL_EDGE_NAMES,
+  devEdgeReason,
+  devModuleNodes,
+  devStepReason,
+} from '../dev-edges.js';
 
 // React Fast Refresh (react-refresh) bookkeeping, installed on the global by the
 // DEV-only runtime. `$RefreshSig$` / `$RefreshReg$` close over the refresh
@@ -463,6 +468,7 @@ export function computeReachableWithoutDevRoots(
   devRoots: DevRoots,
 ): Uint8Array {
   const {byId} = devRoots;
+  const devModules = devModuleNodes(snapshot);
   const reached = new Uint8Array(snapshot.nodes.length);
   const stack: IHeapNode[] = [];
   // Seed from the synthetic GC roots (the "(GC roots)" super-root and its
@@ -482,7 +488,7 @@ export function computeReachableWithoutDevRoots(
       if (reached[to.nodeIndex]) return;
       // A dev EDGE is refused, not its target: `_owner` points at a live fiber
       // the app reaches by other paths.
-      if (devEdgeReason(edge.name_or_index, node) != null) return;
+      if (devStepReason(edge, node, devModules) != null) return;
       reached[to.nodeIndex] = 1;
       // Mark the dev root reached (it is held by a real global handle) but do
       // NOT follow its edges — anything reachable only through it is dev-only.
@@ -531,6 +537,7 @@ export function summarizeDevOnly(
   reached: Uint8Array,
 ): DevOnlyTotals {
   const {byId, categoryById} = devRoots;
+  const devModules = devModuleNodes(snapshot);
   const mask = new Uint8Array(snapshot.nodes.length);
   const stack: IHeapNode[] = [];
   const devOnlyIds = new NumericSet();
@@ -548,7 +555,7 @@ export function summarizeDevOnly(
       if (isRoot) bit = CATEGORY_BIT[cat];
       else if (
         !byId.has(to.id) &&
-        devEdgeReason(edge.name_or_index, node) != null
+        devStepReason(edge, node, devModules) != null
       ) {
         bit = CATEGORY_BIT.devEdge;
       }
@@ -608,6 +615,19 @@ export function summarizeDevOnly(
  * label. Best-effort: the shortest path usually runs through the dominant
  * retainer; falls back to a generic label when it does not.
  */
+let lastDevModules: {
+  snapshot: IHeapSnapshot;
+  nodes: Map<number, string>;
+} | null = null;
+
+function devModuleReasonOf(node: IHeapNode): string | null {
+  const snapshot = getSnapshot();
+  if (lastDevModules?.snapshot !== snapshot) {
+    lastDevModules = {snapshot, nodes: devModuleNodes(snapshot)};
+  }
+  return lastDevModules.nodes.get(node.nodeIndex) ?? null;
+}
+
 function findDevRootVia(node: IHeapNode, devRoots: DevRoots): string | null {
   let cur: IHeapNode | null = node;
   const seen = new Set<number>();
@@ -617,7 +637,9 @@ function findDevRootVia(node: IHeapNode, devRoots: DevRoots): string | null {
     if (!edge) break;
     const from: IHeapNode = edge.fromNode;
     const via =
-      devRoots.byId.get(from.id) ?? devEdgeReason(edge.name_or_index, from);
+      devRoots.byId.get(from.id) ??
+      devEdgeReason(edge.name_or_index, from) ??
+      devModuleReasonOf(from);
     if (via != null) return via;
     if (seen.has(from.id)) break;
     seen.add(from.id);

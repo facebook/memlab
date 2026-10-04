@@ -22,7 +22,7 @@ import {
   toolResult,
 } from '../utils.js';
 import {collectDevRoots, type DevRoots} from './dev-artifacts.js';
-import {devEdgeReason} from '../dev-edges.js';
+import {devModuleNodes, devStepReason} from '../dev-edges.js';
 
 /**
  * A live -> island edge: one reason the island is still reachable, and one
@@ -287,6 +287,7 @@ function findDoors(
   const stack: IHeapNode[] = [];
   // Targets of refused dev edges, where the dev-only walk below starts.
   const devEdgeTargets: IHeapNode[] = [];
+  const devModules = devModuleNodes(snapshot);
   // Ephemeron edges whose key was not yet known reachable when we met them.
   let deferred: Array<{from: IHeapNode; edge: IHeapEdge; keyId: number}> = [];
 
@@ -354,7 +355,7 @@ function findDoors(
       if (island.has(to.id)) excluded.weak++;
       return;
     }
-    if (devEdgeReason(edge.name_or_index, from) != null) {
+    if (devStepReason(edge, from, devModules) != null) {
       if (island.has(to.id)) excluded.devOnly++;
       else devEdgeTargets.push(to);
       return;
