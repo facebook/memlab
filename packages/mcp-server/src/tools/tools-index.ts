@@ -191,6 +191,10 @@ const GROUPS: Group[] = [
         'Run ANY tool in the background and get a job id at once — for ladder tools that would outlive the client tool timeout.',
       ],
       [
+        'memlab_cache_inventory',
+        'Module-scope Maps/Sets/Arrays ranked by what their entries hold, with the owning module and any clear/reset API it already has — memory-pressure candidates in one call.',
+      ],
+      [
         'memlab_source_for_node',
         'Which module\'s code a node belongs to (closure scope chain → Haste module, exact), for going from "which object" to "which file" without code search.',
       ],

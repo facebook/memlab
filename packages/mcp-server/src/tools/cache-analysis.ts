@@ -341,7 +341,7 @@ const MAX_ENTRIES_MEASURED = 20000;
  * heap, 14 KB container vs 5.1 MB of entries. Ranking by container size alone
  * buried that collection under the 512 KB default.
  */
-function entriesRetainedOf(
+export function entriesRetainedOf(
   node: IHeapNode,
   snapshot: IHeapSnapshot,
 ): {retained: number; exact: boolean} | null {

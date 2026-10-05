@@ -339,7 +339,9 @@ export function registerModuleAttribution(server: McpServer): void {
 
 const moduleScopeCache = new WeakMap<IHeapSnapshot, Map<number, string>>();
 
-function cachedModuleScopes(snapshot: IHeapSnapshot): Map<number, string> {
+export function cachedModuleScopes(
+  snapshot: IHeapSnapshot,
+): Map<number, string> {
   let m = moduleScopeCache.get(snapshot);
   if (m == null) {
     m = findModuleScopes(snapshot);
