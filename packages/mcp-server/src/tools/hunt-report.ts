@@ -219,6 +219,20 @@ export function registerHuntReport(server: McpServer): void {
               String(r.index ?? '—'),
               String(r.off_heap?.storage_usage_mb ?? '—'),
               String(r.off_heap?.js_heap_mb ?? '—'),
+              String(r.off_heap?.renderer_anon_mb ?? '—'),
+              // Anonymous renderer memory the JS heap does not account for:
+              // Blob bytes, decoded media, Oilpan, WASM. Floored at 0: the two
+              // are sampled from different sources at different instants.
+              typeof r.off_heap?.renderer_anon_mb === 'number' &&
+              typeof r.off_heap?.js_heap_mb === 'number'
+                ? String(
+                    Math.max(
+                      0,
+                      r.off_heap.renderer_anon_mb - r.off_heap.js_heap_mb,
+                    ),
+                  )
+                : '—',
+              String(r.off_heap?.dom_nodes ?? '—'),
               String(r.off_heap?.longtasks ?? '—'),
               // every cell must be a string: markdownTable pads them, so a
               // single undefined from a partial manifest throws
@@ -230,9 +244,17 @@ export function registerHuntReport(server: McpServer): void {
               '_The documented real OOM causes — IndexedDB, decoded media, WASM — are invisible to a heap snapshot. These are sampled per rung so the blind spot is at least tracked._',
               '',
               markdownTable(
-                ['Rung', 'Storage (MB)', 'JS heap (MB)', 'Longtasks'],
+                [
+                  'Rung',
+                  'Storage (MB)',
+                  'JS heap (MB)',
+                  'Renderer anon (MB)',
+                  'Outside JS heap (MB)',
+                  'DOM nodes',
+                  'Longtasks',
+                ],
                 offHeapRows,
-                new Set([1, 2, 3]),
+                new Set([1, 2, 3, 4, 5, 6]),
               ),
               '',
             );
