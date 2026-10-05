@@ -164,3 +164,141 @@ export function nearestFiber(
   }
   return null;
 }
+
+/** A value as a short label: oddballs and strings inline, objects by class. */
+export function describeValue(node: IHeapNode | null): string {
+  if (node == null) return 'smi'; // an inline small integer emits no edge
+  if (['true', 'false', 'null', 'undefined'].includes(node.name)) {
+    return node.name;
+  }
+  if (node.isString) {
+    const s = node.toStringNode()?.stringValue ?? node.name;
+    return JSON.stringify(s.length > 24 ? `${s.slice(0, 24)}…` : s);
+  }
+  if (node.type === 'number' || node.name === 'heap number') return 'number';
+  return `<${node.name || node.type}>`;
+}
+
+/** The target of `node`'s edge named `name`, or null (also for a sentinel root). */
+export function edgeTo(node: IHeapNode, name: string): IHeapNode | null {
+  for (const e of node.references) {
+    if (String(e.name_or_index) === name)
+      return e.toNode.id > 3 ? e.toNode : null;
+  }
+  return null;
+}
+
+export interface HookInfo {
+  /** 0-based position in the fiber's hook list. */
+  index: number;
+  /** 1-based position among STATEFUL hooks (useState/useReducer) only. */
+  statefulOrdinal: number | null;
+  kind: 'state' | 'reducer' | 'other';
+  queue: IHeapNode | null;
+  hook: IHeapNode;
+}
+
+/**
+ * The fiber's hook list, in order. A hook is stateful when its `queue` holds
+ * an object: effect, ref and memo hooks have none. The ordinal counts only
+ * those, which is what maps "hook #9 in the list" back to "the third useState
+ * in the component source" — inferred by hand in every eager-bailout finding.
+ */
+export function hooksOfFiber(fiber: IHeapNode, maxHooks = 200): HookInfo[] {
+  const out: HookInfo[] = [];
+  let hook = edgeTo(fiber, 'memoizedState');
+  let stateful = 0;
+  const seen = new Set<number>();
+  while (hook != null && out.length < maxHooks && !seen.has(hook.id)) {
+    seen.add(hook.id);
+    // A class component's memoizedState is its state object, not a hook.
+    if (!propertyNames(hook).has('next') && out.length === 0) break;
+    const queue = edgeTo(hook, 'queue');
+    const isStateful = queue != null && queue.type === 'object';
+    if (isStateful) stateful++;
+    const reducer = queue != null ? edgeTo(queue, 'lastRenderedReducer') : null;
+    out.push({
+      index: out.length,
+      statefulOrdinal: isStateful ? stateful : null,
+      kind: !isStateful
+        ? 'other'
+        : reducer?.name === 'basicStateReducer'
+          ? 'state'
+          : 'reducer',
+      queue: isStateful ? queue : null,
+      hook,
+    });
+    hook = edgeTo(hook, 'next');
+  }
+  return out;
+}
+
+export interface QueueDetail {
+  hook: HookInfo | null;
+  lastRenderedState: string;
+  actions: Array<{value: string; count: number}>;
+  /** Every pending action is the very value last rendered: the eager-bailout signature. */
+  bailout: boolean | null;
+  dispatchHolders: string[];
+}
+
+/** Hook position, pending-action histogram and dispatch holders of one queue. */
+export function describeQueue(
+  queue: IHeapNode,
+  fiber: IHeapNode | null,
+  maxChain = 5000,
+  /** The queue's hook when the caller already walked the fiber's hooks. */
+  knownHook?: HookInfo,
+): QueueDetail {
+  const hook =
+    knownHook ??
+    (fiber != null
+      ? (hooksOfFiber(fiber).find(h => h.queue?.id === queue.id) ?? null)
+      : null);
+  const last = edgeTo(queue, 'lastRenderedState');
+  const lastLabel = describeValue(last);
+  const counts = new Map<string, number>();
+  let allSame: boolean | null = true;
+  const seen = new Set<number>();
+  for (
+    let rec = edgeTo(queue, 'pending');
+    rec != null && isUpdateRecord(rec) && !seen.has(rec.id);
+  ) {
+    if (seen.size >= maxChain) {
+      // Truncated: a differing action already seen still settles "no", but
+      // "every action matched" is only known for the part that was read.
+      if (allSame === true) allSame = null;
+      break;
+    }
+    seen.add(rec.id);
+    const action = edgeTo(rec, 'action');
+    const label = describeValue(action);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+    // An SMI emits no node, so its value is not in the snapshot: two SMIs
+    // may still differ, and only an id match proves "same value".
+    if (action == null || last == null)
+      allSame = allSame === false ? false : null;
+    else if (action.id !== last.id) allSame = false;
+    rec = edgeTo(rec, 'next');
+  }
+  const dispatch = edgeTo(queue, 'dispatch');
+  const holders: string[] = [];
+  if (dispatch != null) {
+    for (const e of dispatch.referrers) {
+      if (e.fromNode.id === queue.id || holders.length >= 3) continue;
+      holders.push(
+        `${e.fromNode.name || e.fromNode.type}.${String(e.name_or_index)}`,
+      );
+    }
+  }
+  return {
+    hook,
+    lastRenderedState: lastLabel,
+    actions: [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([value, count]) => ({value, count})),
+    bailout: seen.size === 0 ? null : allSame,
+    dispatchHolders: holders,
+  };
+}

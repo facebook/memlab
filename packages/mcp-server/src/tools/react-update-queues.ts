@@ -10,6 +10,7 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
+import {describeQueue} from '../react-shapes.js';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
 import {
@@ -511,6 +512,50 @@ export function registerReactUpdateQueues(server: McpServer): void {
         if (ranked.length > shown.length) {
           lines.push(
             `_${formatNumber(ranked.length - shown.length)} further component(s) not shown; raise \`limit\`._`,
+            '',
+          );
+        }
+        // The questions every eager-bailout finding asked by hand: WHICH hook
+        // (the stateful ordinal maps it to the Nth useState in source), what
+        // is being dispatched, and whether each pending action equals the
+        // last rendered state — the bailout signature.
+        const details = shown.slice(0, 10).flatMap(b => {
+          const queue = snapshot.getNodeById(b.example);
+          if (queue == null) return [];
+          return [{b, d: describeQueue(queue, nearestFiber(queue, max_hops))}];
+        });
+        if (details.length > 0) {
+          lines.push(
+            '### Hook detail (longest chain per component)',
+            '',
+            markdownTable(
+              [
+                'Component',
+                'Hook #',
+                'Stateful #',
+                'Kind',
+                'Pending actions (top 3)',
+                'lastRenderedState',
+                'Bailout?',
+                'dispatch held by',
+              ],
+              details.map(({b, d}) => [
+                b.component,
+                d.hook != null ? String(d.hook.index) : '?',
+                d.hook?.statefulOrdinal != null
+                  ? String(d.hook.statefulOrdinal)
+                  : '?',
+                d.hook?.kind ?? '?',
+                d.actions
+                  .map(a => `${a.value} ×${formatNumber(a.count)}`)
+                  .join(', ') || '—',
+                d.lastRenderedState,
+                d.bailout == null ? '?' : d.bailout ? '**yes**' : 'no',
+                d.dispatchHolders.join('; ') || '—',
+              ]),
+            ),
+            '',
+            '_**Stateful #** counts only hooks with a queue (useState/useReducer), so `Stateful # 3` is the third such call in the component source. **Bailout? yes** means every pending action is the very value last rendered — the eager-bailout shape, where a no-op `setState(sameValue)` leaves its record on the queue forever. `smi` = an inline small integer, which the snapshot does not record._',
             '',
           );
         }

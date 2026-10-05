@@ -17,7 +17,15 @@ import path from 'path';
 import vm from 'node:vm';
 import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
-import {nearestFiber, fiberComponentName} from '../react-shapes.js';
+import {
+  describeQueue,
+  describeValue,
+  edgeTo,
+  fiberComponentName,
+  hooksOfFiber,
+  isFiberNode,
+  nearestFiber,
+} from '../react-shapes.js';
 import {readElements as readElementsInfo} from '../heap-shapes.js';
 import {
   getCurrentHandle,
@@ -1205,6 +1213,7 @@ export function registerEval(server: McpServer): void {
             'isOrphaned(nodeId, ownershipEdgeNames[]), countUniqueTargets(arrayNodeId, propName), ' +
             'retainedSize(id)->number, retainedSizes(ids[])->Record<id,bytes> (an OBJECT keyed by id, NOT an array — index it as sizes[id] or Object.values(sizes)), ' +
             'mapEntries(mapId, limit?)->[{key,value}] & setElements(setId, limit?)->[brief] (correct Map/Set/WeakMap enumeration — handles browser internal-typed slots AND SMI-value gaps, so you never re-derive it wrong), ' +
+            "fiberHooks(componentName, {limit?})->[{fiber, hooks:[{index, statefulOrdinal, kind, memoizedState, pending, lastRenderedState, bailout}]}] (a component's hook list in order; statefulOrdinal counts only useState/useReducer, so it maps to the Nth such call in source), " +
             'stringValue(nodeOrId, {maxLen?, slices?: "parent"|"marker"})->string (text of a flat, `(concatenated string)` or `(sliced string)` node; a slice is returned as its whole parent because the snapshot records no offset, or as `‹slice›` with slices:"marker"), ' +
             'props(nodeOrId)->{prop: scalar | {ref,name,type}} & getProp(nodeOrId, name) & shapeSignature(nodeOrId, {maxStringLen?}) (content signature for dedup checks), ' +
             'shapeKeys(nodeOrId)->Set<string> & ownProps(nodeOrId) & hasShape(nodeOrId, [names], {exact?,exclude?}) (own JS properties ONLY — USE THESE FOR SHAPE MATCHING; props() falls back to an internal-edge walk and injects length/map/__via/__note, which makes a props()-based shape test silently return zero matches), ' +
@@ -1725,6 +1734,39 @@ export async function runEval({
       if (nodeOrId == null) return null;
       const id = typeof nodeOrId === 'number' ? nodeOrId : nodeOrId.id;
       return snapshot.getNodeById(id);
+    };
+
+    // Hooks of every fiber rendering `componentName`, in list order, each with
+    // its stateful ordinal and, for a stateful hook, its pending chain.
+    const fiberHooks = (componentName: string, opts: {limit?: number} = {}) => {
+      const out: unknown[] = [];
+      snapshot.nodes.forEach(node => {
+        // memlab's IHeapNodes.forEach stops when the callback returns false.
+        if (out.length >= (opts.limit ?? 20)) return false;
+        if (!isFiberNode(node) || fiberComponentName(node) !== componentName) {
+          return undefined;
+        }
+        out.push({
+          fiber: node.id,
+          hooks: hooksOfFiber(node).map(h => {
+            const d =
+              h.queue != null
+                ? describeQueue(h.queue, node, undefined, h)
+                : null;
+            return {
+              index: h.index,
+              statefulOrdinal: h.statefulOrdinal,
+              kind: h.kind,
+              memoizedState: describeValue(edgeTo(h.hook, 'memoizedState')),
+              pending: d?.actions ?? [],
+              lastRenderedState: d?.lastRenderedState ?? null,
+              bailout: d?.bailout ?? null,
+            };
+          }),
+        });
+        return undefined;
+      });
+      return out;
     };
 
     // The text of a flat, concatenated or sliced string; '' for a non-string.
@@ -3543,6 +3585,7 @@ export async function runEval({
       mapEntries,
       setElements,
       stringValue,
+      fiberHooks,
       props,
       getProp,
       ownProps,
