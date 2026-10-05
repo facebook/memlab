@@ -164,6 +164,7 @@ function buildPlan(
   finalRung: string,
   baseRung: string,
   hasSettleRung: boolean,
+  hasControls = false,
 ): Step[] {
   const ladder: Step[] = [
     // FIRST, deliberately. On one app 59-75% of the heap is not the
@@ -210,6 +211,9 @@ function buildPlan(
     // were run by hand every round because the battery did not.
     {tool: 'memlab_detached_dom', args: {run_dir: runDir}},
     {tool: 'memlab_event_registry', args: {run_dir: runDir}},
+    ...(hasControls
+      ? [{tool: 'memlab_positive_controls', args: {run_dir: runDir}}]
+      : []),
   ];
 
   const deep: Step[] = [
@@ -297,6 +301,7 @@ const DIGEST_PATTERNS: ReadonlyArray<{tool: RegExp; re: RegExp; max: number}> =
       re: /^Totals:|^\*\*|\| (STEP\+LINEAR|STEP|LINEAR|ONSET)\s+\|$/,
       max: 6,
     },
+    {tool: /positive_controls/, re: /PASS|FAIL|n\/a/, max: 4},
     {
       tool: /event_registry/,
       // DRAINS and SATURATING too: an all-backlog listener table is a finding.
@@ -853,6 +858,7 @@ export function registerAnalysisBattery(server: McpServer): void {
           finalRung,
           baseRung,
           hasSettleRung,
+          manifest.positiveControls.length > 0,
         );
 
         const progress = makeProgressReporter(extra, 'battery');

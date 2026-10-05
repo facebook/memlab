@@ -98,6 +98,22 @@ export interface RunManifest {
   content: Record<string, number> | null;
   /** Viewport the round was driven at, e.g. "1920x1080". */
   viewport: string | null;
+  /**
+   * Known accumulators the app preset says should grow with interaction
+   * (run.json `positive_controls`), so a round can prove its probes see one.
+   */
+  positiveControls: PositiveControl[];
+  /** run.json `positive_controls` entries dropped as malformed (bad kind, …). */
+  droppedPositiveControls: number;
+}
+
+export interface PositiveControl {
+  name: string;
+  /** Edge (property or closure variable) that binds the collection. */
+  edge: string;
+  /** `map-size`: entries of the Map/Set/Array; `modulesMap-prefix`: registry keys starting with `prefix`. */
+  kind: 'map-size' | 'modulesMap-prefix';
+  prefix?: string;
 }
 
 /** `rung_02_c375.heapsnapshot` -> 375. */
@@ -334,6 +350,25 @@ export function loadRunManifest(runDir: string): RunManifest {
   const elapsed = typeof raw.elapsed_s === 'number' ? raw.elapsed_s : null;
 
   const environment = raw.environment as Record<string, unknown> | undefined;
+  const positiveControls: PositiveControl[] = Array.isArray(
+    raw.positive_controls,
+  )
+    ? (raw.positive_controls as unknown[]).flatMap(c => {
+        const o = c as Record<string, unknown>;
+        return typeof o?.name === 'string' &&
+          typeof o.edge === 'string' &&
+          (o.kind === 'map-size' || o.kind === 'modulesMap-prefix')
+          ? [
+              {
+                name: o.name,
+                edge: o.edge,
+                kind: o.kind,
+                prefix: typeof o.prefix === 'string' ? o.prefix : undefined,
+              },
+            ]
+          : [];
+      })
+    : [];
   return {
     paths,
     cyclesPerRung,
@@ -352,6 +387,10 @@ export function loadRunManifest(runDir: string): RunManifest {
     ),
     settleRungPath,
     isolateAgeMsAtBaseline: isolateAgeMs,
+    positiveControls,
+    droppedPositiveControls: Array.isArray(raw.positive_controls)
+      ? raw.positive_controls.length - positiveControls.length
+      : 0,
     content: numericRecord(environment?.content),
     viewport:
       typeof environment?.viewport === 'string' ? environment.viewport : null,
