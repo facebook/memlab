@@ -223,6 +223,102 @@ function nearWhole(x: number, tol = 0.03, maxMagnitude = 20): number | null {
   return r >= 1 && Math.abs(a - r) <= tol ? r : null;
 }
 
+// Pairs are compared all-against-all, so only the fastest growers take part;
+// a population outside this many is not reported as co-moving.
+const MAX_COMOVE_CANDIDATES = 80;
+
+/**
+ * Groups of populations with a constant rate ratio across rounds. Class rates
+ * and pending-chain per-cycle values are joined, since a React queue and the
+ * DOM it re-renders are exactly the kind of pair that co-moves.
+ */
+export function coMovingGroups(
+  rounds: RoundData[],
+  minRate: number,
+): Array<{members: string[]; ratios: number[]; rounds: string[]}> {
+  const series = new Map<string, Map<string, number>>();
+  for (const r of rounds) {
+    const add = (k: string, v: number) => {
+      if (!(v >= minRate)) return;
+      let m = series.get(k);
+      if (m == null) series.set(k, (m = new Map()));
+      m.set(r.name, v);
+    };
+    for (const [k, v] of r.rates) add(k, v);
+    if (r.cycles > 0) {
+      for (const [k, v] of r.chains) add(`queue: ${k}`, v / r.cycles);
+    }
+  }
+  const candidates = [...series.entries()]
+    .filter(([, m]) => m.size >= 2)
+    .map(([k, m]) => ({entry: [k, m] as const, peak: Math.max(...m.values())}))
+    .sort((a, b) => b.peak - a.peak)
+    .slice(0, MAX_COMOVE_CANDIDATES)
+    .map(c => c.entry);
+  const varies = (v: number[]) => Math.max(...v) / Math.min(...v) >= 1.5;
+  // Rounds of `shared` on which `b` keeps a constant ratio to `a` while both
+  // vary, or null. Groups grow from a seed, never transitively: A~X and B~X
+  // does not make A~B, and the rounds A and B share could be fewer than two.
+  const comoves = (
+    a: Map<string, number>,
+    b: Map<string, number>,
+    shared: string[],
+  ): string[] | null => {
+    const common = shared.filter(k => b.has(k));
+    if (common.length < 2) return null;
+    const av = common.map(k => a.get(k) as number);
+    const bv = common.map(k => b.get(k) as number);
+    const ratios = common.map((_, i) => av[i] / bv[i]);
+    const spreadRatio = Math.max(...ratios) / Math.min(...ratios);
+    return spreadRatio <= 1.03 && varies(av) && varies(bv) ? common : null;
+  };
+  const assigned = new Set<number>();
+  const out: Array<{members: string[]; ratios: number[]; rounds: string[]}> =
+    [];
+  for (let i = 0; i < candidates.length; i++) {
+    if (assigned.has(i)) continue;
+    const seed = candidates[i][1];
+    let shared = [...seed.keys()];
+    const members = [i];
+    for (let j = i + 1; j < candidates.length; j++) {
+      if (assigned.has(j)) continue;
+      const next = comoves(seed, candidates[j][1], shared);
+      // Narrowing the shared rounds can leave an earlier member flat on them.
+      if (
+        next == null ||
+        !members.every(m =>
+          varies(next.map(k => candidates[m][1].get(k) as number)),
+        )
+      ) {
+        continue;
+      }
+      members.push(j);
+      shared = next;
+    }
+    if (members.length < 2) continue;
+    members.forEach(m => assigned.add(m));
+    // The median over the shared rounds: within the 3% band, any one round's
+    // ratio depends on which round it is.
+    const median = (v: number[]) => {
+      const s = [...v].sort((x, y) => x - y);
+      const h = Math.floor(s.length / 2);
+      return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2;
+    };
+    out.push({
+      members: members.map(m => candidates[m][0]),
+      ratios: members.map(m =>
+        median(
+          shared.map(
+            k => (candidates[m][1].get(k) as number) / (seed.get(k) as number),
+          ),
+        ),
+      ),
+      rounds: shared,
+    });
+  }
+  return out;
+}
+
 function readRound(dir: string): RoundData {
   const name = path.basename(dir.replace(/\/$/, ''));
   const manifest = loadRunManifest(dir);
@@ -589,6 +685,35 @@ export function registerCompareRounds(server: McpServer): void {
               new Set([2, 3, 4]),
             ),
             ...truncationNote(uniqueGrowers.length),
+            '',
+          );
+        }
+
+        // Populations whose rates move TOGETHER across rounds share a trigger.
+        // Two accounts read contextMenuOpened +4.000 / +16.000 and
+        // OrderedScope<LayoutQuote> +3.98 / +15.98 — the same ratio on both,
+        // which named "row mount" as the shared cause. It was found by eye.
+        const coMoving = coMovingGroups(
+          rounds.filter(r => !isIdle(r)),
+          REGRESSION_MIN_RATE,
+        );
+        if (coMoving.length > 0) {
+          lines.push(
+            '### ⚑ Populations that move together across rounds',
+            '',
+            'Each group keeps a constant rate RATIO (within 3%) across every round where both members grew, while the rates themselves vary at least 1.5× between rounds — so the agreement is not just two flat lines. A shared ratio is a shared trigger: fix or explain one and the others follow.',
+            '',
+            markdownTable(
+              ['Group', 'Ratio to first', 'Rounds'],
+              coMoving
+                .slice(0, NOTE_LIMIT)
+                .map(g => [
+                  g.members.join(' · '),
+                  g.ratios.map(x => x.toFixed(2)).join(' : '),
+                  g.rounds.join(', '),
+                ]),
+            ),
+            ...truncationNote(coMoving.length),
             '',
           );
         }
