@@ -191,6 +191,10 @@ const GROUPS: Group[] = [
         'Run ANY tool in the background and get a job id at once — for ladder tools that would outlive the client tool timeout.',
       ],
       [
+        'memlab_stale_refs',
+        "React refs whose `.current` is detached DOM, by owner and variable, against the owner's fiber count — bounded (≤1 per instance) or accumulating.",
+      ],
+      [
         'memlab_dev_subtracted_delta',
         'Per-class growth between two snapshots with everything reachable only through a dev root or dev edge removed — the dev build\'s honest "what did the app grow".',
       ],
