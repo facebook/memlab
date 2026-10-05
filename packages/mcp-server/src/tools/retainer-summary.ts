@@ -83,7 +83,14 @@ export function getRetainerTrace(node: IHeapNode): TraceStep[] | null {
 }
 
 function normalizeEdgeName(name: string): string {
-  return /^\d+$/.test(name) ? '*' : name;
+  if (/^\d+$/.test(name)) return '*';
+  // A WeakMap entry edge is named by its table SLOT plus the key and value
+  // node ids — `467499 / part of key (_s6_$0 @9088921) -> value (Object
+  // @9458491) pair in WeakMap (table @7527325)` — all of which differ per
+  // entry. Left in the key, 40 samples of ONE path through one WeakMap
+  // reported "40 distinct retainer patterns" and ~16 KB of near-identical
+  // paths.
+  return name.replace(/^\d+ \/ /, '* / ').replace(/ @\d+\b/g, ' @…');
 }
 
 // V8 suffixes per-instance node ids onto some internal names (e.g.
