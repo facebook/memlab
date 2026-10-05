@@ -8,6 +8,7 @@
  * @oncall memory_lab
  */
 
+import {makeProgressReporter, runWithProgress} from './progress.js';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   beginAnalysisBudget,
@@ -198,7 +199,13 @@ export function installAnalysisGuardrail(server: McpServer): void {
         );
         beginAnalysisBudget(timeoutMs);
         try {
-          return await inner(...hArgs);
+          // `extra` is the second argument for a schema tool, the first
+          // otherwise.
+          const extra = hArgs.length > 1 ? hArgs[1] : hArgs[0];
+          return await runWithProgress(
+            makeProgressReporter(extra, name.replace(/^memlab_/, '')),
+            async () => inner(...hArgs),
+          );
         } catch (e) {
           if (e instanceof ScanTimeoutError) {
             const ran = Math.round(activeElapsedMs() / 1000);

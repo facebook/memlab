@@ -187,6 +187,14 @@ const GROUPS: Group[] = [
         'Poll a `memlab_analysis_battery({async: true})` run and collect its report when it finishes.',
       ],
       [
+        'memlab_start_job',
+        'Run ANY tool in the background and get a job id at once — for ladder tools that would outlive the client tool timeout.',
+      ],
+      [
+        'memlab_job_status',
+        'Poll a `memlab_start_job` job: per-rung notes while it runs, the full result when it is done.',
+      ],
+      [
         'memlab_shape_census_diff',
         'Per-SHAPE growth across the ladder. Reach for this the moment a class-level tool blames `Object`: it turns "`Object` +377,959" into "`{event,timestamp}` ~0 → 53,029" in one call.',
       ],

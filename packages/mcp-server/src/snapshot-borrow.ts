@@ -8,6 +8,7 @@
  * @oncall memory_lab
  */
 
+import {currentProgress} from './progress.js';
 import type {IHeapSnapshot} from '@memlab/core';
 import fs from 'fs';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
@@ -55,7 +56,15 @@ export async function withSnapshotAt<T>(
 
   try {
     if (snapshot == null) {
+      const name = localPath.replace(/^.*\//, '');
+      const started = Date.now();
+      currentProgress().note?.(
+        `loading ${name} (the parse and dominator pass block without further output)`,
+      );
       snapshot = await getFullHeapFromFile(localPath);
+      currentProgress().note?.(
+        `loaded ${name} in ${Math.round((Date.now() - started) / 1000)}s`,
+      );
       const meta = setSnapshot(
         snapshot,
         localPath,

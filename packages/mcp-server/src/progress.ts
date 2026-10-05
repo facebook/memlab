@@ -30,6 +30,8 @@
  * but it is not a live percentage and must not be presented as one.
  */
 
+import {AsyncLocalStorage} from 'node:async_hooks';
+
 interface ProgressCapableExtra {
   _meta?: {progressToken?: string | number};
   sendNotification?: (notification: {
@@ -49,6 +51,11 @@ export interface ProgressReporter {
    * number of phases, so a host can render a determinate bar.
    */
   phase(step: number, total: number, message: string): void;
+  /**
+   * An event with no known total — "loading rung 3" from code that does not
+   * know how many rungs its caller will ask for.
+   */
+  note?(message: string): void;
 }
 
 const NOOP: ProgressReporter = {
@@ -57,6 +64,27 @@ const NOOP: ProgressReporter = {
     // supplied no `extra` (in-process dispatch); reporting is simply off.
   },
 };
+
+/**
+ * The reporter for the tool call currently executing, set by the guardrail
+ * wrapper every tool goes through. Lets shared code — the rung loader most of
+ * all — report progress for every ladder tool without each tool threading a
+ * reporter through: only two ladder tools reported anything, and the rest
+ * went silent for minutes until the client backgrounded them.
+ */
+const active = new AsyncLocalStorage<ProgressReporter>();
+
+export function runWithProgress<T>(
+  reporter: ProgressReporter,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return active.run(reporter, fn);
+}
+
+/** The current call's reporter; a no-op outside a tool call. */
+export function currentProgress(): ProgressReporter {
+  return active.getStore() ?? NOOP;
+}
 
 /**
  * Build a reporter from a tool handler's `extra` argument.
@@ -75,7 +103,19 @@ export function makeProgressReporter(
   const send =
     typeof e.sendNotification === 'function' ? e.sendNotification : null;
 
+  let notes = 0;
   return {
+    note(message: string): void {
+      notes++;
+      process.stderr.write(`[${label}] ${message}\n`);
+      if (send == null || token == null) return;
+      void send({
+        method: 'notifications/progress',
+        params: {progressToken: token, progress: notes, message},
+      }).catch(() => {
+        // Same as phase(): a notification is never worth failing the call.
+      });
+    },
     phase(step: number, total: number, message: string): void {
       process.stderr.write(`[${label} ${step}/${total}] ${message}\n`);
       if (send == null || token == null) return;
