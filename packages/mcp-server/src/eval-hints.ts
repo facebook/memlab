@@ -50,6 +50,16 @@ interface HintRule {
 
 const RULES: HintRule[] = [
   {
+    // First, because the answer it corrects is a confident wrong number.
+    // `iterByClass(callbackName, {type: 'closure'})` returned 1 for a callback
+    // bound by 246 listener records: the closure is the DEFINITION, shared by
+    // every registration, and the records are what grow.
+    tool: 'helpers.listenerRecords',
+    why: 'counts REGISTRATIONS — a closure node is the one shared definition, so counting closures by name returns ~1 however many listener records hold it; use `helpers.listenerRecords({callbackName})`',
+    all: [/(iterByClass|byClass|nodesByClass)\(/, /type\s*:\s*['"]closure['"]/],
+    none: [/listenerRecords/],
+  },
+  {
     tool: 'memlab_event_registry',
     why: 'counts `{callback, context}` listener records by event and host directly',
     // `callback` and `context` are two of the most common identifiers in

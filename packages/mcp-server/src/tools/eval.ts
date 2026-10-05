@@ -2690,8 +2690,17 @@ export async function runEval({
      * actually asked in ("how many `subscribe_$0` records are held?").
      */
     const listenerRecords = (
-      callbackNamed?: string,
-    ): Array<{id: number; callback: string; context: string}> => {
+      filter?:
+        string | {callbackName?: string; emitterClass?: string; event?: string},
+    ): Array<{
+      id: number;
+      callback: string;
+      context: string;
+      event?: string;
+      emitter?: string;
+    }> => {
+      const f = typeof filter === 'string' ? {callbackName: filter} : filter;
+      const callbackNamed = f?.callbackName;
       const key = '__listenerRecords';
       let all = scratch[key] as
         Array<{id: number; callback: string; context: string}> | undefined;
@@ -2728,9 +2737,57 @@ export async function runEval({
         all = found;
         scratch[key] = all;
       }
-      return callbackNamed == null
-        ? all
-        : all.filter(r => r.callback === callbackNamed);
+      const byCallback =
+        callbackNamed == null
+          ? all
+          : all.filter(r => r.callback === callbackNamed);
+      if (f?.emitterClass == null && f?.event == null) return byCallback;
+      // Event and emitter are read per record, only when asked for: the
+      // record sits in an Array under an event-name property of a registry,
+      // which hangs off the emitter.
+      return byCallback.flatMap(r => {
+        const rec = snapshot.getNodeById(r.id);
+        // Every record -> array -> registry chain, not the first referrer at
+        // each step: a record held by two registries must match a filter on
+        // either. The event is the array's property edge (an element edge is
+        // an index, not an event name); the emitter is whatever holds the registry by property,
+        // other than an Array, and stays unknown when nothing does.
+        const chains: Array<{event: string; emitter: string | undefined}> = [];
+        for (const ae of rec?.referrers ?? []) {
+          if (ae.type !== 'element') continue;
+          for (const ee of ae.fromNode.referrers) {
+            if (ee.type !== 'property') continue;
+            const name = String(ee.name_or_index);
+            const registry = ee.fromNode;
+            let held = false;
+            for (const he of registry.referrers) {
+              if (
+                he.type !== 'property' ||
+                he.fromNode.id === registry.id ||
+                he.fromNode.name === 'Array'
+              ) {
+                continue;
+              }
+              held = true;
+              chains.push({event: name, emitter: he.fromNode.name});
+            }
+            if (!held) chains.push({event: name, emitter: undefined});
+          }
+        }
+        // One entry per record, carrying the first chain (in referrer order)
+        // that matches the filter.
+        const hit = chains.find(
+          c =>
+            (f.event == null || c.event === f.event) &&
+            (f.emitterClass == null || c.emitter === f.emitterClass),
+        );
+        if (hit == null) return [];
+        return [
+          hit.emitter != null
+            ? {...r, event: hit.event, emitter: hit.emitter}
+            : {...r, event: hit.event},
+        ];
+      });
     };
 
     /**
@@ -4469,7 +4526,7 @@ function describeEnvLines(): string[] {
     '## Populations that get hand-rolled every round (use these instead)',
     "Each of these was rewritten by hand in round after round, slightly differently each time — which makes two rounds' numbers incomparable for reasons that have nothing to do with the app, and in one case (the edge filter) returns a confident zero.",
     '- `helpers.detachedNamed(substr) -> [{id, name}]` — detached nodes whose CLASS NAME contains `substr`, with the same oddball/root filtering the detached-DOM tools apply. ⚠️ A detached node\'s name is its element or Blink class (`Detached EventListener`, `Detached blink::RegisteredEventListener`, `Detached HTMLDivElement`) and **never a `data-testid`** — filtering these for an app-level testid matches nothing on any heap. For "which UI element leaked", use `memlab_detached_dom`, which groups by nearest non-detached dominator.',
-    '- `helpers.listenerRecords(callbackName?) -> [{id, callback, context}]` — objects carrying BOTH a callback-ish and a context-ish property, i.e. event-listener records. Optionally narrowed to one callback class, which is how the question is actually asked ("how many `subscribe_$0` records are held?"). Cached; the definition matches `memlab_stale_collections` exactly.',
+    '- `helpers.listenerRecords(callbackName? | {callbackName?, emitterClass?, event?}) -> [{id, callback, context, event?, emitter?}]` — objects carrying BOTH a callback-ish and a context-ish property, i.e. event-listener records. Narrow by callback (how the question is actually asked: "how many `subscribe_$0` records are held?"), and by the emitter class and event name, which are then reported per record. COUNT RECORDS, NOT CLOSURES: one callback closure is a single node shared by every registration, so `iterByClass(callbackName, {type: "closure"})` returns ~1 while the records number in the hundreds. As a per-rung ladder metric: `result = helpers.listenerRecords({callbackName: "X"}).length` in `memlab_ladder_probe`. Cached; the definition matches `memlab_stale_collections` exactly.',
     '- `helpers.byContextSlot(name, {returns, chain}) -> ids[]` — the REVERSE of `contextOf`, and the question a retention hunt actually asks: not what a closure captured but WHO still holds `cache`. Returns the closure ids capturing a variable of that name (`{returns: "scopes"}` for the Context objects instead). Pass `{chain: true}` to include closures that reach the variable through an OUTER scope — without it a variable declared in an enclosing function under-reports. Indexed: one pass, then map lookups.',
     '- `helpers.contextSlotCensus({minCount, limit}) -> [{slot, scopes, closures}]` — every captured variable name in the heap ranked by how many scopes hold it. Use it to FIND the name to pass to `byContextSlot` when the leak is a closure capture and the class names are minified.',
     '- `helpers.contextOf(nodeOrId) -> node | null` — the scope a closure captured, e.g. `system / Context / scope @767271`. **Do not hand-roll this**: the hop is an `internal` edge NAMED `context`, not a `context`-TYPED edge, so the reflexive filter returns null on every closure in the heap (see the edge-type section below). Returns null for a non-closure — note `helpers.byClass`/`nodesByClass` also match the class-NAME STRING node, so filter on `type === "closure"` before asking for a scope.',
