@@ -42,7 +42,13 @@ import {resolveLadderPaths} from './ladder.js';
 import {makeProgressReporter} from '../progress.js';
 import type {ProgressReporter} from '../progress.js';
 import {findResidentByPath, getSnapshotByHandle} from '../heap-state.js';
-import {classMapOf, ensureSidecar, readSidecar} from '../snapshot-index.js';
+import {
+  classMapOf,
+  ensureSidecar,
+  normalizeClassName,
+  readSidecarAsync,
+} from '../snapshot-index.js';
+import {prewarmSidecars} from '../sidecar-prewarm.js';
 import {resetEmittedNotes, shouldEmitNote} from '../heap-state.js';
 import {
   artifactLabel,
@@ -67,15 +73,7 @@ function isNoiseClass(type: string, name: string): boolean {
   return false;
 }
 
-// V8 names per-instance Context/scope objects with a trailing " @<node-id>"
-// (e.g. "system / Context / scope @706909"). Those ids differ per capture, so
-// without normalization every scope is a distinct "class" that appears "new
-// since baseline" and floods the report (observed: ~9,900 such keys, ~133k
-// nodes, in a single Ads snapshot). Collapse the id so they aggregate into one
-// comparable class across the sequence.
-export function normalizeClassName(name: string): string {
-  return name.replace(/ @\d+$/, ' @…');
-}
+export {normalizeClassName} from '../snapshot-index.js';
 
 /**
  * Split a `<type>::<name>` class key back into its two parts.
@@ -237,6 +235,33 @@ export async function computeSequenceTrends(
     );
   }
 
+  // Rungs without a sidecar are parsed in parallel workers first, so the
+  // loop below reads each from its sidecar instead of parsing serially.
+  // Resident graphs are skipped: reusing them inline costs nothing.
+  const prewarmTargets = resolvedPaths.flatMap(p => {
+    try {
+      const r = resolveSnapshotPath(p);
+      return findResidentByPath(r.localPath) != null
+        ? []
+        : [{sidecarBase: r.sidecarBase, localPath: r.localPath}];
+    } catch {
+      return [];
+    }
+  });
+  opts.progress?.phase(
+    0,
+    resolvedPaths.length,
+    'building missing rung sidecars in parallel',
+  );
+  const prewarm = await prewarmSidecars(prewarmTargets);
+  if (prewarm.failed.length > 0) {
+    // Not fatal (those rungs parse inline), but a prewarm that fails on every
+    // rung silently turns back into the slow serial path.
+    const msg = `prewarm: ${prewarm.failed.length} of ${prewarm.failed.length + prewarm.built} sidecar build(s) failed, parsing inline (${prewarm.failed[0]})`;
+    console.error(`[memlab] ${msg}`);
+    opts.progress?.phase(0, resolvedPaths.length, msg);
+  }
+
   let rungIndex = 0;
   for (const p of resolvedPaths) {
     rungIndex++;
@@ -280,7 +305,7 @@ export async function computeSequenceTrends(
     // therefore costs a JSON read instead of a 22-43 s parse, which is the
     // dominant cost of every ladder tool and the reason the same five
     // snapshots were re-walked six times in one round.
-    const cached = readSidecar(sidecarBase);
+    const cached = await readSidecarAsync(sidecarBase);
     if (cached != null) {
       steps.push({
         label: fetchedFrom ?? p.replace(/^.*\//, ''),

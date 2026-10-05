@@ -36,6 +36,11 @@ import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import fs from 'fs';
 import crypto from 'crypto';
 import path from 'path';
+import {promisify} from 'util';
+import zlib from 'zlib';
+
+const gzipAsync = promisify(zlib.gzip);
+const gunzipAsync = promisify(zlib.gunzip);
 
 /**
  * Bumped whenever the shape of the payload changes. A stale sidecar is then
@@ -160,72 +165,120 @@ function isTuple(v: unknown, arity: number): boolean {
   );
 }
 
-export function readSidecar(snapshotPath: string): SnapshotIndex | null {
-  if (!indexCacheEnabled()) return null;
-  const file = sidecarPathFor(snapshotPath);
-  // A COMPRESSED rung is validated against the archive, because the
-  // uncompressed file no longer exists. `memlab_prune_run` re-keys the
-  // sidecar to the `.gz` when it compresses, so the two agree.
-  let stat: fs.Stats;
+function isGzip(raw: Buffer): boolean {
+  return raw[0] === 0x1f && raw[1] === 0x8b;
+}
+
+/** Sidecars are written gzipped; an older plain-JSON one is still read. */
+function decodeSidecar(file: string): string {
+  const raw = fs.readFileSync(file);
+  return isGzip(raw)
+    ? zlib.gunzipSync(raw).toString('utf8')
+    : raw.toString('utf8');
+}
+
+/**
+ * The file a sidecar is validated against. A COMPRESSED rung is validated
+ * against the archive, because the uncompressed file no longer exists.
+ * `memlab_prune_run` re-keys the sidecar to the `.gz` when it compresses, so
+ * the two agree.
+ */
+function sourceStat(snapshotPath: string): fs.Stats | null {
   try {
-    stat = fs.existsSync(snapshotPath)
+    return fs.existsSync(snapshotPath)
       ? fs.statSync(snapshotPath)
       : fs.statSync(`${snapshotPath}.gz`);
   } catch {
     return null;
   }
+}
+
+function validateSidecar(
+  parsed: SnapshotIndex,
+  stat: fs.Stats,
+): SnapshotIndex | null {
+  if (parsed.version !== INDEX_VERSION) return null;
+  if (parsed.sourceSize !== stat.size) return null;
+  if (parsed.sourceMtimeMs !== Math.round(stat.mtimeMs)) return null;
+  // The metadata matching does not make the body well-formed. Any JSON
+  // object passes the casts above, and a sidecar whose `classes` is missing
+  // or null then reaches the callers as an EMPTY table rather than as an
+  // error — which reads as "this rung has no growing classes", the exact
+  // silent-zero this cache must not be able to produce. Cheap to check:
+  // three typeof tests against a file that is otherwise trusted whole.
+  const isTable = (v: unknown) => typeof v === 'object' && v !== null;
+  if (
+    !isTable(parsed.classes) ||
+    !isTable(parsed.shapes) ||
+    !isTable(parsed.edgeNames)
+  ) {
+    return null;
+  }
+  // The scalars too. `totalSelfSize` is the heap total every delta in a
+  // trend is measured against, and a missing one reads back as `undefined`
+  // — which arithmetic turns into NaN, and a NaN renders as a dash rather
+  // than as an error. Same silent-zero class as an empty table, arriving
+  // through a different field.
+  if (
+    !Number.isFinite(parsed.totalSelfSize) ||
+    !Number.isFinite(parsed.nodeCount) ||
+    !Number.isFinite(parsed.edgeCount) ||
+    !Number.isFinite(parsed.detachedCount)
+  ) {
+    return null;
+  }
+  // EVERY entry, not a spot-check. `classes` is `[count, selfSize]` and
+  // `shapes` is `[count, selfSize, propCount]`; a table of the right type
+  // holding a wrong tuple turns a count into `undefined`, which
+  // arithmetic renders as a dash rather than as a failure — and a reader
+  // that falls back when `propCount` is missing then applies a DIFFERENT
+  // rule to that one shape than a fresh census would. Checking the first
+  // entry only is what makes a single bad row survive. This walks a table
+  // already fully materialised by `JSON.parse`, so it costs a loop over a
+  // few thousand small arrays against a read whose alternative is a 40 s
+  // graph parse.
+  for (const v of Object.values(parsed.classes)) {
+    if (!isTuple(v, 2)) return null;
+  }
+  for (const v of Object.values(parsed.shapes)) {
+    if (!isTuple(v, 3)) return null;
+  }
+  return parsed;
+}
+
+export function readSidecar(snapshotPath: string): SnapshotIndex | null {
+  if (!indexCacheEnabled()) return null;
+  const stat = sourceStat(snapshotPath);
+  if (stat == null) return null;
   try {
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as SnapshotIndex;
-    if (parsed.version !== INDEX_VERSION) return null;
-    if (parsed.sourceSize !== stat.size) return null;
-    if (parsed.sourceMtimeMs !== Math.round(stat.mtimeMs)) return null;
-    // The metadata matching does not make the body well-formed. Any JSON
-    // object passes the casts above, and a sidecar whose `classes` is missing
-    // or null then reaches the callers as an EMPTY table rather than as an
-    // error — which reads as "this rung has no growing classes", the exact
-    // silent-zero this cache must not be able to produce. Cheap to check:
-    // three typeof tests against a file that is otherwise trusted whole.
-    const isTable = (v: unknown) => typeof v === 'object' && v !== null;
-    if (
-      !isTable(parsed.classes) ||
-      !isTable(parsed.shapes) ||
-      !isTable(parsed.edgeNames)
-    ) {
-      return null;
-    }
-    // The scalars too. `totalSelfSize` is the heap total every delta in a
-    // trend is measured against, and a missing one reads back as `undefined`
-    // — which arithmetic turns into NaN, and a NaN renders as a dash rather
-    // than as an error. Same silent-zero class as an empty table, arriving
-    // through a different field.
-    if (
-      !Number.isFinite(parsed.totalSelfSize) ||
-      !Number.isFinite(parsed.nodeCount) ||
-      !Number.isFinite(parsed.edgeCount) ||
-      !Number.isFinite(parsed.detachedCount)
-    ) {
-      return null;
-    }
-    // EVERY entry, not a spot-check. `classes` is `[count, selfSize]` and
-    // `shapes` is `[count, selfSize, propCount]`; a table of the right type
-    // holding a wrong tuple turns a count into `undefined`, which
-    // arithmetic renders as a dash rather than as a failure — and a reader
-    // that falls back when `propCount` is missing then applies a DIFFERENT
-    // rule to that one shape than a fresh census would. Checking the first
-    // entry only is what makes a single bad row survive. This walks a table
-    // already fully materialised by `JSON.parse`, so it costs a loop over a
-    // few thousand small arrays against a read whose alternative is a 40 s
-    // graph parse.
-    for (const v of Object.values(parsed.classes)) {
-      if (!isTuple(v, 2)) return null;
-    }
-    for (const v of Object.values(parsed.shapes)) {
-      if (!isTuple(v, 3)) return null;
-    }
-    return parsed;
+    return validateSidecar(
+      JSON.parse(decodeSidecar(sidecarPathFor(snapshotPath))) as SnapshotIndex,
+      stat,
+    );
   } catch {
     // Absent, truncated or corrupt: rebuild. A cache is never a reason to
     // fail the question it was meant to speed up.
+    return null;
+  }
+}
+
+/**
+ * `readSidecar` with the read and the gunzip on the libuv pool, for a caller
+ * on the MCP server's event loop. Only the JSON.parse stays synchronous.
+ */
+export async function readSidecarAsync(
+  snapshotPath: string,
+): Promise<SnapshotIndex | null> {
+  if (!indexCacheEnabled()) return null;
+  const stat = sourceStat(snapshotPath);
+  if (stat == null) return null;
+  try {
+    const raw = await fs.promises.readFile(sidecarPathFor(snapshotPath));
+    const text = isGzip(raw)
+      ? (await gunzipAsync(raw)).toString('utf8')
+      : raw.toString('utf8');
+    return validateSidecar(JSON.parse(text) as SnapshotIndex, stat);
+  } catch {
     return null;
   }
 }
@@ -258,30 +311,131 @@ function sidecarAllowance(sourceSize: number): number {
   );
 }
 
-function writeSidecar(snapshotPath: string, index: SnapshotIndex): void {
+/** Null when the sidecar was written, otherwise why it was not. */
+export function writeSidecar(
+  snapshotPath: string,
+  index: SnapshotIndex,
+): string | null {
   const file = sidecarPathFor(snapshotPath);
   try {
     // Written via a temp file in the same directory, so a concurrent reader
     // sees either the old sidecar or the new one, never half of one.
-    const payload = JSON.stringify(index);
-    // BYTE length. `payload.length` counts UTF-16 code units, so a sidecar
-    // full of non-ASCII class names is larger on disk than the gate thinks
-    // and slips past a ceiling expressed in bytes.
-    if (
-      Buffer.byteLength(payload, 'utf8') > sidecarAllowance(index.sourceSize)
-    ) {
-      return;
+    //
+    // Gzipped. A string node's class name IS its content, so a real app heap
+    // has hundreds of thousands of one-instance string classes: measured on a
+    // 459 MB WhatsApp Web rung, 152 MB of JSON (88% string classes) against a
+    // 46 MB allowance, so the sidecar was silently never written and every
+    // ladder tool re-parsed every rung. Compressed it is 29 MB, written in
+    // 3.5 s and read back in 2.2 s, against a 17.6 s parse plus a 9 s index.
+    const payload = zlib.gzipSync(Buffer.from(JSON.stringify(index)), {
+      level: 6,
+    });
+    const allowance = sidecarAllowance(index.sourceSize);
+    if (payload.length > allowance) {
+      return `sidecar ${payload.length} bytes exceeds the ${allowance}-byte allowance`;
     }
     const tmp = `${file}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, payload);
     fs.renameSync(tmp, file);
-  } catch {
+    return null;
+  } catch (e) {
     // A read-only or full output directory must not fail the analysis. The
     // cache is an optimisation; losing it costs time, not correctness.
+    return `sidecar not written: ${String(e)}`;
+  }
+}
+
+/**
+ * `writeSidecar` with the compression off the main thread.
+ *
+ * The load path builds a sidecar inline on the MCP server's event loop, where
+ * a synchronous gzip of a ~150 MB index is seconds of stalled tool calls. Here
+ * it runs on the libuv pool; only the JSON.stringify stays synchronous. Not
+ * awaited by the load path: a cache write that is lost costs a later re-parse,
+ * never a wrong answer.
+ */
+export async function writeSidecarAsync(
+  snapshotPath: string,
+  index: SnapshotIndex,
+): Promise<string | null> {
+  const file = sidecarPathFor(snapshotPath);
+  try {
+    const payload = await gzipAsync(Buffer.from(JSON.stringify(index)), {
+      level: 6,
+    });
+    const allowance = sidecarAllowance(index.sourceSize);
+    if (payload.length > allowance) {
+      return `sidecar ${payload.length} bytes exceeds the ${allowance}-byte allowance`;
+    }
+    // Random, not pid-based: two loads of one rung in this process can
+    // overlap now that the write is asynchronous.
+    const tmp = `${file}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+    await fs.promises.writeFile(tmp, payload);
+    await fs.promises.rename(tmp, file);
+    return null;
+  } catch (e) {
+    return `sidecar not written: ${String(e)}`;
+  }
+}
+
+/** Enough of a sidecar's head to hold the three metadata keys it starts with. */
+const SIDECAR_HEAD_BYTES = 4096;
+
+/**
+ * Whether `snapshotPath` already has a sidecar `readSidecar` would accept on
+ * its metadata (version, source size, source mtime), from the first few KB
+ * only. `readSidecar` decodes the whole file; a caller that only needs to
+ * choose what to build ahead of time can use this. It relies on
+ * `buildSnapshotIndex` emitting those three keys first, and says "no" for a
+ * sidecar that does not start that way. A wrong "yes" (a corrupt body) costs
+ * an inline build later, not a wrong answer.
+ */
+export function sidecarLooksCurrent(snapshotPath: string): boolean {
+  if (!indexCacheEnabled()) return false;
+  const stat = sourceStat(snapshotPath);
+  if (stat == null) return false;
+  try {
+    const head = Buffer.alloc(SIDECAR_HEAD_BYTES);
+    const fd = fs.openSync(sidecarPathFor(snapshotPath), 'r');
+    let n: number;
+    try {
+      n = fs.readSync(fd, head, 0, head.length, 0);
+    } finally {
+      fs.closeSync(fd);
+    }
+    const raw = head.subarray(0, n);
+    // Z_SYNC_FLUSH decodes a truncated stream as far as it goes.
+    const text = isGzip(raw)
+      ? zlib
+          .gunzipSync(raw, {finishFlush: zlib.constants.Z_SYNC_FLUSH})
+          .toString('utf8')
+      : raw.toString('utf8');
+    const m =
+      /^\{"version":(\d+),"sourceSize":(-?\d+),"sourceMtimeMs":(-?\d+)[,}]/.exec(
+        text,
+      );
+    return (
+      m != null &&
+      Number(m[1]) === INDEX_VERSION &&
+      Number(m[2]) === stat.size &&
+      Number(m[3]) === Math.round(stat.mtimeMs)
+    );
+  } catch {
+    return false;
   }
 }
 
 /** The one pass that fills every section of the sidecar. */
+// V8 names per-instance Context/scope objects with a trailing " @<node-id>"
+// (e.g. "system / Context / scope @706909"). Those ids differ per capture, so
+// without normalization every scope is a distinct "class" that appears "new
+// since baseline" and floods the report (observed: ~9,900 such keys, ~133k
+// nodes, in a single Ads snapshot). Collapse the id so they aggregate into one
+// comparable class across the sequence.
+export function normalizeClassName(name: string): string {
+  return name.replace(/ @\d+$/, ' @…');
+}
+
 export function buildSnapshotIndex(
   snapshot: IHeapSnapshot,
   snapshotPath: string,
@@ -396,7 +550,7 @@ export function ensureSidecar(
   const existing = readSidecar(snapshotPath);
   if (existing != null) return existing;
   const built = buildSnapshotIndex(snapshot, snapshotPath, normalizeClassName);
-  if (indexCacheEnabled()) writeSidecar(snapshotPath, built);
+  if (indexCacheEnabled()) void writeSidecarAsync(snapshotPath, built);
   return built;
 }
 
@@ -423,7 +577,7 @@ export function rekeySidecarToArchive(snapshotPath: string): boolean {
   const file = sidecarPathFor(snapshotPath);
   try {
     const gz = fs.statSync(`${snapshotPath}.gz`);
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as SnapshotIndex;
+    const parsed = JSON.parse(decodeSidecar(file)) as SnapshotIndex;
     parsed.sourceSize = gz.size;
     parsed.sourceMtimeMs = Math.round(gz.mtimeMs);
     // Through a temp file. The prune compress path calls this AFTER unlinking
@@ -437,7 +591,7 @@ export function rekeySidecarToArchive(snapshotPath: string): boolean {
     const tmp = `${file}.tmp.${crypto.randomBytes(9).toString('hex')}`;
     const fd = fs.openSync(tmp, 'wx', 0o600);
     try {
-      fs.writeFileSync(fd, JSON.stringify(parsed));
+      fs.writeFileSync(fd, zlib.gzipSync(Buffer.from(JSON.stringify(parsed))));
     } finally {
       fs.closeSync(fd);
     }
