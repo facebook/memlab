@@ -367,6 +367,7 @@ async function main() {
         '  schema <tool>               print a tool input schema as JSON',
         '  call <tool> <json> [...]    call one or more tools in ONE server session',
         '  script <file.jsonl>         run {"tool":..,"args":{..}} lines in ONE session',
+        '                              (terse notes; MEMLAB_CLI_VERBOSE=1 for the full text)',
         '',
         'Server is resolved from $MEMLAB_MCP_SERVER, else dist/index.js next to this script.',
       ].join('\n'),
@@ -407,6 +408,18 @@ async function main() {
       }
     } else if (cmd === 'script') {
       const file = rest[0];
+      // A script is a whole investigation read by an agent, so explanatory
+      // notes are cut to their first sentence for the session (repeats are
+      // dropped by the server regardless). MEMLAB_CLI_VERBOSE=1 keeps them.
+      if (process.env.MEMLAB_CLI_VERBOSE !== '1') {
+        try {
+          await client.callTool('memlab_snapshots', {terse: true});
+        } catch (err) {
+          console.error(
+            `(could not enable terse notes, continuing verbose: ${err?.message ?? err})`,
+          );
+        }
+      }
       // Sequential by construction: these are JSON-RPC calls over ONE stdio
       // socket to a stateful server, so they cannot be parallelised — the next
       // request depends on the previous one having been answered.

@@ -386,6 +386,13 @@ export function registerLeakReport(server: McpServer): void {
         .describe(
           'With no explicit `baseline_run_dir`, look for a sibling run directory of `run_dir` whose name contains "idle" and use it as the control. A sweep names its idle round that way by convention, so the floor is subtracted without anyone remembering to ask. Set false to disable the search.',
         ),
+      compact: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Headings, tables and bold verdict lines only — every explanatory paragraph and bullet dropped. For the second and later calls of a sweep, where the same six notes otherwise print every time.',
+        ),
       include_settle: z
         .boolean()
         .optional()
@@ -414,6 +421,7 @@ export function registerLeakReport(server: McpServer): void {
         baseline_run_dir,
         auto_baseline,
         include_settle,
+        compact,
         max_file_size_mb,
       },
       extra,
@@ -1272,8 +1280,25 @@ export function registerLeakReport(server: McpServer): void {
           );
         }
 
+        const kept = compact
+          ? lines
+              .join('\n')
+              .split('\n')
+              .filter(
+                l =>
+                  /^(#|\||\*\*|⚠|> ⚠)/.test(l.trim()) ||
+                  // A labelled verdict, `Verdict: **LEAK**`.
+                  /^[A-Z][\w ]{0,40}: \*\*/.test(l.trim()) ||
+                  // A finding bullet carries a bold value; an explanatory
+                  // one does not.
+                  (/^- /.test(l.trim()) && l.includes('**')) ||
+                  l.trim() === '',
+              )
+              .join('\n')
+              .replace(/\n{3,}/g, '\n\n')
+          : lines.join('\n');
         return toolResult(
-          capReportSize(lines.join('\n')),
+          capReportSize(kept),
           pathsHeader(steps.map(s => s.label)),
         );
       } catch (err) {

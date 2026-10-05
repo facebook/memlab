@@ -8,6 +8,8 @@
  * @oncall memory_lab
  */
 
+import crypto from 'crypto';
+import {isTerse, shouldEmitNote} from './heap-state.js';
 import {makeProgressReporter, runWithProgress} from './progress.js';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
@@ -164,6 +166,83 @@ function unknownParamMessage(
   );
 }
 
+/** Explanatory paragraphs shorter than this are never touched. */
+const STANDING_NOTE_MIN_CHARS = 160;
+
+/**
+ * Drop explanatory paragraphs the session has already been shown.
+ *
+ * The same italic notes — what the Dev-only column means, why settle matters,
+ * how newest-cohort voting works — printed on every call of every tool, and
+ * a sweep calls `leak_report` dozens of times. A paragraph (blank-line
+ * delimited) that starts with `_` or `> ` and is at least 160 characters is
+ * keyed by its exact text: printed the first time, replaced by one pointer
+ * line after that. A note carrying this call's numbers has different text
+ * and still prints. Under the session `terse` flag, a long note is also cut to
+ * its first sentence on first sight.
+ */
+function trimStandingNotes(result: unknown): unknown {
+  if (process.env.MEMLAB_REPEAT_NOTES === '1') return result;
+  const content = (result as {content?: Array<{type: string; text?: string}>})
+    ?.content;
+  if (!Array.isArray(content)) return result;
+  const terse = isTerse();
+  let dropped = 0;
+  for (const c of content) {
+    if (c.type !== 'text' || typeof c.text !== 'string') continue;
+    if (c.text.trimStart().startsWith('{')) continue;
+    const paras = c.text.split(/\n{2,}/);
+    const kept: string[] = [];
+    for (const para of paras) {
+      const t = para.trim();
+      const isNote =
+        (t.startsWith('_') || t.startsWith('> ')) &&
+        t.length >= STANDING_NOTE_MIN_CHARS;
+      if (!isNote) {
+        kept.push(para);
+        continue;
+      }
+      const key = `para:${crypto.createHash('sha1').update(t).digest('hex')}`;
+      if (!shouldEmitNote(key)) {
+        dropped++;
+        continue;
+      }
+      if (terse) {
+        // A sentence end is a terminator before a capitalised word, a closing
+        // `_`, or the end; `e.g.` and `run_dir.` mid-sentence are not one.
+        const first = /^(.{40,}?[.!?])(?:\s+(?=[A-Z`*(])|_|$)/.exec(t);
+        // Only a wholly italic note needs its closing underscore restored; one
+        // that merely opens with an italic word would gain a stray `_`.
+        const suffix = t.startsWith('_') && t.endsWith('_') ? '…_' : '…';
+        // A cut inside `**bold**`, a code span or a link would leave it open
+        // for the rest of the message; keep such a note whole.
+        const count = (re: RegExp) => (first?.[1].match(re) ?? []).length;
+        const balanced =
+          first != null &&
+          count(/\*\*/g) % 2 === 0 &&
+          count(/`/g) % 2 === 0 &&
+          count(/\[/g) === count(/\]/g) &&
+          count(/\(/g) === count(/\)/g);
+        kept.push(
+          first != null && balanced && first[1].length < t.length
+            ? `${first[1]}${suffix}`
+            : para,
+        );
+      } else {
+        kept.push(para);
+      }
+    }
+    c.text = kept.join('\n\n');
+  }
+  if (dropped > 0) {
+    content.push({
+      type: 'text',
+      text: `_(${dropped} explanatory note(s) already shown in this session were omitted; \`memlab_snapshots({repeat_notes: true})\` prints them again.)_`,
+    });
+  }
+  return result;
+}
+
 export function installAnalysisGuardrail(server: McpServer): void {
   installUnknownParamRejection(server);
   const origTool = (server.tool as AnyFn).bind(server) as AnyFn;
@@ -202,10 +281,11 @@ export function installAnalysisGuardrail(server: McpServer): void {
           // `extra` is the second argument for a schema tool, the first
           // otherwise.
           const extra = hArgs.length > 1 ? hArgs[1] : hArgs[0];
-          return await runWithProgress(
+          const result = await runWithProgress(
             makeProgressReporter(extra, name.replace(/^memlab_/, '')),
             async () => inner(...hArgs),
           );
+          return trimStandingNotes(result);
         } catch (e) {
           if (e instanceof ScanTimeoutError) {
             const ran = Math.round(activeElapsedMs() / 1000);
