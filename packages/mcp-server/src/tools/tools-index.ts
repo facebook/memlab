@@ -191,6 +191,10 @@ const GROUPS: Group[] = [
         'Run ANY tool in the background and get a job id at once — for ladder tools that would outlive the client tool timeout.',
       ],
       [
+        'memlab_source_for_node',
+        'Which module\'s code a node belongs to (closure scope chain → Haste module, exact), for going from "which object" to "which file" without code search.',
+      ],
+      [
         'memlab_stale_refs',
         "React refs whose `.current` is detached DOM, by owner and variable, against the owner's fiber count — bounded (≤1 per instance) or accumulating.",
       ],

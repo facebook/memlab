@@ -18,6 +18,7 @@ import vm from 'node:vm';
 import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
 import {shortestPathAvoidingDevEdges} from '../dev-edges.js';
+import {sourceOfNode} from './module-attribution.js';
 import {
   describeQueue,
   describeValue,
@@ -1214,6 +1215,7 @@ export function registerEval(server: McpServer): void {
             'isOrphaned(nodeId, ownershipEdgeNames[]), countUniqueTargets(arrayNodeId, propName), ' +
             'retainedSize(id)->number, retainedSizes(ids[])->Record<id,bytes> (an OBJECT keyed by id, NOT an array — index it as sizes[id] or Object.values(sizes)), ' +
             'mapEntries(mapId, limit?)->[{key,value}] & setElements(setId, limit?)->[brief] (correct Map/Set/WeakMap enumeration — handles browser internal-typed slots AND SMI-value gaps, so you never re-derive it wrong), ' +
+            'sourceOf(nodeOrId)->{module, via, hops, script, location} (the Haste module whose code the node belongs to, read through its closure scope chain), ' +
             'rootPathAvoidingDev(nodeOrId)->[{id,name,type,edge}]|null (shortest GC-root path using no React DEV/Fast Refresh/devtools edge; null = the node does not exist in a production build; throws if the analysis budget runs out first), ' +
             "fiberHooks(componentName, {limit?})->[{fiber, hooks:[{index, statefulOrdinal, kind, memoizedState, pending, lastRenderedState, bailout}]}] (a component's hook list in order; statefulOrdinal counts only useState/useReducer, so it maps to the Nth such call in source), " +
             'stringValue(nodeOrId, {maxLen?, slices?: "parent"|"marker"})->string (text of a flat, `(concatenated string)` or `(sliced string)` node; a slice is returned as its whole parent because the snapshot records no offset, or as `‹slice›` with slices:"marker"), ' +
@@ -1736,6 +1738,12 @@ export async function runEval({
       if (nodeOrId == null) return null;
       const id = typeof nodeOrId === 'number' ? nodeOrId : nodeOrId.id;
       return snapshot.getNodeById(id);
+    };
+
+    // The module whose code a node belongs to (see memlab_source_for_node).
+    const sourceOf = (nodeOrId: number | {id: number}) => {
+      const node = resolveNode(nodeOrId);
+      return node == null ? null : sourceOfNode(snapshot, node);
     };
 
     // Shortest root path that uses no dev edge (React `_owner`/`_debug*`, Fast
@@ -3611,6 +3619,7 @@ export async function runEval({
       stringValue,
       fiberHooks,
       rootPathAvoidingDev,
+      sourceOf,
       props,
       getProp,
       ownProps,

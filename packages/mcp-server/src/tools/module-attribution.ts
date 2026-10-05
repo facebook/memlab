@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 
-import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
+import type {IHeapEdge, IHeapNode, IHeapSnapshot} from '@memlab/core';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
@@ -335,4 +335,86 @@ export function registerModuleAttribution(server: McpServer): void {
       }
     },
   );
+}
+
+const moduleScopeCache = new WeakMap<IHeapSnapshot, Map<number, string>>();
+
+function cachedModuleScopes(snapshot: IHeapSnapshot): Map<number, string> {
+  let m = moduleScopeCache.get(snapshot);
+  if (m == null) {
+    m = findModuleScopes(snapshot);
+    moduleScopeCache.set(snapshot, m);
+  }
+  return m;
+}
+
+function edgeNamed(node: IHeapNode, name: string): IHeapNode | null {
+  for (const e of node.references) {
+    if (String(e.name_or_index) === name) return e.toNode;
+  }
+  return null;
+}
+
+export interface NodeSource {
+  module: string | null;
+  /** The closure (or context) the answer was read from. */
+  via: {id: number; name: string} | null;
+  /** Retainer hops walked up from the node to reach `via`. */
+  hops: number;
+  script: string | null;
+  location: {line: number; column: number} | null;
+}
+
+/**
+ * Which module's code a node belongs to.
+ *
+ * A closure's context chain (`context` -> `previous` -> …) ends at the
+ * module scope its factory created, and that scope is matched to its module
+ * exactly (see `findModuleScopes`). A non-code node is walked up its retainer
+ * path to the nearest closure or context first. `location` is usually absent
+ * on bundled builds, which is why the module is read structurally rather than
+ * from source positions.
+ */
+export function sourceOfNode(
+  snapshot: IHeapSnapshot,
+  node: IHeapNode,
+  maxHops = 40,
+): NodeSource {
+  const scopes = cachedModuleScopes(snapshot);
+  const moduleOfContext = (ctx: IHeapNode | null): string | null => {
+    for (let i = 0; ctx != null && i < 64; i++) {
+      const hit = scopes.get(ctx.id);
+      if (hit != null) return hit;
+      ctx = edgeNamed(ctx, 'previous');
+    }
+    return null;
+  };
+  let cur: IHeapNode | null = node;
+  for (let hops = 0; cur != null && hops <= maxHops; hops++) {
+    const direct = scopes.get(cur.id);
+    const isClosure = cur.type === 'closure';
+    const isContext = cur.name.startsWith('system / Context');
+    if (direct != null || isClosure || isContext) {
+      const module =
+        direct ??
+        (isClosure
+          ? moduleOfContext(edgeNamed(cur, 'context'))
+          : moduleOfContext(cur));
+      if (module != null || isClosure) {
+        const sfi = isClosure ? edgeNamed(cur, 'shared') : null;
+        const script = sfi != null ? edgeNamed(sfi, 'script') : null;
+        const loc = cur.location;
+        return {
+          module,
+          via: {id: cur.id, name: cur.name},
+          hops,
+          script: script?.name.replace(/^system \/ Script \/ /, '') ?? null,
+          location: loc != null ? {line: loc.line, column: loc.column} : null,
+        };
+      }
+    }
+    const edge: IHeapEdge | null = cur.pathEdge ?? null;
+    cur = edge?.fromNode ?? null;
+  }
+  return {module: null, via: null, hops: maxHops, script: null, location: null};
 }
