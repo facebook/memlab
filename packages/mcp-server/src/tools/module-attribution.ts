@@ -418,3 +418,97 @@ export function sourceOfNode(
   }
   return {module: null, via: null, hops: maxHops, script: null, location: null};
 }
+
+// Percent-escapes the delimiters, so a module like `Foo.react` or an edge
+// name containing `.` survives the split in `resolveStableKey`.
+const escapeKeyPart = (s: string): string =>
+  s.replace(/[%.[\]]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+// Only the four escapes above, so a name that already contains `%41` (typed
+// into byStableKey by hand) is not decoded into something else.
+const unescapeKeyPart = (s: string): string =>
+  s.replace(/%(25|2E|5B|5D)/g, (_, h: string) =>
+    String.fromCharCode(parseInt(h, 16)),
+  );
+
+// An element/hidden edge (numeric index) is `[N]`; a named edge is its name.
+// The two never match each other, so element 0 and a property "0" differ.
+function stepToken(edge: IHeapEdge): string {
+  return typeof edge.name_or_index === 'number'
+    ? `[${edge.name_or_index}]`
+    : escapeKeyPart(edge.name_or_index);
+}
+
+// The single node `token` leads to from `node`, or null when it leads nowhere
+// or to two different nodes.
+function followStep(node: IHeapNode, token: string): IHeapNode | null {
+  let next: IHeapNode | null = null;
+  for (const e of node.references) {
+    if (stepToken(e) !== token) continue;
+    if (next != null && next.id !== e.toNode.id) return null;
+    next = e.toNode;
+  }
+  return next;
+}
+
+/**
+ * A per-capture-stable name for a node: its module plus the edge path from that
+ * module's scope down to it, e.g. `InteractionTracingMetricsCore.tracedInteractions`.
+ *
+ * Node ids differ per rung, so "is this the same Map at every rung?" needed a
+ * hand-rolled locator each time. A numeric edge keeps its index, `[3]`, and
+ * `%`, `.`, `[` and `]` inside a name are percent-escaped. Null when no module
+ * scope is found within `maxHops` of the node's retainer path, or when the
+ * path's names are ambiguous — every key returned resolves back to the node
+ * with `resolveStableKey` in the same snapshot.
+ */
+export function stableKeyOf(
+  snapshot: IHeapSnapshot,
+  node: IHeapNode,
+  maxHops = 24,
+): string | null {
+  const scopes = cachedModuleScopes(snapshot);
+  const edges: string[] = [];
+  let cur: IHeapNode | null = node;
+  for (let i = 0; cur != null && i <= maxHops; i++) {
+    const module = scopes.get(cur.id);
+    if (module != null) {
+      const key = [escapeKeyPart(module), ...edges.reverse()].join('.');
+      // The decoder follows names from every scope of the module, not this
+      // one retainer path, so a key it would resolve elsewhere is no name.
+      return resolveStableKey(snapshot, key)?.id === node.id ? key : null;
+    }
+    const edge: IHeapEdge | null = cur.pathEdge ?? null;
+    if (edge == null) return null;
+    edges.push(stepToken(edge));
+    cur = edge.fromNode;
+  }
+  return null;
+}
+
+/**
+ * Resolve a `stableKeyOf` key in THIS snapshot: start at every scope of the
+ * named module and follow the edge names. Null when no scope resolves it,
+ * when a step matches two edges to different nodes, or when two scopes of the
+ * module resolve it to different nodes (the key cannot say which was meant).
+ */
+export function resolveStableKey(
+  snapshot: IHeapSnapshot,
+  key: string,
+): IHeapNode | null {
+  const [modulePart, ...path] = key.split('.');
+  const module = unescapeKeyPart(modulePart);
+  const scopes = cachedModuleScopes(snapshot);
+  let found: IHeapNode | null = null;
+  for (const [id, name] of scopes) {
+    if (name !== module) continue;
+    let cur: IHeapNode | null = snapshot.getNodeById(id);
+    for (const step of path) {
+      if (cur == null) break;
+      cur = followStep(cur, step);
+    }
+    if (cur == null) continue;
+    if (found != null && found.id !== cur.id) return null;
+    found = cur;
+  }
+  return found;
+}
