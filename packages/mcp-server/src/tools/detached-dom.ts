@@ -9,6 +9,7 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
+import {ladderShape} from '../ladder-shape.js';
 import {z} from 'zod';
 import {getSnapshot, getSnapshotEnv} from '../heap-state.js';
 import type {IHeapNode, IHeapEdge, IHeapSnapshot} from '@memlab/core';
@@ -136,6 +137,16 @@ async function detachedLadder(args: {
   const rate = (a: number, b: number): string =>
     span != null && span > 0 ? ((b - a) / span).toFixed(3) : '—';
 
+  // Per rung, with null for a rung that could not be read, so the shape is
+  // judged on the actual series rather than on its two ends.
+  const seriesOf = (name: string | null): Array<number | null> =>
+    rungs.map((_, i) => {
+      const r = read.find(x => x.index === i);
+      if (r == null) return null;
+      return name == null ? r.total : (r.byClass.get(name) ?? 0);
+    });
+  const shapeAxis =
+    axis != null && axis.length === rungs.length ? axis : undefined;
   const first = firstRead.byClass;
   const last = lastRead.byClass;
   const names = new Set<string>([...first.keys(), ...last.keys()]);
@@ -171,7 +182,7 @@ async function detachedLadder(args: {
       new Set(rungs.map((_, i) => i + 1)),
     ),
     '',
-    `**${formatNumber(firstRead.total)} → ${formatNumber(lastRead.total)}** (${rate(firstRead.total, lastRead.total)}/cycle)`,
+    `**${formatNumber(firstRead.total)} → ${formatNumber(lastRead.total)}** (${rate(firstRead.total, lastRead.total)}/cycle, shape **${ladderShape(seriesOf(null), shapeAxis)}**)`,
     '',
   );
   if (failures.length > 0) {
@@ -186,7 +197,7 @@ async function detachedLadder(args: {
       '### What changed, by element',
       '',
       markdownTable(
-        ['Element', 'First', 'Last', 'Δ', 'Δ/cycle'],
+        ['Element', 'First', 'Last', 'Δ', 'Δ/cycle', 'Shape'],
         rows
           .slice(0, args.limit)
           .map(r => [
@@ -195,6 +206,7 @@ async function detachedLadder(args: {
             formatNumber(r.b),
             formatNumber(r.b - r.a),
             rate(r.a, r.b),
+            ladderShape(seriesOf(r.name), shapeAxis),
           ]),
         new Set([1, 2, 3, 4]),
       ),
@@ -207,7 +219,7 @@ async function detachedLadder(args: {
       );
     }
     lines.push(
-      '_A dead-exact integer rate is the signature of a fixed number of nodes stranded per interaction — count the elements the surface actually mints per cycle and see whether they match. Rows that did not change are omitted._',
+      '_**Shape** is read off every rung: `STEP` = a one-time jump at the first rung (first-mount cost), `STEP+LINEAR` = that jump and then steady per-cycle growth (the slope after the step is the leak), `LINEAR` = steady from the start, `ONSET` = flat, then rising from mid-ladder (a leak that started late), `SATURATING` = still rising but bending toward a bound (extend the ladder, then `memlab_rate_model`), `DRAINS` = fell back by the end (backlog, not retention). A dead-exact integer rate is the signature of a fixed number of nodes stranded per interaction — count the elements the surface actually mints per cycle and see whether they match. Rows that did not change are omitted._',
       '',
       '_This is a COUNT ladder. It does not say who retains them: load the largest rung that fits and run `memlab_detached_dom({group_by: "dominator"})` for the owner, which also flags a dev-only or flag-gated owner before the bytes get quoted as production impact._',
     );

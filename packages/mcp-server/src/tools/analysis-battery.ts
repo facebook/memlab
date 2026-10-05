@@ -203,6 +203,13 @@ function buildPlan(
       tool: 'memlab_census_diff',
       args: {baseline: baseRung, target: finalRung, top_n: 30},
     },
+    // Per-RUNG, not two ends. The decisive evidence in several rounds was the
+    // shape of these two series — a detached population that jumps at the
+    // first rung and then grows +596/rung is a mount plus a leak, which a
+    // first-to-last census_diff reads the same as steady growth — and both
+    // were run by hand every round because the battery did not.
+    {tool: 'memlab_detached_dom', args: {run_dir: runDir}},
+    {tool: 'memlab_event_registry', args: {run_dir: runDir}},
   ];
 
   const deep: Step[] = [
@@ -285,7 +292,17 @@ const DIGEST_PATTERNS: ReadonlyArray<{tool: RegExp; re: RegExp; max: number}> =
     {tool: /growth_signals/, re: /^\| @/, max: 5},
     {tool: /react_update_queues/, re: /^\*\*Breadth|^\| [A-Za-z]/, max: 7},
     {tool: /async_census/, re: /scheduler task record|UNSETTLED/, max: 3},
-    {tool: /detached_dom/, re: /^Totals:|^\*\*/, max: 3},
+    {
+      tool: /detached_dom/,
+      re: /^Totals:|^\*\*|\| (STEP\+LINEAR|STEP|LINEAR|ONSET)\s+\|$/,
+      max: 6,
+    },
+    {
+      tool: /event_registry/,
+      // DRAINS and SATURATING too: an all-backlog listener table is a finding.
+      re: /\| (STEP\+LINEAR|STEP|LINEAR|ONSET|SATURATING|DRAINS)\s+\|$/,
+      max: 5,
+    },
     {tool: /retention_windows/, re: /window-shaped key|longer than it/, max: 3},
     {tool: /intern_opportunities/, re: /^Verdict:/, max: 2},
     {tool: /duplicate_objects/, re: /collapse to|Reclaimable/, max: 2},
