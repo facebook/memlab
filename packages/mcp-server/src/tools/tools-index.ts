@@ -191,6 +191,10 @@ const GROUPS: Group[] = [
         'Run ANY tool in the background and get a job id at once — for ladder tools that would outlive the client tool timeout.',
       ],
       [
+        'memlab_dev_subtracted_delta',
+        'Per-class growth between two snapshots with everything reachable only through a dev root or dev edge removed — the dev build\'s honest "what did the app grow".',
+      ],
+      [
         'memlab_job_status',
         'Poll a `memlab_start_job` job: per-rung notes while it runs, the full result when it is done.',
       ],

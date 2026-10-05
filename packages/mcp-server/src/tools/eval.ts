@@ -17,6 +17,7 @@ import path from 'path';
 import vm from 'node:vm';
 import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
+import {shortestPathAvoidingDevEdges} from '../dev-edges.js';
 import {
   describeQueue,
   describeValue,
@@ -1213,6 +1214,7 @@ export function registerEval(server: McpServer): void {
             'isOrphaned(nodeId, ownershipEdgeNames[]), countUniqueTargets(arrayNodeId, propName), ' +
             'retainedSize(id)->number, retainedSizes(ids[])->Record<id,bytes> (an OBJECT keyed by id, NOT an array — index it as sizes[id] or Object.values(sizes)), ' +
             'mapEntries(mapId, limit?)->[{key,value}] & setElements(setId, limit?)->[brief] (correct Map/Set/WeakMap enumeration — handles browser internal-typed slots AND SMI-value gaps, so you never re-derive it wrong), ' +
+            'rootPathAvoidingDev(nodeOrId)->[{id,name,type,edge}]|null (shortest GC-root path using no React DEV/Fast Refresh/devtools edge; null = the node does not exist in a production build; throws if the analysis budget runs out first), ' +
             "fiberHooks(componentName, {limit?})->[{fiber, hooks:[{index, statefulOrdinal, kind, memoizedState, pending, lastRenderedState, bailout}]}] (a component's hook list in order; statefulOrdinal counts only useState/useReducer, so it maps to the Nth such call in source), " +
             'stringValue(nodeOrId, {maxLen?, slices?: "parent"|"marker"})->string (text of a flat, `(concatenated string)` or `(sliced string)` node; a slice is returned as its whole parent because the snapshot records no offset, or as `‹slice›` with slices:"marker"), ' +
             'props(nodeOrId)->{prop: scalar | {ref,name,type}} & getProp(nodeOrId, name) & shapeSignature(nodeOrId, {maxStringLen?}) (content signature for dedup checks), ' +
@@ -1734,6 +1736,28 @@ export async function runEval({
       if (nodeOrId == null) return null;
       const id = typeof nodeOrId === 'number' ? nodeOrId : nodeOrId.id;
       return snapshot.getNodeById(id);
+    };
+
+    // Shortest root path that uses no dev edge (React `_owner`/`_debug*`, Fast
+    // Refresh, devtools modules or globals); null when none exists, i.e. the
+    // node does not exist in a production build. Throws when the analysis
+    // budget runs out first, which is not the same answer as null.
+    const rootPathAvoidingDev = (nodeOrId: number | {id: number}) => {
+      const node = resolveNode(nodeOrId);
+      if (node == null) return null;
+      const prod = shortestPathAvoidingDevEdges(snapshot, node);
+      if (prod.kind === 'none') return null;
+      if (prod.kind === 'undecided') {
+        throw new Error(
+          'rootPathAvoidingDev: the analysis budget ran out before the search finished',
+        );
+      }
+      return prod.steps.map((st, i) => ({
+        id: st.node.id,
+        name: st.node.name,
+        type: st.node.type,
+        edge: i > 0 ? prod.steps[i - 1].edgeName : null,
+      }));
     };
 
     // Hooks of every fiber rendering `componentName`, in list order, each with
@@ -3586,6 +3610,7 @@ export async function runEval({
       setElements,
       stringValue,
       fiberHooks,
+      rootPathAvoidingDev,
       props,
       getProp,
       ownProps,
