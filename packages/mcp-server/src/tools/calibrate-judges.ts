@@ -23,6 +23,7 @@ import {z} from 'zod';
 import {
   judgeFired,
   judgeRound,
+  lastSegmentPositions,
   measureRound,
   resolveInvariantSpec,
   type CalibrationRound,
@@ -143,7 +144,12 @@ export function registerCalibrateJudges(server: McpServer): void {
             round = await measureRound(
               {...spec, invariants: c.red.flatMap(n => byName.get(n) ?? [])},
               c.runDir,
-              {timeoutMs: timeout_ms, maxNodes: max_nodes},
+              {
+                timeoutMs: timeout_ms,
+                maxNodes: max_nodes,
+                // One isolate, as memlab_judges judges it.
+                positions: lastSegmentPositions(c.runDir),
+              },
             );
           } catch (err) {
             failed.push(

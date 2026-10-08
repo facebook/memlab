@@ -25,7 +25,7 @@
 import fs from 'fs';
 import path from 'path';
 import {ladderShape, type LadderShape} from './ladder-shape.js';
-import {loadRunManifest} from './run-manifest.js';
+import {ladderSegments, loadRunManifest} from './run-manifest.js';
 import {
   armScanBudgetFor,
   resolveRungs,
@@ -425,21 +425,35 @@ export interface MeasuredRound {
 export async function measureRound(
   spec: InvariantSpec,
   runDir: string,
-  opts: {timeoutMs?: number; maxNodes: number; maxFileSizeMB?: number},
+  opts: {
+    timeoutMs?: number;
+    maxNodes: number;
+    maxFileSizeMB?: number;
+    /**
+     * Only these rung positions, e.g. one isolate segment. The settle rung is
+     * measured only when it follows the last of them.
+     */
+    positions?: number[];
+  },
 ): Promise<MeasuredRound> {
   const manifest = loadRunManifest(runDir);
+  const positions = opts.positions ?? manifest.paths.map((_, i) => i);
+  const endsRound = positions.includes(manifest.paths.length - 1);
   const settlePath =
-    manifest.settleRungPath != null && snapshotExists(manifest.settleRungPath)
+    endsRound &&
+    manifest.settleRungPath != null &&
+    snapshotExists(manifest.settleRungPath)
       ? manifest.settleRungPath
       : null;
+  const ladder = positions.map(p => manifest.paths[p]);
   const {rungs, largestMB} = resolveRungs(
-    [...manifest.paths, ...(settlePath != null ? [settlePath] : [])],
+    [...ladder, ...(settlePath != null ? [settlePath] : [])],
     opts.maxFileSizeMB,
   );
   const timeoutMs = scaledTimeoutMs(largestMB, opts.timeoutMs);
   const measurement = await measureJudges(
     spec,
-    rungs.slice(0, manifest.paths.length).map(r => r.localPath),
+    rungs.slice(0, ladder.length).map(r => r.localPath),
     settlePath != null ? rungs[rungs.length - 1].localPath : null,
     timeoutMs,
     opts.maxNodes,
@@ -447,9 +461,26 @@ export async function measureRound(
   );
   return {
     measurement,
-    cycles: manifest.cyclesPerRung,
+    cycles: positions.map(p => manifest.cyclesPerRung[p]),
     settled: settlePath != null,
   };
+}
+
+/**
+ * Rung positions of the round's LAST isolate segment: a reload starts a new
+ * V8 isolate, and the last segment is the one that ends the round and so holds
+ * any settle rung. All rungs when the page never reloaded.
+ */
+export function lastSegmentPositions(runDir: string): number[] {
+  const segments = ladderSegments(loadRunManifest(runDir));
+  const seg = segments[segments.length - 1];
+  if (seg == null) {
+    throw new Error(`${runDir} lists no rungs, so there is nothing to judge`);
+  }
+  return Array.from(
+    {length: seg.lastRung - seg.firstRung + 1},
+    (_, k) => seg.firstRung + k,
+  );
 }
 
 /** The verdict for one invariant over a measured round, optionally a slice of it. */

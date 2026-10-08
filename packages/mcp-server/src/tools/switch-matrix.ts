@@ -26,6 +26,7 @@ import {z} from 'zod';
 import {
   judgeFired,
   judgeRound,
+  lastSegmentPositions,
   measureRound,
   resolveInvariantSpec,
   type JudgeOutcome,
@@ -99,7 +100,9 @@ function resolveArms(inputs: ArmInput[]): Arm[] {
     const manifest = loadRunManifest(a.run_dir);
     const all = manifest.paths.map((_, k) => k);
     const off = new Set(a.off ?? []);
-    let positions = all;
+    // A plain arm on a round that reloaded judges its last isolate, as
+    // memlab_judges does; an A/B phase picks its own rungs below.
+    let positions = lastSegmentPositions(a.run_dir);
     // Whether the settle rung measures THIS arm alone. For the second phase of
     // an A/B round that needs a reload between the phases: without one, what
     // the first phase retained is still on the heap at settle, and a working

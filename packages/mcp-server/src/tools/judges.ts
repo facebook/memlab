@@ -31,7 +31,13 @@ import {
   readLedger,
   seenRed,
 } from '../judge-ledger.js';
-import {loadRunManifest} from '../run-manifest.js';
+import {
+  describeSegments,
+  ladderSegments,
+  loadRunManifest,
+  type LadderSegment,
+} from '../run-manifest.js';
+import {snapshotExists} from '../snapshot-index.js';
 import {
   errorResult,
   formatNumber,
@@ -74,6 +80,12 @@ export function registerJudges(server: McpServer): void {
         .describe(
           "Source run before every probe, for shared helpers. Overrides the spec file's `prelude`.",
         ),
+      segment: z
+        .union([z.number().int().nonnegative(), z.literal('all')])
+        .optional()
+        .describe(
+          'Which isolate segment to judge when the page reloaded mid-round (an A/B round reloads between its arms). Defaults to the LAST segment, which holds any settle rung. `"all"` judges the whole ladder as one heap.',
+        ),
       timeout_ms: z
         .number()
         .optional()
@@ -97,6 +109,7 @@ export function registerJudges(server: McpServer): void {
       invariants,
       invariants_file,
       prelude,
+      segment,
       timeout_ms,
       max_nodes,
       max_file_size_mb,
@@ -109,11 +122,44 @@ export function registerJudges(server: McpServer): void {
           run_dir,
         });
         const manifest = loadRunManifest(run_dir);
+        // A reload starts a new isolate (an A/B round reloads between its
+        // arms), and one series across it compares two unrelated heaps. Judge
+        // one segment: by default the last, which ends the round and so holds
+        // any settle rung.
+        const segments = ladderSegments(manifest);
+        let chosen: LadderSegment[];
+        if (segment === 'all') {
+          chosen = segments;
+        } else {
+          const want = segment ?? segments.length - 1;
+          const seg = segments[want];
+          if (seg == null) {
+            throw new Error(
+              `no segment ${want}; this round has ${describeSegments(segments)}`,
+            );
+          }
+          chosen = [seg];
+        }
+        const positions = chosen.flatMap(sg =>
+          Array.from(
+            {length: sg.lastRung - sg.firstRung + 1},
+            (_, k) => sg.firstRung + k,
+          ),
+        );
         const round = await measureRound(spec, run_dir, {
           timeoutMs: timeout_ms,
           maxNodes: max_nodes,
           maxFileSizeMB: max_file_size_mb,
+          positions,
         });
+        const laterSegmentSettled =
+          manifest.settleRungPath != null &&
+          snapshotExists(manifest.settleRungPath) &&
+          !positions.includes(manifest.paths.length - 1);
+        const segmentNote =
+          segments.length > 1 && segment !== 'all'
+            ? `⚠ The page reloaded mid-round, so this judges segment ${chosen[0].index} of ${segments.length} (rungs ${chosen[0].firstRung}-${chosen[0].lastRung}). Pass \`segment\` for another.`
+            : null;
         const settled = round.settled;
         const m = round.measurement;
         // Read once: one parse of the ledger per call, not one per judge.
@@ -148,11 +194,17 @@ export function registerJudges(server: McpServer): void {
           [
             `## Judges — ${name}`,
             '',
-            `_${spec.invariants.length} invariant(s) from ${spec.source}; ${manifest.paths.length} driven rung(s) at cycles ${manifest.cyclesPerRung.join('/')}${settled ? ' + the settle rung' : ''}._`,
+            `_${spec.invariants.length} invariant(s) from ${spec.source}; ${positions.length} driven rung(s) at cycles ${round.cycles.join('/')}${settled ? ' + the settle rung' : ''}._`,
+            ...(segmentNote != null ? ['', segmentNote] : []),
             ...(!settled
               ? [
                   '',
-                  '⚠ **UNSETTLED round**: no settle rung, so no judge can tell a leak from in-flight backlog. Re-drive with `--settle-minutes 7`.',
+                  // Only when a settle rung really exists AND belongs to a
+                  // later segment; a missing or unreadable one on the last
+                  // segment is an unsettled round, with the re-drive advice.
+                  laterSegmentSettled
+                    ? '⚠ **UNSETTLED segment**: the round settled, but its settle rung follows a later segment, so nothing here was captured at rest.'
+                    : '⚠ **UNSETTLED round**: no settle rung, so no judge can tell a leak from in-flight backlog. Re-drive with `--settle-minutes 7`.',
                 ]
               : []),
             ...(spec.dropped.length > 0
