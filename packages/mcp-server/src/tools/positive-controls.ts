@@ -23,7 +23,12 @@ import type {IHeapSnapshot} from '@memlab/core';
 import {z} from 'zod';
 import {linearFit} from './ladder-probe.js';
 import {ladderShape} from '../ladder-shape.js';
-import {loadRunManifest, type PositiveControl} from '../run-manifest.js';
+import {
+  describeSegments,
+  ladderSegments,
+  loadRunManifest,
+  type PositiveControl,
+} from '../run-manifest.js';
 import {
   armScanBudgetFor,
   resolveRungs,
@@ -90,8 +95,16 @@ export function registerPositiveControls(server: McpServer): void {
     'Measure the round\'s POSITIVE CONTROLS (run.json `positive_controls`, written by the leak-hunt runner from the app preset): known accumulators that should grow with interaction. PASS means the measurement can see growth, so a flat result elsewhere is a clean surface; FAIL means a probe or the drive is blind, and every flat result in the round is suspect. An idle round (a combo, or the round directory, named "idle") reports n/a.',
     {
       run_dir: z.string().describe("A leak-hunt round's output directory."),
+      segment: z
+        .number()
+        .int()
+        .nonnegative()
+        .optional()
+        .describe(
+          'Which isolate segment to measure when the page reloaded mid-round (an A/B round reloads between its arms). Defaults to the LAST segment.',
+        ),
     },
-    async ({run_dir}) => {
+    async ({run_dir, segment}) => {
       try {
         const manifest = loadRunManifest(run_dir);
         const controls = manifest.positiveControls;
@@ -110,7 +123,21 @@ export function registerPositiveControls(server: McpServer): void {
         const idle =
           manifest.combos.some(c => idleToken.test(c)) ||
           idleToken.test(run_dir.replace(/\/+$/, '').replace(/^.*\//, ''));
-        const {rungs, largestMB} = resolveRungs(manifest.paths);
+        // One isolate: a reload resets every accumulator, and a series across
+        // it reads as NOISY even when each segment grows dead-linearly.
+        const segments = ladderSegments(manifest);
+        if (segments.length === 0) {
+          throw new Error(
+            `${run_dir} lists no rungs, so there is nothing to measure`,
+          );
+        }
+        const seg = segments[segment ?? segments.length - 1];
+        if (seg == null) {
+          throw new Error(
+            `no segment ${segment}; this round has ${describeSegments(segments)}`,
+          );
+        }
+        const {rungs, largestMB} = resolveRungs(seg.paths);
         const series = controls.map(() => [] as Array<number | null>);
         // Per control, over the readable rungs: was its edge ever found, and
         // (map-size) ever on a collection?
@@ -140,7 +167,7 @@ export function registerPositiveControls(server: McpServer): void {
           }
           values.forEach((v, i) => series[i].push(v));
         }
-        const xs = manifest.cyclesPerRung;
+        const xs = seg.cyclesPerRung;
         const rows = controls.map((c, i) => {
           const pts = series[i].flatMap((y, k) =>
             y == null ? [] : [{x: xs[k], y}],
@@ -199,6 +226,12 @@ export function registerPositiveControls(server: McpServer): void {
           [
             '## Positive controls',
             '',
+            ...(segments.length > 1
+              ? [
+                  `_The page reloaded mid-round; measured segment ${seg.index} of ${segments.length} (rungs ${seg.firstRung}-${seg.lastRung}). Pass \`segment\` for another._`,
+                  '',
+                ]
+              : []),
             ...(dropped != null ? [dropped, ''] : []),
             ...(unreadable.length > 0
               ? [
