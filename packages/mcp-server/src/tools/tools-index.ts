@@ -203,6 +203,10 @@ const GROUPS: Group[] = [
         'Can each judge go red? Judge rounds (or the two phases of a `--ab` round) with named fixes switched off: a judge that stays green with its fix off is BLIND.',
       ],
       [
+        'memlab_calibrate_judges',
+        'Prove judges against rounds KNOWN to carry the leaks they guard; records who has been seen red, so `memlab_judges` can mark every unproven PASS.',
+      ],
+      [
         'memlab_cache_inventory',
         'Module-scope Maps/Sets/Arrays ranked by what their entries hold, with the owning module and any clear/reset API it already has — memory-pressure candidates in one call.',
       ],

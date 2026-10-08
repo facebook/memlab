@@ -25,6 +25,13 @@
 import fs from 'fs';
 import path from 'path';
 import {ladderShape, type LadderShape} from './ladder-shape.js';
+import {loadRunManifest} from './run-manifest.js';
+import {
+  armScanBudgetFor,
+  resolveRungs,
+  scaledTimeoutMs,
+} from './snapshot-borrow.js';
+import {snapshotExists} from './snapshot-index.js';
 import {linearFit, probeRung} from './tools/ladder-probe.js';
 
 export type Expectation =
@@ -68,6 +75,33 @@ export interface InvariantSpec {
   source: string;
   /** One line per entry that could not be used, and why. */
   dropped: string[];
+  /** Rounds known to carry a leak, and the judges that must go red on each. */
+  calibration: CalibrationRound[];
+}
+
+export interface CalibrationRound {
+  runDir: string;
+  red: string[];
+  note: string;
+}
+
+function parseCalibration(raw: unknown, dropped: string[]): CalibrationRound[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((entry, i) => {
+    const o = (entry ?? {}) as Record<string, unknown>;
+    const red = Array.isArray(o.red)
+      ? o.red.filter((n): n is string => typeof n === 'string')
+      : [];
+    if (typeof o.run_dir !== 'string' || red.length === 0) {
+      dropped.push(
+        `calibration #${i}: needs \`run_dir\` and a non-empty \`red\``,
+      );
+      return [];
+    }
+    return [
+      {runDir: o.run_dir, red, note: typeof o.note === 'string' ? o.note : ''},
+    ];
+  });
 }
 
 export type JudgeVerdict =
@@ -167,6 +201,7 @@ export function parseInvariantSpec(
     invariants,
     source,
     dropped,
+    calibration: parseCalibration(obj.calibration, dropped),
   };
 }
 
@@ -372,6 +407,74 @@ export function visibleOver(
     positions.some(p => at[p] === true) ||
     (withSettle && m.visibleAtSettle.get(inv.name) === true)
   );
+}
+
+export interface MeasuredRound {
+  measurement: JudgeMeasurement;
+  /** Cumulative cycles at each driven rung. */
+  cycles: number[];
+  /** Did the round capture a settle rung that is on disk? */
+  settled: boolean;
+}
+
+/**
+ * Every judge over one round's driven rungs and its settle rung, with the scan
+ * budget re-armed per rung: it is a wall clock, and one allowance for the whole
+ * ladder would starve the settle rung, which matters most.
+ */
+export async function measureRound(
+  spec: InvariantSpec,
+  runDir: string,
+  opts: {timeoutMs?: number; maxNodes: number; maxFileSizeMB?: number},
+): Promise<MeasuredRound> {
+  const manifest = loadRunManifest(runDir);
+  const settlePath =
+    manifest.settleRungPath != null && snapshotExists(manifest.settleRungPath)
+      ? manifest.settleRungPath
+      : null;
+  const {rungs, largestMB} = resolveRungs(
+    [...manifest.paths, ...(settlePath != null ? [settlePath] : [])],
+    opts.maxFileSizeMB,
+  );
+  const timeoutMs = scaledTimeoutMs(largestMB, opts.timeoutMs);
+  const measurement = await measureJudges(
+    spec,
+    rungs.slice(0, manifest.paths.length).map(r => r.localPath),
+    settlePath != null ? rungs[rungs.length - 1].localPath : null,
+    timeoutMs,
+    opts.maxNodes,
+    () => armScanBudgetFor(timeoutMs),
+  );
+  return {
+    measurement,
+    cycles: manifest.cyclesPerRung,
+    settled: settlePath != null,
+  };
+}
+
+/** The verdict for one invariant over a measured round, optionally a slice of it. */
+export function judgeRound(
+  inv: Invariant,
+  round: MeasuredRound,
+  slice?: {positions: number[]; withSettle: boolean},
+): JudgeOutcome {
+  const m = round.measurement;
+  const series = m.series.get(inv.name) ?? [];
+  const positions = slice?.positions ?? series.map((_, i) => i);
+  const withSettle = round.settled && (slice?.withSettle ?? true);
+  return judgeSeries(
+    inv,
+    positions.map(p => series[p] ?? null),
+    positions.map(p => round.cycles[p]),
+    withSettle ? (m.settle.get(inv.name) ?? null) : null,
+    visibleOver(m, inv, positions, withSettle),
+    m.errors.get(inv.name) ?? null,
+  );
+}
+
+/** Did the judge fire? A ladder that grew without a settle rung counts. */
+export function judgeFired(o: JudgeOutcome): boolean {
+  return o.fired;
 }
 
 function fmt(n: number): string {

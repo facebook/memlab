@@ -20,18 +20,18 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {
-  judgeSeries,
-  measureJudges,
+  judgeRound,
+  measureRound,
   resolveInvariantSpec,
   type JudgeVerdict,
 } from '../judges.js';
-import {loadRunManifest} from '../run-manifest.js';
-import {snapshotExists} from '../snapshot-index.js';
 import {
-  armScanBudgetFor,
-  resolveRungs,
-  scaledTimeoutMs,
-} from '../snapshot-borrow.js';
+  describeSeenRed,
+  judgeFingerprint,
+  readLedger,
+  seenRed,
+} from '../judge-ledger.js';
+import {loadRunManifest} from '../run-manifest.js';
 import {
   errorResult,
   formatNumber,
@@ -109,46 +109,21 @@ export function registerJudges(server: McpServer): void {
           run_dir,
         });
         const manifest = loadRunManifest(run_dir);
-        const settlePath =
-          manifest.settleRungPath != null &&
-          snapshotExists(manifest.settleRungPath)
-            ? manifest.settleRungPath
-            : null;
-        const {rungs, largestMB} = resolveRungs(
-          [...manifest.paths, ...(settlePath != null ? [settlePath] : [])],
-          max_file_size_mb,
-        );
-        const timeoutMs = scaledTimeoutMs(largestMB, timeout_ms);
-        const ladder = rungs
-          .slice(0, manifest.paths.length)
-          .map(r => r.localPath);
-        const settleLocal =
-          settlePath != null ? rungs[rungs.length - 1].localPath : null;
-        const m = await measureJudges(
-          spec,
-          ladder,
-          settleLocal,
-          timeoutMs,
-          max_nodes,
-          // Per rung: the budget is a wall clock, and one allowance for the
-          // whole ladder would starve the settle rung, which matters most.
-          () => armScanBudgetFor(timeoutMs),
-        );
-
+        const round = await measureRound(spec, run_dir, {
+          timeoutMs: timeout_ms,
+          maxNodes: max_nodes,
+          maxFileSizeMB: max_file_size_mb,
+        });
+        const settled = round.settled;
+        const m = round.measurement;
+        // Read once: one parse of the ledger per call, not one per judge.
+        const ledger = readLedger();
         const results = spec.invariants.map(inv => ({
           inv,
           series: m.series.get(inv.name) ?? [],
           settle: m.settle.get(inv.name) ?? null,
-          outcome: judgeSeries(
-            inv,
-            m.series.get(inv.name) ?? [],
-            manifest.cyclesPerRung,
-            m.settle.get(inv.name) ?? null,
-            inv.visibilityProbe != null
-              ? (m.visible.get(inv.name) ?? false)
-              : null,
-            m.errors.get(inv.name) ?? null,
-          ),
+          outcome: judgeRound(inv, round),
+          seen: seenRed(judgeFingerprint(inv, spec.prelude), ledger),
         }));
         const counts = new Map<JudgeVerdict, number>();
         for (const r of results) {
@@ -161,20 +136,20 @@ export function registerJudges(server: McpServer): void {
           r.inv.name,
           r.inv.expect,
           r.series.map(v => (v == null ? '—' : formatNumber(v))).join(' → '),
-          settlePath == null
-            ? 'n/a'
-            : r.settle == null
-              ? '—'
-              : formatNumber(r.settle),
+          !settled ? 'n/a' : r.settle == null ? '—' : formatNumber(r.settle),
           `**${r.outcome.verdict}** (${r.outcome.reason})`,
+          describeSeenRed(r.seen),
         ]);
+        const unproven = results.filter(
+          r => r.outcome.verdict === 'PASS' && r.seen.status !== 'red',
+        );
         const name = run_dir.replace(/\/+$/, '').replace(/^.*\//, '');
         return toolResult(
           [
             `## Judges — ${name}`,
             '',
-            `_${spec.invariants.length} invariant(s) from ${spec.source}; ${manifest.paths.length} driven rung(s) at cycles ${manifest.cyclesPerRung.join('/')}${settlePath != null ? ' + the settle rung' : ''}._`,
-            ...(settlePath == null
+            `_${spec.invariants.length} invariant(s) from ${spec.source}; ${manifest.paths.length} driven rung(s) at cycles ${manifest.cyclesPerRung.join('/')}${settled ? ' + the settle rung' : ''}._`,
+            ...(!settled
               ? [
                   '',
                   '⚠ **UNSETTLED round**: no settle rung, so no judge can tell a leak from in-flight backlog. Re-drive with `--settle-minutes 7`.',
@@ -185,7 +160,7 @@ export function registerJudges(server: McpServer): void {
               : []),
             '',
             markdownTable(
-              ['Judge', 'Expect', 'Per rung', 'At rest', 'Verdict'],
+              ['Judge', 'Expect', 'Per rung', 'At rest', 'Verdict', 'Seen red'],
               rows,
             ),
             '',
@@ -203,8 +178,8 @@ export function registerJudges(server: McpServer): void {
                 ]
               : []),
             '',
-            counts.has('PASS')
-              ? '_A PASS says the judge did not fire, not that it can. It is unproven until the judge has been seen red: with its fix switched off, or on a round known to carry the leak._'
+            unproven.length > 0
+              ? `⚠ **${unproven.length} PASS unproven** (${unproven.map(r => r.inv.name).join(', ')}): the judge has never been seen red, or was last seen BLIND. Prove it with \`memlab_calibrate_judges\` on a round known to carry the leak, or \`memlab_switch_matrix\` with its fix off.`
               : '',
           ].join('\n'),
         );

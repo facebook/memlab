@@ -24,21 +24,19 @@ import path from 'path';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {
-  judgeSeries,
-  measureJudges,
-  visibleOver,
+  judgeFired,
+  judgeRound,
+  measureRound,
   resolveInvariantSpec,
-  type Invariant,
-  type JudgeMeasurement,
   type JudgeOutcome,
+  type MeasuredRound,
 } from '../judges.js';
-import {loadRunManifest} from '../run-manifest.js';
-import {snapshotExists} from '../snapshot-index.js';
 import {
-  armScanBudgetFor,
-  resolveRungs,
-  scaledTimeoutMs,
-} from '../snapshot-borrow.js';
+  judgeFingerprint,
+  ledgerPath,
+  recordSightings,
+} from '../judge-ledger.js';
+import {loadRunManifest} from '../run-manifest.js';
 import {errorResult, markdownTable, toolResult} from '../utils.js';
 import {
   INVARIANTS_ARG_DESCRIPTION,
@@ -157,11 +155,6 @@ function cellOf(o: JudgeOutcome): Cell {
   return 'void';
 }
 
-/** An UNSETTLED judge that grew on the ladder did fire, unconfirmed at rest. */
-function firedOnLadder(o: JudgeOutcome): boolean {
-  return o.verdict === 'UNSETTLED' && o.fired;
-}
-
 export function registerSwitchMatrix(server: McpServer): void {
   server.tool(
     'memlab_switch_matrix',
@@ -266,50 +259,21 @@ export function registerSwitchMatrix(server: McpServer): void {
         }
 
         // Each round is measured once, however many arms slice it.
-        const measured = new Map<
-          string,
-          {m: JudgeMeasurement; cycles: number[]; settle: boolean}
-        >();
+        const measured = new Map<string, MeasuredRound>();
         for (const runDir of new Set(arms.map(a => a.runDir))) {
-          const manifest = loadRunManifest(runDir);
-          const settlePath =
-            manifest.settleRungPath != null &&
-            snapshotExists(manifest.settleRungPath)
-              ? manifest.settleRungPath
-              : null;
-          const {rungs, largestMB} = resolveRungs(
-            [...manifest.paths, ...(settlePath != null ? [settlePath] : [])],
-            max_file_size_mb,
+          measured.set(
+            runDir,
+            await measureRound(spec, runDir, {
+              timeoutMs: timeout_ms,
+              maxNodes: max_nodes,
+              maxFileSizeMB: max_file_size_mb,
+            }),
           );
-          const timeoutMs = scaledTimeoutMs(largestMB, timeout_ms);
-          const m = await measureJudges(
-            spec,
-            rungs.slice(0, manifest.paths.length).map(r => r.localPath),
-            settlePath != null ? rungs[rungs.length - 1].localPath : null,
-            timeoutMs,
-            max_nodes,
-            () => armScanBudgetFor(timeoutMs),
-          );
-          measured.set(runDir, {
-            m,
-            cycles: manifest.cyclesPerRung,
-            settle: settlePath != null,
-          });
         }
-
-        const judge = (arm: Arm, inv: Invariant): JudgeOutcome => {
+        const judge = (arm: Arm, inv: (typeof spec.invariants)[number]) => {
           const round = measured.get(arm.runDir);
           if (round == null) throw new Error(`${arm.runDir} was not measured`);
-          const {m, cycles, settle} = round;
-          const series = m.series.get(inv.name) ?? [];
-          return judgeSeries(
-            inv,
-            arm.positions.map(p => series[p] ?? null),
-            arm.positions.map(p => cycles[p]),
-            settle && arm.withSettle ? (m.settle.get(inv.name) ?? null) : null,
-            visibleOver(m, inv, arm.positions, settle && arm.withSettle),
-            m.errors.get(inv.name) ?? null,
-          );
+          return judgeRound(inv, round, arm);
         };
         const grid = spec.invariants.map(inv => arms.map(a => judge(a, inv)));
 
@@ -330,6 +294,10 @@ export function registerSwitchMatrix(server: McpServer): void {
         const atRest = new Set(['returns-to-baseline', 'zero-at-rest']);
         const ruleRows: string[][] = [];
         const blind: string[] = [];
+        const sightings: Parameters<typeof recordSightings>[0] = [];
+        // One timestamp for the whole call: this run's sightings are one batch,
+        // and the ledger's latest batch is what decides seen-red.
+        const batchAt = new Date().toISOString();
         // judge -> every rule that guards it
         const rulesOf = new Map<string, string[]>();
         for (const [r, js] of guards) {
@@ -352,7 +320,7 @@ export function registerSwitchMatrix(server: McpServer): void {
             // Fired at all, settle rung or not: a ladder that grew with the
             // rule off shows the judge can see the leak.
             const firedOff = offCells.filter(
-              o => cellOf(o) === 'red' || firedOnLadder(o),
+              o => cellOf(o) === 'red' || judgeFired(o),
             ).length;
             if (offArms.length === 0) {
               verdict = 'NOT SWITCHED — no arm turns this rule off';
@@ -384,7 +352,7 @@ export function registerSwitchMatrix(server: McpServer): void {
                 redOff === offCells.length
                   ? '**PROVEN** — red with its rule off'
                   : `**PROVEN** — red with its rule off in ${redOff} of ${offCells.length} off arms${greenOff > 0 ? ` (green in ${greenOff}: those arms may not exercise the leak)` : ''}`;
-            } else if (offCells.some(firedOnLadder)) {
+            } else if (offCells.some(judgeFired)) {
               verdict =
                 '**PROVEN (ladder only)** — grew with its rule off; that arm has no settle rung';
             } else if (
@@ -417,6 +385,31 @@ export function registerSwitchMatrix(server: McpServer): void {
             } else {
               verdict = 'UNPROVEN';
             }
+            // Only a decided switch is evidence, and each sighting is that
+            // ARM's own result: a PROVEN judge records the arms where it fired,
+            // a BLIND one the arms where it stayed green, so a mixed verdict
+            // never writes a red sighting for a round where the judge was green.
+            const proven = verdict.startsWith('**PROVEN');
+            const isBlind = verdict.startsWith('**BLIND');
+            if (proven || isBlind) {
+              const inv = spec.invariants[i];
+              offArms.forEach((arm, k) => {
+                const cell = offCells[k];
+                const fired = cellOf(cell) === 'red' || judgeFired(cell);
+                if (proven ? !fired : cellOf(cell) !== 'green') return;
+                sightings.push({
+                  fingerprint: judgeFingerprint(inv, spec.prelude),
+                  name: j,
+                  sighting: {
+                    kind: 'switch',
+                    round: arm.runDir,
+                    note: `${rule} off (${arm.label})`,
+                    red: proven,
+                    at: batchAt,
+                  },
+                });
+              });
+            }
             ruleRows.push([
               rule,
               j,
@@ -426,6 +419,7 @@ export function registerSwitchMatrix(server: McpServer): void {
             ]);
           }
         }
+        const notRecorded = await recordSightings(sightings);
         const guarded = new Set([...guards.values()].flat());
         const unprotected = spec.invariants
           .map(i => i.name)
@@ -442,6 +436,12 @@ export function registerSwitchMatrix(server: McpServer): void {
           [
             '## Switch matrix',
             '',
+            ...(notRecorded == null
+              ? []
+              : [
+                  `⚠ Sightings NOT recorded in the judge ledger (${ledgerPath()}): ${notRecorded}. Re-run to record them.`,
+                  '',
+                ]),
             `_${spec.invariants.length} judge(s) from ${spec.source}, ${arms.length} arm(s)._`,
             '',
             ...arms
