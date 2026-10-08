@@ -39,6 +39,7 @@ import path from 'path';
 import {z} from 'zod';
 import type {RunManifest} from '../run-manifest.js';
 import {loadRunManifest} from '../run-manifest.js';
+import {hasInvariants} from '../judges.js';
 import {getRegisteredTool} from '../tool-registry.js';
 import {makeProgressReporter} from '../progress.js';
 import {snapshotExists} from '../snapshot-index.js';
@@ -165,6 +166,7 @@ function buildPlan(
   baseRung: string,
   hasSettleRung: boolean,
   hasControls = false,
+  hasInvariants = false,
 ): Step[] {
   const ladder: Step[] = [
     // FIRST, deliberately. On one app 59-75% of the heap is not the
@@ -213,6 +215,9 @@ function buildPlan(
     {tool: 'memlab_event_registry', args: {run_dir: runDir}},
     ...(hasControls
       ? [{tool: 'memlab_positive_controls', args: {run_dir: runDir}}]
+      : []),
+    ...(hasInvariants
+      ? [{tool: 'memlab_judges', args: {run_dir: runDir}}]
       : []),
   ];
 
@@ -302,6 +307,11 @@ const DIGEST_PATTERNS: ReadonlyArray<{tool: RegExp; re: RegExp; max: number}> =
       max: 6,
     },
     {tool: /positive_controls/, re: /PASS|FAIL|n\/a/, max: 4},
+    {
+      tool: /judges/,
+      re: /^\*\*Summary|\*\*(LEAK|UNSETTLED|UNVERIFIED|ERROR)\*\*/,
+      max: 6,
+    },
     {
       tool: /event_registry/,
       // DRAINS and SATURATING too: an all-backlog listener table is a finding.
@@ -643,6 +653,7 @@ export function registerAnalysisBattery(server: McpServer): void {
     "Run a round's whole analysis in ONE call, write every tool's output to disk, and return only a digest.\n\n" +
       "The snapshot load dominates the cost of every tool, so running the standard set over one resident graph costs roughly what running three of them separately does. The reason this is a separate tool from `memlab_batch` is the OUTPUT: a batch returns every result inline, and a round's worth of tool prose is tens of thousands of tokens — which is why a twenty-round sweep is impossible to read without this. Detail goes to `<out_dir>/<tool>.txt`; the digest that comes back is the audit verdict, the app-vs-artifact split, the top growers with rate and fit, census totals and the named collections.\n\n" +
       'Give it `run_dir` and it resolves the ladder, the per-rung cycle counts and the total cycles from `run.json`, so the per-cycle axis is measured rather than assumed.\n\n' +
+      'When the round directory holds an invariants.json, `memlab_judges` runs in every profile and its verdict summary is in the digest. ' +
       'When the round captured a settle rung, `memlab_settle_check` runs in EVERY profile and its `N HELD / M DRAINED` headline is in the digest: a ladder alone cannot tell retention from in-flight backlog, and a round without that line has a leak list that is mostly backlog.\n\n' +
       'Profiles: `standard` (ladder + leak detectors), `optimization` (adds string/shape/duplication analysis), `deep` (everything, including the slower single-snapshot passes).',
     {
@@ -859,6 +870,7 @@ export function registerAnalysisBattery(server: McpServer): void {
           baseRung,
           hasSettleRung,
           manifest.positiveControls.length > 0,
+          hasInvariants(run_dir),
         );
 
         const progress = makeProgressReporter(extra, 'battery');
