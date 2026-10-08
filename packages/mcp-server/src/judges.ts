@@ -54,6 +54,11 @@ export interface Invariant {
   absTolerance: number;
   /** `bounded` / `zero-at-rest`: ceiling. */
   max: number | null;
+  /**
+   * The rule (a fix, usually behind a gate) this judge guards. With the rule
+   * switched off the judge must go red; `memlab_switch_matrix` checks that.
+   */
+  rule: string | null;
 }
 
 export interface InvariantSpec {
@@ -154,6 +159,7 @@ export function parseInvariantSpec(
       tolerance: num(o.tolerance, 0.05),
       absTolerance: num(o.abs_tolerance, 0),
       max: typeof o.max === 'number' ? o.max : null,
+      rule: typeof o.rule === 'string' && o.rule !== '' ? o.rule : null,
     });
   });
   return {
@@ -259,6 +265,13 @@ export interface JudgeMeasurement {
   settle: Map<string, number | null>;
   /** Per invariant with a visibility probe: was it ever non-zero? */
   visible: Map<string, boolean>;
+  /**
+   * Per invariant with a visibility probe, per ladder rung: non-zero there?
+   * A slice of the round (one A/B phase) must not borrow another's visibility.
+   */
+  visibleAt: Map<string, boolean[]>;
+  /** Same, for the settle rung. */
+  visibleAtSettle: Map<string, boolean>;
   /** Per invariant, the first probe error seen. */
   errors: Map<string, string>;
 }
@@ -287,8 +300,11 @@ export async function measureJudges(
     series: new Map(spec.invariants.map(inv => [inv.name, []])),
     settle: new Map(),
     visible: new Map(),
+    visibleAt: new Map(),
+    visibleAtSettle: new Map(),
     errors: new Map(),
   };
+  const rungVisible = new Map<string, boolean>();
   const record = (
     rung: Map<string, {value: number | null; error: string | null}>,
   ): Map<string, number | null> => {
@@ -301,6 +317,7 @@ export async function measureJudges(
       }
       const vis = rung.get(VIS + inv.name);
       if (vis != null) {
+        rungVisible.set(inv.name, (vis.value ?? 0) !== 0);
         out.visible.set(
           inv.name,
           (out.visible.get(inv.name) ?? false) || (vis.value ?? 0) !== 0,
@@ -317,6 +334,11 @@ export async function measureJudges(
     );
     for (const inv of spec.invariants) {
       out.series.get(inv.name)?.push(values.get(inv.name) ?? null);
+      if (inv.visibilityProbe != null) {
+        const at = out.visibleAt.get(inv.name) ?? [];
+        at.push(rungVisible.get(inv.name) ?? false);
+        out.visibleAt.set(inv.name, at);
+      }
     }
   }
   if (settlePath != null) {
@@ -326,9 +348,30 @@ export async function measureJudges(
     );
     for (const inv of spec.invariants) {
       out.settle.set(inv.name, values.get(inv.name) ?? null);
+      if (inv.visibilityProbe != null) {
+        out.visibleAtSettle.set(inv.name, rungVisible.get(inv.name) ?? false);
+      }
     }
   }
   return out;
+}
+
+/**
+ * Did the visibility probe see the population on THESE rungs (and the settle
+ * rung, when it is included)? Null when the invariant has no visibility probe.
+ */
+export function visibleOver(
+  m: JudgeMeasurement,
+  inv: Invariant,
+  positions: number[],
+  withSettle: boolean,
+): boolean | null {
+  if (inv.visibilityProbe == null) return null;
+  const at = m.visibleAt.get(inv.name) ?? [];
+  return (
+    positions.some(p => at[p] === true) ||
+    (withSettle && m.visibleAtSettle.get(inv.name) === true)
+  );
 }
 
 function fmt(n: number): string {

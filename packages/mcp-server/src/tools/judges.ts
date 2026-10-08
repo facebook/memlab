@@ -40,7 +40,7 @@ import {
 } from '../utils.js';
 
 export const INVARIANTS_ARG_DESCRIPTION =
-  "Inline invariants: [{name, words?, probe, visibility_probe?, expect, max_per_cycle?, tolerance?, abs_tolerance?, max?}]. `expect` is one of no-growth | returns-to-baseline | bounded | zero-at-rest. `probe` is memlab_eval code assigning one number to `result`. Overrides `invariants_file` and the round's invariants.json.";
+  "Inline invariants: [{name, words?, probe, visibility_probe?, expect, max_per_cycle?, tolerance?, abs_tolerance?, max?, rule?}]. `rule` names the fix this judge guards. `expect` is one of no-growth | returns-to-baseline | bounded | zero-at-rest. `probe` is memlab_eval code assigning one number to `result`. Overrides `invariants_file` and the round's invariants.json.";
 
 export const INVARIANTS_FILE_ARG_DESCRIPTION =
   'Path to an invariants.json ({prelude?, invariants: [...]}, or a bare array). Defaults to <run_dir>/invariants.json, then a run.json `invariants` key.';

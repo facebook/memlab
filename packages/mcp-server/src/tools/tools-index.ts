@@ -199,6 +199,10 @@ const GROUPS: Group[] = [
         'Judge a round against its stated invariants at rest — PASS / LEAK / BACKLOG / UNSETTLED / UNVERIFIED per plain-words claim, every probe on every rung and the settle rung in one pass.',
       ],
       [
+        'memlab_switch_matrix',
+        'Can each judge go red? Judge rounds (or the two phases of a `--ab` round) with named fixes switched off: a judge that stays green with its fix off is BLIND.',
+      ],
+      [
         'memlab_cache_inventory',
         'Module-scope Maps/Sets/Arrays ranked by what their entries hold, with the owning module and any clear/reset API it already has — memory-pressure candidates in one call.',
       ],
