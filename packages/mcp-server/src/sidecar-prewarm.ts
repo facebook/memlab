@@ -101,7 +101,7 @@ function buildOne(t: PrewarmTarget): Promise<string | null> {
     });
     worker.once('error', e => {
       clearTimeout(timer);
-      resolve(`worker error: ${e.message}`);
+      resolve(`worker error: ${e instanceof Error ? e.message : String(e)}`);
     });
     // Settles a worker that exited without posting; after a message this is a
     // no-op, the promise having resolved already.
