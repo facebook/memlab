@@ -43,7 +43,8 @@ type AggregateNodeCb = (
   calculateCb: (node: IHeapNode) => number,
 ) => number;
 
-// sync up with html/intern/js/webspeed/memlab/lib/LeakCluster.js
+// sync up with html/intern/js/webspeed/memlab/lib/LeakCluster.js and
+// html/intern/js/webspeed/memlab/lib/MemLabTraceSimilarity.js
 
 export default class NormalizedTrace {
   private trace: NormalizedTraceElement[];
