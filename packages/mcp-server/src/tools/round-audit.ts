@@ -74,6 +74,8 @@ interface RunManifest {
   caveats?: string[];
   provisional_notes?: string[];
   stop_reason?: string;
+  /** `dev_build: false` is a production-like (minified, __DEV__=0) round. */
+  environment?: {dev_build?: boolean | null};
 }
 
 const MIN_ANALYZABLE_RUNGS = 3;
@@ -443,6 +445,19 @@ export function auditManifest(
         `the round recorded \`${String(isolateAgeMs)}\` as the isolate age, which is not a duration. ` +
         'Rounds are only comparable at comparable isolate age, and this one cannot be placed — ' +
         'treat its rate as uncomparable rather than as a fresh-load measurement.',
+    });
+  }
+
+  if (m.environment?.dev_build === false) {
+    checks.push({
+      name: 'prod-like build',
+      status: 'caveat',
+      detail:
+        'This round drove a production-like (minified, `__DEV__` false) build. Gating props the app reads ' +
+        'only at startup may still be at their PRODUCTION defaults, because the override lands after boot ' +
+        'and the read-back verifies it anyway; judge a mitigation by its effect. Class and closure-variable ' +
+        'names are mangled, so a name-based probe that reads 0 is unresolved, not clean — use ' +
+        '`helpers.module(...)` in eval.',
     });
   }
 
