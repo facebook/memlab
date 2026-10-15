@@ -17,6 +17,7 @@ import v8 from 'v8';
 import zlib from 'zlib';
 import crypto from 'crypto';
 import {execFileSync} from 'child_process';
+import {minifiedWarning} from '../minified.js';
 import {z} from 'zod';
 import memlabCore from '@memlab/core';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
@@ -1599,6 +1600,8 @@ export function registerLoadSnapshot(server: McpServer): void {
         lines.push(
           `Loaded ${fileName} (${formatBytes(fileStat.size)} on disk): ${formatNumber(nodeCount)} nodes, ${formatNumber(edgeCount)} edges, ${formatBytes(totalSize)} heap size (${envLabel} snapshot) [handle: ${meta.handle}]`,
         );
+        const minifiedNote = minifiedWarning(snapshot);
+        if (minifiedNote != null) lines.push(minifiedNote);
         if (light) {
           lines.push(
             '⚡ **LIGHT mode** — dominator tree, retained sizes and retainer paths were NOT computed. Counts, names, types, self sizes and string values are available; tools needing retention data will refuse rather than report zeros. Reload without `light` for those.',

@@ -21,6 +21,12 @@ import {
   shortestPathAvoidingDevEdges,
   shortestPathDevHop,
 } from '../dev-edges.js';
+import {minifiedSignal} from '../minified.js';
+import {
+  moduleExportProp,
+  moduleRecords,
+  moduleScopeVars,
+} from '../module-registry.js';
 import {
   resolveStableKey,
   sourceOfNode,
@@ -1224,6 +1230,9 @@ export function registerEval(server: McpServer): void {
             'mapEntries(mapId, limit?)->[{key,value}] & setElements(setId, limit?)->[brief] (correct Map/Set/WeakMap enumeration — handles browser internal-typed slots AND SMI-value gaps, so you never re-derive it wrong), ' +
             'stableKey(nodeOrId)->string|null & byStableKey(key)->id|null (`<Module>.<edge>…` from the module scope down to the node — the same key at every rung, so `eval_across`/`ladder_probe` can track one named collection: `result = helpers.entries(helpers.byStableKey("InteractionTracingMetricsCore.tracedInteractions")).length`), ' +
             'sourceOf(nodeOrId)->{module, via, hops, script, location} (the Haste module whose code the node belongs to, read through its closure scope chain), ' +
+            "module(name)->{id, exports, defaultExport, scope:[{variable,id,name,type}]}|null (a module's record, exports and top-level variables, found through the module registry's records by their `id` string — works on a MINIFIED build, where class and variable names are mangled; scope variable names are mangled there too), " +
+            "moduleExportProp(moduleName, prop, {class?})->id|null (an export property, else a top-level variable named prop, else — with class, e.g. {class:'Map'} — the module's ONLY top-level variable of that class: the minification-safe way to reach a module-level cache), " +
+            'minified()->{minified, shortNameShare, namedClosures} (is this a minified bundle? name-based lookups read 0 there), ' +
             'rootPathAvoidingDev(nodeOrId)->[{id,name,type,edge}]|null (shortest GC-root path using no React DEV/Fast Refresh/devtools edge; null = the node does not exist in a production build; throws if the analysis budget runs out first), ' +
             "fiberHooks(componentName, {limit?})->[{fiber, hooks:[{index, statefulOrdinal, kind, memoizedState, pending, lastRenderedState, bailout}]}] (a component's hook list in order; statefulOrdinal counts only useState/useReducer, so it maps to the Nth such call in source), " +
             'stringValue(nodeOrId, {maxLen?, slices?: "parent"|"marker"})->string (text of a flat, `(concatenated string)` or `(sliced string)` node; a slice is returned as its whole parent because the snapshot records no offset, or as `‹slice›` with slices:"marker"), ' +
@@ -1785,6 +1794,34 @@ export async function runEval({
         edge: i > 0 ? prod.steps[i - 1].edgeName : null,
       }));
     };
+
+    // Module state through the module registry's records, which keep their
+    // property names on a minified build where class and variable names are
+    // mangled (see module-registry.ts).
+    const moduleHelper = (name: string) => {
+      const rec = moduleRecords(snapshot).get(name);
+      if (rec == null) return null;
+      return {
+        id: rec.record.id,
+        name,
+        exports: rec.exports?.id ?? null,
+        defaultExport: rec.defaultExport?.id ?? null,
+        scope: moduleScopeVars(rec)
+          .slice(0, 200)
+          .map(v => ({
+            variable: v.variable,
+            id: v.node.id,
+            name: v.node.name,
+            type: v.node.type,
+          })),
+      };
+    };
+    const moduleExportPropHelper = (
+      name: string,
+      prop: string,
+      opts?: {class?: string},
+    ) => moduleExportProp(snapshot, name, prop, opts?.class)?.node.id ?? null;
+    const minified = () => minifiedSignal(snapshot);
 
     // Hooks of every fiber rendering `componentName`, in list order, each with
     // its stateful ordinal and, for a stateful hook, its pending chain.
@@ -3738,6 +3775,9 @@ export async function runEval({
       stringValue,
       fiberHooks,
       rootPathAvoidingDev,
+      module: moduleHelper,
+      moduleExportProp: moduleExportPropHelper,
+      minified,
       sourceOf,
       stableKey,
       byStableKey,
@@ -4139,7 +4179,8 @@ export async function runEval({
           'walk({name: pred}, {collect}) runs SEVERAL predicates in ONE pass — the ' +
           'node budget is cumulative across the eval, so two forEach passes on a ' +
           'multi-million-node graph aborts; byClass, nodesByClass, iterByClass, ' +
-          'byTypename, withProp, byEdgeName, allByEdgeName, byContextVar, hasShape, shapeKeys, queryNodes, findWithin; ' +
+          'byTypename, withProp, byEdgeName, allByEdgeName, byContextVar, hasShape, shapeKeys, queryNodes, findWithin ' +
+          '(name-based: they read 0 on a MINIFIED build — use module(name) / moduleExportProp(name, prop, {class}) there); ' +
           'retainedSize(id), retainedSizes(ids), aggregateRetained(ids) — ' +
           'node.retainedSize THROWS here; rootPath, pathBetween, owner, contextOf, ' +
           'groupReferrersByEdge, detachedNamed, listenerRecords, closureCensus; ' +

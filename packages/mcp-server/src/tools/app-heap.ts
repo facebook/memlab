@@ -9,6 +9,7 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
+import {minifiedWarning} from '../minified.js';
 import {z} from 'zod';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {
@@ -128,6 +129,8 @@ export function registerAppHeap(server: McpServer): void {
             `> ⚠️ **${pct(nonApp)} of this heap is not the application.** A threshold expressed against the raw total is mostly measuring how much bundle and code has loaded. Drive against the app-attributable figure above, and do not compare the raw total to production.`,
           );
         }
+        const minifiedNote = minifiedWarning(snapshot);
+        if (minifiedNote != null) lines.push('', minifiedNote);
         lines.push(
           '',
           '_Buckets are mutually exclusive and sum to the total; each node lands in the most specific bucket that explains why it is not app memory. Self size, not retained: retained sizes overlap and would not sum._',

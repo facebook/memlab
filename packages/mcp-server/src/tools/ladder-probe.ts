@@ -506,7 +506,7 @@ export function extractProbedNames(code: string): string[] {
   const str = `(?:'([^']*)'|"([^"]*)")`;
   // withProp('x') / byEdgeName('x') / byContextSlot('x') / byTypename('x') …
   const single = new RegExp(
-    `\\b(?:withProp|byEdgeName|byContextSlot|byContextVar|byReferrerEdge)\\s*\\(\\s*${str}`,
+    `\\b(?:withProp|byEdgeName|allByEdgeName|byContextSlot|byContextVar|byReferrerEdge)\\s*\\(\\s*${str}`,
     'g',
   );
   // edgeTarget(id, 'x') / getProp(id, 'x') / findWithin(id, 'x')
@@ -525,6 +525,23 @@ export function extractProbedNames(code: string): string[] {
     for (const lit of m[1].matchAll(/'([^']*)'|"([^"]*)"/g)) {
       add(lit[1] ?? lit[2] ?? '');
     }
+  }
+  return [...out];
+}
+
+/**
+ * The class names a probe looks nodes up by (`byClass('X')`, …). On a minified
+ * build these are mangled, so their absence is what turns a 0 into
+ * UNRESOLVABLE rather than a measured absence.
+ */
+export function extractProbedClasses(code: string): string[] {
+  const out = new Set<string>();
+  const re =
+    /\b(?:byClass|nodesByClass|iterByClass)\s*\(\s*(?:'([^'\\]*)'|"([^"\\]*)")/g;
+  let m;
+  while ((m = re.exec(code)) != null) {
+    const name = m[1] ?? m[2] ?? '';
+    if (name.length > 0 && name.length <= 80) out.add(name);
   }
   return [...out];
 }
@@ -613,13 +630,22 @@ export function preludeReachedBy(
     .join('\n');
 }
 
-export function autoVisibilityCode(names: readonly string[]): string {
+export function autoVisibilityCode(
+  names: readonly string[],
+  classes: readonly string[] = [],
+): string {
   return `
 const WANT = new Set(${JSON.stringify(names)});
+const CLASSES = new Set(${JSON.stringify(classes)});
 const counts = {};
 let skipped = 0;
 snapshot.nodes.forEach(node => {
   if (node.id <= 3) return;
+  if (CLASSES.has(node.name)) {
+    const k = 'class ' + node.name;
+    counts[k] = counts[k] || {};
+    counts[k].node = (counts[k].node || 0) + 1;
+  }
   let refs;
   try { refs = node.references; } catch (e) { return; }
   const seen = new Set();
@@ -637,7 +663,7 @@ snapshot.nodes.forEach(node => {
 if (typeof snapshot.__skippedEdges === 'object' && snapshot.__skippedEdges != null) {
   skipped = snapshot.__skippedEdges.total_reads || 0;
 }
-result = {counts, complete: true, skipped_edge_reads: skipped};`.trim();
+result = {counts, complete: true, skipped_edge_reads: skipped, minified: helpers.minified().minified};`.trim();
 }
 
 /** Run one expression against one rung and hand back its raw text. */
@@ -662,6 +688,18 @@ async function evalOnRung(
 }
 
 /** Pull the `{name: {edgeType: count}}` object back out of eval's text. */
+/** The re-probe's top-level `minified` flag; a name in `counts` cannot fake it. */
+function autoVisibilityMinified(text: string): boolean {
+  try {
+    const parsed = JSON.parse(
+      text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1),
+    ) as {minified?: unknown} | null;
+    return parsed?.minified === true;
+  } catch {
+    return false;
+  }
+}
+
 export function parseAutoVisibility(
   text: string,
 ): Record<string, Record<string, number>> | null {
@@ -787,7 +825,7 @@ export function registerLadderProbe(server: McpServer): void {
         .optional()
         .default(true)
         .describe(
-          'On an all-zero series, re-probe the LAST rung for the edge NAMES `code` matches on, counting holders by edge TYPE, and report any name that is present in the heap by a route the probe does not index (a `context` edge for a closure-captured variable, an `internal` edge for a backing slot). This is what turns "0 everywhere" into "present, but you looked for it as a property". Costs one extra load of the last rung, and only fires when a reported metric is zero at every rung.',
+          'On an all-zero series, re-probe the LAST rung for the edge NAMES `code` matches on, counting holders by edge TYPE, and report any name that is present in the heap by a route the probe does not index (a `context` edge for a closure-captured variable, an `internal` edge for a backing slot). This is what turns "0 everywhere" into "present, but you looked for it as a property". When no name or class the probe looks up exists at all, the metric is reported UNRESOLVABLE (the probe found no holder; its 0 is not a measurement), with a minified-build warning when the heap is minified. Costs one extra load of the last rung, and only fires when a reported metric is zero (or -1) at every rung.',
         ),
       label: z
         .string()
@@ -1208,6 +1246,14 @@ export function registerLadderProbe(server: McpServer): void {
         // Names worth re-probing: those belonging to a metric that read 0 at
         // every rung. Collected here, resolved once after the loop.
         const zeroSeriesNames = new Set<string>();
+        const zeroSeriesClasses = new Set<string>();
+        // Per all-zero metric, the names and `class X` keys it looks up.
+        // Keyed by metric index with the first line of its output: names are
+        // not unique (a `label` can equal a `metrics` key).
+        const zeroSeriesMetrics = new Map<
+          number,
+          {name: string; keys: string[]; body: number}
+        >();
         for (let mi = 0; mi < reportedCount; mi++) {
           const m = metricList[mi];
           const rungs = perMetric[mi];
@@ -1219,6 +1265,7 @@ export function registerLadderProbe(server: McpServer): void {
             lines.push(`### \`${m.name}\``);
             lines.push('');
           }
+          const body = lines.length;
           if (usable.length < 2) {
             const errs = rungs
               .filter(r => r.error != null)
@@ -1476,10 +1523,23 @@ export function registerLadderProbe(server: McpServer): void {
           // into Math.max gives -Infinity, which is not 0, so a metric that
           // failed to measure at EVERY rung skipped the re-probe that exists
           // to tell a real absence from an unobservable one.
-          const allZero = headerYs.length > 0 && headerYs.every(y => y === 0);
+          // -1 is the conventional "not found" from an index lookup, so a
+          // series stuck at -1 is the same blind spot as one stuck at 0.
+          const allZero =
+            headerYs.length > 0 &&
+            (headerYs.every(y => y === 0) || headerYs.every(y => y === -1));
           if (allZero) {
+            const keys: string[] = [];
             for (const n of extractProbedNames(withPrelude(m.code))) {
               zeroSeriesNames.add(n);
+              keys.push(n);
+            }
+            for (const c of extractProbedClasses(withPrelude(m.code))) {
+              zeroSeriesClasses.add(c);
+              keys.push(`class ${c}`);
+            }
+            if (keys.length > 0) {
+              zeroSeriesMetrics.set(mi, {name: m.name, keys, body});
             }
           }
           if (allZero && status === 'unclassified') {
@@ -1554,21 +1614,26 @@ export function registerLadderProbe(server: McpServer): void {
         // matched on, how many holders carry an edge of that name, by edge
         // TYPE? A non-zero total is proof the population is there and the
         // probe was looking down the wrong kind of edge.
-        if (auto_visibility !== false && zeroSeriesNames.size > 0) {
-          const names = [...zeroSeriesNames];
+        if (
+          auto_visibility !== false &&
+          (zeroSeriesNames.size > 0 || zeroSeriesClasses.size > 0)
+        ) {
+          const classKeys = [...zeroSeriesClasses].map(c => `class ${c}`);
+          const names = [...zeroSeriesNames, ...classKeys];
           const last = locals[locals.length - 1];
           armScanBudgetFor(effectiveTimeout);
           let found: Record<string, Record<string, number>> | null = null;
+          let minifiedHeap = false;
           let reprobeError: string | null = null;
           try {
-            found = parseAutoVisibility(
-              await evalOnRung(
-                last.localPath,
-                autoVisibilityCode(names),
-                effectiveTimeout,
-                max_nodes,
-              ),
+            const text = await evalOnRung(
+              last.localPath,
+              autoVisibilityCode([...zeroSeriesNames], [...zeroSeriesClasses]),
+              effectiveTimeout,
+              max_nodes,
             );
+            found = parseAutoVisibility(text);
+            minifiedHeap = autoVisibilityMinified(text);
           } catch (e) {
             reprobeError = e instanceof Error ? e.message : String(e);
           }
@@ -1593,18 +1658,54 @@ export function registerLadderProbe(server: McpServer): void {
             const present = names.filter(
               n => Object.keys(found?.[n] ?? {}).length > 0,
             );
-            if (present.length === 0) {
+            const isPresent = new Set(present);
+            // A metric none of whose names or classes exists found no HOLDER,
+            // so its 0 is not a count of anything. On a minified build that
+            // is the expected outcome for any source name, and reporting
+            // "real absence" there certified live leaks as clean.
+            const unresolvable = [...zeroSeriesMetrics.values()].filter(
+              ({keys}) => keys.every(k => !isPresent.has(k)),
+            );
+            const notRewritten: string[] = [];
+            for (const {name: metric, body} of unresolvable) {
+              let rewritten = false;
+              for (let li = body; li < lines.length; li++) {
+                if (lines[li].startsWith('### ')) break;
+                if (lines[li].startsWith('**Verdict:**')) {
+                  lines[li] =
+                    '**Verdict:** UNRESOLVABLE — the probe found no holder (see the auto-visibility re-probe below), so its 0 is not a measurement.';
+                  rewritten = true;
+                  break;
+                }
+              }
+              if (!rewritten) notRewritten.push(metric);
+            }
+            if (unresolvable.length > 0) {
               lines.push(
-                `No holder in \`${last.label}\` carries an edge named ${names
-                  .map(n => `\`${n}\``)
-                  .join(
-                    ', ',
-                  )} — by ANY edge type. The zero is a real absence, ` +
-                  'not a wrong access path. (This does not rule out a name built ' +
-                  'at runtime, which cannot be read out of the source.)',
+                `**UNRESOLVABLE — ${unresolvable.map(({name: n}) => `\`${n}\``).join(', ')}.** ` +
+                  `Nothing in \`${last.label}\` is named ${[
+                    ...new Set(unresolvable.flatMap(({keys}) => keys)),
+                  ]
+                    .map(n => `\`${n}\``)
+                    .join(
+                      ', ',
+                    )} — by ANY edge type — so the probe found no holder, and its 0 is not ` +
+                  'a measurement. Do NOT record it as a negative.' +
+                  (notRewritten.length > 0
+                    ? ` This supersedes the verdict printed above for ${notRewritten.map(n => `\`${n}\``).join(', ')}.`
+                    : ''),
+                '',
+                minifiedHeap
+                  ? '⚠ **This heap is MINIFIED**: source names of classes and closure variables are mangled, ' +
+                      "so their absence says nothing about the population. Reach module state with `helpers.module('<ModuleName>')` " +
+                      "or `helpers.moduleExportProp('<ModuleName>', '<prop>', {class: 'Map'})`, which resolve through the module " +
+                      "registry's records, or rewrite the probe by shape (`byShape`)."
+                  : 'The name may be built at runtime (unreadable from source), belong to a module this page never ' +
+                      'loaded, or be mangled by a bundler. Confirm the holder exists before reading the zero as an absence.',
                 '',
               );
-            } else {
+            }
+            if (present.length > 0) {
               lines.push(
                 '⚠️ **The name IS in this heap.** The probe read 0 at every rung, ' +
                   'but these holders carry an edge with that name:',
