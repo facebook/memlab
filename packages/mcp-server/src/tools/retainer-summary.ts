@@ -154,15 +154,30 @@ export function devRouteNote(counts: {
   return `_exclude_dev: ${parts.join('; ')}. Pass \`exclude_dev: false\` for raw shortest paths._`;
 }
 
-function normalizeEdgeName(name: string): string {
+const UUID_RE =
+  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+export function normalizeEdgeName(name: string): string {
   if (/^\d+$/.test(name)) return '*';
+  // Per-instance property KEYS: Backbone-style listen ids (`l931`) and cids
+  // (`c42`). Left in, `trace_all` on 300 Files reported 300 paths that
+  // differed only in `_listeningTo.l931`.
+  if (/^[lc]\d+$/.test(name)) return `${name[0]}*`;
   // A WeakMap entry edge is named by its table SLOT plus the key and value
   // node ids — `467499 / part of key (_s6_$0 @9088921) -> value (Object
   // @9458491) pair in WeakMap (table @7527325)` — all of which differ per
   // entry. Left in the key, 40 samples of ONE path through one WeakMap
   // reported "40 distinct retainer patterns" and ~16 KB of near-identical
   // paths.
-  return name.replace(/^\d+ \/ /, '* / ').replace(/ @\d+\b/g, ' @…');
+  return (
+    name
+      .replace(/^\d+ \/ /, '* / ')
+      .replace(/ @\d+\b/g, ' @…')
+      // Keys carrying an entity id (e.g. `120363024@g.us`, collapsed by the
+      // digit-run rule) or a UUID (collapsed by UUID_RE).
+      .replace(UUID_RE, '<uuid>')
+      .replace(/\d{5,}/g, '#')
+  );
 }
 
 // V8 suffixes per-instance node ids onto some internal names (e.g.
