@@ -308,6 +308,10 @@ const GROUPS: Group[] = [
         'Count several named populations (detached DOM, listener records, LRU cache nodes, React fibers, timers, …) across every rung in ONE pass each, with per-cycle rates and a settle verdict.',
       ],
       [
+        'memlab_object_urls',
+        'Unrevoked `blob:` object URLs per rung — their Blobs are pinned OFF the V8 heap, so this leak never shows in heap size.',
+      ],
+      [
         'memlab_rate_table',
         'Rank several rounds by the per-cycle rate of ONE population, labelled by the surface each round drove — the "which surface do I fix first" table. Carries settle-drain and isolate-age columns, because a rate is not comparable without them.',
       ],
