@@ -57,6 +57,10 @@ const GROUPS: Group[] = [
         'Pending async work: scheduler task queues (live vs cancelled), timer closures, unsettled Promises.',
       ],
       [
+        'memlab_pending_promises',
+        'Unsettled Promises ranked by reaction-chain length, tracked by id across a ladder — one never-settling promise gaining `.then`s per cycle.',
+      ],
+      [
         'memlab_app_heap',
         'START HERE on an unfamiliar app: splits the heap into application data vs bundle source vs V8 machinery. On one app this showed ~55% of the heap was JS bundle source, which reframed every number that followed.',
       ],

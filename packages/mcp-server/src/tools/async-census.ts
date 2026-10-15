@@ -8,12 +8,15 @@
  * @oncall memory_lab
  */
 
-import type {IHeapNode} from '@memlab/core';
+import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
+import {promiseReactions} from '../promise-chains.js';
+import {getProductionTrace, shortenPath} from './retainer-summary.js';
 import {
   errorResult,
+  formatBytes,
   formatNumber,
   markdownTable,
   toolResult,
@@ -79,6 +82,24 @@ function isCancelledTask(node: IHeapNode): boolean {
   return n === 'null' || n === 'undefined' || n === 'system / Oddball';
 }
 
+// Shorter chains are routine (an awaited fetch with a couple of `.then`s).
+const LONG_CHAIN_MIN = 10;
+
+/** The last application hops of a node's production retainer path. */
+export function ownerLabel(snapshot: IHeapSnapshot, node: IHeapNode): string {
+  const {steps, route} = getProductionTrace(snapshot, node);
+  if (steps == null) return '(no retainer path)';
+  const tail = steps
+    .slice(0, -1)
+    .filter(
+      st => !(st.name ?? '').startsWith('system /') && st.type !== 'hidden',
+    )
+    .slice(-4)
+    .map(st => `${shortenPath(st.name || '(anonymous)')}.${st.edgeName ?? ''}`)
+    .join(' → ');
+  return `${route === 'dev-only' ? '[DEV-ONLY] ' : ''}${tail || '(root)'}`;
+}
+
 export function registerAsyncCensus(server: McpServer): void {
   server.tool(
     'memlab_async_census',
@@ -115,6 +136,7 @@ export function registerAsyncCensus(server: McpServer): void {
         >();
         let promisesPending = 0;
         let promisesSettled = 0;
+        const longChains: Array<{node: IHeapNode; reactions: number}> = [];
         const promiseOwners = new Map<string, number>();
         const timerClosures = new Map<string, number>();
 
@@ -135,6 +157,10 @@ export function registerAsyncCensus(server: McpServer): void {
             if (pending) promisesPending++;
             else promisesSettled++;
             if (pending) {
+              const reactions = promiseReactions(node).count;
+              if (reactions >= LONG_CHAIN_MIN) {
+                longChains.push({node, reactions});
+              }
               for (const edge of node.referrers) {
                 const from = edge.fromNode;
                 if (from == null || from.id <= 3) continue;
@@ -271,6 +297,34 @@ export function registerAsyncCensus(server: McpServer): void {
             '',
             `**${formatNumber(pTotal)} Promise(s)** — **${formatNumber(promisesPending)} UNSETTLED** (reaction list attached, no result), ${formatNumber(promisesSettled)} settled.`,
           );
+          if (longChains.length > 0) {
+            longChains.sort((a, b) => b.reactions - a.reactions);
+            lines.push(
+              '',
+              `**Unsettled promises by reaction-chain length** (${formatNumber(longChains.length)} with ≥${LONG_CHAIN_MIN} reactions). ` +
+                'One promise that never settles keeps every `.then` attached to it; a long chain is that leak, however few promises there are:',
+              '',
+              markdownTable(
+                [
+                  'Promise',
+                  'Reactions',
+                  'Retained',
+                  'Owner (production path tail)',
+                ],
+                longChains
+                  .slice(0, limit)
+                  .map(({node, reactions}) => [
+                    `@${node.id}`,
+                    formatNumber(reactions),
+                    formatBytes(node.retainedSize),
+                    ownerLabel(snapshot, node),
+                  ]),
+                new Set([1, 2]),
+              ),
+              '',
+              '_Does the chain grow per interaction? `memlab_pending_promises({run_dir})` tracks each promise by id across the ladder. `helpers.promiseReactions(id)` lists the reactions in an eval._',
+            );
+          }
           const owners = [...promiseOwners.entries()]
             .filter(([, c]) => c >= min_count)
             .sort((a, b) => b[1] - a[1])

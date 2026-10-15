@@ -22,6 +22,7 @@ import {
   shortestPathDevHop,
 } from '../dev-edges.js';
 import {minifiedSignal} from '../minified.js';
+import {promiseReactions} from '../promise-chains.js';
 import {
   moduleExportProp,
   moduleRecords,
@@ -1233,6 +1234,7 @@ export function registerEval(server: McpServer): void {
             "module(name)->{id, exports, defaultExport, scope:[{variable,id,name,type}]}|null (a module's record, exports and top-level variables, found through the module registry's records by their `id` string — works on a MINIFIED build, where class and variable names are mangled; scope variable names are mangled there too), " +
             "moduleExportProp(moduleName, prop, {class?})->id|null (an export property, else a top-level variable named prop, else — with class, e.g. {class:'Map'} — the module's ONLY top-level variable of that class: the minification-safe way to reach a module-level cache), " +
             'minified()->{minified, shortNameShare, namedClosures} (is this a minified bundle? name-based lookups read 0 there), ' +
+            'promiseReactions(promiseOrId, {cap?})->{count, ids, truncated}|null (the `.then` reactions attached to an UNSETTLED promise, walked by node type — count 0 means it settled), ' +
             'rootPathAvoidingDev(nodeOrId)->[{id,name,type,edge}]|null (shortest GC-root path using no React DEV/Fast Refresh/devtools edge; null = the node does not exist in a production build; throws if the analysis budget runs out first), ' +
             "fiberHooks(componentName, {limit?})->[{fiber, hooks:[{index, statefulOrdinal, kind, memoizedState, pending, lastRenderedState, bailout}]}] (a component's hook list in order; statefulOrdinal counts only useState/useReducer, so it maps to the Nth such call in source), " +
             'stringValue(nodeOrId, {maxLen?, slices?: "parent"|"marker"})->string (text of a flat, `(concatenated string)` or `(sliced string)` node; a slice is returned as its whole parent because the snapshot records no offset, or as `‹slice›` with slices:"marker"), ' +
@@ -1822,6 +1824,17 @@ export async function runEval({
       opts?: {class?: string},
     ) => moduleExportProp(snapshot, name, prop, opts?.class)?.node.id ?? null;
     const minified = () => minifiedSignal(snapshot);
+    // The reactions attached to an unsettled promise, followed by node type:
+    // V8 links them through a slot-indexed edge, and walking the wrong slot
+    // reads a chain of 1.
+    const promiseReactionsHelper = (
+      nodeOrId: number | {id: number},
+      opts?: {cap?: number},
+    ) => {
+      const node = resolveNode(nodeOrId);
+      if (node == null) return null;
+      return promiseReactions(node, opts?.cap);
+    };
 
     // Hooks of every fiber rendering `componentName`, in list order, each with
     // its stateful ordinal and, for a stateful hook, its pending chain.
@@ -3778,6 +3791,7 @@ export async function runEval({
       module: moduleHelper,
       moduleExportProp: moduleExportPropHelper,
       minified,
+      promiseReactions: promiseReactionsHelper,
       sourceOf,
       stableKey,
       byStableKey,

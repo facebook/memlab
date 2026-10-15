@@ -16,4 +16,4 @@
  * tool). Keep in sync with `package.json`; `scripts/check-version-sync.mjs`
  * enforces that.
  */
-export const SERVER_VERSION = '2.187.0';
+export const SERVER_VERSION = '2.188.0';
