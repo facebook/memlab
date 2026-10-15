@@ -233,6 +233,36 @@ export function hooksOfFiber(fiber: IHeapNode, maxHooks = 200): HookInfo[] {
   return out;
 }
 
+/**
+ * The variable a `useState`/`useReducer` setter is bound to.
+ *
+ * The queue's `dispatch` is a bound function; the component (or custom hook)
+ * that destructured it holds it as a closure-context variable named after
+ * the setter (`setIsActive`), which names the state even where no fiber is
+ * reachable. Falls back to a `set*`/`on*` property holding it (a prop passed
+ * down). `context` is the scope holding the variable, null for a property.
+ */
+export function dispatchSetter(
+  queue: IHeapNode,
+): {variable: string; context: IHeapNode | null} | null {
+  const dispatch = edgeTo(queue, 'dispatch');
+  if (dispatch == null) return null;
+  let fallback: {variable: string; context: IHeapNode | null} | null = null;
+  for (const e of dispatch.referrers) {
+    if (e.fromNode.id === queue.id) continue;
+    const name = String(e.name_or_index);
+    if (e.type === 'context') return {variable: name, context: e.fromNode};
+    if (
+      fallback == null &&
+      e.type === 'property' &&
+      /^(set|on)[A-Z]/.test(name)
+    ) {
+      fallback = {variable: name, context: null};
+    }
+  }
+  return fallback;
+}
+
 export interface QueueDetail {
   hook: HookInfo | null;
   lastRenderedState: string;

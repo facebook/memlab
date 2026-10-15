@@ -10,7 +10,8 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
-import {describeQueue} from '../react-shapes.js';
+import {describeQueue, dispatchSetter} from '../react-shapes.js';
+import {sourceOfNode} from './module-attribution.js';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
 import {
@@ -97,6 +98,20 @@ interface ScanResult {
  * showing one component at exactly +1.000 records/cycle while breadth stayed
  * flat.
  */
+/** `setX @ Module` for a queue's setter, or null when none is held by name. */
+export function setterLabel(
+  snapshot: IHeapSnapshot,
+  queue: IHeapNode,
+): string | null {
+  const setter = dispatchSetter(queue);
+  if (setter == null) return null;
+  const module =
+    setter.context != null
+      ? sourceOfNode(snapshot, setter.context).module
+      : null;
+  return `(no fiber) ${setter.variable}${module != null ? ` @ ${module}` : ''}`;
+}
+
 function scanUpdateQueues(
   snapshot: IHeapSnapshot,
   maxChain: number,
@@ -130,10 +145,14 @@ function scanUpdateQueues(
     if (head == null) continue;
     const {length, terminated} = chainLength(head, maxChain);
     const fiber = nearestFiber(queue, maxHops);
+    const name = fiber != null ? fiberComponentName(fiber) : null;
     reports.push({
       queueId: queue.id,
-      component:
-        (fiber != null ? fiberComponentName(fiber) : null) ?? '(unattributed)',
+      // With no fiber in reach, the setter's variable (and the module whose
+      // scope holds it — the custom hook's file) is what names the state.
+      // Lumping such queues as one "(unattributed)" row hid four different
+      // setters behind one rate.
+      component: name ?? setterLabel(snapshot, queue) ?? '(unattributed)',
       length,
       terminated,
     });
@@ -537,6 +556,7 @@ export function registerReactUpdateQueues(server: McpServer): void {
                 'Pending actions (top 3)',
                 'lastRenderedState',
                 'Bailout?',
+                'Setter (scope module)',
                 'dispatch held by',
               ],
               details.map(({b, d}) => [
@@ -551,11 +571,21 @@ export function registerReactUpdateQueues(server: McpServer): void {
                   .join(', ') || '—',
                 d.lastRenderedState,
                 d.bailout == null ? '?' : d.bailout ? '**yes**' : 'no',
+                (() => {
+                  const queue = snapshot.getNodeById(b.example);
+                  const setter = queue != null ? dispatchSetter(queue) : null;
+                  if (setter == null) return '—';
+                  const module =
+                    setter.context != null
+                      ? sourceOfNode(snapshot, setter.context).module
+                      : null;
+                  return `\`${setter.variable}\`${module != null ? ` (${module})` : ''}`;
+                })(),
                 d.dispatchHolders.join('; ') || '—',
               ]),
             ),
             '',
-            '_**Stateful #** counts only hooks with a queue (useState/useReducer), so `Stateful # 3` is the third such call in the component source. **Bailout? yes** means every pending action is the very value last rendered — the eager-bailout shape, where a no-op `setState(sameValue)` leaves its record on the queue forever. `smi` = an inline small integer, which the snapshot does not record._',
+            "_**Setter** is the variable the setter was destructured into, and the module whose scope holds it — for a custom hook, the hook's own file. **Stateful #** counts only hooks with a queue (useState/useReducer), so `Stateful # 3` is the third such call in the component source. **Bailout? yes** means every pending action is the very value last rendered — the eager-bailout shape, where a no-op `setState(sameValue)` leaves its record on the queue forever. `smi` = an inline small integer, which the snapshot does not record._",
             '',
           );
         }
