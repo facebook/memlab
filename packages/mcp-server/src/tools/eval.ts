@@ -17,7 +17,10 @@ import path from 'path';
 import vm from 'node:vm';
 import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
-import {shortestPathAvoidingDevEdges} from '../dev-edges.js';
+import {
+  shortestPathAvoidingDevEdges,
+  shortestPathDevHop,
+} from '../dev-edges.js';
 import {
   resolveStableKey,
   sourceOfNode,
@@ -1226,7 +1229,7 @@ export function registerEval(server: McpServer): void {
             'stringValue(nodeOrId, {maxLen?, slices?: "parent"|"marker"})->string (text of a flat, `(concatenated string)` or `(sliced string)` node; a slice is returned as its whole parent because the snapshot records no offset, or as `‹slice›` with slices:"marker"), ' +
             'props(nodeOrId)->{prop: scalar | {ref,name,type}} & getProp(nodeOrId, name) & shapeSignature(nodeOrId, {maxStringLen?}) (content signature for dedup checks), ' +
             'shapeKeys(nodeOrId)->Set<string> & ownProps(nodeOrId) & hasShape(nodeOrId, [names], {exact?,exclude?}) (own JS properties ONLY — USE THESE FOR SHAPE MATCHING; props() falls back to an internal-edge walk and injects length/map/__via/__note, which makes a props()-based shape test silently return zero matches), ' +
-            'rootPath(nodeOrId, {maxHops?})->[{id,name,type,edge}] (GC-root path, root first — the retainer_trace walk, callable inside an eval), ' +
+            'rootPath(nodeOrId, {maxHops?, skipDev?})->[{id,name,type,edge}] (GC-root path, root first — the retainer_trace walk, callable inside an eval; skipDev:true walks the production path instead when the shortest one crosses a React DEV/Fast Refresh/devtools edge — same shape, same hop cap and collapsing, never throws: with no production path it returns the dev path), ' +
             'byClass(name, {type?})->ids[] & byTypename(name)->ids[] & withProp(name, {edgeTypes?})->ids[] & byEdgeName(name)->ids[] (INDEXED lookups — built once per snapshot then memoized in a session scratch, so repeated questions are index-speed not full-scan; byClass covers EVERY node type, matching memlab_find_nodes_by_class, so closures/strings/arrays/natives are found — pass {type:"object"} to narrow. NOTE byClass also returns the CONSTRUCTOR closure and the `Foo (prototype)` object alongside the instances, and tracing one of those yields a meaningless modulesMap path; use iterByClass, whose instancesOnly defaults true, when you mean instances. withProp matches `property` AND `context` edges by default, so a CLOSURE-CAPTURED variable is found — pass {edgeTypes:["property"]} for own properties only, and byEdgeName to ignore edge type entirely), ' +
             'aggregateRetained(ids[])->{retained,exact} (dominator-deduped retained for a SET of ids, no double-counting), ' +
             'iterByClass(name, {type?, instancesOnly?})->nodes[] & iterByType(type)->nodes[] (INDEXED iteration — no full scan; instancesOnly defaults TRUE and drops the constructor closure, the `Foo (prototype)` object and `system/SharedFunctionInfo/Foo`, which otherwise come back as class members whose only "properties" are length/map and make a per-instance loop produce garbage), ' +
@@ -2342,7 +2345,11 @@ export async function runEval({
      */
     const rootPath = (
       nodeOrId: number | {id: number},
-      opts?: {maxHops?: number; collapseRepeatedEdges?: boolean},
+      opts?: {
+        maxHops?: number;
+        collapseRepeatedEdges?: boolean;
+        skipDev?: boolean;
+      },
     ): Array<{
       id: number;
       name: string;
@@ -2350,6 +2357,48 @@ export async function runEval({
       edge: string | null;
       repeated?: number;
     }> => {
+      // Each hop's parent: the shortest-path edge, or — with skipDev, when the
+      // shortest path crosses a dev edge — the shortest PRODUCTION path's. Both
+      // go through the same walk below, so the result has one shape. With no
+      // production path (or the budget out) the dev path stays the answer,
+      // rather than an exception that would cost the caller the whole eval.
+      type Hop = {from: IHeapNode; name: string; type: string};
+      let prodParent: Map<number, Hop> | null = null;
+      if (opts?.skipDev) {
+        const start = resolveNode(nodeOrId);
+        if (start != null && shortestPathDevHop(snapshot, start) != null) {
+          const prod = shortestPathAvoidingDevEdges(snapshot, start);
+          if (prod.kind === 'found') {
+            prodParent = new Map();
+            for (let i = 1; i < prod.steps.length; i++) {
+              const from = prod.steps[i - 1].node;
+              const to = prod.steps[i].node;
+              const name = prod.steps[i - 1].edgeName;
+              // `?` rather than a guessed type when the edge cannot be
+              // matched back; never mislabel a hop.
+              let type = '?';
+              for (const e of from.references) {
+                if (
+                  e.toNode.id === to.id &&
+                  String(e.name_or_index) === name &&
+                  e.type !== 'weak'
+                ) {
+                  type = e.type;
+                  break;
+                }
+              }
+              prodParent.set(to.id, {from, name, type});
+            }
+          }
+        }
+      }
+      const parentOf = (node: IHeapNode): Hop | null => {
+        if (prodParent != null) return prodParent.get(node.id) ?? null;
+        const e = node.hasPathEdge && node.pathEdge ? node.pathEdge : null;
+        return e == null
+          ? null
+          : {from: e.fromNode, name: String(e.name_or_index), type: e.type};
+      };
       const maxHops = opts?.maxHops ?? 24;
       // Collapsing is ON by default. Inside a linked-list leak — React update
       // queues, LRU chains, intrusive `.prev` lists — every hop is the SAME
@@ -2373,10 +2422,8 @@ export async function runEval({
       let runLength = 0;
       while (cur != null && distinctHops < maxHops && !seen.has(cur.id)) {
         seen.add(cur.id);
-        const edge = cur.hasPathEdge && cur.pathEdge ? cur.pathEdge : null;
-        const edgeStr = edge
-          ? `${String(edge.name_or_index)} [${edge.type}]`
-          : null;
+        const edge = parentOf(cur);
+        const edgeStr = edge ? `${edge.name} [${edge.type}]` : null;
         // A run is the same edge name arriving at the same class — that is the
         // shape a chain makes, and it keeps two unrelated `.value` hops apart.
         const edgeKey = edgeStr == null ? null : `${cur.name}\u0000${edgeStr}`;
@@ -2398,7 +2445,7 @@ export async function runEval({
           distinctHops++;
         }
         if (!edge) break;
-        cur = edge.fromNode as IHeapNode | null;
+        cur = edge.from;
       }
       return out.reverse();
     };
@@ -4498,7 +4545,7 @@ function describeEnvLines(): string[] {
     '- `helpers.mapEntries(mapId, limit=1000) -> [{key, value}]` and `helpers.setElements(setId, limit=1000) -> [brief]` — CORRECT Map/Set/WeakMap enumeration. Handles browser `internal`-typed backing slots and SMI-value gaps (naive `type === "element"` filtering or positional `[i],[i+1]` pairing silently returns 0 / mispairs). Each brief is `{id, name, type, self_size, retained_size, string}`.',
     "- `helpers.props(nodeOrId) -> {prop: scalar | {ref, name, type}}` and `helpers.getProp(nodeOrId, name)` — read an object's own properties without the `for (const e of n.references) …` boilerplate. Number-valued props surface as a ref to a `smi number`/`heap number` node; their actual numeric value is not in the snapshot format. ⚠️ **`props()` is for INSPECTION, not for SHAPE MATCHING** — on a node with no `property` edges it falls back to a named internal/shortcut/hidden edge walk and adds `length`/`map`/`__via`/`__note`, so a shape test written against `Object.keys(props(id))` returns ZERO matches on objects that plainly have the shape. Use the next line for that.",
     '- `helpers.shapeKeys(nodeOrId) -> Set<string>`, `helpers.ownProps(nodeOrId) -> {…}`, `helpers.hasShape(nodeOrId, ["a","b"], {exact?, exclude?}) -> boolean` — own JS properties ONLY (`property` edges, no `__proto__`, no fallback, no provenance keys). **This is the correct way to ask "what shape is this object".** `hasShape(id, ["element","record"], {exact: true})` is the whole test.',
-    '- `helpers.rootPath(nodeOrId, {maxHops?}) -> [{id, name, type, edge}]` — the GC-root path for one node, root first, exactly as `memlab_retainer_trace` walks it. Saves hand-writing the `while (cur.hasPathEdge) cur = cur.pathEdge.fromNode` loop inside a larger eval (which gets rewritten, slightly differently, every time a probe needs to name an owner).',
+    '- `helpers.rootPath(nodeOrId, {maxHops?, skipDev?}) -> [{id, name, type, edge}]` — the GC-root path for one node, root first, exactly as `memlab_retainer_trace` walks it (`skipDev: true` = the production path on a dev build). Saves hand-writing the `while (cur.hasPathEdge) cur = cur.pathEdge.fromNode` loop inside a larger eval (which gets rewritten, slightly differently, every time a probe needs to name an owner).',
     '- `helpers.shapeSignature(nodeOrId, {maxStringLen?}) -> string` — stable shallow content signature (sorted prop names + scalar values) for duplicate-record detection. Numeric values are NOT captured (see `memlab_duplicate_objects`), so records differing only in a number field hash the same.',
     '- `helpers.byClass(name, {type?}) -> ids[]`, `helpers.byTypename(name) -> ids[]`, `helpers.withProp(name, {edgeTypes?}) -> ids[]` — INDEXED id lookups. The class/typename index is built once per snapshot and memoized in a session scratch, so a follow-up call is index-speed, not another full `snapshot.nodes` scan. `byClass` indexes EVERY node type (closure, string, array, native, …), matching `memlab_find_nodes_by_class`; pass `{type: "object"}` to narrow. `byTypename` is object-only because `__typename` is a JS property. (See also the `memlab_duplicate_objects` tool for a ready-made dedup report.)',
     '- ⚠️ **`withProp` matches `property` AND `context` edges by default.** A variable a closure captured is not a property of anything — it is a `context`-typed edge on a `system / Context / scope` node — so a `property`-only match answers `[]` for a population that is plainly there, and a ladder then fits that all-zero series and calls it a verified negative. Pass `{edgeTypes: ["property"]}` when you mean own properties only. The `withProp(...).filter(hasShape)` recipe is unaffected: scopes carry no property edges, so `hasShape` drops them.',

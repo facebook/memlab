@@ -20,6 +20,12 @@ import {
   formatBytes,
   formatNumber,
 } from '../utils.js';
+import {
+  devModuleNodes,
+  formatProductionPath,
+  shortestPathAvoidingDevEdges,
+  shortestPathDevHop,
+} from '../dev-edges.js';
 
 export function registerDominatorChain(server: McpServer): void {
   server.tool(
@@ -61,11 +67,19 @@ export function registerDominatorChain(server: McpServer): void {
           current = dom;
         }
 
+        // Dominators are computed over every root, dev ones included, so a
+        // dev-only module node can sit on the chain and be named the owner.
+        const devModules = devModuleNodes(snapshot);
         // The nearest dominator ABOVE the target that is a real, inspectable
         // app object — the accountable owner to fix.
         const owner = chain
           .slice(1)
-          .find(n => isNodeWorthInspecting(n) && n.name !== '(GC roots)');
+          .find(
+            n =>
+              isNodeWorthInspecting(n) &&
+              n.name !== '(GC roots)' &&
+              !devModules.has(n.nodeIndex),
+          );
 
         const lines: string[] = [
           `## Dominator chain for @${targetNode.id} (${truncateNodeName(targetNode.name, targetNode.type, targetNode.self_size, 60)})`,
@@ -88,7 +102,11 @@ export function registerDominatorChain(server: McpServer): void {
           }
           const marker = i === 0 ? 'target' : `↑ dom ${i}`;
           const ownerTag =
-            owner && n.id === owner.id ? ' ← nearest app owner' : '';
+            owner && n.id === owner.id
+              ? ' ← nearest app owner'
+              : devModules.has(n.nodeIndex)
+                ? ` ← ${devModules.get(n.nodeIndex)}`
+                : '';
           lines.push(
             `${indent}[${marker}] @${n.id} ${name} (retained ${formatBytes(n.retainedSize)})${fanIn}${ownerTag}`,
           );
@@ -108,6 +126,24 @@ export function registerDominatorChain(server: McpServer): void {
           lines.push(
             '',
             `**Nearest app owner:** @${owner.id} ${truncateNodeName(owner.name, owner.type, owner.self_size, 60)} — retains ${formatBytes(owner.retainedSize)} (${formatNumber(owner.retainedSize)} bytes). Fixing this object frees the target.`,
+          );
+        }
+
+        // The dominator tree was built with dev roots present. When the
+        // target is reachable through a dev edge, the chain above can be the
+        // dev path's, not production's.
+        const devHop = shortestPathDevHop(snapshot, targetNode);
+        if (devHop != null) {
+          const prod = shortestPathAvoidingDevEdges(snapshot, targetNode);
+          lines.push(
+            '',
+            `⚠ **The target's shortest path passes a DEV edge** (\`${devHop.holder.name}\` → \`.${devHop.edgeName}\`, ${devHop.reason}). ` +
+              'Dominators were computed with that dev root present, so in a production build this chain may differ. ' +
+              (prod.kind === 'found'
+                ? `Production path: ${formatProductionPath(prod.steps)}`
+                : prod.kind === 'none'
+                  ? `**No production path exists** — @${targetNode.id} is DEV-ONLY.`
+                  : 'Production path: undecided (the analysis budget ran out).'),
           );
         }
 

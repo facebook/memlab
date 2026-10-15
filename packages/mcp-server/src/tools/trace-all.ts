@@ -14,7 +14,9 @@ import memlabCore from '@memlab/core';
 import {z} from 'zod';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {
+  devRouteNote,
   formatTraceChain,
+  getProductionTrace,
   getRetainerTrace,
   traceToKey,
   type TraceStep,
@@ -46,6 +48,8 @@ export interface TraceCluster {
   // every id of a million-member cluster costs more than the answer is worth.
   ids: number[];
   idsTruncated: boolean;
+  // Every member has no production path (see `getProductionTrace`).
+  devOnly?: boolean;
 }
 
 const MAX_IDS_PER_CLUSTER = 50000;
@@ -103,32 +107,44 @@ export function clusterByRetainerPath(
   // "one owner, 40,000 objects" and 26,000 one-object paths that differ only
   // in which array index they sit at.
   maxDepth?: number,
+  // When set, group each node by its production path instead of its raw
+  // shortest path.
+  excludeDevIn?: IHeapSnapshot,
 ): {
   clusters: TraceCluster[];
   traced: number;
   noPath: number;
   truncated: boolean;
+  routes: {production: number; devOnly: number; undecided: number};
 } {
   const byKey = new Map<string, TraceCluster>();
   let traced = 0;
   let noPath = 0;
   let truncated = false;
+  const routes = {production: 0, devOnly: 0, undecided: 0};
   for (const node of nodes) {
     if (traced + noPath >= maxTrace) {
       truncated = true;
       break;
     }
-    const steps = getRetainerTrace(node);
+    const {steps, route} =
+      excludeDevIn != null
+        ? getProductionTrace(excludeDevIn, node)
+        : {steps: getRetainerTrace(node), route: 'shortest'};
     if (steps == null) {
       noPath++;
       continue;
     }
     traced++;
+    if (route === 'production') routes.production++;
+    else if (route === 'dev-only') routes.devOnly++;
+    else if (route === 'undecided') routes.undecided++;
+    const devOnly = route === 'dev-only';
     const keySteps =
       maxDepth != null && maxDepth > 0 && maxDepth < steps.length
         ? steps.slice(0, maxDepth)
         : steps;
-    const key = traceToKey(keySteps, frameworkFilter);
+    const key = `${devOnly ? 'dev-only|' : ''}${traceToKey(keySteps, frameworkFilter)}`;
     const existing = byKey.get(key);
     if (existing != null) {
       existing.count++;
@@ -145,11 +161,12 @@ export function clusterByRetainerPath(
         exampleIds: [node.id],
         ids: [node.id],
         idsTruncated: false,
+        devOnly,
       });
     }
   }
   const clusters = [...byKey.values()].sort((a, b) => b.count - a.count);
-  return {clusters, traced, noPath, truncated};
+  return {clusters, traced, noPath, truncated, routes};
 }
 
 export function registerTraceAll(server: McpServer): void {
@@ -214,6 +231,13 @@ export function registerTraceAll(server: McpServer): void {
         .describe(
           'Trace a STRATIFIED sample of this many objects instead of the first `max_trace`, spread across the id range and retained-size deciles. Hitting `max_trace` truncates off the TOP of the population, which is id order — the oldest instances, which is the cohort least likely to contain the leak, and the report then says "partial sweep" without saying partial in which direction. This tool exists to find minority paths a 10-instance sample misses, and on a population too big to trace whole it was simply avoided instead. A stratified 5,000 still finds a 3% cluster; the first 5,000 by id may not contain one.',
         ),
+      exclude_dev: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          "Cluster on each object's shortest PRODUCTION path — one that crosses no React DEV (`_owner`/`_debug*`), Fast Refresh or devtools edge — instead of its raw shortest path (default true). On a dev build the raw shortest path is often a Fast Refresh path that hides the real retainer. Costs nothing on a production build. Objects with no production path form DEV-ONLY clusters. Pass false for raw shortest paths.",
+        ),
     },
     async ({
       class_name,
@@ -225,6 +249,7 @@ export function registerTraceAll(server: McpServer): void {
       max_depth,
       max_trace,
       sample_target,
+      exclude_dev,
     }) => {
       try {
         const snapshot = getSnapshot();
@@ -257,14 +282,16 @@ export function registerTraceAll(server: McpServer): void {
           sample_target != null && population > sample_target
             ? stratifyNodes(nodes, sample_target)
             : nodes;
-        const {clusters, traced, noPath, truncated} = clusterByRetainerPath(
-          sampled,
-          framework_filter,
-          // A stratified sample must not then be truncated by the safety bound,
-          // or the spread is thrown away and only the low ids survive.
-          sampled === nodes ? max_trace : Math.max(max_trace, sampled.length),
-          max_depth,
-        );
+        const {clusters, traced, noPath, truncated, routes} =
+          clusterByRetainerPath(
+            sampled,
+            framework_filter,
+            // A stratified sample must not then be truncated by the safety bound,
+            // or the spread is thrown away and only the low ids survive.
+            sampled === nodes ? max_trace : Math.max(max_trace, sampled.length),
+            max_depth,
+            exclude_dev ? snapshot : undefined,
+          );
         if (clusters.length === 0) {
           return toolResult(
             `All ${formatNumber(nodes.length)} matched objects have no retainer path — they are unreachable and awaiting collection, not retained. Nothing to trace.`,
@@ -340,6 +367,8 @@ export function registerTraceAll(server: McpServer): void {
             new Set([1, 2, 3, 4]),
           ),
         ];
+        const routeNote = devRouteNote(routes);
+        if (routeNote != null) lines.push('', routeNote);
 
         // A path count close to the population count means the signature is
         // keying on something per-instance, and every cluster is a single
@@ -388,7 +417,7 @@ export function registerTraceAll(server: McpServer): void {
           const bytes = bytesByKey.get(c.key);
           lines.push(
             '',
-            `### Path ${i + 1} — ${formatNumber(c.count)} object(s), ${((c.count / totalTraced) * 100).toFixed(1)}%${bytes != null ? `, ${formatBytes(bytes.retained)} retained` : ''}`,
+            `### Path ${i + 1}${c.devOnly ? ' — DEV-ONLY (no production path)' : ''} — ${formatNumber(c.count)} object(s), ${((c.count / totalTraced) * 100).toFixed(1)}%${bytes != null ? `, ${formatBytes(bytes.retained)} retained` : ''}`,
             '',
             renderClusterChain(c.steps),
             '',

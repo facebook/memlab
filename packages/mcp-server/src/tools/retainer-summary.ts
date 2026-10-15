@@ -23,6 +23,10 @@ import {
   toolResult,
   truncateDomToTag,
 } from '../utils.js';
+import {
+  shortestPathAvoidingDevEdges,
+  shortestPathDevHop,
+} from '../dev-edges.js';
 
 export interface TraceStep {
   name: string;
@@ -80,6 +84,74 @@ export function getRetainerTrace(node: IHeapNode): TraceStep[] | null {
 
   reverseSteps.reverse();
   return reverseSteps;
+}
+
+/**
+ * How a trace was chosen under `exclude_dev`:
+ * - `shortest`: the shortest path has no dev edge, so it IS the production path;
+ * - `production`: the shortest path crossed a dev edge and this is the
+ *   shortest path that avoids every dev edge;
+ * - `dev-only`: every path crosses a dev edge — the object does not exist in a
+ *   production build (the returned steps are the dev shortest path);
+ * - `undecided`: the analysis budget ran out before that was settled.
+ */
+export type TraceRoute = 'shortest' | 'production' | 'dev-only' | 'undecided';
+
+/**
+ * The retainer trace a production build would have.
+ *
+ * On a dev build the shortest path is routinely a Fast Refresh or React DEV
+ * path (`$RefreshSig$ -> allSignaturesByType -> …`, `helpersByRoot ->
+ * FiberRootNode`) even when a production retainer exists. Measured on WhatsApp
+ * Web: File, AbortController and the attach-media collection all traced
+ * through Fast Refresh, and the real holder (`WAWebAttachMediaGetters ->
+ * $$cache`) only showed on a prod-like re-drive.
+ */
+export function getProductionTrace(
+  snapshot: IHeapSnapshot,
+  node: IHeapNode,
+): {steps: TraceStep[] | null; route: TraceRoute} {
+  const steps = getRetainerTrace(node);
+  if (steps == null || shortestPathDevHop(snapshot, node) == null) {
+    return {steps, route: 'shortest'};
+  }
+  const prod = shortestPathAvoidingDevEdges(snapshot, node);
+  if (prod.kind === 'none') return {steps, route: 'dev-only'};
+  if (prod.kind === 'undecided') return {steps, route: 'undecided'};
+  return {
+    steps: prod.steps.map((st, i) => ({
+      name: st.node.name,
+      type: st.node.type,
+      ...(i < prod.steps.length - 1 ? {edgeName: st.edgeName} : {}),
+    })),
+    route: 'production',
+  };
+}
+
+/** One line accounting for what `exclude_dev` did to a population. */
+export function devRouteNote(counts: {
+  production: number;
+  devOnly: number;
+  undecided: number;
+}): string | null {
+  const parts: string[] = [];
+  if (counts.production > 0) {
+    parts.push(
+      `${counts.production} grouped by their PRODUCTION path (their shortest path crossed a React DEV / Fast Refresh / devtools edge)`,
+    );
+  }
+  if (counts.devOnly > 0) {
+    parts.push(
+      `**${counts.devOnly} have NO production path** — retained only through dev edges, so they do not exist in a production build (shown as DEV-ONLY)`,
+    );
+  }
+  if (counts.undecided > 0) {
+    parts.push(
+      `${counts.undecided} undecided (the analysis budget ran out; their dev shortest path is shown)`,
+    );
+  }
+  if (parts.length === 0) return null;
+  return `_exclude_dev: ${parts.join('; ')}. Pass \`exclude_dev: false\` for raw shortest paths._`;
 }
 
 function normalizeEdgeName(name: string): string {
@@ -371,6 +443,13 @@ export function registerRetainerSummary(server: McpServer): void {
             'Combines "where is it retained?" with "what does it contain?" in one call. ' +
             'Saves a follow-up memlab_object_shape call per node.',
         ),
+      exclude_dev: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'Group each instance by its shortest PRODUCTION path — one that crosses no React DEV (`_owner`/`_debug*`), Fast Refresh or devtools edge — instead of its raw shortest path (default true). Costs nothing on a production build. Instances with no production path are reported as DEV-ONLY. Pass false for the raw shortest paths.',
+        ),
     },
     async ({
       class_name,
@@ -384,6 +463,7 @@ export function registerRetainerSummary(server: McpServer): void {
       framework_filter,
       include_properties,
       from_result,
+      exclude_dev,
     }) => {
       // One switch so every selection path below honours the strategy; three
       // call sites drifting apart is how a flag silently applies to only one.
@@ -498,25 +578,33 @@ export function registerRetainerSummary(server: McpServer): void {
             count: number;
             example_ids: number[];
             total_retained: number;
+            devOnly: boolean;
           }
         >();
         let noTrace = 0;
+        const routes = {production: 0, devOnly: 0, undecided: 0};
         let earlyStop = false;
         const EARLY_STOP_THRESHOLD = 5;
 
         for (let ni = 0; ni < nodes.length; ni++) {
           const node = nodes[ni];
-          const trace = getRetainerTrace(node);
+          const {steps: trace, route} = exclude_dev
+            ? getProductionTrace(snapshot, node)
+            : {steps: getRetainerTrace(node), route: 'shortest'};
           if (!trace) {
             noTrace++;
             continue;
           }
+          if (route === 'production') routes.production++;
+          else if (route === 'dev-only') routes.devOnly++;
+          else if (route === 'undecided') routes.undecided++;
+          const devOnly = route === 'dev-only';
 
           const steps =
             max_depth != null && max_depth > 0 && max_depth < trace.length
               ? trace.slice(0, max_depth)
               : trace;
-          const key = traceToKey(steps, framework_filter);
+          const key = `${devOnly ? 'dev-only|' : ''}${traceToKey(steps, framework_filter)}`;
 
           const existing = patterns.get(key);
           if (existing) {
@@ -531,6 +619,7 @@ export function registerRetainerSummary(server: McpServer): void {
               count: 1,
               example_ids: [node.id],
               total_retained: node.retainedSize,
+              devOnly,
             });
           }
 
@@ -571,6 +660,8 @@ export function registerRetainerSummary(server: McpServer): void {
           `Retainer summary for ${label} (${totalSampled} sampled${ofPopulation}${modStr})`,
           '',
         ];
+        const routeNote = devRouteNote(routes);
+        if (routeNote != null) lines.push(routeNote, '');
 
         if (sorted.length === 1) {
           const conf = earlyStop
@@ -662,9 +753,11 @@ export function registerRetainerSummary(server: McpServer): void {
             commonPrefixLen >= 2
               ? getDisplaySteps(p).slice(commonPrefixLen)
               : p.steps;
-          return commonPrefixLen >= 2
-            ? `… → ${formatFn(displaySteps)}`
-            : formatFn(displaySteps);
+          const body =
+            commonPrefixLen >= 2
+              ? `… → ${formatFn(displaySteps)}`
+              : formatFn(displaySteps);
+          return p.devOnly ? `[DEV-ONLY — no production path] ${body}` : body;
         });
         const merged: Array<{
           body: string;

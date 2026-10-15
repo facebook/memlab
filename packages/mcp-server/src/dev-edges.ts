@@ -58,6 +58,13 @@ const DEV_EDGE_REASONS: ReadonlyMap<string, string> = new Map([
     'updatedFamiliesByType',
     'React Fast Refresh registry (updatedFamiliesByType)',
   ],
+  // The react-refresh runtime's own root bookkeeping. Measured on WhatsApp
+  // Web: `helpersByRoot -> FiberRootNode` was the shortest path for File,
+  // AbortController and Konva `Stage`, hiding the production retainer.
+  ['helpersByRoot', 'React Fast Refresh runtime (helpersByRoot)'],
+  ['helpersByRendererID', 'React Fast Refresh runtime (helpersByRendererID)'],
+  ['mountedRoots', 'React Fast Refresh runtime (mountedRoots)'],
+  ['failedRoots', 'React Fast Refresh runtime (failedRoots)'],
 ]);
 
 // Markers present on a React DEV element and absent from a production one.
@@ -190,6 +197,25 @@ export function devModuleNodes(snapshot: IHeapSnapshot): Map<number, string> {
   return out;
 }
 
+/**
+ * A dictionary-mode global object (Window, Node's `global`) holds each global
+ * in a `system / PropertyCell` whose `value` edge is the real retention path;
+ * the named `$RefreshSig$` edge is only a shortcut. The cell names its global
+ * through a hidden edge to the key string.
+ */
+function propertyCellReason(edge: IHeapEdge, holder: IHeapNode): string | null {
+  if (holder.name !== 'system / PropertyCell') return null;
+  if (String(edge.name_or_index) !== 'value') return null;
+  for (const e of holder.references) {
+    if (e.type !== 'hidden' || e.toNode.type !== 'string') continue;
+    const name = e.toNode.name;
+    const fixed = DEV_EDGE_REASONS.get(name);
+    if (fixed != null) return fixed;
+    if (DEV_GLOBAL_EDGE_NAMES.has(name)) return `dev/extension global ${name}`;
+  }
+  return null;
+}
+
 /** Why following `edge` from `holder` leaves production, or null. */
 export function devStepReason(
   edge: IHeapEdge,
@@ -199,8 +225,36 @@ export function devStepReason(
   return (
     devEdgeReason(edge.name_or_index, holder) ??
     devModules.get(edge.toNode.nodeIndex) ??
+    propertyCellReason(edge, holder) ??
     null
   );
+}
+
+/**
+ * The first step of `node`'s SHORTEST retainer path that a production build
+ * does not have, or null when that path is production-clean. Target-first
+ * walk of the `pathEdge` chain.
+ */
+export function shortestPathDevHop(
+  snapshot: IHeapSnapshot,
+  node: IHeapNode,
+): {holder: IHeapNode; edgeName: string; reason: string} | null {
+  const devModules = devModuleNodes(snapshot);
+  const seen = new Set<number>([node.id]);
+  let cur: IHeapNode | null = node;
+  while (cur != null && cur.hasPathEdge) {
+    const edge: IHeapEdge | null = cur.pathEdge;
+    if (edge == null) break;
+    const from: IHeapNode = edge.fromNode;
+    const reason = devStepReason(edge, from, devModules);
+    if (reason != null) {
+      return {holder: from, edgeName: String(edge.name_or_index), reason};
+    }
+    if (seen.has(from.id)) break;
+    seen.add(from.id);
+    cur = from;
+  }
+  return null;
 }
 
 export type ProductionPath =

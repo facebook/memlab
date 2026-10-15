@@ -27,9 +27,9 @@ import {
 } from '../utils.js';
 import type {RetainerTreeStep} from '../utils.js';
 import {
-  devEdgeReason,
   formatProductionPath,
   shortestPathAvoidingDevEdges,
+  shortestPathDevHop,
 } from '../dev-edges.js';
 
 // async/await desugars to a repeating retainer ladder: each suspended `await`
@@ -104,7 +104,7 @@ function countIndependentHolders(node: IHeapNode): {
 export function registerRetainerTrace(server: McpServer): void {
   server.tool(
     'memlab_retainer_trace',
-    'Get the shortest path from a GC root to a specific heap node. This shows why the object is retained in memory by walking the pathEdge chain. Use memlab_retainer_summary to trace multiple instances of a class and group by common retainer patterns. Use memlab_get_referrers / memlab_get_references to explore incoming/outgoing edges from a node. When the path crosses an edge only a DEV build has (React `_owner`/`_debug*`, Fast Refresh, a devtools module or console handle), it says so and prints the shortest path that avoids such edges, or that none exists.',
+    'Get the shortest path from a GC root to a specific heap node. This shows why the object is retained in memory by walking the pathEdge chain. Use memlab_retainer_summary to trace multiple instances of a class and group by common retainer patterns. Use memlab_get_referrers / memlab_get_references to explore incoming/outgoing edges from a node. When the shortest path crosses an edge only a DEV build has (React `_owner`/`_debug*`, Fast Refresh, a devtools module or console handle), it shows the shortest PRODUCTION path instead (`exclude_dev`, default true) and names the dev edge, or says that no production path exists.',
     {
       node_id: z.number().describe('The numeric ID of the heap node'),
       max_depth: z
@@ -127,8 +127,15 @@ export function registerRetainerTrace(server: McpServer): void {
         .describe(
           'Expand the elided middle: show every node on the path instead of collapsing consecutive V8/internal runs and repeating async-continuation ladders (Promise → Context → Generator). Use when the interesting library/application boundary is hidden inside a "… N internal node(s) …" or "… N async continuation frames …" gap.',
         ),
+      exclude_dev: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'When the shortest path crosses a dev-only edge, trace the shortest PRODUCTION path instead (default true). Pass false to see the raw shortest path, dev edges included.',
+        ),
     },
-    async ({node_id, max_depth, show_sizes, expand}) => {
+    async ({node_id, max_depth, show_sizes, expand, exclude_dev}) => {
       try {
         const snapshot = getSnapshot();
         const node = snapshot.getNodeById(node_id);
@@ -164,7 +171,7 @@ export function registerRetainerTrace(server: McpServer): void {
         let curNode: IHeapNode | null = node;
 
         // Collect path from target to root
-        const reverseItems: Array<{
+        let reverseItems: Array<{
           node: IHeapNode;
           edgeName?: string;
           edgeType?: string;
@@ -186,6 +193,23 @@ export function registerRetainerTrace(server: McpServer): void {
 
         // Reverse to get root-first order
         reverseItems.reverse();
+
+        // The shortest path is not the production path when it runs through
+        // an edge only a DEV build has. Measured: detached islands traced
+        // `children -> _owner -> _debugStack -> ChatImpl`, and attach-media
+        // Files traced through Fast Refresh, and were read as dev artifacts
+        // or misattributed production leaks.
+        const devHop = shortestPathDevHop(snapshot, node);
+        const prod =
+          devHop != null ? shortestPathAvoidingDevEdges(snapshot, node) : null;
+        const devShortest = reverseItems;
+        const rerouted = exclude_dev && prod?.kind === 'found';
+        if (rerouted && prod?.kind === 'found') {
+          reverseItems = prod.steps.map((st, i) => ({
+            node: st.node,
+            ...(i < prod.steps.length - 1 ? {edgeName: st.edgeName} : {}),
+          }));
+        }
 
         // Collapse consecutive internal/V8 nodes for readability, unless the
         // caller asked to expand the full path (Feedback §3c).
@@ -294,7 +318,7 @@ export function registerRetainerTrace(server: McpServer): void {
           ? `, showing first ${max_depth} of ${fullLength}`
           : '';
         const lines = [
-          `Retainer trace for @${node_id} (${fullLength} nodes${depthNote}):`,
+          `${rerouted ? 'Production retainer trace' : 'Retainer trace'} for @${node_id} (${fullLength} nodes${depthNote}):`,
         ];
         if (show_sizes) {
           lines.push(
@@ -358,29 +382,28 @@ export function registerRetainerTrace(server: McpServer): void {
           break;
         }
 
-        // The shortest path is not the production path when it runs through
-        // an edge only a DEV build has. Measured: detached islands traced
-        // `children -> _owner -> _debugStack -> ChatImpl` and were read as
-        // production leaks.
-        const devHop = reverseItems.find(
-          it =>
-            it.edgeName != null && devEdgeReason(it.edgeName, it.node) != null,
-        );
-        if (devHop != null) {
-          const prod = shortestPathAvoidingDevEdges(snapshot, node);
-          const prodLine =
-            prod.kind === 'found'
-              ? `Production path (${prod.steps.length} nodes, no dev edges): ` +
-                formatProductionPath(prod.steps)
-              : prod.kind === 'undecided'
-                ? '**Production path: undecided.** The analysis budget ran out before the search finished (raise `MEMLAB_ANALYSIS_TIMEOUT_MS` to settle it).'
-                : `**Production path: none.** Every path to @${node_id} runs through a dev edge, so it does not exist in a production build.`;
-          lines.push(
-            `⚠ **This path passes a DEV edge**: \`${devHop.node.name}\` → \`.${devHop.edgeName}\` ` +
-              `(${devEdgeReason(devHop.edgeName, devHop.node)}), which a production build does not have.`,
-            prodLine,
-            '',
-          );
+        if (devHop != null && prod != null) {
+          const hop = `\`${devHop.holder.name}\` → \`.${devHop.edgeName}\` (${devHop.reason})`;
+          if (rerouted) {
+            lines.push(
+              `⚠ **The shortest path (${devShortest.length} nodes) passes a DEV edge**: ${hop}, which a production build does not have. ` +
+                'Shown below is the shortest path that avoids every dev edge; pass `exclude_dev: false` for the raw one.',
+              '',
+            );
+          } else {
+            const prodLine =
+              prod.kind === 'found'
+                ? `Production path (${prod.steps.length} nodes, no dev edges): ` +
+                  formatProductionPath(prod.steps)
+                : prod.kind === 'undecided'
+                  ? '**Production path: undecided.** The analysis budget ran out before the search finished (raise `MEMLAB_ANALYSIS_TIMEOUT_MS` to settle it).'
+                  : `**Production path: none — @${node_id} is DEV-ONLY.** Every path to it runs through a dev edge, so it does not exist in a production build. The dev path is shown below.`;
+            lines.push(
+              `⚠ **This path passes a DEV edge**: ${hop}, which a production build does not have.`,
+              prodLine,
+              '',
+            );
+          }
         }
 
         if (show_sizes) {

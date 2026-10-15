@@ -46,6 +46,11 @@ import {
 } from './dev-artifacts.js';
 import {getFirstNonFrameworkRetainer} from './detached-dom.js';
 import {
+  formatProductionPath,
+  shortestPathAvoidingDevEdges,
+  shortestPathDevHop,
+} from '../dev-edges.js';
+import {
   DEV_ONLY_FOOTNOTE,
   GATED_FOOTNOTE,
   moduleProvenanceOf,
@@ -812,6 +817,10 @@ export function registerLeakReport(server: McpServer): void {
         // collection is masking the accumulating one, so it is reported rather
         // than resolved silently.
         const retainerSplits: string[] = [];
+        // Candidate rows whose newest instance's shortest path is a DEV path.
+        // The column above names that path's retainer; this names production's.
+        const productionPaths: string[] = [];
+        const MAX_PRODUCTION_PATHS = 10;
         const tableRows = candidates.map(r => {
           const ev = evidence.get(r.key) as Evidence;
           const devShare = ev.total > 0 ? ev.devOnly / ev.total : 0;
@@ -972,6 +981,28 @@ export function registerLeakReport(server: McpServer): void {
           }
 
           const label = displayName(r);
+          const probe = ev.newest[0] ?? ev.example;
+          if (
+            probe != null &&
+            productionPaths.length < MAX_PRODUCTION_PATHS &&
+            r.artifact == null &&
+            !isDevOnly &&
+            !devModuleOnly &&
+            r.netCount > 0
+          ) {
+            const hop = shortestPathDevHop(snapshot, probe);
+            if (hop != null) {
+              const prod = shortestPathAvoidingDevEdges(snapshot, probe);
+              productionPaths.push(
+                `\`${clampLabel(label, 60)}\` (@${probe.id}, shortest path via \`.${hop.edgeName}\`, ${hop.reason}): ` +
+                  (prod.kind === 'found'
+                    ? formatProductionPath(prod.steps, 8)
+                    : prod.kind === 'none'
+                      ? '**no production path — this instance is DEV-ONLY**'
+                      : 'undecided (analysis budget ran out)'),
+              );
+            }
+          }
           return [
             label.length > 34 ? label.slice(0, 31) + '…' : label,
             r.type,
@@ -1205,6 +1236,15 @@ export function registerLeakReport(server: McpServer): void {
             'Voting over the population reports whoever holds the MOST instances, which is a large static collection whenever one exists, and is not what grew. ' +
             'It is a small sample of a heuristic cohort — confirm with `memlab_collection_trend` on the named collection before acting, since a retainer that is itself flat across the ladder contributed none of the growth._',
         );
+        if (productionPaths.length > 0) {
+          lines.push(
+            '',
+            `⚠ **${productionPaths.length} growing class(es) whose shortest path is a DEV path** (React DEV / Fast Refresh / devtools). ` +
+              'The retainer column names that path; a production build retains them through the path below instead — fix THAT holder, or replicate on a prod-like build:',
+            ...productionPaths.map(s => `- ${s}`),
+          );
+        }
+
         if (retainerSplits.length > 0) {
           lines.push(
             '',
