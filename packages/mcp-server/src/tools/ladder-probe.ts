@@ -9,6 +9,7 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
+import {rungMetricsSection} from '../rung-metrics.js';
 import {z} from 'zod';
 import {
   armScanBudgetFor,
@@ -1764,6 +1765,10 @@ export function registerLadderProbe(server: McpServer): void {
               'a logged-in assertion at the LAST rung, not just the first.',
             '',
           );
+        }
+
+        if (run_dir != null && run_dir !== '') {
+          lines.push(...rungMetricsSection(run_dir));
         }
 
         lines.push(
