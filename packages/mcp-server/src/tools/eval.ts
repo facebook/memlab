@@ -1027,7 +1027,7 @@ function editDistanceWithin(a: string, b: string, max: number): boolean {
  */
 const EVAL_RECIPES = `## memlab_eval recipes
 
-Ten idioms that cover most of what a hunt actually asks. Copy, adjust, run.
+Ten general idioms, then six hunt recipes. Copy, adjust, run.
 Use \`mode: "describe_env"\` for the full helper surface and its gotchas, and
 \`mode: "lint"\` on anything you edit — it names any helper that does not exist
 before a snapshot load is spent on it.
@@ -1156,6 +1156,102 @@ returns IDS, so take nodes when you need a field off them.
 
     result = helpers.withProp('unsubscribe').length;
 
+## Hunt recipes
+
+Questions a leak hunt asks every round, each rewritten from scratch at least
+once before it was kept here. They use only the helpers above, so
+\`mode: "lint"\` can check them.
+
+### 11. Unsettled promises, longest reaction chain first
+
+One promise that never settles keeps every \`.then\` attached to it — a long
+chain on ONE promise, which a count of unsettled promises cannot show.
+
+    const rows = [];
+    for (const id of helpers.byClass('Promise', {type: 'object'})) {
+      const r = helpers.promiseReactions(id);
+      if (r != null && r.count >= 10) rows.push({id, reactions: r.count});
+    }
+    rows.sort((a, b) => b.reactions - a.reactions);
+    result = rows.slice(0, 10).map(r => ({
+      ...r,
+      owner: helpers.rootPath(r.id, {skipDev: true}).slice(-5, -1)
+        .map(s => s.name + '.' + s.edge).join(' → '),
+    }));
+
+### 12. Pending update records per React setter
+
+A queue's \`dispatch\` is held as a closure variable named after the setter, so
+the setter names the state even where no fiber is in reach.
+
+    const bySetter = {};
+    for (const qid of helpers.withProp('pending', {edgeTypes: ['property']})) {
+      const dispatch = helpers.edgeTarget(qid, 'dispatch');
+      const head = helpers.edgeTarget(qid, 'pending');
+      if (dispatch == null || head == null) continue;
+      let setter = '(no named setter)';
+      for (const e of dispatch.referrers) {
+        if (e.type === 'context') { setter = String(e.name_or_index); break; }
+      }
+      const chain = helpers.walkChain(head, 'next');
+      bySetter[setter] = (bySetter[setter] || 0) + chain.length;
+    }
+    result = Object.entries(bySetter).sort((a, b) => b[1] - a[1]).slice(0, 15);
+
+### 13. Live blob: URLs and who holds them
+
+Each live object URL pins its Blob OFF the heap. (\`memlab_object_urls\` does
+this per rung; this is the one-snapshot form.)
+
+    const holders = {};
+    let urls = 0;
+    snapshot.nodes.forEach(node => {
+      if (!node.isString || !node.name.startsWith('blob:')) return;
+      urls++;
+      for (const e of node.referrers) {
+        const k = (e.fromNode.name || '(anonymous)') + '.' + e.name_or_index;
+        holders[k] = (holders[k] || 0) + 1;
+      }
+    });
+    result = {urls, holders: Object.entries(holders).sort((a, b) => b[1] - a[1]).slice(0, 10)};
+
+### 14. A module's state on a MINIFIED build
+
+Class and variable names are mangled there, so \`byClass\`/\`byContextVar\` read
+0. The module registry's records keep their \`id\` strings.
+
+    const m = helpers.module('SomeModuleName');
+    result = m == null ? 'module not loaded' : m.scope
+      .filter(v => v.name === 'Map')
+      .map(v => ({variable: v.variable, entries: helpers.mapEntries(v.id, 100000).length}));
+
+For one named collection, \`helpers.moduleExportProp('SomeModuleName', 'cache', {class: 'Map'})\`.
+
+### 15. Timestamped records, grouped by owner
+
+Telemetry and log buffers are \`{event|type, timestamp…}\` records; grouping by
+owner names the buffer that never drains.
+
+    const ids = helpers.withProp('timestamp', {edgeTypes: ['property']})
+      .concat(helpers.withProp('timestampMs', {edgeTypes: ['property']}));
+    result = helpers.histogram(ids, id => {
+      const o = helpers.owner(id);
+      return o ? o.name : '(none)';
+    });
+
+### 16. Status histogram of a population (e.g. traces stuck in one state)
+
+A buffer that only grows is usually stuck in one status. Read the status field
+as a string.
+
+    const byStatus = {};
+    for (const id of helpers.withProp('status', {edgeTypes: ['property']})) {
+      const st = helpers.edgeTarget(id, 'status');
+      const k = st != null && st.isString ? helpers.stringValue(st) : '(non-string)';
+      byStatus[k] = (byStatus[k] || 0) + 1;
+    }
+    result = Object.entries(byStatus).sort((a, b) => b[1] - a[1]).slice(0, 15);
+
 ## Cost, before you run something exploratory
 
 A full-graph walk on a multi-million-node heap is the expensive case, and it is
@@ -1214,7 +1310,7 @@ export function registerEval(server: McpServer): void {
         .optional()
         .default('eval')
         .describe(
-          '"eval" (default) runs `code`. "describe_env" ignores `code` and returns the in-scope globals, the IHeapNode/IHeapEdge API, and the required calling conventions (`result =`, `.forEach`) so you can self-correct before running — narrow it with `section` to avoid paying for all ~10 KB. "lint" syntax-checks `code`, lists the helpers it references and flags unknown ones, and estimates traversal nesting — all WITHOUT a snapshot, so a typo in a 40-line eval costs seconds instead of a 2-4 minute load. "recipes" ignores `code` and returns ten worked idioms — counting a population whose class name is `Object`, reaching a CLOSURE-captured variable that shape matching cannot see, finding unbounded arrays, grouping by retainer, handing ids to another tool without printing them — plus how to bound an exploratory full-graph walk. Read it before writing a query you have not written before; `describe_env` says what EXISTS, `recipes` shows what a working answer looks like. "list_saved" ignores `code` and lists the named result sets saved so far for this snapshot.',
+          '"eval" (default) runs `code`. "describe_env" ignores `code` and returns the in-scope globals, the IHeapNode/IHeapEdge API, and the required calling conventions (`result =`, `.forEach`) so you can self-correct before running — narrow it with `section` to avoid paying for all ~10 KB. "lint" syntax-checks `code`, lists the helpers it references and flags unknown ones, and estimates traversal nesting — all WITHOUT a snapshot, so a typo in a 40-line eval costs seconds instead of a 2-4 minute load. "recipes" ignores `code` and returns sixteen worked idioms — counting a population whose class name is `Object`, reaching a CLOSURE-captured variable that shape matching cannot see, finding unbounded arrays, grouping by retainer, handing ids to another tool without printing them, and hunt recipes: unsettled promises by reaction chain, update records per React setter, live blob: URLs, module state on a minified build, timestamped records by owner, a status histogram — plus how to bound an exploratory full-graph walk. Read it before writing a query you have not written before; `describe_env` says what EXISTS, `recipes` shows what a working answer looks like. "list_saved" ignores `code` and lists the named result sets saved so far for this snapshot.',
         ),
       code: z
         .string()
