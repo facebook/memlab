@@ -1416,6 +1416,32 @@ export function capReportSize(text: string, maxBytes = 512 * 1024): string {
   return kept.join('\n') + footerFor(lines.length - kept.length);
 }
 
+/**
+ * Clip one column of table rows to `max` characters and return the full values
+ * of the clipped cells as footnote lines. A string's class name IS its content,
+ * so one long string row (a serialized record, a chat stanza) widened every
+ * row of the table to hundreds of characters.
+ */
+export function clipTableColumn(
+  rows: string[][],
+  col = 0,
+  max = 40,
+): {rows: string[][]; footnotes: string[]} {
+  // Every clipped cell gets a footnote, keyed by its row number: two names
+  // sharing their first characters clip to the same text, so the clipped
+  // text alone could not tell them apart.
+  const footnotes: string[] = [];
+  const clipped = rows.map((r, i) => {
+    const cell = r[col];
+    if (cell == null || cell.length <= max) return r;
+    footnotes.push(`- row ${i + 1}: ${clampLabel(cell, 300)}`);
+    const copy = [...r];
+    copy[col] = `${cell.slice(0, max - 1)}…`;
+    return copy;
+  });
+  return {rows: clipped, footnotes};
+}
+
 export function markdownTable(
   headers: string[],
   rows: string[][],

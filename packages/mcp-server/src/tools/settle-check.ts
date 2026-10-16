@@ -22,6 +22,7 @@ import {
   formatNumber,
   markdownTable,
   toolResult,
+  clipTableColumn,
 } from '../utils.js';
 import {normalizeClassName, splitClassKey} from './sequence-analysis.js';
 
@@ -533,7 +534,15 @@ export function registerSettleCheck(server: McpServer): void {
             : VERDICT_NOTE_NO_BASELINE[r.verdict];
           return [...cells, `${r.verdict} — ${note}`];
         });
-        lines.push(markdownTable(headers, tableRows, rightCols));
+        const clippedRows = clipTableColumn(tableRows);
+        lines.push(markdownTable(headers, clippedRows.rows, rightCols));
+        if (clippedRows.footnotes.length > 0) {
+          lines.push(
+            '',
+            'Full class names of clipped rows:',
+            ...clippedRows.footnotes,
+          );
+        }
 
         if (rows.length > limit) {
           lines.push('', `_… and ${rows.length - limit} more; raise limit._`);

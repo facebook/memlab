@@ -25,6 +25,7 @@ import {
   suggestionsSuppressed,
   boundedDominatorRetainedSize,
   makeNamePatternTest,
+  clipTableColumn,
 } from '../utils.js';
 import {splitClassKey} from './sequence-analysis.js';
 
@@ -311,10 +312,14 @@ export function registerClassHistogram(server: McpServer): void {
           ];
         });
 
+        const clipped = clipTableColumn(rows);
         const lines = [
           `Class histogram (${formatNumber(classMap.size)} total classes, showing ${rows.length})`,
           '',
-          markdownTable(headers, rows, rightCols),
+          markdownTable(headers, clipped.rows, rightCols),
+          ...(clipped.footnotes.length > 0
+            ? ['', 'Full class names of clipped rows:', ...clipped.footnotes]
+            : []),
         ];
 
         if (!include_retained_size) {

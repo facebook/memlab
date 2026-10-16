@@ -29,6 +29,7 @@ import {
   markdownTable,
   errorResult,
   toolResult,
+  clipTableColumn,
 } from '../utils.js';
 import {splitClassKey} from './sequence-analysis.js';
 
@@ -268,11 +269,19 @@ export function registerQuickDiagnosis(server: McpServer): void {
             exact_retained_size ? exactPct : `≤ ${upperPct}`,
           ];
         });
+        const clippedClasses = clipTableColumn(classRows);
         lines.push(
           `## Class Histogram (top ${classRows.length})`,
           '',
-          markdownTable(classHeaders, classRows, classRightCols),
+          markdownTable(classHeaders, clippedClasses.rows, classRightCols),
           '',
+          ...(clippedClasses.footnotes.length > 0
+            ? [
+                'Full class names of clipped rows:',
+                ...clippedClasses.footnotes,
+                '',
+              ]
+            : []),
         );
         if (!exact_retained_size) {
           lines.push(

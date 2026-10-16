@@ -379,13 +379,20 @@ function takeSocketFlag(args) {
   return value;
 }
 
-/** Explanatory notes cut to their first sentence for a scripted session. */
+/**
+ * A scripted session is read by an agent end to end: explanatory notes are
+ * cut to their first sentence, and the "Next:" suggestions every tool repeats
+ * are dropped.
+ */
 async function enableTerse(client) {
   if (process.env.MEMLAB_CLI_VERBOSE === '1') {
     return;
   }
   try {
-    await client.callTool('memlab_snapshots', {terse: true});
+    await client.callTool('memlab_snapshots', {
+      terse: true,
+      suppress_suggestions: true,
+    });
   } catch (err) {
     console.error(
       `(could not enable terse notes, continuing verbose: ${err?.message ?? err})`,
@@ -666,7 +673,7 @@ async function main() {
         '  schema <tool>               print a tool input schema as JSON',
         '  call <tool> <json> [...]    call one or more tools in ONE server session',
         '  script <file.jsonl>         run {"tool":..,"args":{..}} lines in ONE session',
-        '                              (terse notes; MEMLAB_CLI_VERBOSE=1 for the full text)',
+        '                              (terse notes, no "Next:" suggestions; MEMLAB_CLI_VERBOSE=1 for the full text)',
         '  serve --socket <path>       keep ONE server resident across invocations',
         '  call|script --socket <path> ...   run against a `serve` process (snapshots stay loaded)',
         '  stop --socket <path>        shut a `serve` process down',
