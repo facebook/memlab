@@ -441,9 +441,13 @@ export function buildSnapshotIndex(
   snapshotPath: string,
   normalizeClassName: (name: string) => string,
 ): SnapshotIndex {
-  const classes: Record<string, [number, number]> = {};
-  const shapes: Record<string, [number, number, number]> = {};
-  const edgeNames: Record<string, Record<string, number>> = {};
+  // Null-prototype tables: keys come from the heap, and `__proto__` is one of
+  // its commonest edge names. On a plain `{}`, `edgeNames['__proto__']` is
+  // Object.prototype, and counting into it set `Object.prototype.property`
+  // for the whole server process.
+  const classes: Record<string, [number, number]> = Object.create(null);
+  const shapes: Record<string, [number, number, number]> = Object.create(null);
+  const edgeNames: Record<string, Record<string, number>> = Object.create(null);
   let detachedCount = 0;
   let unreadableNodes = 0;
   let nodeCount = 0;
@@ -487,7 +491,7 @@ export function buildSnapshotIndex(
         seenHere.add(seenKey);
         let byType = edgeNames[name];
         if (byType == null) {
-          byType = {};
+          byType = Object.create(null) as Record<string, number>;
           edgeNames[name] = byType;
         }
         byType[e.type] = (byType[e.type] ?? 0) + 1;
