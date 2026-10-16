@@ -257,6 +257,48 @@ function buildDominatedIsland(
 }
 
 /**
+ * The population's OWNERS: the distinct immediate dominators of the seeds that
+ * are not seeds themselves. A live population of hundreds of components is
+ * not an island — everything it reaches is most of the heap — but its owners
+ * are a bounded set, and the references into THEM are the doors that keep the
+ * population alive. Dev-only owners (a devtools module, a Fast Refresh
+ * registry) are dropped; capped by owner count, not by graph size.
+ */
+function populationOwners(
+  snapshot: IHeapSnapshot,
+  seeds: IHeapNode[],
+  maxOwners: number,
+): {owners: IHeapNode[]; byClass: Map<string, number>; capped: boolean} {
+  const seedIds = new Set(seeds.map(s => s.id));
+  const devModules = devModuleNodes(snapshot);
+  const owners = new Map<number, IHeapNode>();
+  const byClass = new Map<string, number>();
+  let capped = false;
+  for (const seed of seeds) {
+    let dom = seed.dominatorNode;
+    // Climb out of the population: a seed dominated by another seed shares
+    // that seed's owner. A chain of seeds deeper than the climb is skipped
+    // rather than reported with a seed as its own owner.
+    for (let i = 0; dom != null && seedIds.has(dom.id) && i < 64; i++) {
+      dom = dom.dominatorNode;
+    }
+    if (dom == null || seedIds.has(dom.id)) continue;
+    if (dom.id <= 3 || isSyntheticRoot(dom)) continue;
+    if (devModules.has(dom.nodeIndex)) continue;
+    if (owners.has(dom.id)) continue;
+    if (owners.size >= maxOwners) {
+      capped = true;
+      continue;
+    }
+    owners.set(dom.id, dom);
+    // Distinct OWNERS per class, matching the "N distinct owner(s)" headline.
+    const label = dom.name || `(${dom.type})`;
+    byClass.set(label, (byClass.get(label) ?? 0) + 1);
+  }
+  return {owners: [...owners.values()], byClass, capped};
+}
+
+/**
  * Walk forward from the GC roots, refusing to enter the island, and record
  * every edge that crosses into it. Those crossings are the complete set of
  * reasons the island is still alive.
@@ -458,13 +500,23 @@ export function registerIslandDoors(server: McpServer): void {
           'Explicit seed node ids, when the island is not identified by a class. LIVE nodes are allowed with `island_mode: "reachable"` or `"dominated"`.',
         ),
       island_mode: z
-        .enum(['detached', 'reachable', 'dominated'])
+        .enum(['detached', 'reachable', 'dominated', 'owners'])
         .optional()
         .default('detached')
         .describe(
           '"detached" (default): the connected component of DETACHED nodes around the seeds — the classic detached-DOM island, and the only mode that accepts a detached seed class. ' +
             '"reachable": everything reachable FORWARD from the seeds, which makes the same "close every door" analysis work on a LIVE accumulator — "what are all the independent references into this Map\'s value set?". Referrers are not walked, because the seeds\' own retainers are exactly what is being enumerated. ' +
-            '"dominated": the seeds\' dominator subtree, i.e. what they EXCLUSIVELY own; every path in goes through a seed, so the doors collapse to the references into the seeds themselves — the right mode for "who holds this accumulator".',
+            '"dominated": the seeds\' dominator subtree, i.e. what they EXCLUSIVELY own; every path in goes through a seed, so the doors collapse to the references into the seeds themselves — the right mode for "who holds this accumulator". ' +
+            '"owners": for a LIVE POPULATION (hundreds of components, records, stores) — the island is the subtrees of the seeds\' immediate dominators, so the doors are the references into those OWNERS, grouped. Bounded by owner count (`max_owners`), not graph size, which is what makes it usable where "reachable" runs into its cap.',
+        ),
+      max_owners: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .default(1000)
+        .describe(
+          'Cap on distinct owners for `island_mode: "owners"` (default 1,000).',
         ),
       max_island_nodes: z
         .number()
@@ -494,6 +546,7 @@ export function registerIslandDoors(server: McpServer): void {
       seed_node_ids,
       island_mode,
       max_island_nodes,
+      max_owners,
       include_blink,
       limit,
       handle,
@@ -555,6 +608,7 @@ export function registerIslandDoors(server: McpServer): void {
 
         let islandCapped = false;
         let island: Set<number>;
+        let ownersInfo: ReturnType<typeof populationOwners> | null = null;
         if (island_mode === 'reachable') {
           const built = buildReachableIsland(
             snapshot,
@@ -565,6 +619,16 @@ export function registerIslandDoors(server: McpServer): void {
           islandCapped = built.capped;
         } else if (island_mode === 'dominated') {
           island = buildDominatedIsland(snapshot, usedSeeds);
+        } else if (island_mode === 'owners') {
+          ownersInfo = populationOwners(snapshot, usedSeeds, max_owners);
+          if (ownersInfo.owners.length === 0) {
+            return errorResult(
+              new Error(
+                'None of the seeds has an application owner below the GC roots (every immediate dominator is a root, a seed or dev-only). Use `island_mode: "dominated"` instead.',
+              ),
+            );
+          }
+          island = buildDominatedIsland(snapshot, ownersInfo.owners);
         } else {
           island = buildIsland(snapshot, usedSeeds);
         }
@@ -600,7 +664,19 @@ export function registerIslandDoors(server: McpServer): void {
             ? [
                 `> ⚠️ **The forward walk hit the ${formatNumber(max_island_nodes)}-node cap, so this is NOT a bounded island** and the door list below is incomplete. ` +
                   'That is usually the answer rather than a limit: the seeds reach back into the application, so "everything they reach" is most of the heap. ' +
-                  'Narrow the seeds (the accumulator\'s VALUES rather than the accumulator), use `island_mode: "dominated"` for what they exclusively own, or raise `max_island_nodes` if you believe the structure really is that large.',
+                  'Narrow the seeds (the accumulator\'s VALUES rather than the accumulator), use `island_mode: "dominated"` for what they exclusively own, `island_mode: "owners"` for a live population of many instances, or raise `max_island_nodes` if you believe the structure really is that large.',
+                '',
+              ]
+            : []),
+          ...(ownersInfo != null
+            ? [
+                `**${formatNumber(usedSeeds.length)} seed(s) have ${formatNumber(ownersInfo.owners.length)} distinct owner(s)** (immediate dominators outside the population${ownersInfo.capped ? `; capped at ${formatNumber(max_owners)}` : ''}): ` +
+                  [...ownersInfo.byClass]
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 6)
+                    .map(([c, n]) => `\`${c}\` ×${formatNumber(n)}`)
+                    .join(', ') +
+                  '. The doors below are the references into those owners — close them and the population goes with them.',
                 '',
               ]
             : []),
