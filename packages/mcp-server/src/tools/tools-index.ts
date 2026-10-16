@@ -369,6 +369,10 @@ const GROUPS: Group[] = [
         'Does the effect REPRODUCE across independently-driven runs? Refuses to call it real until it does — the guard against filing a one-off.',
       ],
       [
+        'memlab_blink_native_census',
+        'Native (Blink) classes growing across a ladder, split into JS-held (app-releasable) vs browser-internal, with fixed-capacity browser buffers annotated.',
+      ],
+      [
         'memlab_dev_artifacts',
         'Memory retained ONLY by dev/automation roots — DevTools, extensions, React Fast Refresh, the a11y cache. Run before calling anything a production leak.',
       ],
