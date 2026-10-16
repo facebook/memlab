@@ -109,7 +109,8 @@ interface Finding {
   growing_classes: string[];
   first_seen_round: string;
   last_seen_round: string;
-  status: 'new' | 'known' | 'fixed' | 'retracted' | 'artifact';
+  // `candidate`: seen and worth tracking, not yet replicated.
+  status: 'new' | 'known' | 'fixed' | 'retracted' | 'artifact' | 'candidate';
   fixed_behind?: string;
   /**
    * Diffs that carry the fix, as D-numbers.
@@ -244,7 +245,17 @@ const IMPORTED_FINDING_SCHEMA = z.object({
   signature: z.string().optional(),
   growing_classes: z.array(z.string()).optional(),
   round: z.string().optional(),
-  status: z.enum(['new', 'known', 'fixed', 'retracted', 'artifact']).optional(),
+  status: z
+    .enum([
+      'new',
+      'known',
+      'fixed',
+      'retracted',
+      'artifact',
+      'candidate',
+      'lead',
+    ])
+    .optional(),
   gate_state: z
     .enum(['allocated', 'expired', 'deallocated', 'code_removed'])
     .optional(),
@@ -414,7 +425,8 @@ export function fingerprintOf(signature: string, classes: string[]): string {
  * index has been seen before. Both write schemas accepted it, and it then read
  * back as KNOWN — the index reporting something other than what was written.
  */
-function storableStatus(s?: Finding['status']): Finding['status'] {
+function storableStatus(s?: Finding['status'] | 'lead'): Finding['status'] {
+  if (s === 'lead') return 'candidate';
   return s == null || s === 'new' ? 'known' : s;
 }
 
@@ -422,7 +434,7 @@ interface RecordInput {
   retainer_path: string;
   growing_classes: string[];
   round?: string;
-  status?: Finding['status'];
+  status?: Finding['status'] | 'lead';
   fixed_behind?: string;
   gate_state?: Finding['gate_state'];
   gate_checked_on?: string;
@@ -461,7 +473,10 @@ function recordFinding(index: FindingIndex, r: RecordInput): RecordOutcome {
     note: r.note ?? existing?.note,
     seen_count: (existing?.seen_count ?? 0) + 1,
   };
-  return {finding: index.findings[fingerprint], requested: r.status};
+  return {
+    finding: index.findings[fingerprint],
+    requested: r.status === 'lead' ? 'candidate' : r.status,
+  };
 }
 
 /**
@@ -644,7 +659,13 @@ export function hasAppHistory(index: {
  * than printing a confident NEW from an index that has never been seeded.
  */
 export type FindingLookup = {
-  verdict: 'NEW' | 'KNOWN' | 'KNOWN-AND-FIXED' | 'ARTIFACT' | 'RETRACTED';
+  verdict:
+    | 'NEW'
+    | 'KNOWN'
+    | 'KNOWN-AND-FIXED'
+    | 'ARTIFACT'
+    | 'RETRACTED'
+    | 'CANDIDATE';
   fixedBehind?: string;
   /** Set when the hit is `fixed` and its gate is known not to be serving. */
   gateState?: 'allocated' | 'expired' | 'deallocated' | 'code_removed';
@@ -739,7 +760,9 @@ export function lookupFindingIn(
             ? 'RETRACTED'
             : hit.status === 'fixed'
               ? 'KNOWN-AND-FIXED'
-              : 'KNOWN',
+              : hit.status === 'candidate'
+                ? 'CANDIDATE'
+                : 'KNOWN',
       fixedBehind: hit.fixed_behind,
       gateState: hit.gate_state,
       gateCheckedOn: hit.gate_checked_on,
@@ -809,6 +832,12 @@ export function renderFindingVerdict(l: FindingLookup): string {
   if (l.verdict === 'KNOWN-AND-FIXED') {
     return (
       `\`KNOWN-AND-FIXED\`${l.fixedBehind ? ` — fixed behind \`${l.fixedBehind}\`; confirm the gate is ON in this capture before treating it as a finding` : ''}` +
+      renderGateWarning(l)
+    );
+  }
+  if (l.verdict === 'CANDIDATE') {
+    return (
+      `\`CANDIDATE — an earlier lead, NOT replicated\`${l.round ? ` (${l.round})` : ''}${l.note ? `: ${l.note}` : ''}` +
       renderGateWarning(l)
     );
   }
@@ -942,10 +971,18 @@ export function registerFindingIndex(server: McpServer): void {
         // `status: "known"` inside the handler, so `amend` — which must touch
         // only the fields it was given — would silently reset every amended
         // entry to `known`.
-        .enum(['new', 'known', 'fixed', 'retracted', 'artifact'])
+        .enum([
+          'new',
+          'known',
+          'fixed',
+          'retracted',
+          'artifact',
+          'candidate',
+          'lead',
+        ])
         .optional()
         .describe(
-          'Status to record; defaults to "known" for `record`, and leaves the existing value alone for `amend`. Use "fixed" together with `fixed_behind` and `fixed_by_diffs`. Use "retracted" with `retraction_reason` for a finding that was investigated and WITHDRAWN — a measurement error, a structural population mistaken for a rate. Use "artifact" for a population that is REAL and reproducible but is not the app: a devtools bridge, a dev-only cache, a Fast Refresh record. The two are different instructions to the next round — "do not trust this number" versus "this number is right and belongs to the harness" — and collapsing them into "retracted" is how an artifact gets re-investigated as a candidate leak.',
+          'Status to record; defaults to "known" for `record`, and leaves the existing value alone for `amend`. Use "fixed" together with `fixed_behind` and `fixed_by_diffs`. Use "retracted" with `retraction_reason` for a finding that was investigated and WITHDRAWN — a measurement error, a structural population mistaken for a rate. Use "artifact" for a population that is REAL and reproducible but is not the app: a devtools bridge, a dev-only cache, a Fast Refresh record. The two are different instructions to the next round — "do not trust this number" versus "this number is right and belongs to the harness" — and collapsing them into "retracted" is how an artifact gets re-investigated as a candidate leak. Use "candidate" (alias "lead") for a lead seen but NOT yet replicated: `check` reports it as CANDIDATE, so the next round replicates it rather than either re-discovering it or treating it as established.',
         ),
       fixed_behind: z
         .string()
@@ -1689,7 +1726,9 @@ export function registerFindingIndex(server: McpServer): void {
                 ? `KNOWN-AND-FIXED-BEHIND(${existing.fixed_behind ?? 'unknown gate'})`
                 : existing.status === 'retracted'
                   ? `RETRACTED (${existing.first_seen_round})`
-                  : `KNOWN (${existing.first_seen_round})`;
+                  : existing.status === 'candidate'
+                    ? `CANDIDATE — UNREPLICATED LEAD (${existing.first_seen_round})`
+                    : `KNOWN (${existing.first_seen_round})`;
           return result(
             [
               `## ${label} — fingerprint \`${fingerprint}\``,
@@ -1713,7 +1752,9 @@ export function registerFindingIndex(server: McpServer): void {
                   ? `**Stop here.** This leak is already fixed behind \`${existing.fixed_behind}\`. If it is still reproducing, the gate is probably not enabled in this run — verify the gating state before treating it as a finding.${gateWarning}`
                   : existing.status === 'retracted'
                     ? `**Stop here — this was investigated and WITHDRAWN.** ${existing.retraction_reason ?? 'No reason was recorded, which is itself worth fixing in the index.'} Re-deriving a retracted finding is the same wasted round as re-deriving a fixed one, and it is harder to notice because the population really is there. If you believe the retraction was wrong, say what new evidence changes it before reopening.`
-                    : '**This is not a new finding.** Check whether the earlier round already root-caused it before spending the rest of this one on it.',
+                    : existing.status === 'candidate'
+                      ? `**An earlier round saw this and did not replicate it** (seen ${existing.seen_count}×). Replicate it in this round; if it holds, re-record it with \`status: "known"\`, and if it does not, with \`status: "retracted"\` and the reason.`
+                      : '**This is not a new finding.** Check whether the earlier round already root-caused it before spending the rest of this one on it.',
               // Appended outside the status branches so a gate state recorded
               // against a non-`fixed` entry is not silently dropped. The
               // `fixed` branch interpolates it inline, so it is skipped here
