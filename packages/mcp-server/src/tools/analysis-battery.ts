@@ -267,11 +267,39 @@ function buildPlan(
     {tool: 'memlab_next_measurement', args: {}},
   ];
 
+  // Per-rung population counts with a settle verdict, in the digest. Deep only:
+  // it re-reads every rung.
+  const census: Step[] = [{tool: 'memlab_census', args: {run_dir: runDir}}];
+
   if (profile === 'optimization') return [...ladder, ...deep, ...optimization];
   if (profile === 'deep') {
-    return [...ladder, ...deep, ...optimization, ...extra];
+    return [...ladder, ...deep, ...census, ...optimization, ...extra];
   }
   return [...ladder, ...deep];
+}
+
+/**
+ * The plan without the tools the caller asked to skip. `memlab_load_snapshot`
+ * cannot be skipped: every single-snapshot tool after it reads the rung it
+ * loads.
+ */
+export function applySkip(
+  plan: Step[],
+  skip: readonly string[] | undefined,
+): {plan: Step[]; skipped: string[]; refused: string[]} {
+  if (skip == null || skip.length === 0)
+    return {plan, skipped: [], refused: []};
+  const want = new Set(
+    skip.map(t => (t.startsWith('memlab_') ? t : `memlab_${t}`)),
+  );
+  const refused = want.has('memlab_load_snapshot')
+    ? ['memlab_load_snapshot']
+    : [];
+  want.delete('memlab_load_snapshot');
+  const skipped = [
+    ...new Set(plan.filter(st => want.has(st.tool)).map(st => st.tool)),
+  ];
+  return {plan: plan.filter(st => !want.has(st.tool)), skipped, refused};
 }
 
 /** Lines worth lifting into the digest, per tool. */
@@ -307,6 +335,7 @@ const DIGEST_PATTERNS: ReadonlyArray<{tool: RegExp; re: RegExp; max: number}> =
       max: 6,
     },
     {tool: /positive_controls/, re: /PASS|FAIL|n\/a/, max: 4},
+    {tool: /^memlab_census$/, re: /^\| [a-z_:]+ /, max: 14},
     {
       tool: /judges/,
       re: /^\*\*Summary|\*\*(LEAK|UNSETTLED|UNVERIFIED|ERROR)\*\*/,
@@ -707,6 +736,12 @@ export function registerAnalysisBattery(server: McpServer): void {
         .describe(
           'How many TABLE rows each row-shaped tool contributes to the digest (default 5). `memlab_leak_report` printed 8 rows with full retainer strings on every round of a sweep, and with the idle floor subtracted most rounds have one or two interesting ones. Headline lines are never budgeted away, and the full table is always in `<out_dir>/<tool>.txt`.',
         ),
+      skip: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Tools to leave out of the profile, e.g. ["memlab_auto_investigate", "quick_diagnosis"] (the `memlab_` prefix is optional). For a deep battery whose answers you already have another way. `memlab_load_snapshot` cannot be skipped.',
+        ),
       async: z
         .boolean()
         .optional()
@@ -724,6 +759,7 @@ export function registerAnalysisBattery(server: McpServer): void {
         digest_rows,
         wait_for_rungs,
         wait_timeout_ms,
+        skip,
         async: runAsync,
       },
       extra,
@@ -861,16 +897,23 @@ export function registerAnalysisBattery(server: McpServer): void {
         const hasSettleRung =
           manifest.settleRungPath != null &&
           snapshotExists(manifest.settleRungPath);
-        const plan = buildPlan(
-          profile,
-          run_dir,
-          manifest.paths,
-          manifest.cycles,
-          finalRung,
-          baseRung,
-          hasSettleRung,
-          manifest.positiveControls.length > 0,
-          hasInvariants(run_dir),
+        const {
+          plan,
+          skipped: skippedTools,
+          refused: refusedSkips,
+        } = applySkip(
+          buildPlan(
+            profile,
+            run_dir,
+            manifest.paths,
+            manifest.cycles,
+            finalRung,
+            baseRung,
+            hasSettleRung,
+            manifest.positiveControls.length > 0,
+            hasInvariants(run_dir),
+          ),
+          skip,
         );
 
         const progress = makeProgressReporter(extra, 'battery');
@@ -1027,6 +1070,17 @@ export function registerAnalysisBattery(server: McpServer): void {
           const lines: string[] = [
             `## Analysis battery — \`${path.basename(run_dir.replace(/\/$/, ''))}\` (${profile})`,
             '',
+            ...(skippedTools.length > 0 || refusedSkips.length > 0
+              ? [
+                  (skippedTools.length > 0
+                    ? `_Skipped on request: ${skippedTools.map(t => `\`${t}\``).join(', ')}._ `
+                    : '') +
+                    (refusedSkips.length > 0
+                      ? '_`memlab_load_snapshot` was not skipped: the single-snapshot tools need it._'
+                      : ''),
+                  '',
+                ]
+              : []),
             ...(appDeltaLine != null
               ? [
                   appDeltaLine +
