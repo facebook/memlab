@@ -182,3 +182,43 @@ export function moduleExportProp(
   }
   return null;
 }
+
+const scopeOwnerCache = new WeakMap<IHeapSnapshot, Map<number, string>>();
+
+/**
+ * The module whose top-level scope `context` is (or is nested in), through
+ * the module records — so it also answers on a minified build, where the
+ * module factories carry no `$module_<Name>` name.
+ */
+export function moduleOfScope(
+  snapshot: IHeapSnapshot,
+  context: IHeapNode,
+  // Only when `context` IS a module's top-level scope, not nested inside one.
+  direct = false,
+): string | null {
+  let owners = scopeOwnerCache.get(snapshot);
+  if (owners == null) {
+    owners = new Map();
+    for (const rec of moduleRecords(snapshot).values()) {
+      for (const scope of moduleScopes(rec)) {
+        if (!owners.has(scope.id)) owners.set(scope.id, rec.name);
+      }
+    }
+    scopeOwnerCache.set(snapshot, owners);
+  }
+  let cur: IHeapNode | null = context;
+  for (let i = 0; cur != null && i < 64; i++) {
+    const hit = owners.get(cur.id);
+    if (hit != null) return hit;
+    if (direct) return null;
+    let prev: IHeapNode | null = null;
+    for (const e of cur.references) {
+      if (String(e.name_or_index) === 'previous') {
+        prev = e.toNode;
+        break;
+      }
+    }
+    cur = prev;
+  }
+  return null;
+}
