@@ -151,7 +151,10 @@ import {registerRoundAudit} from './tools/round-audit.js';
 import {registerDomAudit} from './tools/dom-audit.js';
 import {registerSparseElements} from './tools/sparse-elements.js';
 import {registerAnonymizeSnapshot} from './tools/anonymize-snapshot.js';
-import {registerRoundDigest} from './tools/round-digest.js';
+import {
+  registerRoundDigest,
+  registerSweepDigest,
+} from './tools/round-digest.js';
 import {registerReactOwners} from './tools/react-owners.js';
 import {registerReactUpdateQueues} from './tools/react-update-queues.js';
 import {registerIdSpaceAudit} from './tools/id-space-audit.js';
@@ -300,6 +303,7 @@ registerDomAudit(server);
 registerSparseElements(server);
 registerAnonymizeSnapshot(server);
 registerRoundDigest(server);
+registerSweepDigest(server);
 registerReactOwners(server);
 registerReactUpdateQueues(server);
 registerIdSpaceAudit(server);

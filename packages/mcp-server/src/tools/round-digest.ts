@@ -13,6 +13,7 @@ import {z} from 'zod';
 import fs from 'fs';
 import path from 'path';
 import {auditManifest} from './round-audit.js';
+import {rungMetricsSection} from '../rung-metrics.js';
 import {
   errorResult,
   toolResult,
@@ -154,6 +155,133 @@ function parseAnalysis(text: string): {rows: MetricRow[]; skipped: number} {
   return {rows, skipped};
 }
 
+/**
+ * The first markdown table of a tool's output, cut to `maxRows` body rows.
+ * The battery writes one `<tool>.txt` per tool; the digest quotes the table
+ * that carries each tool's answer instead of the prose around it.
+ */
+export function firstTable(text: string, maxRows: number): string[] | null {
+  const out: string[] = [];
+  let body = 0;
+  let total = 0;
+  for (const line of text.split('\n')) {
+    const isRow = line.trimStart().startsWith('|');
+    if (!isRow) {
+      if (total > 0 && /^\s*\|[\s:|-]+\|?\s*$/.test(out[1])) break;
+      // Pipes in prose (or a table with no rows) before the table: keep
+      // looking.
+      out.length = 0;
+      body = 0;
+      total = 0;
+      continue;
+    }
+    const isSep = /^\s*\|[\s:|-]+\|?\s*$/.test(line);
+    if (out.length >= 2 && !isSep) {
+      total++;
+      if (body >= maxRows) continue;
+      body++;
+    }
+    out.push(line);
+  }
+  // A header, a separator and a data row; pipes in prose are not a table.
+  if (total === 0 || !/^\s*\|[\s:|-]+\|?\s*$/.test(out[1] ?? '')) return null;
+  if (total > body)
+    out.push(`_…${formatNumber(total - body)} more row(s) in the full file._`);
+  return out;
+}
+
+/** Where a round's battery wrote its per-tool files. */
+function analysisDirs(dir: string): string[] {
+  const out: string[] = [];
+  for (const name of ['analysis', 'analysis-x', '.']) {
+    const d = path.join(dir, name);
+    try {
+      if (fs.statSync(d).isDirectory()) out.push(d);
+    } catch {
+      // absent
+    }
+  }
+  return out;
+}
+
+function readToolOutput(dir: string, tool: string): string | null {
+  for (const d of analysisDirs(dir)) {
+    const f = path.join(d, `${tool}.txt`);
+    if (fs.existsSync(f)) return fs.readFileSync(f, 'utf8');
+  }
+  return null;
+}
+
+/** The per-tool sections a digest quotes, in reading order. */
+const DIGEST_SECTIONS: Array<{tool: string; title: string; rows: number}> = [
+  {tool: 'memlab_census', title: 'Census', rows: 15},
+  {
+    tool: 'memlab_react_update_queues',
+    title: 'React update queues (top 5)',
+    rows: 5,
+  },
+  {
+    tool: 'memlab_collection_diff',
+    title: 'Collections that grew (top 10, by bytes)',
+    rows: 10,
+  },
+  {
+    tool: 'memlab_dev_subtracted_delta',
+    title: 'Growth with dev artifacts subtracted (top 10)',
+    rows: 10,
+  },
+  {tool: 'memlab_positive_controls', title: 'Positive controls', rows: 10},
+  {tool: 'memlab_settle_check', title: 'Settle verdicts (top 10)', rows: 10},
+];
+
+/** Leak-candidate classes in a round's `memlab_leak_report.txt`. */
+export function leakCandidates(dir: string): string[] {
+  const text = readToolOutput(dir, 'memlab_leak_report');
+  if (text == null) return [];
+  const out: string[] = [];
+  let header: string[] | null = null;
+  for (const line of text.split('\n')) {
+    if (!line.trimStart().startsWith('|')) {
+      if (header != null && out.length > 0) break;
+      header = null;
+      continue;
+    }
+    if (/^\s*\|[\s:|-]+\|?\s*$/.test(line)) continue;
+    const cs = cells(line);
+    if (header == null) {
+      header = cs.map(c => c.toLowerCase());
+      continue;
+    }
+    // Every column by its header, so a report with an extra or reordered
+    // column still yields the same class+type key across rounds.
+    const v = header.findIndex(h => h.includes('verdict'));
+    // The exact header first; else one that ENDS in the word ("object
+    // class"), so a "type count" column is never taken for the type.
+    const cols = header;
+    const column = (word: string) => {
+      const exact = cols.indexOf(word);
+      return exact >= 0
+        ? exact
+        : cols.findIndex(h => h.split(/\s+/).at(-1) === word);
+    };
+    const ci = column('class');
+    const ti = column('type');
+    // No guessing by position: a key from the wrong columns differs every
+    // round and defeats the cross-round dedup.
+    const cls = ci >= 0 ? cs[ci] : null;
+    const type = ti >= 0 ? cs[ti] : null;
+    if (
+      cls != null &&
+      type != null &&
+      v >= 0 &&
+      /LEAK candidate/i.test(cs[v] ?? '')
+    ) {
+      out.push(`${cls} (${type})`);
+    }
+  }
+  return out;
+}
+
 export function registerRoundDigest(server: McpServer): void {
   server.tool(
     'memlab_round_digest',
@@ -290,6 +418,26 @@ export function registerRoundDigest(server: McpServer): void {
           }
         }
 
+        if (include_analysis) {
+          const missing: string[] = [];
+          for (const sec of DIGEST_SECTIONS) {
+            const text = readToolOutput(dir, sec.tool);
+            const table = text != null ? firstTable(text, sec.rows) : null;
+            if (table == null) {
+              missing.push(sec.tool);
+              continue;
+            }
+            lines.push(`## ${sec.title}`, '', ...table, '');
+          }
+          if (missing.length > 0) {
+            lines.push(
+              `_Not in this round's battery output: ${missing.map(t => `\`${t}\``).join(', ')}._`,
+              '',
+            );
+          }
+        }
+        lines.push(...rungMetricsSection(dir));
+
         if ((manifest.caveats ?? []).length > 0) {
           lines.push(
             '## Round caveats (carry these into the write-up)',
@@ -305,6 +453,210 @@ export function registerRoundDigest(server: McpServer): void {
         );
 
         return toolResult(lines.join('\n'));
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+}
+
+/** PASS / FAIL / MIXED (p/f) from the controls table's rows, not its prose. */
+function controlsVerdict(text: string | null): string {
+  if (text == null) return '—';
+  let pass = 0;
+  let fail = 0;
+  // Data rows only, anchored on the separator: rows above a `|---|` line are
+  // the header (which may name both words).
+  const blocks: string[][] = [];
+  let cur: string[] | null = null;
+  for (const line of text.split('\n')) {
+    if (line.trimStart().startsWith('|')) {
+      if (cur == null) {
+        cur = [];
+        blocks.push(cur);
+      }
+      cur.push(line);
+    } else {
+      cur = null;
+    }
+  }
+  const SEP = /^\s*\|[\s:|-]+\|?\s*$/;
+  // The first table with a verdict column only: a later summary table would
+  // count its rows twice.
+  for (const block of blocks) {
+    // Markdown tables always carry a separator; a block of pipe lines
+    // without one is prose, not a table, and contributes nothing.
+    const sep = block.findIndex(l => SEP.test(l));
+    if (sep < 0) continue;
+    // Only the Verdict/Result column is read: PASS or FAIL in a description
+    // cell is prose, not a verdict. A table without one has no verdict to
+    // report (`memlab_positive_controls` always prints one).
+    const header =
+      sep > 0 ? cells(block[sep - 1]).map(c => c.toLowerCase()) : [];
+    const vi = header.findIndex(
+      h => h.includes('verdict') || h.includes('result'),
+    );
+    // A legend or summary table without one comes first sometimes; the
+    // controls table is the first that has one.
+    if (vi < 0) continue;
+    for (const line of block.slice(sep + 1)) {
+      const cell = cells(line)[vi] ?? '';
+      // FAILED / PASSED count as the verdicts they are.
+      if (/\bFAIL(?:ED|S)?\b/.test(cell)) fail++;
+      else if (/\bPASS(?:ED|ES)?\b/.test(cell)) pass++;
+    }
+    break;
+  }
+  if (pass === 0 && fail === 0) return '?';
+  if (fail === 0) return 'PASS';
+  return pass === 0 ? 'FAIL' : `MIXED (${pass}/${fail})`;
+}
+
+export function registerSweepDigest(server: McpServer): void {
+  server.tool(
+    'memlab_sweep_digest',
+    'One row per round for a whole sweep, from the files each round left on disk (run.json plus the battery output): combo, cycles, rungs, audit verdict, heap, settle, positive controls, leak-candidate count — and, per round, the leak-candidate classes that NO EARLIER round in the list reported. That last column is what tells a sweep where it found something new. Pass the run directories oldest first, or one parent directory to scan for rounds.',
+    {
+      run_dirs: z
+        .array(z.string())
+        .min(1)
+        .describe(
+          'Round directories in sweep order, or a single parent directory whose sub-directories holding a run.json are taken in name order.',
+        ),
+    },
+    async ({run_dirs}) => {
+      try {
+        let dirs = run_dirs;
+        // A single path is a parent to scan only if it is not itself a round
+        // (resolved the same way each round is below).
+        if (dirs.length === 1 && resolveManifestPath(dirs[0]) == null) {
+          // An unreadable parent is an error, not an empty sweep.
+          dirs = fs
+            .readdirSync(dirs[0])
+            .map(d => path.join(dirs[0], d))
+            .filter(d => fs.existsSync(path.join(d, 'run.json')))
+            .sort((a, b) =>
+              path
+                .basename(a)
+                .localeCompare(path.basename(b), 'en', {numeric: true}),
+            );
+        }
+        if (dirs.length === 0) {
+          return errorResult('No round directory with a run.json found.');
+        }
+        const seen = new Set<string>();
+        const rows: string[][] = [];
+        for (const dir of dirs) {
+          const mp = resolveManifestPath(dir);
+          if (mp == null) {
+            rows.push([
+              path.basename(dir),
+              '—',
+              '—',
+              '—',
+              'no run.json',
+              '—',
+              '—',
+              '—',
+              '—',
+              '—',
+            ]);
+            continue;
+          }
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(fs.readFileSync(mp, 'utf8'));
+          } catch {
+            rows.push([
+              path.basename(dir),
+              '—',
+              '—',
+              '—',
+              'unreadable run.json',
+              '—',
+              '—',
+              '—',
+              '—',
+              '—',
+            ]);
+            continue;
+          }
+          const m = parsed as RunManifest & {
+            settle_rung?: unknown;
+            settle_void?: {reason?: string} | null;
+            environment?: {dev_build?: boolean | null};
+          };
+          const rungs = m.rungs ?? [];
+          const first = rungs[0]?.post_gc_heap_mb;
+          const last = rungs[rungs.length - 1]?.post_gc_heap_mb;
+          // One round's unreadable battery file costs that round's columns,
+          // not the whole sweep table.
+          let control = '?';
+          let candidates: string[] = [];
+          let candidatesNote = '';
+          try {
+            control = controlsVerdict(
+              readToolOutput(path.dirname(mp), 'memlab_positive_controls'),
+            );
+          } catch {
+            control = 'unreadable';
+          }
+          try {
+            candidates = leakCandidates(path.dirname(mp));
+          } catch {
+            candidatesNote = 'leak report unreadable';
+          }
+          const fresh = candidates.filter(c => !seen.has(c));
+          for (const c of candidates) seen.add(c);
+          rows.push([
+            path.basename(path.dirname(mp)),
+            (Array.isArray(m.config?.combos) ? m.config.combos : []).join(
+              ', ',
+            ) + (m.environment?.dev_build === false ? ' (prod-like)' : ''),
+            formatNumber(m.totals?.cycles ?? 0),
+            String(rungs.length),
+            auditManifest(m).verdict,
+            first != null && last != null
+              ? `${first.toFixed(0)} → ${last.toFixed(0)} MB`
+              : '—',
+            m.settle_void != null
+              ? 'VOID'
+              : m.settle_rung != null
+                ? 'yes'
+                : 'no',
+            control,
+            candidatesNote !== '' ? '?' : String(candidates.length),
+            candidatesNote !== ''
+              ? candidatesNote
+              : fresh.length === 0
+                ? '—'
+                : fresh.slice(0, 4).join('; ') +
+                  (fresh.length > 4 ? ` +${fresh.length - 4}` : ''),
+          ]);
+        }
+        return toolResult(
+          [
+            `# Sweep digest — ${dirs.length} round(s)`,
+            '',
+            markdownTable(
+              [
+                'Round',
+                'Combo',
+                'Cycles',
+                'Rungs',
+                'Audit',
+                'Post-GC heap',
+                'Settle',
+                'Controls',
+                'Candidates',
+                'New vs earlier rounds',
+              ],
+              rows,
+            ),
+            '',
+            '_Candidates are `memlab_leak_report` rows whose verdict is a LEAK candidate, matched by class and type. A round that reports nothing new on a surface no earlier round drove is the signal to move to a different surface._',
+          ].join('\n'),
+        );
       } catch (err) {
         return errorResult(err);
       }

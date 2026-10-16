@@ -540,6 +540,10 @@ const GROUPS: Group[] = [
         'The verdict table for a finished round and nothing else — the audit verdict, the ladder shape, and the per-metric rate/fit/verdict rows, without the ~30 KB of prose.',
       ],
       [
+        'memlab_sweep_digest',
+        'One row per round across a whole sweep, plus the leak-candidate classes no earlier round reported — where the sweep found something new.',
+      ],
+      [
         'memlab_round_audit',
         'Read a round’s run.json BEFORE analysing it, so a broken bring-up is caught before its numbers travel into a write-up.',
       ],
