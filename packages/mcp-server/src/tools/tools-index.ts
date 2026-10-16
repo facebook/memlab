@@ -455,6 +455,10 @@ const GROUPS: Group[] = [
     question: 'Strings and duplication',
     tools: [
       [
+        'memlab_string_prefix_census',
+        'Strings by PREFIX (`blob:`, `data:image/`, a key scheme) on every rung, from the sidecar index — seconds, not a full-graph walk per rung.',
+      ],
+      [
         'memlab_intern_opportunities',
         'What an intern pool would actually reclaim, grouped by property x parent shape. Start here for an interning decision.',
       ],

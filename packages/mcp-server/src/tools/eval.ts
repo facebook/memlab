@@ -1330,6 +1330,7 @@ export function registerEval(server: McpServer): void {
             "module(name)->{id, exports, defaultExport, scope:[{variable,id,name,type}]}|null (a module's record, exports and top-level variables, found through the module registry's records by their `id` string — works on a MINIFIED build, where class and variable names are mangled; scope variable names are mangled there too), " +
             "moduleExportProp(moduleName, prop, {class?})->id|null (an export property, else a top-level variable named prop, else — with class, e.g. {class:'Map'} — the module's ONLY top-level variable of that class: the minification-safe way to reach a module-level cache), " +
             'minified()->{minified, shortNameShare, namedClosures} (is this a minified bundle? name-based lookups read 0 there), ' +
+            'stringsWithPrefix(prefix, {limit?})->ids[] (string nodes whose value starts with prefix, e.g. "blob:"; bucketed once per snapshot, so repeated prefix questions do not re-walk the heap — for a per-rung COUNT across a ladder, `memlab_string_prefix_census` answers from the sidecar index without loading at all), ' +
             'promiseReactions(promiseOrId, {cap?})->{count, ids, truncated}|null (the `.then` reactions attached to an UNSETTLED promise, walked by node type — count 0 means it settled), ' +
             'rootPathAvoidingDev(nodeOrId)->[{id,name,type,edge}]|null (shortest GC-root path using no React DEV/Fast Refresh/devtools edge; null = the node does not exist in a production build; throws if the analysis budget runs out first), ' +
             "fiberHooks(componentName, {limit?})->[{fiber, hooks:[{index, statefulOrdinal, kind, memoizedState, pending, lastRenderedState, bailout}]}] (a component's hook list in order; statefulOrdinal counts only useState/useReducer, so it maps to the Nth such call in source), " +
@@ -1920,6 +1921,50 @@ export async function runEval({
       opts?: {class?: string},
     ) => moduleExportProp(snapshot, name, prop, opts?.class)?.node.id ?? null;
     const minified = () => minifiedSignal(snapshot);
+    // String nodes bucketed by their first characters, built once per
+    // snapshot: a prefix question is then a bucket scan, not another walk of
+    // every node.
+    const PREFIX_BUCKET = 6;
+    const stringsWithPrefix = (
+      prefix: string,
+      opts?: {limit?: number},
+    ): number[] => {
+      const scratch = getEvalScratch();
+      let buckets = scratch.__memlabStringPrefixBuckets as
+        Map<string, number[]> | undefined;
+      if (buckets == null) {
+        buckets = new Map();
+        snapshot.nodes.forEach(node => {
+          if (!node.isString) return;
+          const key = node.name.slice(0, PREFIX_BUCKET);
+          let ids = buckets?.get(key);
+          if (ids == null) {
+            ids = [];
+            buckets?.set(key, ids);
+          }
+          ids.push(node.id);
+        });
+        scratch.__memlabStringPrefixBuckets = buckets;
+      }
+      const limit = opts?.limit ?? Infinity;
+      const out: number[] = [];
+      // A prefix as long as the bucket key names one bucket; a shorter one
+      // spans every bucket that starts with it.
+      const candidates: number[][] =
+        prefix.length >= PREFIX_BUCKET
+          ? [buckets.get(prefix.slice(0, PREFIX_BUCKET)) ?? []]
+          : [...buckets]
+              .filter(([key]) => key.startsWith(prefix))
+              .map(([, ids]) => ids);
+      for (const ids of candidates) {
+        for (const id of ids) {
+          if (out.length >= limit) return out;
+          const node = snapshot.getNodeById(id);
+          if (node != null && node.name.startsWith(prefix)) out.push(id);
+        }
+      }
+      return out;
+    };
     // The reactions attached to an unsettled promise, followed by node type:
     // V8 links them through a slot-indexed edge, and walking the wrong slot
     // reads a chain of 1.
@@ -3888,6 +3933,7 @@ export async function runEval({
       moduleExportProp: moduleExportPropHelper,
       minified,
       promiseReactions: promiseReactionsHelper,
+      stringsWithPrefix,
       sourceOf,
       stableKey,
       byStableKey,
