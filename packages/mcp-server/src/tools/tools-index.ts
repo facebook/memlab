@@ -312,6 +312,10 @@ const GROUPS: Group[] = [
         'Count several named populations (detached DOM, listener records, LRU cache nodes, React fibers, timers, …) across every rung in ONE pass each, with per-cycle rates and a settle verdict.',
       ],
       [
+        'memlab_ab_compare',
+        'Judge an A/B round in one call: the same probes on the OFF and ON arms, per-cycle rates, ON/OFF ratio and a FIX EFFECTIVE / NO EFFECT / CANNOT JUDGE verdict per metric.',
+      ],
+      [
         'memlab_object_urls',
         'Unrevoked `blob:` object URLs per rung — their Blobs are pinned OFF the V8 heap, so this leak never shows in heap size.',
       ],
