@@ -31,10 +31,16 @@
  * `script` (and multiple `call` pairs) reuse ONE server process, which matters:
  * the server is stateful and a large snapshot costs minutes to load, so a
  * process per call pays that repeatedly.
+ *
+ * Across invocations, `serve --socket <path>` keeps one server resident and
+ * `call` / `script` with `--socket <path>` run against it, so loaded snapshots
+ * survive between shell scripts. The server evicts cold snapshots itself when
+ * its heap runs short.
  */
 
 import {spawn} from 'child_process';
 import fs from 'fs';
+import net from 'net';
 import os from 'os';
 import path from 'path';
 import {fileURLToPath} from 'url';
@@ -353,9 +359,302 @@ async function doctor(serverPath) {
   }
 }
 
+/** Remove `--socket <path>` from argv; the path, or null. */
+function takeSocketFlag(args) {
+  // Only right after the command, so a tool argument is never taken for it.
+  if (args[0] !== '--socket') {
+    if (args.includes('--socket')) {
+      throw new Error('--socket must come right after the command');
+    }
+    return null;
+  }
+  const value = args[1];
+  if (value == null) {
+    throw new Error('--socket needs a path');
+  }
+  args.splice(0, 2);
+  if (args.includes('--socket')) {
+    throw new Error('--socket given twice');
+  }
+  return value;
+}
+
+/** Explanatory notes cut to their first sentence for a scripted session. */
+async function enableTerse(client) {
+  if (process.env.MEMLAB_CLI_VERBOSE === '1') {
+    return;
+  }
+  try {
+    await client.callTool('memlab_snapshots', {terse: true});
+  } catch (err) {
+    console.error(
+      `(could not enable terse notes, continuing verbose: ${err?.message ?? err})`,
+    );
+  }
+}
+
+/**
+ * One resident server behind a Unix socket. Each connection sends one
+ * `{"tool":..,"args":{..}}` per line and gets one `{"text":..}` or
+ * `{"error":..}` per line back; calls from all connections run one at a time,
+ * in arrival order, because the server is stateful.
+ */
+async function serve(serverPath, socketPath) {
+  if (fs.existsSync(socketPath)) {
+    const live = await new Promise(resolve => {
+      const probe = net.connect(socketPath, () => {
+        probe.end();
+        resolve(true);
+      });
+      probe.on('error', () => resolve(false));
+      // No answer within 2 s: something holds the socket, so it is not ours
+      // to remove.
+      probe.setTimeout(2000, () => {
+        probe.destroy();
+        resolve(true);
+      });
+    });
+    if (live) {
+      console.error(
+        `a memlab-cli server is already listening on ${socketPath}`,
+      );
+      return 1;
+    }
+    try {
+      if (!fs.lstatSync(socketPath).isSocket()) {
+        console.error(
+          `${socketPath} exists and is not a socket; not removing it`,
+        );
+        return 1;
+      }
+      fs.unlinkSync(socketPath);
+    } catch (err) {
+      // Gone since the probe (its server cleaned up): nothing to remove.
+      if (err?.code !== 'ENOENT') {
+        throw err;
+      }
+    }
+  }
+  const client = new Client(serverPath);
+  try {
+    await client.init();
+  } catch (err) {
+    client.close();
+    throw err;
+  }
+  await enableTerse(client);
+  let chain = Promise.resolve();
+  let shuttingDown = false;
+  const server = net.createServer(conn => {
+    let buf = '';
+    conn.on('data', chunk => {
+      buf += String(chunk);
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) {
+          continue;
+        }
+        chain = chain.then(async () => {
+          let reply;
+          try {
+            if (shuttingDown) {
+              throw new Error('the memlab-cli server is shutting down');
+            }
+            const spec = JSON.parse(line);
+            if (spec.cmd === 'shutdown') {
+              // Calls already queued behind this one are answered with an
+              // error above instead of reaching the closed client.
+              shuttingDown = true;
+              // Tear down after the reply has flushed, so `stop` sees it, or
+              // when the connection goes away first, or after 2 s regardless.
+              let tornDown = false;
+              const teardown = () => {
+                if (tornDown) {
+                  return;
+                }
+                tornDown = true;
+                server.close();
+                client.close();
+              };
+              conn.once('close', teardown);
+              setTimeout(teardown, 2000).unref();
+              conn.end(
+                JSON.stringify({text: 'shutting down'}) + '\n',
+                teardown,
+              );
+              return;
+            }
+            reply = {text: await client.callTool(spec.tool, spec.args ?? {})};
+          } catch (err) {
+            reply = {error: err?.message ?? String(err)};
+          }
+          // A throw here would reject `chain`, and every later call would be
+          // skipped without a reply.
+          try {
+            if (!conn.destroyed) {
+              conn.write(JSON.stringify(reply) + '\n');
+            }
+          } catch (err) {
+            console.error(
+              `memlab-cli: could not send a reply: ${err?.message ?? err}`,
+            );
+          }
+        });
+      }
+    });
+    conn.on('error', () => {});
+  });
+  try {
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(socketPath, resolve);
+    });
+  } catch (err) {
+    console.error(
+      `memlab-cli: cannot listen on ${socketPath}: ${err?.message ?? err}`,
+    );
+    client.close();
+    return 1;
+  }
+  console.error(`memlab-cli: serving ${serverPath} on ${socketPath}`);
+  const stop = () => {
+    server.close();
+    try {
+      client.close();
+    } catch {
+      // The child already exited; the socket still has to be removed below.
+    }
+  };
+  process.on('SIGINT', stop);
+  process.on('SIGTERM', stop);
+  await new Promise(resolve => server.on('close', resolve));
+  try {
+    fs.unlinkSync(socketPath);
+  } catch (err) {
+    // Already gone (a new serve reclaimed the path): nothing to remove.
+    if (err?.code !== 'ENOENT') {
+      throw err;
+    }
+  }
+  return 0;
+}
+
+/** Send tool calls to a `serve` process and print each answer in order. */
+async function callViaSocket(socketPath, specs) {
+  if (!fs.existsSync(socketPath)) {
+    throw new Error(
+      `no memlab-cli server at ${socketPath}; start one with \`memlab-cli serve --socket ${socketPath}\``,
+    );
+  }
+  const conn = net.connect(socketPath);
+  let buf = '';
+  // Replies arrive in request order; each waiter takes the next one.
+  const waiters = [];
+  let lost = null;
+  const failWaiters = err => {
+    lost = err;
+    while (waiters.length > 0) {
+      waiters.shift().reject(err);
+    }
+  };
+  conn.on('data', chunk => {
+    buf += String(chunk);
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl);
+      buf = buf.slice(nl + 1);
+      // One line is one reply, so an unreadable one fails only its own
+      // call; the rest of the batch keeps its order.
+      let reply;
+      try {
+        reply = JSON.parse(line);
+      } catch {
+        reply = {
+          error: `unreadable reply from the memlab-cli server: ${line.slice(0, 80)}`,
+        };
+      }
+      waiters.shift()?.resolve(reply);
+    }
+  });
+  conn.on('error', err => failWaiters(err));
+  conn.on('close', () => {
+    // A last reply whose newline never arrived is still a whole reply.
+    const tail = buf.trim();
+    buf = '';
+    if (tail !== '' && waiters.length > 0) {
+      try {
+        waiters.shift().resolve(JSON.parse(tail));
+      } catch {
+        // Truncated: its call fails with the rest below.
+      }
+    }
+    failWaiters(new Error('the memlab-cli server closed the connection'));
+  });
+  const send = spec =>
+    new Promise((resolve, reject) => {
+      if (lost != null) {
+        reject(lost);
+        return;
+      }
+      waiters.push({resolve, reject});
+      conn.write(JSON.stringify(spec) + '\n');
+    });
+  let failed = 0;
+  // One call at a time, chained, so output order matches the script and a
+  // failing call does not race the next one.
+  await specs.reduce(
+    (prev, spec) =>
+      prev.then(async () => {
+        let reply;
+        try {
+          reply = await send(spec);
+        } catch (err) {
+          // A lost connection fails every remaining call, each reported.
+          reply = {error: err?.message ?? String(err)};
+        }
+        console.log(`\n===== ${spec.tool ?? spec.cmd} =====`);
+        if (reply.error != null) {
+          failed++;
+          console.log(`ERROR: ${reply.error}`);
+        } else {
+          console.log(reply.text);
+        }
+      }),
+    Promise.resolve(),
+  );
+  conn.end();
+  return failed > 0 ? 1 : 0;
+}
+
+function readScript(file) {
+  const specs = [];
+  const bad = [];
+  const lines = fs.readFileSync(file, 'utf8').split('\n');
+  for (let n = 0; n < lines.length; n++) {
+    const line = lines[n].trim();
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+    try {
+      specs.push(JSON.parse(line));
+    } catch (err) {
+      bad.push(`${file}:${n + 1}: ${err?.message ?? err}`);
+    }
+  }
+  // Every bad line at once, before any call runs: a half-run batch is
+  // harder to resume than a script fixed up front.
+  if (bad.length > 0) {
+    throw new Error(`invalid JSON in the script:\n${bad.join('\n')}`);
+  }
+  return specs;
+}
+
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   const serverPath = resolveServerPath();
+  const socketPath = takeSocketFlag(rest);
 
   if (!cmd || cmd === '--help' || cmd === '-h') {
     console.log(
@@ -368,6 +667,9 @@ async function main() {
         '  call <tool> <json> [...]    call one or more tools in ONE server session',
         '  script <file.jsonl>         run {"tool":..,"args":{..}} lines in ONE session',
         '                              (terse notes; MEMLAB_CLI_VERBOSE=1 for the full text)',
+        '  serve --socket <path>       keep ONE server resident across invocations',
+        '  call|script --socket <path> ...   run against a `serve` process (snapshots stay loaded)',
+        '  stop --socket <path>        shut a `serve` process down',
         '',
         'Server is resolved from $MEMLAB_MCP_SERVER, else dist/index.js next to this script.',
       ].join('\n'),
@@ -377,6 +679,46 @@ async function main() {
 
   if (cmd === 'doctor') {
     return doctor(serverPath);
+  }
+  if (cmd === 'serve') {
+    if (socketPath == null) {
+      throw new Error('serve needs --socket <path>');
+    }
+    return serve(serverPath, socketPath);
+  }
+  if (socketPath != null) {
+    if (cmd === 'call') {
+      if (rest.length === 0 || rest.length % 2 !== 0) {
+        throw new Error(
+          'usage: memlab-cli call --socket <path> <tool> <json-args> [<tool> <json-args> ...]',
+        );
+      }
+      const specs = [];
+      for (let i = 0; i < rest.length; i += 2) {
+        let args;
+        try {
+          args = JSON.parse(rest[i + 1]);
+        } catch (err) {
+          throw new Error(
+            `invalid JSON args for ${rest[i]}: ${err?.message ?? err}`,
+          );
+        }
+        specs.push({tool: rest[i], args});
+      }
+      return callViaSocket(socketPath, specs);
+    }
+    if (cmd === 'script') {
+      if (rest[0] == null) {
+        throw new Error(
+          'usage: memlab-cli script --socket <path> <file.jsonl>',
+        );
+      }
+      return callViaSocket(socketPath, readScript(rest[0]));
+    }
+    if (cmd === 'stop') {
+      return callViaSocket(socketPath, [{cmd: 'shutdown'}]);
+    }
+    throw new Error(`--socket works with call, script and stop, not ${cmd}`);
   }
 
   const client = new Client(serverPath);
@@ -411,25 +753,12 @@ async function main() {
       // A script is a whole investigation read by an agent, so explanatory
       // notes are cut to their first sentence for the session (repeats are
       // dropped by the server regardless). MEMLAB_CLI_VERBOSE=1 keeps them.
-      if (process.env.MEMLAB_CLI_VERBOSE !== '1') {
-        try {
-          await client.callTool('memlab_snapshots', {terse: true});
-        } catch (err) {
-          console.error(
-            `(could not enable terse notes, continuing verbose: ${err?.message ?? err})`,
-          );
-        }
-      }
+      await enableTerse(client);
       // Sequential by construction: these are JSON-RPC calls over ONE stdio
       // socket to a stateful server, so they cannot be parallelised — the next
       // request depends on the previous one having been answered.
 
-      for (const raw of fs.readFileSync(file, 'utf8').split('\n')) {
-        const line = raw.trim();
-        if (!line || line.startsWith('#')) {
-          continue;
-        }
-        const spec = JSON.parse(line);
+      for (const spec of readScript(file)) {
         console.log(`\n===== ${spec.tool} =====`);
         // Sequential by construction: JSON-RPC over ONE stdio socket to a
         // stateful server (a loaded snapshot). These cannot be parallelised —
