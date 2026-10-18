@@ -69,6 +69,14 @@ const GROUPS: Group[] = [
         '"What is using the memory?" in one exclusive table: framework families (React, collections, telemetry records, module system, memo caches, Wasm), DOM/Blink sub-families, and the rest by the module or global on its shortest path. Works minified.',
       ],
       [
+        'memlab_capture',
+        'Take fresh snapshots of a live page AND its dedicated workers (a page snapshot never contains them). Skips threads blocked in Atomics.wait instead of hanging.',
+      ],
+      [
+        'memlab_realm_summary',
+        'Page + worker snapshots side by side: app / bundle / code per realm, with shared Wasm modules and SharedArrayBuffers counted once.',
+      ],
+      [
         'memlab_quick_diagnosis',
         'One call for summary + biggest objects + class histogram + duplicated strings.',
       ],
