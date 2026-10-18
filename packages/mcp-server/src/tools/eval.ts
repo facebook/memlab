@@ -58,6 +58,7 @@ import {
   setSavedResult,
   getEvalScratch,
   getSnapshotMetadata,
+  getSessionConfig,
   noteAlreadyEmitted,
   shouldEmitNote,
 } from '../heap-state.js';
@@ -4364,7 +4365,11 @@ export async function runEval({
     // Attached to the RESULT of the call that hand-rolled a built-in, because
     // that is the one moment the caller is guaranteed to read. Never suppresses
     // or alters the value above it.
-    const hintText = code != null ? formatEvalHints(hintsForEval(code)) : null;
+    // A footnote all the same, so `suppress_suggestions` silences it too.
+    const hintText =
+      code != null && !getSessionConfig().suppressSuggestions
+        ? formatEvalHints(hintsForEval(code))
+        : null;
     if (hintText != null) footer.push(hintText);
     if (shrunk.truncated) {
       const nothingFit = shrunk.keptEntries === 0 && shrunk.droppedEntries > 0;

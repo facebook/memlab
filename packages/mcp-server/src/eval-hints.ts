@@ -48,6 +48,12 @@ interface HintRule {
   none?: RegExp[];
 }
 
+// Whole-heap attribution (partition, path tree, family maps) walks every node
+// and counts by a LABEL, which is the shape of a class histogram or a rung
+// series but is neither.
+const ATTRIBUTION =
+  /helpers\s*\.\s*(pathTree|pathLabel|familyOf|shapeFamily)\s*\(/;
+
 const RULES: HintRule[] = [
   {
     // First, because the answer it corrects is a confident wrong number.
@@ -95,18 +101,23 @@ const RULES: HintRule[] = [
     // Deliberately not keyed to the identifier `node`: the callback parameter
     // is as often `n`, and requiring the long spelling made the rule silently
     // never fire on the shape it exists to catch.
+    // The count must be KEYED by the node's name (`by[n.name]`,
+    // `m.get(n.name)`); counting by anything else that happens to read `.name`
+    // along the way is a different question.
     all: [
       /snapshot\.nodes\.forEach|for\s*\(\s*const\s+\w+\s+of\s+snapshot\.nodes/,
-      /\.name\b/,
+      /\[\s*\w+\.name\s*\]|\.(get|set)\(\s*\w+\.name\b/,
       /\+\+|\+= ?1|\|\| ?0\) ?\+ ?1|\?\? ?0\) ?\+ ?1/,
     ],
-    none: [/memlab_class_histogram|helpers\.classCounts/],
+    none: [/memlab_class_histogram|helpers\.classCounts/, ATTRIBUTION],
   },
   {
     tool: 'memlab_ladder_probe',
     why: 'runs ONE numeric probe across an ordered ladder and returns the series, the per-cycle rate and r² — loading one rung at a time, so it works on captures too large to hold simultaneously',
-    all: [/helpers\.(save|load)\(|__rung|perRung|per_rung/],
-    none: [/memlab_ladder_probe/],
+    // `helpers.save`/`load` alone is the scratch store `save_as` documents,
+    // used by any multi-step eval; only a rung series is a ladder probe.
+    all: [/allowCrossSnapshot|\brungs?\b|__rung|perRung|per_rung/i],
+    none: [/memlab_ladder_probe/, ATTRIBUTION],
   },
   {
     tool: 'memlab_duplicate_objects',
