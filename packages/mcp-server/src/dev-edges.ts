@@ -51,6 +51,7 @@ const DEV_EDGE_REASONS: ReadonlyMap<string, string> = new Map([
   ['_debugHookTypes', 'React DEV hook list (_debugHookTypes)'],
   ['$RefreshSig$', 'React Fast Refresh ($RefreshSig$)'],
   ['$RefreshReg$', 'React Fast Refresh ($RefreshReg$)'],
+  ['__ReactRefresh', 'React Fast Refresh runtime (__ReactRefresh)'],
   ['allSignaturesByType', 'React Fast Refresh registry (allSignaturesByType)'],
   ['allFamiliesByID', 'React Fast Refresh registry (allFamiliesByID)'],
   ['allFamiliesByType', 'React Fast Refresh registry (allFamiliesByType)'],

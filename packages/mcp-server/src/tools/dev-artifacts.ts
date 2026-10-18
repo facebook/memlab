@@ -52,6 +52,9 @@ import {
 const REACT_REFRESH_GLOBAL_EDGE_NAMES = new Set([
   '$RefreshSig$',
   '$RefreshReg$',
+  // The runtime's own namespace. Its module scope retained 118.7 MB on one
+  // large app's dev build, and a path through it read as production.
+  '__ReactRefresh',
 ]);
 
 // Detecting Fast Refresh by its GLOBALS alone is not enough, and the gap is
@@ -254,6 +257,25 @@ export function summarizeDevRoots(devRoots: DevRoots, showAll = false): string {
   return `${devRoots.byId.size} root(s) — ${parts.join(', ')}`;
 }
 
+const STRING_NODE_TYPES: ReadonlySet<string> = new Set([
+  'string',
+  'concatenated string',
+  'sliced string',
+]);
+
+function isStringNodeType(type: string): boolean {
+  return STRING_NODE_TYPES.has(type);
+}
+
+const ROOT_LABEL_MAX = 80;
+
+/** A node name short enough to print as a root label. */
+function rootLabel(name: string): string {
+  return name.length > ROOT_LABEL_MAX
+    ? `${name.slice(0, ROOT_LABEL_MAX)}…`
+    : name;
+}
+
 /**
  * Find the dev/extension "root" objects: the targets of dev-global edges on
  * the Window/global object, plus any node whose own name marks it as a
@@ -266,16 +288,22 @@ export function collectDevRoots(snapshot: IHeapSnapshot): DevRoots {
   const extraNodeRe = extraDevNodePattern();
   snapshot.nodes.forEach(node => {
     if (node.id <= 3) return;
+    // A string node's "name" is its CONTENT, so the node-name patterns below
+    // must not see strings: a worker's bundle source mentions
+    // `WADevToolsBridge`, matched the bridge pattern, and 13.9 MB of bundle
+    // text was reported as a dev root (and printed in full as its label).
+    const nameIsContent = isStringNodeType(node.type);
     // Bridges and deployment-specific dev modules are matched by NODE name:
     // they are not hung off a window global, so the edge-name checks below
     // never see them.
     if (
-      DEV_BRIDGE_NODE_NAME_RE.test(node.name) ||
-      (extraNodeRe != null && extraNodeRe.test(node.name))
+      !nameIsContent &&
+      (DEV_BRIDGE_NODE_NAME_RE.test(node.name) ||
+        (extraNodeRe != null && extraNodeRe.test(node.name)))
     ) {
       byId.set(
         node.id,
-        `${node.name} (dev-tools bridge; absent in production)`,
+        `${rootLabel(node.name)} (dev-tools bridge; absent in production)`,
       );
       categoryById.set(node.id, 'devGlobal');
     }
@@ -363,16 +391,17 @@ export function collectDevRoots(snapshot: IHeapSnapshot): DevRoots {
         categoryById.set(node.id, 'reactFastRefresh');
       }
     }
+    if (nameIsContent) return;
     if (DEV_NODE_NAME_RE.test(node.name)) {
-      byId.set(node.id, node.name);
+      byId.set(node.id, rootLabel(node.name));
       categoryById.set(node.id, 'devGlobal');
     }
     if (AX_NODE_NAME_RE.test(node.name)) {
-      byId.set(node.id, `${node.name} (a11y/CDP automation cache)`);
+      byId.set(node.id, `${rootLabel(node.name)} (a11y/CDP automation cache)`);
       categoryById.set(node.id, 'a11y');
     }
     if (HARNESS_NODE_NAME_RE.test(node.name)) {
-      byId.set(node.id, `${node.name} (automation/devtools bridge)`);
+      byId.set(node.id, `${rootLabel(node.name)} (automation/devtools bridge)`);
       categoryById.set(node.id, 'harness');
     }
   });

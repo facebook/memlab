@@ -49,7 +49,7 @@ const DEV_MODULE_PATTERNS: ReadonlyArray<{re: RegExp; why: string}> = [
   {re: /DevToolsInterop/i, why: 'devtools interop'},
   {re: /^ReactDevTools|react-devtools/i, why: 'React DevTools'},
   {
-    re: /\$RefreshSig\$|\$RefreshReg\$|RefreshRuntime/,
+    re: /\$RefreshSig\$|\$RefreshReg\$|RefreshRuntime|ReactFreshRuntime/,
     why: 'React Fast Refresh',
   },
   {re: /^__REACT_DEVTOOLS/, why: 'React DevTools hook'},

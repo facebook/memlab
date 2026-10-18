@@ -30,10 +30,37 @@ import type {DevOnlyTotals, DevRootCategory} from './tools/dev-artifacts.js';
 
 const CODE_TYPES: ReadonlySet<string> = new Set(['code']);
 
-// Bundle source text and the V8 structures that hold it. These exist because
-// the app was *loaded*, not because it did anything.
+// The V8 structures that hold loaded code. These exist because the app was
+// *loaded*, not because it did anything.
 const BUNDLE_NAME_RE =
-  /ExternalStringData|InstructionStream|BytecodeArray|SharedFunctionInfo|ScopeInfo|UncompiledData|FeedbackVector|FeedbackMetadata|FeedbackCell|ClosureFeedbackCellArray|\(constant pool\)|ConstantPool/;
+  /InstructionStream|BytecodeArray|SharedFunctionInfo|ScopeInfo|UncompiledData|FeedbackVector|FeedbackMetadata|FeedbackCell|ClosureFeedbackCellArray|\(constant pool\)|ConstantPool/;
+
+const EXTERNAL_STRING_DATA = 'system / ExternalStringData';
+
+/**
+ * Node indexes of the external string data that backs a script's SOURCE.
+ *
+ * Only that is bundle text. An app can hold its own data in external strings
+ * too (one measured app kept 1.3 MB of animation JSON in 12 of them), and
+ * counting every `ExternalStringData` as bundle hid it from the app
+ * total.
+ */
+export function scriptSourceStringData(snapshot: IHeapSnapshot): Set<number> {
+  const out = new Set<number>();
+  snapshot.nodes.forEach((node: IHeapNode) => {
+    if (!node.name.startsWith('system / Script')) return;
+    for (const e of node.references) {
+      if (e.name_or_index !== 'source') continue;
+      const src = e.toNode;
+      out.add(src.nodeIndex);
+      for (const e2 of src.references) {
+        if (e2.toNode.name === EXTERNAL_STRING_DATA)
+          out.add(e2.toNode.nodeIndex);
+      }
+    }
+  });
+  return out;
+}
 
 export interface HeapBudget {
   total: number;
@@ -67,6 +94,7 @@ export function computeHeapBudget(snapshot: IHeapSnapshot): HeapBudget {
 
   const isDevOnly = (node: IHeapNode): boolean =>
     reached != null && reached[node.nodeIndex] === 0;
+  const scriptSource = scriptSourceStringData(snapshot);
 
   snapshot.nodes.forEach((node: IHeapNode) => {
     if (node.id <= 3) return;
@@ -82,7 +110,10 @@ export function computeHeapBudget(snapshot: IHeapSnapshot): HeapBudget {
       code += size;
       return;
     }
-    if (BUNDLE_NAME_RE.test(node.name)) {
+    if (
+      BUNDLE_NAME_RE.test(node.name) ||
+      (node.name === EXTERNAL_STRING_DATA && scriptSource.has(node.nodeIndex))
+    ) {
       bundle += size;
       return;
     }
