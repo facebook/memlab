@@ -9,9 +9,10 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
-import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
+import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
 import {computeHeapBudget} from '../heap-budget.js';
+import {realmKind} from '../realm.js';
 import {withSnapshotAt} from '../snapshot-borrow.js';
 import {resolveSnapshotPath} from './load-snapshot.js';
 import {errorResult, formatBytes, markdownTable, toolResult} from '../utils.js';
@@ -20,32 +21,6 @@ const SHARED_NAMES = new Set([
   'system / CppGCManaged (WasmNativeModule)',
   'SharedArrayBuffer',
 ]);
-
-/**
- * Page, dedicated worker, service worker or shared worker, from the global
- * PROXY's name (`DedicatedWorkerGlobalScope / <url>`). Constructor and
- * prototype objects of every scope class exist in every realm, so a bare
- * class-name match is wrong.
- */
-const REALM_GLOBAL_RE =
-  /^(Window|DedicatedWorkerGlobalScope|ServiceWorkerGlobalScope|SharedWorkerGlobalScope) \/ /;
-const REALM_KIND: Readonly<Record<string, string>> = {
-  Window: 'page',
-  DedicatedWorkerGlobalScope: 'dedicated worker',
-  ServiceWorkerGlobalScope: 'service worker',
-  SharedWorkerGlobalScope: 'shared worker',
-};
-
-export function realmKind(snapshot: IHeapSnapshot): string {
-  let kind = 'unknown';
-  snapshot.nodes.forEach((n: IHeapNode) => {
-    const m = REALM_GLOBAL_RE.exec(n.name);
-    if (m == null) return;
-    kind = REALM_KIND[m[1]] ?? 'unknown';
-    return false;
-  });
-  return kind;
-}
 
 // Below this a shared buffer is noise (message channels, flags), not memory.
 const MIN_SHARED_BYTES = 64 * 1024;

@@ -1798,16 +1798,30 @@ export function makeNamePatternTest(
   }
 }
 
+/** `Browser`, `Browser worker: <title>`, `Node.js` or `Unknown`. */
+export function envLabelOf(
+  meta: {env: string; realm?: string | null} | null | undefined,
+): string {
+  if (meta == null) return 'Unknown';
+  if (meta.env === 'browser') {
+    if (meta.realm != null && meta.realm !== '') {
+      // Split on the FIRST separator only: a title may contain ': ' itself.
+      const cut = meta.realm.indexOf(': ');
+      const kind = cut < 0 ? meta.realm : meta.realm.slice(0, cut);
+      const title = cut < 0 ? '' : meta.realm.slice(cut + 2);
+      const prefix =
+        kind === 'dedicated worker' ? 'Browser worker' : `Browser ${kind}`;
+      return title ? `${prefix}: ${title}` : prefix;
+    }
+    return 'Browser';
+  }
+  return meta.env === 'node' ? 'Node.js' : 'Unknown';
+}
+
 export function snapshotHeader(): string {
   const meta = getSnapshotMetadata();
   if (!meta) return '';
-  const envLabel =
-    meta.env === 'browser'
-      ? 'Browser'
-      : meta.env === 'node'
-        ? 'Node.js'
-        : 'Unknown';
-  return `> Snapshot: ${meta.fileName} (${formatBytes(meta.totalSize)}, ${formatNumber(meta.nodeCount)} nodes, ${envLabel})`;
+  return `> Snapshot: ${meta.fileName} (${formatBytes(meta.totalSize)}, ${formatNumber(meta.nodeCount)} nodes, ${envLabelOf(meta)})`;
 }
 
 /**

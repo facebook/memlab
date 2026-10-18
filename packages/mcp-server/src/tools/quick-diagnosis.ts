@@ -30,6 +30,7 @@ import {
   errorResult,
   toolResult,
   clipTableColumn,
+  envLabelOf,
 } from '../utils.js';
 import {splitClassKey} from './sequence-analysis.js';
 
@@ -120,12 +121,7 @@ export function registerQuickDiagnosis(server: McpServer): void {
           edgeCount++;
         });
 
-        const envLabel =
-          env === 'browser'
-            ? 'Browser'
-            : env === 'node'
-              ? 'Node.js'
-              : 'Unknown';
+        const envLabel = meta != null ? envLabelOf(meta) : envLabelOf({env});
 
         const lines: string[] = [
           `# Quick Diagnosis`,

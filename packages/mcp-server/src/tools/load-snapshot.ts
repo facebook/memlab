@@ -42,6 +42,7 @@ import {
 } from '../heap-state.js';
 import {makeProgressReporter} from '../progress.js';
 import type {SnapshotEnv} from '../heap-state.js';
+import {workerTitleFromFile} from '../realm.js';
 import {detectAnonymizedStrings} from '../anonymized-snapshot.js';
 import {
   formatBytes,
@@ -51,6 +52,7 @@ import {
   errorResult,
   textResult,
   suggestionsSuppressed,
+  envLabelOf,
 } from '../utils.js';
 
 // The bucket the Nest auto-capture + the Manifold links in diffs use, so a
@@ -788,26 +790,32 @@ export function extractCaptureTime(fileName: string): Date | null {
   return d;
 }
 
-function detectEnv(snapshot: IHeapSnapshot): SnapshotEnv {
+function detectEnv(snapshot: IHeapSnapshot): {
+  env: SnapshotEnv;
+  workerKind: string | null;
+} {
   let hasWindow = false;
   let hasModule = false;
+  let workerKind: string | null = null;
   snapshot.nodes.forEach(node => {
-    if (hasWindow) return;
-    if (node.name.startsWith('Window ') && node.type === 'object') {
+    if (node.type === 'object' && node.name.startsWith('Window ')) {
       hasWindow = true;
+      return false;
     }
-    if (
-      node.name === 'Module' &&
-      node.type === 'object' &&
-      !hasWindow &&
-      !hasModule
-    ) {
-      hasModule = true;
+    // A worker has no Window; its global proxy is named after its scope
+    // class. Without this a worker read as Node.js (it can hold a `Module`)
+    // or Unknown, and browser heuristics were switched off for it.
+    if (workerKind == null) {
+      const m = /^(Dedicated|Service|Shared)WorkerGlobalScope \/ /.exec(
+        node.name,
+      );
+      if (m != null) workerKind = `${m[1].toLowerCase()} worker`;
     }
+    if (node.name === 'Module' && node.type === 'object') hasModule = true;
   });
-  if (hasWindow) return 'browser';
-  if (hasModule) return 'node';
-  return 'unknown';
+  if (hasWindow) return {env: 'browser', workerKind: null};
+  if (workerKind != null) return {env: 'browser', workerKind};
+  return {env: hasModule ? 'node' : 'unknown', workerKind: null};
 }
 
 /**
@@ -1559,10 +1567,18 @@ export function registerLoadSnapshot(server: McpServer): void {
           edgeCount++;
         });
 
-        const env = detectEnv(snapshot);
+        const {env, workerKind} = detectEnv(snapshot);
         const fileName = path.basename(
           fetchedFrom ?? file_path.replace(/^manifold:\/\//, ''),
         );
+        const workerTitle =
+          workerKind != null ? workerTitleFromFile(fileName) : null;
+        const realm =
+          workerKind != null
+            ? workerTitle != null
+              ? `${workerKind}: ${workerTitle}`
+              : workerKind
+            : null;
         const meta = setSnapshot(
           snapshot,
           resolved,
@@ -1572,17 +1588,13 @@ export function registerLoadSnapshot(server: McpServer): void {
             edgeCount,
             totalSize,
             env,
+            realm,
             light,
           },
           {alias, replace: !keep_previous},
         );
 
-        const envLabel =
-          env === 'browser'
-            ? 'Browser'
-            : env === 'node'
-              ? 'Node.js'
-              : 'Unknown';
+        const envLabel = envLabelOf({env, realm});
         const lines: string[] = [];
         if (previousMeta && !keep_previous) {
           lines.push(

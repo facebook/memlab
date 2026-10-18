@@ -16,7 +16,7 @@ import {moduleRecords} from '../module-registry.js';
 import {withSnapshotAt} from '../snapshot-borrow.js';
 import {moduleRegistryIds, registryTableBytes} from './framework-buffers.js';
 import {resolveSnapshotPath} from './load-snapshot.js';
-import {realmKind} from './realm-summary.js';
+import {realmKind} from '../realm.js';
 import {
   errorResult,
   formatBytes,

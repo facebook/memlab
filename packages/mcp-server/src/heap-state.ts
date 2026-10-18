@@ -58,6 +58,12 @@ export interface SnapshotMetadata {
   totalSize: number;
   env: SnapshotEnv;
   /**
+   * For a worker capture: `dedicated worker: <title>` (or the kind alone when
+   * the title is unknown). Workers count as `env: 'browser'`, so browser
+   * heuristics still apply; this is what tells the reader it is not a page.
+   */
+  realm?: string | null;
+  /**
    * True when the snapshot was parsed WITHOUT memlab's path/dominator pass
    * (`memlab_load_snapshot({light: true})`). Roughly halves load time, at the
    * cost of `retainedSize`, `dominatorNode` and `pathEdge` being absent — see
