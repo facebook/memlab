@@ -91,6 +91,22 @@ function propTo(node: IHeapNode, name: string): IHeapNode | null {
   return null;
 }
 
+/** Ids of the objects that hold module records by name (module registries). */
+export function moduleRegistryIds(snapshot: IHeapSnapshot): Set<number> {
+  const ids = new Set<number>();
+  for (const rec of moduleRecords(snapshot).values()) {
+    for (const e of rec.record.referrers) {
+      if (e.type === 'property') ids.add(e.fromNode.id);
+    }
+  }
+  return ids;
+}
+
+/** A registry's own table: the object plus its out-of-object property store. */
+export function registryTableBytes(registry: IHeapNode): number {
+  return registry.self_size + (edgeTo(registry, 'properties')?.self_size ?? 0);
+}
+
 /**
  * An app-specific buffer, described by where it lives. Which buffers a stack
  * keeps is knowledge about that stack, so it comes from a probe file rather
@@ -274,12 +290,7 @@ function probeBuffers(
       note: 'pending timers; see memlab_timers for what they capture',
     });
   }
-  const registryIds = new Set<number>();
-  for (const rec of moduleRecords(snapshot).values()) {
-    for (const e of rec.record.referrers) {
-      if (e.type === 'property') registryIds.add(e.fromNode.id);
-    }
-  }
+  const registryIds = moduleRegistryIds(snapshot);
   giant
     .map(g => {
       let props = 0;
@@ -293,16 +304,13 @@ function probeBuffers(
       // A module registry is wide by design and reaches the whole app; count
       // only its own table, not everything behind it.
       const isRegistry = registryIds.has(g.id);
-      const table = edgeTo(g, 'properties');
       rows.push({
         buffer: isRegistry
           ? 'module registry table'
           : 'giant object (>5,000 own properties)',
         where: labeler.labelOf(g),
         entries: props,
-        bytes: isRegistry
-          ? g.self_size + (table?.self_size ?? 0)
-          : g.retainedSize,
+        bytes: isRegistry ? registryTableBytes(g) : g.retainedSize,
         note: isRegistry
           ? 'one entry per module; module state is attributed by memlab_module_attribution'
           : 'a prototype or table this wide is static cost paid at load',

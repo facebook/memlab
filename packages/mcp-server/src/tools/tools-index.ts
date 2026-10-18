@@ -93,6 +93,10 @@ const GROUPS: Group[] = [
         'Page + worker snapshots side by side: app / bundle / code per realm, with shared Wasm modules and SharedArrayBuffers counted once.',
       ],
       [
+        'memlab_realm_duplication',
+        'Modules loaded in more than one realm (page + workers), with state bytes per realm and the duplicated total.',
+      ],
+      [
         'memlab_quick_diagnosis',
         'One call for summary + biggest objects + class histogram + duplicated strings.',
       ],
