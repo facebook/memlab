@@ -76,6 +76,24 @@ export interface HeapBudget {
   devOnlyTotals: DevOnlyTotals | null;
 }
 
+/**
+ * 'code' or 'bundle' when a node exists because the app was loaded rather than
+ * because it ran, else null. `scriptSource` is {@link scriptSourceStringData}.
+ */
+export function loadedCodeKind(
+  node: IHeapNode,
+  scriptSource: ReadonlySet<number>,
+): 'code' | 'bundle' | null {
+  if (CODE_TYPES.has(node.type)) return 'code';
+  if (
+    BUNDLE_NAME_RE.test(node.name) ||
+    (node.name === EXTERNAL_STRING_DATA && scriptSource.has(node.nodeIndex))
+  ) {
+    return 'bundle';
+  }
+  return null;
+}
+
 export function computeHeapBudget(snapshot: IHeapSnapshot): HeapBudget {
   const devRoots = collectDevRoots(snapshot);
   const reached =

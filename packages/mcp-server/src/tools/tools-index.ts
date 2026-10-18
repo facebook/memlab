@@ -65,6 +65,10 @@ const GROUPS: Group[] = [
         'START HERE on an unfamiliar app: splits the heap into application data vs bundle source vs V8 machinery. On one app this showed ~55% of the heap was JS bundle source, which reframed every number that followed.',
       ],
       [
+        'memlab_memory_partition',
+        '"What is using the memory?" in one exclusive table: framework families (React, collections, telemetry records, module system, memo caches, Wasm), DOM/Blink sub-families, and the rest by the module or global on its shortest path. Works minified.',
+      ],
+      [
         'memlab_quick_diagnosis',
         'One call for summary + biggest objects + class histogram + duplicated strings.',
       ],
