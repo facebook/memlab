@@ -313,7 +313,7 @@ export function registerCacheInventory(server: McpServer): void {
               new Set([3, 4, 5]),
             ),
             '',
-            '_**Held** is the larger of what the collection alone dominates and what its entries retain. A Map with about one entry per model or record (keyed by its id or by the object itself) is a per-record cache: its cost scales with how much data is loaded. A row with a clear API is a cheap memory-pressure hook; one without needs the owning module to grow one. Check the module source before wiring either: a cache that is cleared may simply be refilled on the next render._',
+            '_**Held** is the larger of what the collection alone dominates and what its entries retain. A Map with about one entry per model or record (keyed by its id or by the object itself) is a per-record cache: its cost scales with how much data is loaded. A row with a clear API is a cheap memory-pressure hook; one without needs the owning module to grow one. Check the module source before wiring either: a cache that is cleared may simply be refilled on the next render. Several rows with the same entry count are often parallel indexes over one population; memlab_co_holders groups them and shows what cutting one vs all would free._',
           ].join('\n'),
         );
       } catch (err) {
