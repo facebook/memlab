@@ -1334,7 +1334,8 @@ export function registerEval(server: McpServer): void {
             'groupReferrersByEdge(nodeId), groupArrayElementsByProperty(arrayNodeId, propName), ' +
             'isOrphaned(nodeId, ownershipEdgeNames[]), countUniqueTargets(arrayNodeId, propName), ' +
             'retainedSize(id)->number, retainedSizes(ids[])->Record<id,bytes> (an OBJECT keyed by id, NOT an array — index it as sizes[id] or Object.values(sizes)), ' +
-            'mapEntries(mapId, limit?)->[{key,value}] & setElements(setId, limit?)->[brief] (correct Map/Set/WeakMap enumeration — handles browser internal-typed slots AND SMI-value gaps, so you never re-derive it wrong), ' +
+            'mapEntries(mapId, limit=1000)->[{key: brief, value: brief|null}] & setElements(setId, limit=1000)->[brief] (correct Map/Set/WeakMap enumeration — handles browser internal-typed slots AND SMI-value gaps, so you never re-derive it wrong; a brief is a plain {id,name,type,self_size,retained_size,string} summary, NOT a node, and a capped call warns), ' +
+            'mapEntryNodes(mapId, limit?)->[{keyNode, valueNode|null}] & setElementNodes(setId, limit?)->[node] (the same enumeration returning NODES you can walk with .references, no default cap — use these to count or traverse), ' +
             'stableKey(nodeOrId)->string|null & byStableKey(key)->id|null (`<Module>.<edge>…` from the module scope down to the node — the same key at every rung, so `eval_across`/`ladder_probe` can track one named collection: `result = helpers.entries(helpers.byStableKey("InteractionTracingMetricsCore.tracedInteractions")).length`), ' +
             'sourceOf(nodeOrId)->{module, via, hops, script, location} (the Haste module whose code the node belongs to, read through its closure scope chain), ' +
             "module(name)->{id, exports, defaultExport, scope:[{variable,id,name,type}]}|null (a module's record, exports and top-level variables, found through the module registry's records by their `id` string — works on a MINIFIED build, where class and variable names are mangled; scope variable names are mangled there too), " +
@@ -2199,6 +2200,25 @@ export async function runEval({
     // index-aware backing-store walk (handles browser `internal`-typed slots
     // AND SMI-value gaps). Removes the #1 eval foot-gun: hand-rolling this
     // and silently getting 0 results by filtering on `type === 'element'`.
+    // `mapEntries(id).length` used to stop at the default limit without a
+    // word, so a 1,325-entry map counted as 1,000 and a size filter matched
+    // nothing.
+    // Per call shape, so a later, tighter cap on the same collection still warns.
+    const cappedNoted = new Set<string>();
+    const noteCapped = (
+      helper: string,
+      id: number,
+      total: number,
+      limit: number,
+    ): void => {
+      const key = `${helper}:${id}:${limit}`;
+      if (total <= limit || cappedNoted.has(key)) return;
+      cappedNoted.add(key);
+      consoleOutput.push(
+        `[warn] helpers.${helper}(${id}) returned ${formatNumber(limit)} of ${formatNumber(total)} entries (limit). ` +
+          `Pass a larger limit, or use helpers.${helper === 'mapEntries' ? 'mapEntryNodes' : 'setElementNodes'}(${id}), which has none.`,
+      );
+    };
     const mapEntries = (id: number, limit = 1000) => {
       const node = snapshot.getNodeById(id);
       if (!node) throw new Error(`mapEntries: node @${id} not found`);
@@ -2211,9 +2231,39 @@ export async function runEval({
             `For a Set use helpers.setElements(${id}); otherwise inspect with helpers.props()/get_references.`,
         );
       }
-      return enumerateMapEntries(node)
+      const all = enumerateMapEntries(node);
+      noteCapped('mapEntries', id, all.length, limit);
+      return all
         .slice(0, limit)
         .map(e => ({key: nodeBrief(e.key), value: nodeBrief(e.value)}));
+    };
+    // The node-returning twins: `.references` / `.self_size` work on what
+    // they return (the brief helpers above return plain summaries), and
+    // there is no default cap.
+    const mapEntryNodes = (id: number, limit = Infinity) => {
+      const node = snapshot.getNodeById(id);
+      if (!node) throw new Error(`mapEntryNodes: node @${id} not found`);
+      if (node.name !== 'Map' && node.name !== 'WeakMap') {
+        throw new Error(
+          `mapEntryNodes: @${id} is a ${node.name} (${node.type}), not a Map/WeakMap. For a Set use helpers.setElementNodes(${id}).`,
+        );
+      }
+      return enumerateMapEntries(node)
+        .slice(0, limit)
+        .map(e => ({
+          keyNode: wrapNode(e.key),
+          valueNode: e.value == null ? null : wrapNode(e.value),
+        }));
+    };
+    const setElementNodes = (id: number, limit = Infinity) => {
+      const node = snapshot.getNodeById(id);
+      if (!node) throw new Error(`setElementNodes: node @${id} not found`);
+      if (node.name !== 'Set' && node.name !== 'WeakSet') {
+        throw new Error(
+          `setElementNodes: @${id} is a ${node.name} (${node.type}), not a Set/WeakSet. For a Map use helpers.mapEntryNodes(${id}).`,
+        );
+      }
+      return enumerateSetElements(node).slice(0, limit).map(wrapNode);
     };
     const setElements = (id: number, limit = 1000) => {
       const node = snapshot.getNodeById(id);
@@ -2224,7 +2274,9 @@ export async function runEval({
             `For a Map use helpers.mapEntries(${id}).`,
         );
       }
-      return enumerateSetElements(node).slice(0, limit).map(nodeBrief);
+      const all = enumerateSetElements(node);
+      noteCapped('setElements', id, all.length, limit);
+      return all.slice(0, limit).map(nodeBrief);
     };
 
     // Read an object's own properties as a plain object: scalars inlined,
@@ -4095,6 +4147,8 @@ export async function runEval({
       nodeBrief,
       mapEntries,
       setElements,
+      mapEntryNodes,
+      setElementNodes,
       stringValue,
       fiberHooks,
       rootPathAvoidingDev,
@@ -4916,7 +4970,8 @@ function describeEnvLines(): string[] {
     '',
     '## Collection / shape / index helpers (prefer these over hand-rolling)',
     '- `helpers.stringValue(nodeOrId, {maxLen=10000, slices="parent"}) -> string` — text of any string node. Flattens `(concatenated string)` ropes and reads a `(sliced string)` as its whole parent (the snapshot records no slice offset); `slices: "marker"` renders `‹slice›` instead, for grouping. `toStringNode().stringValue` returns `<sliced string of @id>` for a slice and throws on a broken rope.',
-    '- `helpers.mapEntries(mapId, limit=1000) -> [{key, value}]` and `helpers.setElements(setId, limit=1000) -> [brief]` — CORRECT Map/Set/WeakMap enumeration. Handles browser `internal`-typed backing slots and SMI-value gaps (naive `type === "element"` filtering or positional `[i],[i+1]` pairing silently returns 0 / mispairs). Each brief is `{id, name, type, self_size, retained_size, string}`.',
+    '- `helpers.mapEntries(mapId, limit=1000) -> [{key, value}]` and `helpers.setElements(setId, limit=1000) -> [brief]` — CORRECT Map/Set/WeakMap enumeration. Handles browser `internal`-typed backing slots and SMI-value gaps (naive `type === "element"` filtering or positional `[i],[i+1]` pairing silently returns 0 / mispairs). Each brief is a plain summary `{id, name, type, self_size, retained_size, string}`, NOT a node: `.references` on it is undefined. A call that hits its limit prints a warning.',
+    '- `helpers.mapEntryNodes(mapId, limit?) -> [{keyNode, valueNode}]` and `helpers.setElementNodes(setId, limit?) -> [node]` — the same enumeration returning NODES (`.references`, `.self_size`, `.id` work; `valueNode` is null for an SMI value), with no default cap. Use these to count entries or walk into them.',
     "- `helpers.props(nodeOrId) -> {prop: scalar | {ref, name, type}}` and `helpers.getProp(nodeOrId, name)` — read an object's own properties without the `for (const e of n.references) …` boilerplate. Number-valued props surface as a ref to a `smi number`/`heap number` node; their actual numeric value is not in the snapshot format. ⚠️ **`props()` is for INSPECTION, not for SHAPE MATCHING** — on a node with no `property` edges it falls back to a named internal/shortcut/hidden edge walk and adds `length`/`map`/`__via`/`__note`, so a shape test written against `Object.keys(props(id))` returns ZERO matches on objects that plainly have the shape. Use the next line for that.",
     '- `helpers.shapeKeys(nodeOrId) -> Set<string>`, `helpers.ownProps(nodeOrId) -> {…}`, `helpers.hasShape(nodeOrId, ["a","b"], {exact?, exclude?}) -> boolean` — own JS properties ONLY (`property` edges, no `__proto__`, no fallback, no provenance keys). **This is the correct way to ask "what shape is this object".** `hasShape(id, ["element","record"], {exact: true})` is the whole test.',
     '- `helpers.rootPath(nodeOrId, {maxHops?, skipDev?}) -> [{id, name, type, edge}]` — the GC-root path for one node, root first, exactly as `memlab_retainer_trace` walks it (`skipDev: true` = the production path on a dev build). Saves hand-writing the `while (cur.hasPathEdge) cur = cur.pathEdge.fromNode` loop inside a larger eval (which gets rewritten, slightly differently, every time a probe needs to name an owner).',
