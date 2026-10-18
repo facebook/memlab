@@ -81,16 +81,52 @@ npm run build
 
 :::caution Give Node.js enough heap
 
-The server keeps the fully parsed graph (nodes, edges, dominator tree, indexes)
-resident, so its own memory footprint is roughly **3–5x the on-disk snapshot
-size**. Always start it with `--max-old-space-size=8192` (or higher) — the
-configurations above do this for you. With that setting, snapshots up to around
-850 MB on disk have been analyzed reliably. `memlab_load_snapshot` refuses
-files above `max_file_size_mb` (900 by default) rather than risking an
-out-of-memory crash that would lose the session; raise both values together for
-larger heaps.
+The server keeps the fully parsed graph resident: nodes, edges, dominator tree
+and indexes. A full load needs several times the snapshot's on-disk size in
+memory. Always start the server with `--max-old-space-size=8192` or higher; the
+configurations above do this for you.
+
+To avoid an out-of-memory crash, which would lose every loaded snapshot,
+`memlab_load_snapshot` refuses a load in three cases:
+
+- **File size:** the file is larger than `max_file_size_mb`. The default is
+  900 MB or 0.25 × the old-space limit, whichever is larger: 2,048 MB on an
+  8 GB server.
+- **Node/edge count:** the snapshot's node or edge count is above the load
+  ceiling. The ceiling is derived from the heap limit the server is actually
+  running with: about 13.9M nodes and 55.7M edges at 8 GB.
+- **Memory headroom:** the projected working set doesn't fit in the remaining
+  heap, even after evicting the least-recently-used resident snapshot.
+
+Raising `--max-old-space-size` raises all three limits, with no other change.
+`force: true` attempts a one-off oversized load anyway.
 
 :::
+
+## Command line (`memlab-cli`)
+
+The package also installs `memlab-cli`, which runs the same tools without an
+MCP client. Use it in a shell script or CI job, or when your assistant fails to
+connect to the server.
+
+```bash
+memlab-cli doctor                      # check node, the server, and a live handshake
+memlab-cli list                        # every tool with a one-line description
+memlab-cli schema memlab_load_snapshot # a tool's input schema as JSON
+memlab-cli call memlab_load_snapshot '{"file_path":"/tmp/a.heapsnapshot"}' \
+                memlab_app_heap '{}'   # several calls in one server session
+memlab-cli script steps.jsonl          # one {"tool":..,"args":{..}} per line
+```
+
+Loading a large snapshot takes minutes, so to keep snapshots loaded across
+separate invocations, run one resident server with
+`memlab-cli serve --socket /tmp/memlab.sock`. Then pass `--socket` to `call`,
+`script` and `stop`.
+
+`memlab-cli` starts the server with its own `--max-old-space-size`, which
+overrides `NODE_OPTIONS`. Set `MEMLAB_MAX_OLD_SPACE_MB` to change it. By
+default it uses 60% of physical RAM (at least 8 GB), or 60% of the container's
+memory limit.
 
 ## Getting a heap snapshot
 
@@ -100,6 +136,13 @@ larger heaps.
 2. Select **Heap snapshot** and click **Take snapshot**.
 3. Right-click the snapshot in the left panel and choose **Save...**.
 4. Save the `.heapsnapshot` file somewhere the MCP server can read it.
+
+### From a live page and its workers
+
+Start Chrome with `--remote-debugging-port=9222` and ask the assistant to run
+`memlab_capture` with an output directory. It snapshots the page and its
+dedicated workers, which a page snapshot never contains. Compare the page and
+workers with `memlab_realm_summary`.
 
 ### From Node.js
 
@@ -122,36 +165,44 @@ it in conversation, with the assistant picking the tools:
 
 1. **Load the snapshot** — "Load the heap snapshot at
    `/tmp/my-app.heapsnapshot`."
-2. **Frame the heap** — "What is this heap made of?" The assistant runs a
-   summary, a class histogram, and the biggest retainers.
-3. **Find what is growing** — with two or more snapshots taken at different
-   points in time, "Which classes grow on every snapshot?"
-4. **Rule out noise** — "Is any of this retained only by DevTools or browser
+2. **Frame the heap** — "What is this heap made of?" The assistant splits the
+   heap into application data, bundle source and V8 internals
+   (`memlab_app_heap`). Then it looks at a class histogram and the biggest
+   retainers.
+3. **Find what is growing** — with a series of snapshots taken while an
+   interaction repeats: "Which classes grow on every snapshot?"
+4. **Leak or working set?** — "Does this growth plateau, and is it given back
+   after idle and GC?" Steady growth across a short series can still be a
+   bounded cache or work in flight.
+5. **Rule out noise** — "Is any of this retained only by DevTools or browser
    extensions?"
-5. **Explain the retention** — "Show me the retainer trace for node 48231, and
+6. **Explain the retention** — "Show me the retainer trace for node 48231, and
    tell me which reference to break."
-6. **Confirm the fix** — capture a new set of snapshots after the fix and ask
-   whether the per-cycle growth rate went down.
+7. **Confirm the fix** — capture a new set of snapshots after the fix and ask
+   whether the per-cycle growth rate went down (`memlab_verify_fix`).
 
 ## What the tools can answer
 
-The server ships 80+ tools. They are organized by the question they answer:
+The server ships about 150 tools, organized by the question they answer:
 
 | Question | Representative tools |
 | --- | --- |
-| What is this heap made of? | `memlab_quick_diagnosis`, `memlab_snapshot_summary`, `memlab_class_histogram`, `memlab_largest_objects`, `memlab_shape_histogram` |
-| Is anything growing — and is it a leak? | `memlab_leak_report`, `memlab_sequence_analysis`, `memlab_collection_trend`, `memlab_growth_signals`, `memlab_diff_snapshots`, `memlab_verify_fix` |
-| Who owns the growth / why is X retained? | `memlab_retainer_trace`, `memlab_retainer_summary`, `memlab_dominator_chain`, `memlab_dominator_subtree`, `memlab_pinch_points`, `memlab_explain_delta` |
-| Is it real, or a measurement artifact? | `memlab_dev_artifacts`, `memlab_check_health` |
-| Detached DOM and event listeners | `memlab_detached_dom`, `memlab_event_listener_leaks`, `memlab_event_registry` |
-| Collections and caches | `memlab_stale_collections`, `memlab_map_entries`, `memlab_weakmap_entries`, `memlab_cache_analysis` |
-| Strings and duplication | `memlab_duplicated_strings`, `memlab_string_patterns`, `memlab_sliced_strings`, `memlab_duplicate_objects` |
-| Inspect or find specific objects | `memlab_get_node`, `memlab_object_shape`, `memlab_get_references`, `memlab_get_referrers`, `memlab_find_nodes_by_class`, `memlab_find_by_property`, `memlab_search_nodes` |
-| None of the above | `memlab_eval`, `memlab_for_each` |
+| What is this heap made of? | `memlab_app_heap`, `memlab_memory_partition`, `memlab_quick_diagnosis`, `memlab_class_histogram`, `memlab_largest_objects`, `memlab_shape_histogram`, `memlab_what_if` |
+| Is anything growing — and is it a leak? | `memlab_leak_report`, `memlab_shape_census_diff`, `memlab_collection_diff`, `memlab_ladder_probe`, `memlab_rate_model`, `memlab_settle_check`, `memlab_verify_fix` |
+| Who owns the growth / why is X retained? | `memlab_retainer_trace`, `memlab_retainer_summary`, `memlab_trace_all`, `memlab_react_owners`, `memlab_dominator_chain`, `memlab_pinch_points`, `memlab_explain_delta` |
+| Is it real, or a measurement artifact? | `memlab_artifact_budget`, `memlab_dev_artifacts`, `memlab_replicate`, `memlab_check_health` |
+| Detached DOM and event listeners | `memlab_detached_dom`, `memlab_dom_audit`, `memlab_event_listener_leaks`, `memlab_event_registry` |
+| Collections and caches | `memlab_cache_analysis`, `memlab_stale_collections`, `memlab_map_entries`, `memlab_weakref_census`, `memlab_property_distribution` |
+| Strings and duplication | `memlab_intern_opportunities`, `memlab_duplicated_strings`, `memlab_string_patterns`, `memlab_sliced_strings`, `memlab_duplicate_objects` |
+| Inspect or find specific objects | `memlab_get_node`, `memlab_object_shape`, `memlab_get_references`, `memlab_get_referrers`, `memlab_find_nodes_by_class`, `memlab_find_by_shape`, `memlab_closure_inspection` |
+| None of the above | `memlab_eval`, `memlab_eval_across`, `memlab_auto_investigate` |
+| Sharing a capture | `memlab_anonymize_snapshot` |
+| Session, batching and write-ups | `memlab_load_snapshot`, `memlab_snapshots`, `memlab_batch`, `memlab_finding_index`, `memlab_analyze_run` |
 
 Ask the assistant to call **`memlab_tools`** to print the full index, grouped
 the same way, with a one-line "use it when" for every tool. It is the fastest
-way to discover a tool you did not know to ask for.
+way to discover a tool you didn't know to ask for. `memlab_tools` with a `tool`
+and `schema: true` prints that tool's parameters.
 
 ## Working with more than one snapshot
 
@@ -173,35 +224,80 @@ attempting an oversized load.
 
 :::
 
+### Snapshot ladders
+
+The growth tools work on a *ladder*: an ordered series of snapshots captured
+while one interaction repeats. Most of them load each rung transiently and
+release it, so a long ladder doesn't have to fit in memory at once. You can
+give a ladder in three ways:
+
+- **`paths`:** an ordered list of snapshot files. Cycle counts are read from
+  `rung_NN_cNNN.heapsnapshot` filenames; otherwise rungs are assumed evenly
+  spaced, and the report says so.
+- **`run_dir`:** a directory whose `run.json` lists the rungs, the cycles
+  driven at each rung, and an optional *settle* rung captured after idle and
+  GC. The settle rung is what tells a leak apart from work still in flight.
+- **`ladder:<name>`:** a name registered once with `memlab_ladder`.
+
+Ladder tools can run longer than an assistant's tool timeout. Start them with
+`memlab_start_job` and collect the result with `memlab_job_status`. Every call
+also runs under a wall-clock budget (90 s by default; override it with
+`timeout_ms` or `MEMLAB_ANALYSIS_TIMEOUT_MS`), so a runaway scan returns a clean
+"analysis stopped" result instead of wedging the server.
+
 ## Tool permissions and safety
 
-Every tool is read-only heap analysis except two: `memlab_eval` and
-`memlab_for_each`.
+No tool ever modifies the heap snapshot it analyzes, and most tools are
+read-only analysis. Two groups are exceptions.
 
-:::danger Do not auto-approve `memlab_eval` or `memlab_for_each`
+:::danger Do not auto-approve tools that execute JavaScript
 
-Both execute arbitrary JavaScript with the full privileges of the MCP server
-process. They use `node:vm` to scope the globals they inject, but
-[`node:vm` is not a security sandbox](https://nodejs.org/api/vm.html) — code
-can reach the host realm and from there the filesystem, network, and shell.
+These tools run JavaScript passed in by the assistant, or read from a round
+directory's files, with the full privileges of the MCP server process:
+
+- `memlab_eval` and `memlab_eval_across`
+- `memlab_for_each`
+- `memlab_hypothesis`
+- `memlab_ladder_probe` and `memlab_replicate`
+- `memlab_judges`, `memlab_calibrate_judges` and `memlab_switch_matrix`
+- `memlab_ab_compare`
+- `memlab_analysis_battery`, when the round holds an `invariants.json`
+
+`memlab_batch` and `memlab_start_job` can call any of them.
+
+They use `node:vm` to scope the globals they inject, but
+[`node:vm` is not a security sandbox](https://nodejs.org/api/vm.html). Code
+can reach the host realm and from there the filesystem, network and shell.
 Heap snapshot contents are attacker-influenceable input, so a prompt injection
-could steer the model into running hostile code. Keep these two tools on manual
+could steer the model into running hostile code. Keep these tools on manual
 approval, and avoid a `mcp__memlab__*` wildcard allowlist, which would
 auto-approve them too.
 
 :::
 
-To stop your assistant prompting on every call while keeping those two on
-manual approval, allowlist the read-only tools explicitly. For Claude Code,
-in `~/.claude/settings.json` (user-level) or `.claude/settings.json`
+A second group has side effects outside the heap. `memlab_capture` connects to
+a running Chrome and writes snapshots. `memlab_prune_run` compresses or deletes
+a round's snapshot files; its default mode is a dry run. `memlab_anonymize_snapshot`
+and `memlab_analysis_battery` write files. `memlab_finding_index`, `memlab_metric`
+and `memlab_ladder` keep small state files under your home directory.
+
+To stop your assistant prompting on every call while keeping these on manual
+approval, allowlist the read-only tools you use explicitly. For Claude Code,
+put the list in `~/.claude/settings.json` (user-level) or `.claude/settings.json`
 (project-level):
 
 ```json
 {
   "permissions": {
     "allow": [
+      "mcp__memlab__memlab_tools",
       "mcp__memlab__memlab_load_snapshot",
-      "mcp__memlab__memlab_snapshot_summary"
+      "mcp__memlab__memlab_snapshot_header",
+      "mcp__memlab__memlab_snapshots",
+      "mcp__memlab__memlab_app_heap",
+      "mcp__memlab__memlab_snapshot_summary",
+      "mcp__memlab__memlab_class_histogram",
+      "mcp__memlab__memlab_retainer_trace"
     ]
   }
 }
@@ -210,7 +306,9 @@ in `~/.claude/settings.json` (user-level) or `.claude/settings.json`
 ## Further reading
 
 - [MCP server README](https://github.com/facebook/memlab/blob/main/packages/mcp-server/README.md)
-  — the full tool reference, with the input and output shape of each tool.
+  — the full tool reference (every tool, grouped by the question it answers),
+  plus the `memlab-cli` commands, the state files the server writes, and all
+  `MEMLAB_*` environment variables.
 - [MCP investigation skill](https://github.com/facebook/memlab/blob/main/packages/mcp-server/MCP_SKILL.md)
   — a structured methodology for assistants: step-by-step triage, guided
   investigation paths for string waste, DOM leaks, object accumulation, closure
