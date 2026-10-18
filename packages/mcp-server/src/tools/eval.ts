@@ -62,6 +62,8 @@ import {
   shouldEmitNote,
 } from '../heap-state.js';
 import {beginAnalysisBudget} from '../analysis-budget.js';
+import {currentProgress} from '../progress.js';
+import {startJob} from './jobs.js';
 import {formatEvalHints, hintsForEval} from '../eval-hints.js';
 import {
   abbreviateBlinkTypeName,
@@ -1277,7 +1279,8 @@ export function registerEval(server: McpServer): void {
       'The code runs in a sandboxed VM with access to `snapshot` (IHeapSnapshot), ' +
       '`utils` (@memlab/core utils), and `helpers` (plugin utility functions). ' +
       'Assign your result to the `result` variable. ' +
-      'No require/process/fs/network access. Read-only heap analysis only.\n\n' +
+      'No require/process/fs/network access. Read-only heap analysis only. ' +
+      'A whole-heap eval that would outlast the client tool timeout: pass `async: true` and poll memlab_job_status (memlab_start_job runs any other tool the same way).\n\n' +
       '**IHeapNode API:** Each node has: `.id`, `.name`, `.type`, `.self_size`, ' +
       '`.retained_size` (alias: `.retainedSize`), `.edge_count`, `.is_detached`, ' +
       '`.referrer_count` (alias: `.numOfReferrers`), `.isString`, `.hasPathEdge`, ' +
@@ -1420,6 +1423,12 @@ export function registerEval(server: McpServer): void {
         .describe(
           'Restrict `snapshot.nodes.forEach` to these node ids, so the SAME code runs over a candidate set instead of the whole graph. This is how a `sample`-based triage pass is promoted to an exact answer without paying for a second blind full walk: run `sample: 200` with `save_as: "candidates"` collecting ids, then re-run with `restrict_to_ids: helpers.load("candidates")` and `sample: 1`. Filtering happens inside the walk, so `nodes_visited` reports the real work.',
         ),
+      async: z
+        .boolean()
+        .optional()
+        .describe(
+          'Run as a background job and return a job id at once; collect the result with memlab_job_status. For a whole-heap eval that would outlast the client tool timeout (~120 s) and be backgrounded with no handle. The code is syntax-checked first. Helper indexes the code uses (`pathTree`, and `pathLabel` / `familyOf` in a full walk) are built first in yielding chunks, so a status poll shows nodes done / total; while the code itself runs, a poll is answered when it finishes.',
+        ),
       max_nodes: z
         .number()
         .int()
@@ -1429,7 +1438,87 @@ export function registerEval(server: McpServer): void {
           'Abort a `snapshot.nodes.forEach` walk after this many node visits. Defaults to a budget SCALED from the loaded graph (6 full passes, floored at 20,000,000) — a probe that makes several passes is the normal shape, so a flat cap silently truncated ordinary multi-pass analysis on large heaps. On abort the partial `result` is returned with a note; an abort that produced NO result is refused outright, because an empty value is indistinguishable from a genuine empty census. Reported back as `nodes_visited` on every call.',
         ),
     },
-    async args => runEval({...args, ownsScanBudget: true}),
+    async ({async: background, ...args}) =>
+      background === true
+        ? startEvalJob(args)
+        : runEval({...args, ownsScanBudget: true}),
+  );
+}
+
+const PREWARM_CHUNK = 250_000;
+
+function yieldTurn(): Promise<void> {
+  return new Promise(resolve => setImmediate(resolve));
+}
+
+/**
+ * Build the helper indexes `code` will use, in chunks that yield to the event
+ * loop, so a `memlab_job_status` poll during the build is answered with
+ * progress. The eval itself is one synchronous block and cannot be polled.
+ */
+async function prewarmEvalIndexes(code: string): Promise<void> {
+  const snapshot = getSnapshot();
+  const progress = currentProgress();
+  if (/helpers\s*\.\s*pathTree\s*\(/.test(code)) {
+    progress.note?.('building the shortest-path tree');
+    const t0 = Date.now();
+    buildPathTree(snapshot);
+    progress.note?.(
+      `shortest-path tree built in ${Math.round((Date.now() - t0) / 1000)}s`,
+    );
+    await yieldTurn();
+  }
+  const walks = /nodes\s*\.\s*forEach|helpers\s*\.\s*forEach/.test(code);
+  const label = /helpers\s*\.\s*pathLabel\s*\(/.test(code);
+  const family = /helpers\s*\.\s*familyOf\s*\(/.test(code);
+  if (!walks || (!label && !family)) return;
+  const labeler = label ? cachedPathLabeler(snapshot) : null;
+  const resolver = family ? cachedFamilyResolver(snapshot) : null;
+  const total = snapshot.nodes.length;
+  const what = [label ? 'pathLabel' : '', family ? 'familyOf' : '']
+    .filter(Boolean)
+    .join(' + ');
+  for (let start = 0; start < total; start += PREWARM_CHUNK) {
+    const end = Math.min(total, start + PREWARM_CHUNK);
+    for (let i = start; i < end; i++) {
+      const node = snapshot.nodes.get(i);
+      if (node == null) continue;
+      labeler?.labelOf(node);
+      resolver?.familyOf(node);
+    }
+    progress.note?.(
+      `${what} index: ${formatNumber(end)} / ${formatNumber(total)} nodes`,
+    );
+    await yieldTurn();
+  }
+}
+
+function startEvalJob(args: Parameters<typeof runEval>[0]) {
+  if ((args.mode ?? 'eval') === 'eval') {
+    try {
+      new vm.Script(`${args.prelude ?? ''}\n;\n${args.code ?? ''}`, {
+        filename: 'memlab_eval',
+      });
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+  const job = startJob('memlab_eval', async () => {
+    // A walk restricted to candidate ids or sampled touches a fraction of the
+    // heap; building the indexes for every node would cost more than it saves.
+    const partialWalk =
+      (args.restrict_to_ids?.length ?? 0) > 0 || (args.sample ?? 1) > 1;
+    if ((args.mode ?? 'eval') === 'eval' && args.code != null && !partialWalk) {
+      // The prelude runs in the same script, so its helper calls count too.
+      await prewarmEvalIndexes(`${args.prelude ?? ''}\n;\n${args.code}`);
+    }
+    currentProgress().note?.('running the eval code');
+    return runEval({...args, ownsScanBudget: true});
+  });
+  if (typeof job === 'string') return errorResult(new Error(job));
+  return toolResult(
+    `Started \`memlab_eval\` as job \`${job.id}\`. Poll with ` +
+      `\`memlab_job_status({job_id: "${job.id}"})\`.`,
   );
 }
 

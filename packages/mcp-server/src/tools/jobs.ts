@@ -29,7 +29,7 @@ import {runWithProgress, type ProgressReporter} from '../progress.js';
 import {getRegisteredTool, listToolNames} from '../tool-registry.js';
 import {errorResult, markdownTable, toolResult} from '../utils.js';
 
-interface Job {
+export interface Job {
   id: string;
   tool: string;
   startedAt: number;
@@ -61,6 +61,97 @@ function elapsed(job: Job): string {
   return `${Math.round(((job.finishedAt ?? Date.now()) - job.startedAt) / 1000)}s`;
 }
 
+/**
+ * Register a job and start `run` on a later turn of the event loop. Returns
+ * the job, or why it could not be started.
+ */
+export function startJob(
+  tool: string,
+  run: (extra: {signal: AbortSignal}) => unknown,
+): Job | string {
+  const job: Job = {
+    id: crypto.randomBytes(4).toString('hex'),
+    tool,
+    startedAt: Date.now(),
+    finishedAt: null,
+    status: 'running',
+    notes: [],
+    result: null,
+    retrieved: false,
+  };
+  if (jobs.size >= MAX_JOBS) {
+    // Only a result someone has read is safe to drop; evicting an unread
+    // one loses the analysis the job existed to deliver. An unread one
+    // older than JOB_MAX_AGE_MS was abandoned by its caller, though, and
+    // must not hold a slot forever.
+    const now = Date.now();
+    const oldest = [...jobs.values()]
+      .filter(
+        j =>
+          j.status !== 'running' &&
+          (j.retrieved || now - (j.finishedAt ?? now) > JOB_MAX_AGE_MS),
+      )
+      .sort((a, b) => a.startedAt - b.startedAt)[0];
+    if (oldest == null) {
+      return `${MAX_JOBS} jobs are running or hold unread results; collect finished ones with memlab_job_status first`;
+    }
+    jobs.delete(oldest.id);
+  }
+  jobs.set(job.id, job);
+  const reporter: ProgressReporter = {
+    phase: (step, total, message) =>
+      job.notes.push(`[${elapsed(job)}] ${step}/${total} ${message}`),
+    note: message => job.notes.push(`[${elapsed(job)}] ${message}`),
+  };
+  // Deliberately not awaited: the point is to return before the work.
+  // No sendNotification in `extra`: the reporter above is the job's
+  // progress channel, and one built from `extra` would replace it.
+  const controller = new AbortController();
+  const extra = {signal: controller.signal};
+  // Enforced on a timer, not on the next start_job: a handler awaiting
+  // something that never settles would otherwise read "running" forever.
+  // This only marks the job and frees its slot. abort() cannot stop a
+  // synchronous parse or dominator pass, so the work (and its snapshot
+  // memory) runs on until that pass returns.
+  const abandon = setTimeout(() => {
+    if (job.status !== 'running') return;
+    controller.abort();
+    job.status = 'error';
+    job.finishedAt = Date.now();
+    // Read or not, it may be evicted.
+    job.retrieved = true;
+    job.result = errorResult(
+      new Error(
+        `abandoned after ${JOB_MAX_AGE_MS / 3600000} h without finishing`,
+      ),
+    );
+  }, JOB_MAX_AGE_MS);
+  abandon.unref();
+  // Started on a later turn of the event loop, so the "started" reply is
+  // written before a synchronous handler blocks the loop.
+  void runWithProgress(reporter, async () => {
+    await new Promise(resolve => setImmediate(resolve));
+    return run(extra);
+  })
+    // finishedAt is set WITH the status, so no poll sees a finished job
+    // whose elapsed time is still running.
+    // An abandoned job stays abandoned: it may already have been evicted.
+    .then(result => {
+      if (job.status !== 'running') return;
+      job.result = result;
+      job.finishedAt = Date.now();
+      job.status = (result as {isError?: boolean})?.isError ? 'error' : 'done';
+    })
+    .catch((err: unknown) => {
+      if (job.status !== 'running') return;
+      job.result = errorResult(err);
+      job.finishedAt = Date.now();
+      job.status = 'error';
+    })
+    .finally(() => clearTimeout(abandon));
+  return job;
+}
+
 export function registerJobs(server: McpServer): void {
   server.tool(
     'memlab_start_job',
@@ -90,87 +181,8 @@ export function registerJobs(server: McpServer): void {
           entry.shape != null
             ? z.object(entry.shape as never).parse(args)
             : args;
-        const job: Job = {
-          id: crypto.randomBytes(4).toString('hex'),
-          tool,
-          startedAt: Date.now(),
-          finishedAt: null,
-          status: 'running',
-          notes: [],
-          result: null,
-          retrieved: false,
-        };
-        if (jobs.size >= MAX_JOBS) {
-          // Only a result someone has read is safe to drop; evicting an unread
-          // one loses the analysis the job existed to deliver. An unread one
-          // older than JOB_MAX_AGE_MS was abandoned by its caller, though, and
-          // must not hold a slot forever.
-          const now = Date.now();
-          const oldest = [...jobs.values()]
-            .filter(
-              j =>
-                j.status !== 'running' &&
-                (j.retrieved || now - (j.finishedAt ?? now) > JOB_MAX_AGE_MS),
-            )
-            .sort((a, b) => a.startedAt - b.startedAt)[0];
-          if (oldest == null) {
-            return errorResult(
-              new Error(
-                `${MAX_JOBS} jobs are running or hold unread results; collect finished ones with memlab_job_status first`,
-              ),
-            );
-          }
-          jobs.delete(oldest.id);
-        }
-        jobs.set(job.id, job);
-        const reporter: ProgressReporter = {
-          phase: (step, total, message) =>
-            job.notes.push(`[${elapsed(job)}] ${step}/${total} ${message}`),
-          note: message => job.notes.push(`[${elapsed(job)}] ${message}`),
-        };
-        // Deliberately not awaited: the point is to return before the work.
-        // No sendNotification in `extra`: the reporter above is the job's
-        // progress channel, and one built from `extra` would replace it.
-        const controller = new AbortController();
-        const extra = {signal: controller.signal};
-        // Enforced on a timer, not on the next start_job: a handler awaiting
-        // something that never settles would otherwise read "running" forever.
-        // This only marks the job and frees its slot. abort() cannot stop a
-        // synchronous parse or dominator pass, so the work (and its snapshot
-        // memory) runs on until that pass returns.
-        const abandon = setTimeout(() => {
-          if (job.status !== 'running') return;
-          controller.abort();
-          job.status = 'error';
-          job.finishedAt = Date.now();
-          // Read or not, it may be evicted.
-          job.retrieved = true;
-          job.result = errorResult(
-            new Error(
-              `abandoned after ${JOB_MAX_AGE_MS / 3600000} h without finishing`,
-            ),
-          );
-        }, JOB_MAX_AGE_MS);
-        abandon.unref();
-        void runWithProgress(reporter, async () => entry.handler(parsed, extra))
-          // finishedAt is set WITH the status, so no poll sees a finished job
-          // whose elapsed time is still running.
-          // An abandoned job stays abandoned: it may already have been evicted.
-          .then(result => {
-            if (job.status !== 'running') return;
-            job.result = result;
-            job.finishedAt = Date.now();
-            job.status = (result as {isError?: boolean})?.isError
-              ? 'error'
-              : 'done';
-          })
-          .catch((err: unknown) => {
-            if (job.status !== 'running') return;
-            job.result = errorResult(err);
-            job.finishedAt = Date.now();
-            job.status = 'error';
-          })
-          .finally(() => clearTimeout(abandon));
+        const job = startJob(tool, extra => entry.handler(parsed, extra));
+        if (typeof job === 'string') return errorResult(new Error(job));
         return toolResult(
           `Started \`${tool}\` as job \`${job.id}\`. Poll with ` +
             `\`memlab_job_status({job_id: "${job.id}"})\`.`,
