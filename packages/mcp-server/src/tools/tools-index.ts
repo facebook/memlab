@@ -69,6 +69,10 @@ const GROUPS: Group[] = [
         '"What is using the memory?" in one exclusive table: framework families (React, collections, telemetry records, module system, memo caches, Wasm), DOM/Blink sub-families, and the rest by the module or global on its shortest path. Works minified.',
       ],
       [
+        'memlab_path_tree',
+        'WHERE the memory sits, as a tree: shortest-path subtrees with byte sums (they partition the heap, so shared caches show their real size), expanded wherever a branch is big.',
+      ],
+      [
         'memlab_capture',
         'Take fresh snapshots of a live page AND its dedicated workers (a page snapshot never contains them). Skips threads blocked in Atomics.wait instead of hanging.',
       ],

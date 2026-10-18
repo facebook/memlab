@@ -592,3 +592,93 @@ export function computeMemoryPartition(
   });
   return {total, loadedCode: {code, bundle}, families, dom, owners, drill};
 }
+
+/**
+ * The shortest-path tree (parent = `pathEdge.fromNode`) in CSR form, with the
+ * self bytes of every subtree. Loaded code and bundle text count 0, so subtree
+ * sums are app memory. Unlike dominator subtrees, these PARTITION the heap: a
+ * shared object belongs to exactly one parent, the one on its shortest path.
+ */
+export interface PathTree {
+  parent: Int32Array;
+  childStart: Int32Array;
+  children: Int32Array;
+  subtreeBytes: Float64Array;
+  roots: number[];
+}
+
+const pathTreeCache = new WeakMap<IHeapSnapshot, PathTree>();
+
+export function buildPathTree(snapshot: IHeapSnapshot): PathTree {
+  const cached = pathTreeCache.get(snapshot);
+  if (cached != null) return cached;
+  const n = snapshot.nodes.length;
+  const parent = new Int32Array(n).fill(-1);
+  const self = new Float64Array(n);
+  const counts = new Int32Array(n + 1);
+  const scriptSource = scriptSourceStringData(snapshot);
+  snapshot.nodes.forEach((node: IHeapNode) => {
+    tickAnalysis();
+    const i = node.nodeIndex;
+    self[i] =
+      node.type === 'synthetic' || loadedCodeKind(node, scriptSource) != null
+        ? 0
+        : node.self_size;
+    const e = node.pathEdge;
+    if (e != null && e.fromNode.nodeIndex !== i) {
+      parent[i] = e.fromNode.nodeIndex;
+      counts[parent[i] + 1]++;
+    }
+  });
+  const childStart = new Int32Array(n + 1);
+  for (let i = 0; i < n; i++) childStart[i + 1] = childStart[i] + counts[i + 1];
+  const fill = childStart.slice(0, n);
+  const children = new Int32Array(childStart[n]);
+  const roots: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const p = parent[i];
+    if (p < 0) roots.push(i);
+    else children[fill[p]++] = i;
+  }
+  // BFS order from the roots; accumulate subtree sums in reverse.
+  const order = new Int32Array(n);
+  const seen = new Uint8Array(n);
+  let head = 0;
+  let tail = 0;
+  const walk = (): void => {
+    while (head < tail) {
+      const v = order[head++];
+      for (let k = childStart[v]; k < childStart[v + 1]; k++) {
+        const c = children[k];
+        if (seen[c] === 0) {
+          seen[c] = 1;
+          order[tail++] = c;
+        }
+      }
+    }
+  };
+  for (const r of roots) {
+    seen[r] = 1;
+    order[tail++] = r;
+  }
+  walk();
+  // A shortest-path tree has no cycles, but a malformed snapshot could; a node
+  // the walk never reached becomes a root, so its bytes are still counted.
+  for (let i = 0; i < n && tail < n; i++) {
+    if (seen[i] !== 0) continue;
+    parent[i] = -1;
+    roots.push(i);
+    seen[i] = 1;
+    order[tail++] = i;
+    walk();
+  }
+  const subtreeBytes = self;
+  for (let k = tail - 1; k >= 0; k--) {
+    const v = order[k];
+    const p = parent[v];
+    if (p >= 0) subtreeBytes[p] += subtreeBytes[v];
+  }
+  const tree = {parent, childStart, children, subtreeBytes, roots};
+  pathTreeCache.set(snapshot, tree);
+  return tree;
+}
