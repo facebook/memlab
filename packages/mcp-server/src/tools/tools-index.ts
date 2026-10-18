@@ -81,6 +81,10 @@ const GROUPS: Group[] = [
         'Pending scheduler tasks grouped by the real callback and the payload it captures — a timer per record keeps the record alive for its whole delay.',
       ],
       [
+        'memlab_framework_buffers',
+        'The recurring framework buffers in one call: log arrays, module timing records, lazy-loader registry, scheduler queue, registry tables, giant objects, plus app-specific buffers from a probe file.',
+      ],
+      [
         'memlab_capture',
         'Take fresh snapshots of a live page AND its dedicated workers (a page snapshot never contains them). Skips threads blocked in Atomics.wait instead of hanging.',
       ],
