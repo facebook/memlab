@@ -30,6 +30,9 @@ interface ShapeGroup {
   rawRetained: number;
   nodeIds: HeapNodeIdSet | null;
   exampleNodeId: number;
+  /** `exclusive_retained`: bytes credited to this shape and no other. */
+  exclusive: number;
+  index: number;
 }
 
 function getPropertyNames(node: IHeapNode): string[] | null {
@@ -92,6 +95,13 @@ export function registerShapeHistogram(server: McpServer): void {
         .describe(
           'Compute the EXACT dominator-deduped retained size per shape via aggregateDominatorMetrics. DEFAULT false: report a retained-size range instead (lower = Σ self size, upper = Σ raw retained) from the O(N) pass; sorting/filtering by retained uses the upper bound. Set true ONLY on explicit user request — the exact walk can be very slow or time out on huge heaps.',
         ),
+      exclusive_retained: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Report one EXCLUSIVE retained figure per shape from a single extra O(N) pass: every node counts once, under the nearest instance of any shape (after the class and name filters) on its dominator chain, itself included. The figures add up across shapes, so they partition the heap by record type — the per-shape range and `exact_retained_size` both count a nested record in its own shape AND in every shape above it. Sorting and filtering by retained use it.',
+        ),
     },
     async ({
       limit,
@@ -101,6 +111,7 @@ export function registerShapeHistogram(server: McpServer): void {
       name_pattern,
       sort_by,
       exact_retained_size,
+      exclusive_retained,
     }) => {
       try {
         // Normalize sort aliases so the vocabulary matches other tools.
@@ -113,6 +124,14 @@ export function registerShapeHistogram(server: McpServer): void {
         const snapshot = getSnapshot();
         const nameMatches = makeNamePatternTest(name_pattern);
         const shapeMap = new Map<string, ShapeGroup>();
+        // Exclusive figures supersede the exact per-shape walk, so the
+        // expensive walk is skipped when both are asked for.
+        const wantExact = exact_retained_size && !exclusive_retained;
+        // nodeIndex -> its shape group, for the exclusive pass.
+        const groupOf: ShapeGroup[] = [];
+        const instanceOf = exclusive_retained
+          ? new Int32Array(snapshot.nodes.length).fill(-1)
+          : null;
 
         snapshot.nodes.forEach(node => {
           if (node.type !== 'object') return;
@@ -124,24 +143,81 @@ export function registerShapeHistogram(server: McpServer): void {
           if (!props) return;
 
           const key = props.join(',');
-          const existing = shapeMap.get(key);
-          if (existing) {
-            existing.count++;
-            existing.totalSelfSize += node.self_size;
-            existing.rawRetained += node.retainedSize;
-            if (existing.nodeIds) existing.nodeIds.add(node.id);
+          let group = shapeMap.get(key);
+          if (group) {
+            group.count++;
+            group.totalSelfSize += node.self_size;
+            group.rawRetained += node.retainedSize;
+            if (group.nodeIds) group.nodeIds.add(node.id);
           } else {
-            shapeMap.set(key, {
+            group = {
               properties: props,
               count: 1,
               totalSelfSize: node.self_size,
               rawRetained: node.retainedSize,
               // Per-node ids only needed for the opt-in exact dominator walk.
-              nodeIds: exact_retained_size ? new NumericSet([node.id]) : null,
+              nodeIds: wantExact ? new NumericSet([node.id]) : null,
               exampleNodeId: node.id,
-            });
+              exclusive: 0,
+              index: groupOf.length,
+            };
+            shapeMap.set(key, group);
+            groupOf.push(group);
           }
+          if (instanceOf) instanceOf[node.nodeIndex] = group.index;
         });
+
+        let exclusiveTotal = 0;
+        // Nodes whose dominator chain outran the hop cap: credited nowhere,
+        // and said so in the footer.
+        let capped = 0;
+        let cappedBytes = 0;
+        if (instanceOf) {
+          // Memoised walk up the dominator tree: -1 unresolved, -2 no shape,
+          // -3 under a chain that outran the hop cap (cached too, so a deep
+          // chain is walked once, not once per node hanging off it).
+          const memo = new Int32Array(snapshot.nodes.length).fill(-1);
+          const chain: number[] = [];
+          snapshot.nodes.forEach((node: IHeapNode) => {
+            if (node.id <= 3) return;
+            let cur: IHeapNode | null = node;
+            let answer = -2;
+            // False only when the hop cap cut the walk short: then the chain's
+            // real answer is unknown and must not be cached as "no shape".
+            let resolved = false;
+            chain.length = 0;
+            for (let hops = 0; cur != null && hops < 10000; hops++) {
+              const i = cur.nodeIndex;
+              if (instanceOf[i] >= 0) {
+                answer = instanceOf[i];
+                resolved = true;
+                break;
+              }
+              if (memo[i] !== -1) {
+                answer = memo[i];
+                resolved = answer !== -3;
+                break;
+              }
+              chain.push(i);
+              const dom: IHeapNode | null = cur.dominatorNode ?? null;
+              if (dom == null || dom.nodeIndex === i) {
+                resolved = true;
+                break;
+              }
+              cur = dom;
+            }
+            if (!resolved) answer = -3;
+            for (const i of chain) memo[i] = answer;
+            if (answer === -3) {
+              capped++;
+              cappedBytes += node.self_size;
+            }
+            if (answer >= 0) {
+              groupOf[answer].exclusive += node.self_size;
+              exclusiveTotal += node.self_size;
+            }
+          });
+        }
 
         const filtered = [...shapeMap.values()].filter(
           g => g.count >= min_count,
@@ -152,7 +228,7 @@ export function registerShapeHistogram(server: McpServer): void {
         // sum; only compute exact dominator-deduped retained when asked.
         const withRetained = filtered.map(g => {
           let exact: number | null = null;
-          if (exact_retained_size && g.nodeIds) {
+          if (wantExact && g.nodeIds) {
             exact = utils.aggregateDominatorMetrics(
               g.nodeIds,
               snapshot,
@@ -160,7 +236,9 @@ export function registerShapeHistogram(server: McpServer): void {
               (node: IHeapNode) => node.retainedSize,
             );
           }
-          const retainedRank = exact ?? g.rawRetained;
+          const retainedRank = exclusive_retained
+            ? g.exclusive
+            : (exact ?? g.rawRetained);
           return {...g, exact, retainedRank};
         });
 
@@ -199,16 +277,26 @@ export function registerShapeHistogram(server: McpServer): void {
               ? `{${g.properties.join(', ')}}`
               : `{${g.properties.slice(0, 6).join(', ')}, … +${g.properties.length - 6} more}`;
 
-          const retainedStr = exact_retained_size
-            ? `${formatBytes(g.exact ?? 0)} retained, ${formatBytes(g.totalSelfSize)} self`
-            : `retained ∈ [${formatBytes(g.totalSelfSize)}, ≤ ${formatBytes(g.rawRetained)}]`;
+          const retainedStr = exclusive_retained
+            ? `${formatBytes(g.exclusive)} exclusive, ${formatBytes(g.totalSelfSize)} self`
+            : exact_retained_size
+              ? `${formatBytes(g.exact ?? 0)} retained, ${formatBytes(g.totalSelfSize)} self`
+              : `retained ∈ [${formatBytes(g.totalSelfSize)}, ≤ ${formatBytes(g.rawRetained)}]`;
           lines.push(
             `${i + 1}. **${propsDisplay}** — ${formatNumber(g.count)} instances, ${retainedStr}`,
           );
           lines.push(`   Example: @${g.exampleNodeId}`);
         }
 
-        if (!exact_retained_size) {
+        if (exclusive_retained) {
+          lines.push(
+            '',
+            `_**Exclusive** credits every node to the nearest instance of any shape on its dominator chain, so the figures add up: all ${formatNumber(shapeMap.size)} shapes together, including those below \`min_count\` or past \`limit\`, hold ${formatBytes(exclusiveTotal)}; the rows above hold ${formatBytes(finalList.reduce((sum, g) => sum + g.exclusive, 0))} of it. A record nested in another counts under its own shape only._` +
+              (capped > 0
+                ? `\n⚠ ${formatNumber(capped)} node(s) (${formatBytes(cappedBytes)}) sit under a dominator chain deeper than 10,000 hops and are credited to no shape.`
+                : ''),
+          );
+        } else if (!exact_retained_size) {
           lines.push(
             '',
             "_Retained shown as a range `[lower, ≤ upper]`: lower = Σ self size (objects' own bytes), upper = Σ retained size (double-counts subtrees shared between instances on the dominator tree). The exact dominator-deduped value needs a per-shape dominator walk that can stall or time out on large heaps — pass `exact_retained_size:true` for it._",
