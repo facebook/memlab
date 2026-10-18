@@ -77,6 +77,10 @@ const GROUPS: Group[] = [
         'What ONE loaded record costs, per model type in Backbone-style collections: fields, V8 property store, arrays held, retained per record, plus each `_index` dictionary. Works minified.',
       ],
       [
+        'memlab_timers',
+        'Pending scheduler tasks grouped by the real callback and the payload it captures — a timer per record keeps the record alive for its whole delay.',
+      ],
+      [
         'memlab_capture',
         'Take fresh snapshots of a live page AND its dedicated workers (a page snapshot never contains them). Skips threads blocked in Atomics.wait instead of hanging.',
       ],
