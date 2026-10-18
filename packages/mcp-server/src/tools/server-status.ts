@@ -9,9 +9,27 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
+import fs from 'fs';
 import {SERVER_VERSION} from '../server-version.js';
 import {listSnapshots, getCurrentHandle} from '../heap-state.js';
 import {formatBytes, formatNumber, errorResult, textResult} from '../utils.js';
+
+/**
+ * The plugin's stable scripts path, when the launcher exported one. The plugin
+ * cache directory is versioned and an update deletes the old version, so a
+ * harness must import scripts from the stable path, never the versioned one.
+ */
+function stableScriptsPath(): {stable: string; resolved: string | null} | null {
+  const stable = process.env.MEMLAB_SCRIPTS;
+  if (stable == null || stable === '') return null;
+  let resolved: string | null = null;
+  try {
+    resolved = fs.realpathSync(stable);
+  } catch {
+    resolved = null;
+  }
+  return {stable, resolved};
+}
 
 export function registerServerStatus(server: McpServer): void {
   server.tool(
@@ -34,6 +52,15 @@ export function registerServerStatus(server: McpServer): void {
           `- Process RSS: ${formatBytes(mem.rss)} (heapUsed ${formatBytes(mem.heapUsed)} / heapTotal ${formatBytes(mem.heapTotal)})`,
           `- Resident snapshots: ${all.length}`,
         ];
+        const scripts = stableScriptsPath();
+        if (scripts != null) {
+          lines.splice(
+            lines.length - 1,
+            0,
+            `- Plugin scripts (stable across plugin updates): \`${scripts.stable}\`` +
+              (scripts.resolved != null ? ` → \`${scripts.resolved}\`` : ''),
+          );
+        }
         for (const m of all) {
           lines.push(
             `  ${m.handle === cur ? '→' : ' '} ${m.handle} — ${m.fileName}, ${formatBytes(m.totalSize)}, ${formatNumber(m.nodeCount)} nodes`,
