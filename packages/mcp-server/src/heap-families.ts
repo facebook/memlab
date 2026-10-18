@@ -706,3 +706,36 @@ export function buildPathTree(snapshot: IHeapSnapshot): PathTree {
   pathTreeCache.set(snapshot, tree);
   return tree;
 }
+
+/**
+ * Self bytes per module by the module record on each node's SHORTEST path.
+ * Loaded code and bundle text are skipped. Unlike dominator attribution, a
+ * shared object is credited to the module that reaches it first, so on a
+ * minified build (where module scopes cannot be matched) most app bytes still
+ * get a module name.
+ */
+export function attributeByShortestPath(snapshot: IHeapSnapshot): {
+  byModule: Map<string, PartitionRow>;
+  attributed: number;
+  total: number;
+} {
+  const labeler = cachedPathLabeler(snapshot);
+  const scriptSource = scriptSourceStringData(snapshot);
+  const byModule = new Map<string, PartitionRow>();
+  let attributed = 0;
+  let total = 0;
+  snapshot.nodes.forEach((node: IHeapNode) => {
+    tickAnalysis();
+    if (node.id <= 3 || node.type === 'synthetic') return;
+    if (loadedCodeKind(node, scriptSource) != null) return;
+    const size = node.self_size;
+    total += size;
+    const label = labeler.labelOf(node);
+    if (!label.startsWith('module:')) return;
+    const dot = label.indexOf('.');
+    const mod = label.slice(7, dot < 0 ? undefined : dot);
+    attributed += size;
+    add(byModule, mod, size);
+  });
+  return {byModule, attributed, total};
+}

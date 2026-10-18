@@ -10,6 +10,7 @@
 
 import type {IHeapEdge, IHeapNode, IHeapSnapshot} from '@memlab/core';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
+import {attributeByShortestPath} from '../heap-families.js';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
 import {
@@ -222,13 +223,59 @@ export function attributeByModule(
   };
 }
 
+function shortestPathTable(
+  snapshot: Parameters<typeof attributeByShortestPath>[0],
+  limit: number,
+  minBytes: number,
+  namePattern: string | undefined,
+): string[] {
+  const {byModule, attributed, total} = attributeByShortestPath(snapshot);
+  let rows = [...byModule.entries()]
+    .filter(([, r]) => r.bytes >= minBytes)
+    .sort((a, b) => b[1].bytes - a[1].bytes);
+  if (namePattern != null && namePattern.length > 0) {
+    let re: RegExp;
+    try {
+      re = new RegExp(namePattern, 'i');
+    } catch {
+      re = new RegExp(namePattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    }
+    rows = rows.filter(([m]) => re.test(m));
+  }
+  return [
+    '### By the module on the shortest retainer path',
+    '',
+    `Attributed: **${formatBytes(attributed)}**` +
+      (total > 0
+        ? ` (${((attributed / total) * 100).toFixed(1)}% of app memory)`
+        : '') +
+      '. Each node is credited to the first module record on its shortest path, so a shared object counts once, under the module that reaches it first.',
+    '',
+    rows.length === 0
+      ? '_No module above the floor._'
+      : markdownTable(
+          ['Module', 'Self bytes', '% of app', 'Nodes'],
+          rows
+            .slice(0, limit)
+            .map(([m, r]) => [
+              m.length > 60 ? m.slice(0, 57) + '…' : m,
+              formatBytes(r.bytes),
+              total > 0 ? `${((r.bytes / total) * 100).toFixed(1)}%` : '—',
+              formatNumber(r.nodes),
+            ]),
+          new Set([1, 2, 3]),
+        ),
+  ];
+}
+
 export function registerModuleAttribution(server: McpServer): void {
   server.tool(
     'memlab_module_attribution',
     'Attribute heap bytes to the MODULE that owns them, by walking the dominator tree up to the nearest module-registry export or module SCOPE (the top-level closure context a Haste `$module_<Name>` factory created, matched through its ScopeInfo — which is where module-level caches and tables actually live). ' +
       'Exists because in a bundled app the retainer path of every module-scope singleton begins with the same generic prefix — `Window -> require -> .context -> modulesMap -> <Module>` — which is shared by everything in the heap and therefore attributes NOTHING. ' +
       'A measured round sampled 12 instances of a growing class, saw that all 12 "route through modulesMap", and filed the growth as a known module-registry leak; in fact three unrelated telemetry modules were each accumulating and the registry was just the road to all of them. The sampling tool had reported "0.0% sampled" and refused to name a cause — the generic prefix is what made the wrong answer look confirmed. ' +
-      'This reports the module name instead, so "the heap grew" becomes "WebLoom +63 MB, InteractionTracingMetrics +23 MB". Use it whenever a retainer trace bottoms out in a module registry.',
+      'This reports the module name instead, so "the heap grew" becomes "TraceStore +63 MB, MetricsWindow +23 MB". Use it whenever a retainer trace bottoms out in a module registry. ' +
+      'On a minified build module scopes rarely match (one production capture matched 18 of 19.5k, attributing 12% of the heap), so by default a second table credits each node to the module record on its SHORTEST retainer path, which still names most app bytes.',
     {
       limit: z
         .number()
@@ -246,8 +293,15 @@ export function registerModuleAttribution(server: McpServer): void {
         .describe(
           'Optional case-insensitive substring/regex filter on the module id.',
         ),
+      method: z
+        .enum(['auto', 'dominator', 'shortest_path'])
+        .optional()
+        .default('auto')
+        .describe(
+          '"dominator" (exclusive ownership), "shortest_path" (credit each node to the module on its shortest path — works when module scopes cannot be matched, e.g. a minified build), or "auto" (default): dominator, plus the shortest-path table when the dominator method attributes under 30% of the heap.',
+        ),
     },
-    async ({limit, min_bytes, name_pattern}) => {
+    async ({limit, min_bytes, name_pattern, method}) => {
       try {
         const snapshot = getSnapshot();
         if (!snapshot) {
@@ -263,6 +317,13 @@ export function registerModuleAttribution(server: McpServer): void {
               [...MODULE_REGISTRY_EDGE_NAMES].map(n => `\`${n}\``).join(' / ') +
               ` with at least ${MIN_REGISTRY_ENTRIES} entries. ` +
               'If this app uses a different registry shape, attribute with `memlab_dominator_attribution` against candidate owners instead.',
+          );
+        }
+        if (method === 'shortest_path') {
+          return toolResult(
+            shortestPathTable(snapshot, limit, min_bytes, name_pattern).join(
+              '\n',
+            ),
           );
         }
         const {stats, attributed, unattributed} = attributeByModule(
@@ -304,6 +365,12 @@ export function registerModuleAttribution(server: McpServer): void {
         ];
         if (rows.length === 0) {
           lines.push('_No module is attributed more than the floor._');
+          if (method === 'auto') {
+            lines.push(
+              '',
+              ...shortestPathTable(snapshot, limit, min_bytes, name_pattern),
+            );
+          }
           return toolResult(lines.join('\n'));
         }
         lines.push(
@@ -327,6 +394,12 @@ export function registerModuleAttribution(server: McpServer): void {
           '_Attribution is by SELF size up the dominator tree, so the figures partition the heap and are additive — a node is counted under exactly one module. "Not owned by any module" is the DOM, native/Blink objects, V8 internals and anything a module does not dominate; a large remainder is normal and is not a gap in the measurement._',
           '_A module being large is not a leak. Compare two captures — run this on each and diff the table — to turn "large" into "growing"._',
         );
+        if (method === 'auto' && total > 0 && attributed / total < 0.3) {
+          lines.push(
+            '',
+            ...shortestPathTable(snapshot, limit, min_bytes, name_pattern),
+          );
+        }
         return toolResult(lines.join('\n'));
       } catch (error) {
         return errorResult(
