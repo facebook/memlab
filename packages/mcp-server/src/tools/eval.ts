@@ -24,6 +24,12 @@ import {
 import {minifiedSignal} from '../minified.js';
 import {promiseReactions} from '../promise-chains.js';
 import {
+  buildPathTree,
+  cachedFamilyResolver,
+  cachedPathLabeler,
+  shapeFamilyOf,
+} from '../heap-families.js';
+import {
   moduleExportProp,
   moduleRecords,
   moduleScopeVars,
@@ -1332,6 +1338,8 @@ export function registerEval(server: McpServer): void {
             'minified()->{minified, shortNameShare, namedClosures} (is this a minified bundle? name-based lookups read 0 there), ' +
             'stringsWithPrefix(prefix, {limit?})->ids[] (string nodes whose value starts with prefix, e.g. "blob:"; bucketed once per snapshot, so repeated prefix questions do not re-walk the heap — for a per-rung COUNT across a ladder, `memlab_string_prefix_census` answers from the sidecar index without loading at all), ' +
             'promiseReactions(promiseOrId, {cap?})->{count, ids, truncated}|null (the `.then` reactions attached to an UNSETTLED promise, walked by node type — count 0 means it settled), ' +
+            'pathTree()->{subtreeBytes(id), parent(id), children(id, {minBytes?, limit?})->[{id,name,edge,bytes}], roots()} (the shortest-path tree with app bytes per subtree — it partitions the heap, so shared caches keep their size; built ONCE per snapshot and kept across calls), ' +
+            "familyOf(nodeOrId)->family|null (nearest framework family on the dominator chain, as memlab_memory_partition counts it), pathLabel(nodeOrId)->`module:<Name>.<export>`|`global:<name>`|… (first owner on the shortest path; minification-safe), shapeFamily(nodeOrId)->family|null (the node's own record family by property names) — all memoized per snapshot, " +
             'rootPathAvoidingDev(nodeOrId)->[{id,name,type,edge}]|null (shortest GC-root path using no React DEV/Fast Refresh/devtools edge; null = the node does not exist in a production build; throws if the analysis budget runs out first), ' +
             "fiberHooks(componentName, {limit?})->[{fiber, hooks:[{index, statefulOrdinal, kind, memoizedState, pending, lastRenderedState, bailout}]}] (a component's hook list in order; statefulOrdinal counts only useState/useReducer, so it maps to the Nth such call in source), " +
             'stringValue(nodeOrId, {maxLen?, slices?: "parent"|"marker"})->string (text of a flat, `(concatenated string)` or `(sliced string)` node; a slice is returned as its whole parent because the snapshot records no offset, or as `‹slice›` with slices:"marker"), ' +
@@ -1975,6 +1983,77 @@ export async function runEval({
       const node = resolveNode(nodeOrId);
       if (node == null) return null;
       return promiseReactions(node, opts?.cap);
+    };
+
+    // Derived whole-heap structures, built once per snapshot and kept by the
+    // server across eval calls: an investigation that rebuilt the shortest-path
+    // tree or a dominator-owner memo in every eval paid 1-3 minutes each time.
+    const pathTreeHelper = () => {
+      // buildPathTree memoizes per snapshot (WeakMap), so this is a lookup
+      // after the first call.
+      const tree = buildPathTree(snapshot);
+      const indexOf = (x: number | {id: number}): number =>
+        resolveNode(x)?.nodeIndex ?? -1;
+      const idAt = (i: number): number | null =>
+        snapshot.nodes.get(i)?.id ?? null;
+      return {
+        subtreeBytes: (x: number | {id: number}): number => {
+          const i = indexOf(x);
+          return i < 0 ? 0 : tree.subtreeBytes[i];
+        },
+        parent: (x: number | {id: number}): number | null => {
+          const i = indexOf(x);
+          return i < 0 || tree.parent[i] < 0 ? null : idAt(tree.parent[i]);
+        },
+        children: (
+          x: number | {id: number},
+          opts?: {minBytes?: number; limit?: number},
+        ) => {
+          const i = indexOf(x);
+          if (i < 0) return [];
+          const min = opts?.minBytes ?? 0;
+          const out: Array<{
+            id: number;
+            name: string;
+            edge: string;
+            bytes: number;
+          }> = [];
+          for (let k = tree.childStart[i]; k < tree.childStart[i + 1]; k++) {
+            const c = tree.children[k];
+            if (tree.subtreeBytes[c] < min) continue;
+            const n = snapshot.nodes.get(c);
+            if (n == null) continue;
+            out.push({
+              id: n.id,
+              name: n.name.slice(0, 80),
+              edge: String(n.pathEdge?.name_or_index ?? ''),
+              bytes: tree.subtreeBytes[c],
+            });
+          }
+          out.sort((a, b) => b.bytes - a.bytes);
+          return out.slice(0, opts?.limit ?? 50);
+        },
+        // Largest first, so roots()[0] is the root that holds the app.
+        roots: (): number[] =>
+          [...tree.roots]
+            .sort((a, b) => tree.subtreeBytes[b] - tree.subtreeBytes[a])
+            .map(idAt)
+            .filter((v): v is number => v != null),
+      };
+    };
+    const familyOfHelper = (x: number | {id: number}): string | null => {
+      const node = resolveNode(x);
+      return node == null
+        ? null
+        : cachedFamilyResolver(snapshot).familyOf(node);
+    };
+    const pathLabelHelper = (x: number | {id: number}): string | null => {
+      const node = resolveNode(x);
+      return node == null ? null : cachedPathLabeler(snapshot).labelOf(node);
+    };
+    const shapeFamilyHelper = (x: number | {id: number}): string | null => {
+      const node = resolveNode(x);
+      return node == null ? null : shapeFamilyOf(node);
     };
 
     // Hooks of every fiber rendering `componentName`, in list order, each with
@@ -3933,6 +4012,10 @@ export async function runEval({
       moduleExportProp: moduleExportPropHelper,
       minified,
       promiseReactions: promiseReactionsHelper,
+      pathTree: pathTreeHelper,
+      familyOf: familyOfHelper,
+      pathLabel: pathLabelHelper,
+      shapeFamily: shapeFamilyHelper,
       stringsWithPrefix,
       sourceOf,
       stableKey,
@@ -4758,6 +4841,8 @@ function describeEnvLines(): string[] {
     '- `helpers.walkChain(startOrNode, edgeName, {maxHops?, collectIds?}) -> {length, terminated: "cycle" | "end" | "cap", truncated}` — walk a linked structure (`.next` update queues, `.prev` closure chains, LRU lists) and report HOW it ended. Use this rather than a hand-written loop: React update queues are CIRCULAR, and a hand-rolled `while (next && next.id !== start)` with a hop guard reports the guard as the length. A measured case printed 800 for a chain of 2,066. `terminated: "cap"` means the length is a floor. For the full per-link report (what each link captures, distinct vs repeated) use the `memlab_chain_walk` tool.',
     '- `helpers.isRealDetached(node) -> boolean` — the oddball/root filtering the detached-DOM tools apply internally, so hand-written eval counts the same set they do.',
     '- `helpers.dominates(id, {population?, limit?}) -> {count, selfSize, ids, truncated}` — what this node actually owns (bounded 500-hop dominator walk). `population` is a predicate over nodes.',
+    '- `helpers.pathTree() -> {subtreeBytes(id), parent(id), children(id, {minBytes?, limit?}), roots()}` — the shortest-path tree with app bytes per subtree (loaded code and bundle text count 0). It PARTITIONS the heap, so a shared cache keeps its size. Built once per snapshot and kept across eval calls; `memlab_path_tree` prints it.',
+    "- `helpers.familyOf(nodeOrId)`, `helpers.pathLabel(nodeOrId)`, `helpers.shapeFamily(nodeOrId)` — the memoized attribution `memlab_memory_partition` uses: nearest framework family on the dominator chain; first `module:<Name>.<export>` / `global:<name>` owner on the shortest path; the node's own record family. Per-snapshot memos persist across calls, so a whole-heap attribution walk costs one pass the first time and almost nothing after.",
     '- `helpers.owner(idOrNode, {maxHops?}) -> {id, name, type, hops, selfSize, named} | null` — nearest dominator carrying a class identity, skipping V8 containers (`Object`, `Array`, `system / …`, `(closure)`). Minified single-letter names are KEPT: in a production bundle they are the only identity there is — pair with `memlab_identify`. `named:false` means the walk found only containers and is reporting the furthest node reached.',
     '- `helpers.defineFn(name, src)` / `helpers.fn(name)` / `helpers.listFns()` / `helpers.forgetFn(name)` — persist CODE, not just data. `save`/`load` and `remember`/`recall` keep values; there was nothing for the edge-name walk that gets rewritten, slightly differently, in every fourth eval. `src` is a FUNCTION EXPRESSION (`"id => helpers.props(id).foo"`), compiled at definition time so a syntax error is reported there rather than inside a later probe, and compiled inside the running eval\'s context so it sees `helpers` and `snapshot`. Stored on disk, so it survives into a later session. For setup that is only needed for THIS call, pass `prelude` instead — it runs in the same context immediately before `code`, and `memlab_ladder_probe` applies it to every metric.',
     '- `helpers.remember(name, value)` / `helpers.recall(name?)` — persist a derived fact to disk (`~/.memlab/eval-store.json`, override with `MEMLAB_STATE_DIR`) and read it back in a LATER session. `save`/`load` are per-snapshot and dropped on unload, which is right for id lists (ids are per-capture) and wrong for a conclusion. `recall()` with no name lists the keys.',

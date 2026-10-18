@@ -490,6 +490,31 @@ export class PathOwnerLabeler {
   }
 }
 
+const resolverCache = new WeakMap<IHeapSnapshot, DominatorFamilyResolver>();
+const labelerCache = new WeakMap<IHeapSnapshot, PathOwnerLabeler>();
+
+/** The family resolver for this snapshot, built (and seeded) once. */
+export function cachedFamilyResolver(
+  snapshot: IHeapSnapshot,
+): DominatorFamilyResolver {
+  let r = resolverCache.get(snapshot);
+  if (r == null) {
+    r = new DominatorFamilyResolver(snapshot, collectFamilySeeds(snapshot));
+    resolverCache.set(snapshot, r);
+  }
+  return r;
+}
+
+/** The shortest-path owner labeller for this snapshot, built once. */
+export function cachedPathLabeler(snapshot: IHeapSnapshot): PathOwnerLabeler {
+  let l = labelerCache.get(snapshot);
+  if (l == null) {
+    l = new PathOwnerLabeler(snapshot);
+    labelerCache.set(snapshot, l);
+  }
+  return l;
+}
+
 export interface PartitionRow {
   bytes: number;
   nodes: number;
@@ -531,9 +556,8 @@ export function computeMemoryPartition(
   snapshot: IHeapSnapshot,
   drillFamily: string | null,
 ): MemoryPartition {
-  const seeds = collectFamilySeeds(snapshot);
-  const resolver = new DominatorFamilyResolver(snapshot, seeds);
-  const labeler = new PathOwnerLabeler(snapshot);
+  const resolver = cachedFamilyResolver(snapshot);
+  const labeler = cachedPathLabeler(snapshot);
   const scriptSource = scriptSourceStringData(snapshot);
   const families = new Map<string, PartitionRow>();
   const dom = new Map<string, PartitionRow>();
