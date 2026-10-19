@@ -240,6 +240,27 @@ they retain. Each row gives the Context and value ids, ready for
 or later, which leaves out script-level `let`/`const`. Older snapshots have no
 scope tree, and the tool says so.
 
+## Reading the numbers
+
+memlab and the browser's own heap profiler read the same snapshot, but a few
+figures are defined or grouped differently:
+
+- **Self size** is the profiler's *shallow size*. **Retained size** of a node
+  has the same dominator-tree definition in both.
+- **Class retained size** (`memlab_class_histogram` with
+  `include_retained_size`) counts each byte once even when instances hold one
+  another, like the profiler's constructor rows. Rows overlap across classes,
+  so neither adds up down the table.
+- **Class keys** are `type::name` in memlab (`closure::onClick`,
+  `object::Map`). The profiler groups by constructor name, with `(closure)`,
+  `(string)`, `(array)` and `(system)` groups.
+- **Total** is the root's retained size plus `extra_native_bytes` in both.
+- **Distance** and **detachedness** (`memlab_get_node`) match the profiler's:
+  hops from the root with page globals at 1, and attached / detached /
+  unknown.
+- **Default lists** in memlab leave out engine-internal node types (arrays,
+  code, native, synthetic) unless you ask for them by `node_type`.
+
 ## Working with more than one snapshot
 
 Every single-snapshot tool takes an optional `snapshot`: a resident handle, or

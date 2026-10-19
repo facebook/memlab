@@ -182,6 +182,21 @@ To auto-approve the read-only tools while keeping the rest on manual approval, a
 - **Background jobs.** A tool that would outlast the client's tool timeout can run in the background with `memlab_start_job`, or with `async: true` on `memlab_eval` and `memlab_analysis_battery`. Collect the result with `memlab_job_status` or `memlab_battery_status`.
 - **Compressed snapshots.** Snapshots may be gzipped. The loader resolves `<file>.gz` transparently, decompressing into a private per-user cache directory under the OS temp dir.
 
+## Reading the numbers
+
+memlab and the browser's own heap profiler read the same snapshot, but a few figures are defined or grouped differently. When two numbers disagree, check this table before treating it as a bug.
+
+| memlab | Heap profiler | How they relate |
+| --- | --- | --- |
+| Self size | Shallow size | The same value: the object's own bytes. |
+| Retained size of a node | Retained size | The same definition: what the dominator tree says freeing this node would free. |
+| Class retained size (`memlab_class_histogram` with `include_retained_size`) | Retained size of a constructor row | Both count each byte once even when instances hold one another. memlab marks a row `~` when it only has an upper bound. Rows overlap across classes, so neither adds up down the table. |
+| Class key `type::name` (e.g. `closure::onClick`, `object::Map`) | Constructor name, with `(closure)`, `(string)`, `(array)`, `(system)` groups | memlab keeps the node type in the key, so a closure named `Map` and a `Map` object are different rows. |
+| Total (`memlab_snapshot_summary`) | Total size | Both are the root's retained size plus `extra_native_bytes`, the native memory that has no node. |
+| Distance (`memlab_get_node`) | Distance | Hops from the root over strong edges, with page globals at 1. |
+| Detachedness (`memlab_get_node`) | Detached flag | The snapshot's own three states: attached, detached, unknown. JS objects are always unknown. |
+| Default lists | Everything | `memlab_largest_objects` and several scans leave out engine-internal node types (arrays, code, native, synthetic) unless you ask for them by `node_type`. |
+
 ## Getting a Heap Snapshot
 
 Both `.heapsnapshot` files and `.heaptimeline` files (snapshots recorded with allocation tracking on) load, and either suffix may be left off a handle. `memlab_allocation_sites` reads the allocation stacks such a capture carries.
