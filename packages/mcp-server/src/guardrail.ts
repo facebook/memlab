@@ -14,6 +14,8 @@ import {
   takesSnapshotParam,
   withSnapshotRef,
 } from './snapshot-ref.js';
+import {trackSdkTool} from './toolsets.js';
+import {toolsetsOf} from './tools/tools-index.js';
 import {recordCall} from './perf-stats.js';
 import {toolAnnotations} from './tool-annotations.js';
 import {isTerse, shouldEmitNote} from './heap-state.js';
@@ -338,6 +340,8 @@ export function installAnalysisGuardrail(server: McpServer): void {
         }
       };
     }
-    return origTool(...toolArgs);
+    const registered = origTool(...toolArgs);
+    trackSdkTool(name, registered, toolsetsOf(name));
+    return registered;
   };
 }

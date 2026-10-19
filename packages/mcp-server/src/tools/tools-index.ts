@@ -10,9 +10,11 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
+import {enableToolsets, hiddenTools, selectedToolsets} from '../toolsets.js';
 import {getRegisteredTool, listToolNames} from '../tool-registry.js';
 import {
   errorResult,
+  formatNumber,
   makeNamePatternTest,
   markdownTable,
   textResult,
@@ -36,12 +38,15 @@ import {
  * order to try them in.
  */
 interface Group {
+  /** Toolset key for `MEMLAB_TOOLSETS` and `memlab_tools({enable})`. */
+  key: string;
   question: string;
   tools: Array<[name: string, when: string]>;
 }
 
 const GROUPS: Group[] = [
   {
+    key: 'composition',
     question: 'What is this heap actually made of?',
     tools: [
       [
@@ -196,6 +201,7 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    key: 'growth',
     question: 'Is anything growing — and is it a leak?',
     tools: [
       [
@@ -329,6 +335,7 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    key: 'retention',
     question: 'Who owns the growth / why is X retained?',
     tools: [
       [
@@ -409,6 +416,7 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    key: 'artifacts',
     question: 'Is it real, or a measurement artifact?',
     tools: [
       [
@@ -438,6 +446,7 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    key: 'dom',
     question: 'Detached DOM and event listeners',
     tools: [
       [
@@ -453,6 +462,7 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    key: 'collections',
     question: 'Collections and caches',
     tools: [
       [
@@ -503,6 +513,7 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    key: 'strings',
     question: 'Strings and duplication',
     tools: [
       [
@@ -528,6 +539,7 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    key: 'inspect',
     question: 'Inspect or find specific objects',
     tools: [
       [
@@ -562,6 +574,7 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    key: 'ask',
     question: 'None of the above — ask the heap directly',
     tools: [
       [
@@ -583,6 +596,7 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    key: 'sharing',
     question: 'Sharing a capture outside its trust boundary',
     tools: [
       [
@@ -592,6 +606,7 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    key: 'session',
     question: 'Session, batching and write-ups',
     tools: [
       [
@@ -639,6 +654,13 @@ const GROUPS: Group[] = [
     ],
   },
 ];
+
+/** The toolsets (question groups) a tool belongs to. */
+export function toolsetsOf(name: string): string[] {
+  return GROUPS.filter(g => g.tools.some(([n]) => n === name)).map(g => g.key);
+}
+
+const TOOLSET_KEYS = ['core', ...GROUPS.map(g => g.key)];
 
 /**
  * Render a registered tool's input schema from the zod shape captured at
@@ -721,6 +743,12 @@ export function registerToolsIndex(server: McpServer): void {
         .describe(
           'Show the group(s) containing this tool name (with or without the memlab_ prefix).',
         ),
+      enable: z
+        .string()
+        .optional()
+        .describe(
+          'Expose more toolsets this session, comma-separated: core, composition, growth, retention, artifacts, dom, collections, strings, inspect, ask, sharing, session, or "all". Only matters when the server was started with MEMLAB_TOOLSETS.',
+        ),
       schema: z
         .boolean()
         .optional()
@@ -731,8 +759,30 @@ export function registerToolsIndex(server: McpServer): void {
             "a tool's parameters except by passing a wrong one and reading the refusal.",
         ),
     },
-    async ({question, tool, schema}) => {
+    async ({question, tool, enable, schema}) => {
       try {
+        if (enable != null) {
+          const keys = enable
+            .split(',')
+            .map(k => k.trim().toLowerCase())
+            .filter(Boolean);
+          const unknown = keys.filter(
+            k => k !== 'all' && !TOOLSET_KEYS.includes(k),
+          );
+          if (unknown.length > 0) {
+            return errorResult(
+              new Error(
+                `Unknown toolset(s): ${unknown.join(', ')}. Toolsets: ${TOOLSET_KEYS.join(', ')}, all.`,
+              ),
+            );
+          }
+          const added = enableToolsets(keys);
+          return textResult(
+            added.length > 0
+              ? `Enabled ${formatNumber(added.length)} tool(s): ${added.map(n => `\`${n}\``).join(', ')}. The client has been told the tool list changed.`
+              : 'Those toolsets were already available; nothing changed.',
+          );
+        }
         const registered = new Set(listToolNames());
         const wanted = tool
           ? tool.startsWith('memlab_')
@@ -780,9 +830,17 @@ export function registerToolsIndex(server: McpServer): void {
           );
         }
 
+        const hidden = new Set(hiddenTools());
+        const sets = selectedToolsets();
         const lines: string[] = [
           `# memlab tools by question (${registered.size} registered)`,
           '',
+          ...(sets != null
+            ? [
+                `Toolsets exposed: ${sets.join(', ')} (MEMLAB_TOOLSETS). ${formatNumber(hidden.size)} tool(s) marked _(hidden)_ below are off; \`memlab_tools({enable: "<toolset>"})\` turns a group on. Toolsets: ${TOOLSET_KEYS.join(', ')}.`,
+                '',
+              ]
+            : []),
         ];
         if (groups.length === 0) {
           // Name BOTH filters when both were passed: `tool` narrows first, so
@@ -803,11 +861,15 @@ export function registerToolsIndex(server: McpServer): void {
           return textResult(lines.join('\n'));
         }
         for (const g of groups) {
-          lines.push(`## ${g.question}`, '');
+          lines.push(`## ${g.question} (\`${g.key}\`)`, '');
           for (const [name, when] of g.tools) {
             // A name in the index that is no longer registered is worse than a
             // missing one: it sends the caller after a tool that will fail.
-            const missing = registered.has(name) ? '' : ' _(not registered)_';
+            const missing = !registered.has(name)
+              ? ' _(not registered)_'
+              : hidden.has(name)
+                ? ' _(hidden)_'
+                : '';
             lines.push(`- \`${name}\`${missing} — ${when}`);
           }
           lines.push('');

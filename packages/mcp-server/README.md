@@ -524,6 +524,7 @@ The server keeps a few small files so that work survives a restart:
 | `NODE_OPTIONS` | Set `--max-old-space-size` here when running `memlab-mcp` or `dist/index.js` directly |
 | `MEMLAB_MAX_OLD_SPACE_MB` | Server heap in MB when launched by `memlab-cli` (minimum 512; default scales with RAM) |
 | `MEMLAB_ANALYSIS_TIMEOUT_MS` | Default per-call wall-clock budget (default 90000; `<= 0` disables it) |
+| `MEMLAB_TOOLSETS` | Expose only these tool groups, comma-separated: `core` (the ~20 everyday tools) and the question groups `composition`, `growth`, `retention`, `artifacts`, `dom`, `collections`, `strings`, `inspect`, `ask`, `sharing`, `session`. The session tools are always on, and `memlab_tools({enable: "growth"})` turns more groups on mid-session. Unset (or `all`) exposes every tool |
 | `MEMLAB_MCP_SERVER` | Server entry point `memlab-cli` runs, instead of the bundled `dist/index.js` |
 | `MEMLAB_CLI_VERBOSE` | `1` prints full tool output, with suggestions, from `memlab-cli script` |
 | `MEMLAB_REPEAT_NOTES` | `1` prints standing explanatory notes on every call instead of once per session |

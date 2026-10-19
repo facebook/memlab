@@ -210,6 +210,10 @@ The main list and lookup tools also return `structuredContent`: the same rows
 as JSON, with node ids scoped by a `snapshot` handle, raw byte counts, the
 filters that applied and a `pagination` object.
 
+To keep the tool list short, start the server with
+`MEMLAB_TOOLSETS=core` (or `core,growth,retention`, …): only those groups are
+exposed, and `memlab_tools({enable: "<group>"})` turns more on mid-session.
+
 Ask the assistant to call **`memlab_tools`** to print the full index, grouped
 the same way, with a one-line "use it when" for every tool. It is the fastest
 way to discover a tool you didn't know to ask for. `memlab_tools` with a `tool`
