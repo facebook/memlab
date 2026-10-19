@@ -558,7 +558,10 @@ const GROUPS: Group[] = [
         'Is this class in the heap AT ALL? Pre-flight before instrumenting a module.',
       ],
       ['memlab_match_object', 'By a structural pattern.'],
-      ['memlab_get_node', 'One node’s details.'],
+      [
+        'memlab_get_node',
+        'One node’s details, with detachedness (attached / detached / unknown) and distance from the root.',
+      ],
       ['memlab_object_shape', 'One object’s properties and their sizes.'],
       ['memlab_get_references', 'Outgoing edges.'],
       ['memlab_get_referrers', 'Incoming edges.'],

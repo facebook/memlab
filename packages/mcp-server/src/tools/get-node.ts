@@ -9,7 +9,9 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
+import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import {z} from 'zod';
+import {nodeDistances} from '../node-distance.js';
 import {structuredResult} from '../structured.js';
 import {getSnapshot} from '../heap-state.js';
 import {
@@ -33,10 +35,52 @@ import {
  */
 const INERT_RETAINED_SIZE_REFERRERS = 20;
 
+/**
+ * The snapshot's own three-state record for DOM nodes: attached, detached, or
+ * unknown (V8 leaves JS objects and anything Blink did not classify at 0).
+ * Reading `is_detached` alone turned "unknown" into "attached".
+ */
+function detachednessOf(
+  snapshot: IHeapSnapshot,
+  node: IHeapNode,
+): 'attached' | 'detached' | 'unknown' {
+  const raw = (
+    snapshot as unknown as {
+      snapshot?: {
+        snapshot?: {meta?: {node_fields?: string[]}; node_count?: number};
+        nodes?: ArrayLike<number>;
+      };
+    }
+  ).snapshot;
+  const fields = raw?.snapshot?.meta?.node_fields ?? [];
+  const offset = fields.indexOf('detachedness');
+  const count = raw?.snapshot?.node_count ?? 0;
+  if (offset < 0 || raw?.nodes == null || count === 0) {
+    return node.is_detached ? 'detached' : 'unknown';
+  }
+  // The meta's field count is the stride; if the data disagrees with it, the
+  // field cannot be read reliably, so fall back to the flag.
+  const stride = fields.length;
+  if (
+    raw.nodes.length !== count * stride ||
+    !(node.nodeIndex >= 0 && node.nodeIndex < count)
+  ) {
+    return node.is_detached ? 'detached' : 'unknown';
+  }
+  const value = raw.nodes[node.nodeIndex * stride + offset];
+  return value === 2
+    ? 'detached'
+    : value === 1
+      ? 'attached'
+      : node.is_detached
+        ? 'detached'
+        : 'unknown';
+}
+
 export function registerGetNode(server: McpServer): void {
   server.tool(
     'memlab_get_node',
-    'Look up a heap node by its numeric ID. Returns full details including size, type, detachment status, dominator, location, and string value if applicable.',
+    'Look up a heap node by its numeric ID. Returns full details including size, type, detachedness (attached / detached / unknown), distance from the root in hops, dominator, location, and string value if applicable.',
     {
       node_id: z.number().describe('The numeric ID of the heap node'),
     },
@@ -48,6 +92,10 @@ export function registerGetNode(server: McpServer): void {
           return errorResult(`Node with id ${node_id} not found`);
         }
         const d = serializeNodeDetail(node);
+        const detachedness = detachednessOf(snapshot, node);
+        // -1 marks a node reachable only over weak edges; a missing entry
+        // reads the same, rather than as a distance.
+        const dist = nodeDistances(snapshot)[node.nodeIndex] ?? -1;
         const lines = [
           `**ID:** @${d.id}`,
           `**Name:** ${d.name}`,
@@ -56,7 +104,8 @@ export function registerGetNode(server: McpServer): void {
           `**Retained Size:** ${formatBytes(d.retained_size)}`,
           `**Edges Out:** ${formatNumber(d.edge_count)}`,
           `**Referrers:** ${formatNumber(d.referrer_count)}`,
-          `**Detached:** ${d.is_detached ? 'Yes' : 'No'}`,
+          `**Detachedness:** ${detachedness}`,
+          `**Distance from root:** ${dist >= 0 ? `${formatNumber(dist)} hop(s)` : 'unreachable over strong edges'}`,
           `**Dominator:** ${d.dominator_id != null ? `@${d.dominator_id}` : 'none'}`,
         ];
         if (d.location) {
@@ -121,7 +170,9 @@ export function registerGetNode(server: McpServer): void {
               'Reload without `light` if you need it.',
           );
         }
-        return structuredResult(lines.join('\n'), {node: d});
+        return structuredResult(lines.join('\n'), {
+          node: {...d, detachedness, distance: dist >= 0 ? dist : null},
+        });
       } catch (err) {
         return errorResult(err);
       }
