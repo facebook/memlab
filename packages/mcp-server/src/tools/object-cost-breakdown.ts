@@ -136,7 +136,7 @@ function analyzePropertyCosts(
 export function registerObjectCostBreakdown(server: McpServer): void {
   server.tool(
     'memlab_object_cost_breakdown',
-    'Show per-instance V8 memory cost breakdown for a class or shape. Reports: object header overhead, heap number vs SMI property costs, property backing store costs, and collection storage overhead. Compares current cost to theoretical minimum. Use when a cache or array of objects uses more memory than expected — the gap is often V8 overhead, not a code bug.',
+    'Show per-instance V8 memory cost breakdown for a class or shape. Reports: object header overhead, heap number vs SMI property costs, property backing store costs, and collection storage overhead. Compares the measured cost with the cost after moving numeric properties into typed-array columns; sizes follow the field width of the capture (4-byte compressed or 8-byte). Use when a cache or array of objects uses more memory than expected — the gap is often V8 overhead, not a code bug.',
     {
       class_name: z
         .string()
@@ -241,6 +241,9 @@ export function registerObjectCostBreakdown(server: McpServer): void {
         // Compute aggregate stats
         let totalRetainedSize = 0;
         let heapNumberCount = 0;
+        let heapNumberBytes = 0;
+        // A HeapNumber can be shared by several instances; its bytes count once.
+        const seenHeapNumbers = new Set<number>();
         let smiCount = 0;
 
         // Per-instance own-property counts, to measure shape variance. A high
@@ -306,6 +309,10 @@ export function registerObjectCostBreakdown(server: McpServer): void {
               smiCount++;
             } else if (isHeapNum) {
               heapNumberCount++;
+              if (!seenHeapNumbers.has(target.id)) {
+                seenHeapNumbers.add(target.id);
+                heapNumberBytes += target.self_size;
+              }
             }
           }
           ownPropCounts.push(ownProps);
@@ -370,24 +377,30 @@ export function registerObjectCostBreakdown(server: McpServer): void {
         // huge outliers can't inflate the estimate above the measured size.
         const numProperties = Math.round(avgOwnProps);
 
-        // V8 overhead estimates (based on V8 internals)
-        const V8_OBJECT_HEADER = 12; // map pointer + hash + properties
-        const V8_PROPERTY_POINTER = 8; // 64-bit pointer per property
-        const V8_HEAP_NUMBER = 16; // HeapNumber: map + 8-byte double
-        const V8_MAP_ENTRY_OVERHEAD = 48; // key + value + bucket chain
-        const V8_SET_ENTRY_OVERHEAD = 32; // key + bucket chain
-        const V8_ARRAY_SLOT = 8; // pointer per element
+        // Sizes in V8 tagged fields: 4 bytes with pointer compression (Chrome),
+        // 8 without (Node.js by default). A JS object is a 3-field header (map,
+        // properties, elements) plus its in-object fields. The field count is
+        // read off the MEASURED self size rather than the visible edges: a
+        // field holding a small integer has no edge in the snapshot.
+        const headerBytes = 3 * slotBytes;
+        const fieldBytes = Math.max(0, realAvgSelf - headerBytes);
+        const fieldCount = Math.round(fieldBytes / slotBytes);
+        const hiddenFields = Math.max(0, fieldCount - numProperties);
+        // Owned OUTSIDE the object: heap numbers are objects of their own, and
+        // a collection entry lives in the collection's backing store.
+        const heapNumPerInstance = heapNumberBytes / count;
+        const MAP_ENTRY_FIELDS = 3; // key, value, chain
+        const SET_ENTRY_FIELDS = 2; // key, chain
+        const collectionOverhead =
+          ((inMapCount / count) * MAP_ENTRY_FIELDS +
+            (inSetCount / count) * SET_ENTRY_FIELDS +
+            inArrayCount / count) *
+          slotBytes;
 
-        const objectOverhead = V8_OBJECT_HEADER;
-        const propertiesOverhead = numProperties * V8_PROPERTY_POINTER;
-        const heapNumOverhead = avgHeapNumbers * V8_HEAP_NUMBER;
-        const estimatedPerInstance =
-          objectOverhead + propertiesOverhead + heapNumOverhead;
-
-        // Theoretical minimum: using TypedArrays for numeric data. Scale the
-        // numeric/non-numeric split (measured over distinct property names) onto
-        // the per-instance property count so it can't exceed numProperties and
-        // go negative for high-variance classes (Feedback §1a).
+        // Moving the numeric properties into Float64Array columns removes
+        // their in-object fields and the heap numbers they point at, and adds
+        // 8 bytes per value. Both the "after" total and the suggestion below
+        // come from this one number, so they cannot disagree.
         const numericPropsDistinct = propBreakdown.filter(
           p => p.type === 'heap number' || p.type === 'smi',
         ).length;
@@ -397,31 +410,17 @@ export function registerObjectCostBreakdown(server: McpServer): void {
           numProperties,
           Math.round(numProperties * numericFraction),
         );
-        const nonNumericProps = Math.max(0, numProperties - numericProps);
-        const theoreticalMin =
-          numericProps * 8 + // Float64 in TypedArray
-          nonNumericProps * V8_PROPERTY_POINTER + // pointers for non-numeric
-          (nonNumericProps > 0 ? V8_OBJECT_HEADER : 0); // object header if any non-numeric
+        const columnarSavingPerInstance =
+          numericProps * slotBytes + heapNumPerInstance - numericProps * 8;
+        const columnarSaving =
+          Math.max(0, columnarSavingPerInstance) * instances.length;
 
-        // Collection overhead
-        const collectionOverhead =
-          (inMapCount / count) * V8_MAP_ENTRY_OVERHEAD +
-          (inSetCount / count) * V8_SET_ENTRY_OVERHEAD +
-          (inArrayCount / count) * V8_ARRAY_SLOT;
-
-        const totalPerInstance = estimatedPerInstance + collectionOverhead;
-        // Headline footprint is the MEASURED self size of every instance plus
-        // the (estimated, external) collection-entry overhead — never the
-        // per-instance model × count, which over-counts on high-variance
-        // classes. Collection overhead lives outside the object's own self size,
-        // so it is added on top of the measured total (Feedback §1a).
+        // Headline footprint is MEASURED: every instance's self size plus the
+        // heap numbers it owns. The collection-entry estimate is reported on
+        // top, separately.
+        const heapNumberTotal = heapNumPerInstance * instances.length;
+        const currentTotal = realTotalSelfSize + heapNumberTotal;
         const collectionTotal = collectionOverhead * instances.length;
-        const totalAllInstances = realTotalSelfSize + collectionTotal;
-        // Theoretical minimum can't exceed what we actually measured.
-        const theoreticalTotal = Math.min(
-          theoreticalMin * instances.length,
-          realTotalSelfSize,
-        );
 
         const lines: string[] = [
           `# Object Cost Breakdown: \`${targetName}\`${targetShape ? ` {${targetShape.slice(0, 5).join(', ')}${targetShape.length > 5 ? ', …' : ''}}` : ''}`,
@@ -450,43 +449,47 @@ export function registerObjectCostBreakdown(server: McpServer): void {
         const costRows: string[][] = [
           [
             'Object header',
-            String(V8_OBJECT_HEADER),
-            'Map pointer + hash/properties store',
+            String(headerBytes),
+            `map, properties, elements: 3 × ${slotBytes}B fields`,
           ],
           [
-            'Property pointers',
-            String(propertiesOverhead),
-            `${numProperties} properties × ${V8_PROPERTY_POINTER}B`,
+            'In-object fields',
+            String(Math.round(fieldBytes)),
+            `≈${fieldCount} × ${slotBytes}B; ${numProperties} with a visible property edge` +
+              (hiddenFields > 0
+                ? `, the other ${hiddenFields} hold small integers or unused slack (no edge in a snapshot)`
+                : '') +
+              (avgSmis > 0
+                ? `; ${avgSmis.toFixed(1)} small integers stored inline (no extra cost)`
+                : ''),
+          ],
+          [
+            '**Self size (measured)**',
+            `**${Math.round(realAvgSelf)}**`,
+            `retained ${formatBytes(avgRetained)}`,
           ],
         ];
 
         if (avgHeapNumbers > 0) {
           costRows.push([
-            'Heap numbers',
-            String(Math.round(heapNumOverhead)),
-            `${avgHeapNumbers.toFixed(1)} heap numbers × ${V8_HEAP_NUMBER}B (values > 2³¹ or non-integer)`,
-          ]);
-        }
-        if (avgSmis > 0) {
-          costRows.push([
-            'SMI values',
-            '0',
-            `${avgSmis.toFixed(1)} SMIs — stored inline in pointer (free)`,
+            'Heap numbers (outside)',
+            String(Math.round(heapNumPerInstance)),
+            `${avgHeapNumbers.toFixed(1)} per instance, ${Math.round(heapNumberBytes / Math.max(1, seenHeapNumbers.size))}B each (non-integer or > 2³¹ values)`,
           ]);
         }
         if (collectionOverhead > 0) {
           costRows.push([
-            'Collection storage',
+            'Collection entry (outside, estimate)',
             String(Math.round(collectionOverhead)),
             [
               inMapCount > 0
-                ? `Map: ${((inMapCount / count) * 100).toFixed(0)}%`
+                ? `Map: ${((inMapCount / count) * 100).toFixed(0)}% × ${MAP_ENTRY_FIELDS} fields`
                 : '',
               inSetCount > 0
-                ? `Set: ${((inSetCount / count) * 100).toFixed(0)}%`
+                ? `Set: ${((inSetCount / count) * 100).toFixed(0)}% × ${SET_ENTRY_FIELDS} fields`
                 : '',
               inArrayCount > 0
-                ? `Array: ${((inArrayCount / count) * 100).toFixed(0)}%`
+                ? `Array: ${((inArrayCount / count) * 100).toFixed(0)}% × 1 field`
                 : '',
             ]
               .filter(Boolean)
@@ -502,7 +505,7 @@ export function registerObjectCostBreakdown(server: McpServer): void {
               ? `${Math.round((elementsUsed / elementsCapacity) * 100)}% full`
               : 'occupancy not readable';
           costRows.push([
-            'Elements store',
+            'Elements store (outside)',
             String(Math.round(perInstanceElements)),
             `${elementsInstances}/${count} sampled instance(s) carry one — ${occupancy}` +
               (wasteBytes > 0
@@ -517,41 +520,27 @@ export function registerObjectCostBreakdown(server: McpServer): void {
           ]);
         }
 
-        costRows.push([
-          '**Modeled per instance**',
-          `**${Math.round(totalPerInstance)}**`,
-          `Measured avg self: ${Math.round(realAvgSelf)}B, retained: ${formatBytes(avgRetained)}`,
-        ]);
-        costRows.push([
-          '_Theoretical min_',
-          `_${Math.round(theoreticalMin)}_`,
-          numericProps > 0
-            ? `${numericProps} numeric props in TypedArray (8B each)`
-            : 'Already near minimum',
-        ]);
-
         lines.push(markdownTable(costHeaders, costRows, costRightCols));
         lines.push('');
 
-        // Totals — anchored on the MEASURED self size so the headline can never
-        // exceed the real heap footprint (Feedback §1a).
         lines.push('## Total Memory Impact');
         lines.push('');
         lines.push(
-          `- **Current (measured self size):** ${formatBytes(realTotalSelfSize)} across ${formatNumber(instances.length)} instances`,
+          `- **Current (measured):** ${formatBytes(currentTotal)} across ${formatNumber(instances.length)} instances` +
+            (heapNumberTotal > 0
+              ? ` — ${formatBytes(realTotalSelfSize)} self size + ${formatBytes(heapNumberTotal)} heap numbers they own`
+              : ' of self size'),
         );
         if (collectionTotal > 0) {
           lines.push(
-            `- **+ estimated collection-entry overhead:** ${formatBytes(collectionTotal)} (external Map/Set/Array storage holding these instances) → **${formatBytes(totalAllInstances)}** total`,
+            `- **+ estimated collection entries:** ${formatBytes(collectionTotal)} in the Map/Set/Array storage holding these instances`,
           );
         }
-        lines.push(
-          `- **Theoretical minimum:** ~${formatBytes(theoreticalTotal)} (capped at measured self size)`,
-        );
-        const overhead = realTotalSelfSize - theoreticalTotal;
-        if (overhead > 0 && theoreticalTotal > 0) {
+        if (numericProps > 0) {
           lines.push(
-            `- **V8 overhead vs theoretical:** ~${formatBytes(overhead)} (${((overhead / realTotalSelfSize) * 100).toFixed(0)}% of self size)`,
+            columnarSaving > 0
+              ? `- **With the ${numericProps} numeric properties in Float64Array columns:** ~${formatBytes(currentTotal - columnarSaving)} (saves ~${formatBytes(columnarSaving)})`
+              : `- **Numeric properties are already cheap:** moving them into Float64Array columns would not save memory (${slotBytes}B inline fields, ${avgHeapNumbers > 0 ? 'few' : 'no'} heap numbers).`,
           );
         }
         if (totalSize > 0) {
@@ -609,14 +598,14 @@ export function registerObjectCostBreakdown(server: McpServer): void {
         // Optimization suggestions
         lines.push('## Optimization Options');
         lines.push('');
-        if (numericProps >= 3) {
+        if (numericProps >= 3 && columnarSaving > 0) {
           lines.push(
-            `1. **TypedArray columnar storage:** Move ${numericProps} numeric properties into a \`Float64Array\`. Saves ${formatBytes((V8_HEAP_NUMBER - 8) * numericProps * instances.length)} from heap number elimination.`,
+            `1. **TypedArray columnar storage:** Move ${numericProps} numeric properties into a \`Float64Array\`. Saves ~${formatBytes(columnarSaving)} (their ${slotBytes}B fields and heap numbers, minus 8B per stored value).`,
           );
         }
         if (avgHeapNumbers > 0) {
           lines.push(
-            `${numericProps >= 3 ? '2' : '1'}. **Reduce heap numbers:** Values stored as HeapNumber (16B each) instead of SMI (0B). Check if values can be kept as integers ≤ 2³¹.`,
+            `${numericProps >= 3 && columnarSaving > 0 ? '2' : '1'}. **Reduce heap numbers:** ${formatBytes(heapNumberTotal)} goes to heap numbers. Values that stay integers within ±2³⁰ are stored inline at no extra cost.`,
           );
         }
         if (instances.length > 10000) {
@@ -637,9 +626,9 @@ export function registerObjectCostBreakdown(server: McpServer): void {
               `cause is sparse keys or over-allocation — they need different fixes.`,
           );
         }
-        if (collectionOverhead > V8_OBJECT_HEADER) {
+        if (collectionOverhead > headerBytes) {
           lines.push(
-            `- **Collection choice:** Current collection overhead is ${Math.round(collectionOverhead)}B/instance. Array storage (${V8_ARRAY_SLOT}B/slot) is cheaper than Map (${V8_MAP_ENTRY_OVERHEAD}B/entry).`,
+            `- **Collection choice:** Current collection overhead is ${Math.round(collectionOverhead)}B/instance. Array storage (${slotBytes}B/slot) is cheaper than Map (${MAP_ENTRY_FIELDS * slotBytes}B/entry).`,
           );
         }
 

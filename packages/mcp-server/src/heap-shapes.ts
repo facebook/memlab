@@ -153,6 +153,25 @@ const slotBytesBySnapshot = new WeakMap<IHeapSnapshot, SlotBytes>();
 export function getSlotBytes(snapshot: IHeapSnapshot): SlotBytes {
   const cached = slotBytesBySnapshot.get(snapshot);
   if (cached != null) return cached;
+  // A JS `Array` object is exactly four fields (map, properties, elements,
+  // length): 16 bytes compressed, 32 uncompressed. Node.js captures are
+  // usually uncompressed, which the elements witnesses below can only ever
+  // read as "no proof of 4".
+  let arrays16 = 0;
+  let arrays32 = 0;
+  snapshot.nodes.forEach(node => {
+    if (arrays16 + arrays32 >= CALIBRATION_WITNESSES) return false;
+    if (node.type !== 'object' || node.name !== 'Array') return;
+    if (node.self_size === 16) arrays16++;
+    else if (node.self_size === 32) arrays32++;
+  });
+  // One capture has one field width, so the witnesses must all agree; a mix
+  // means something else sized these arrays, and the store witnesses decide.
+  if (arrays16 > 0 !== arrays32 > 0) {
+    const width: SlotBytes = arrays32 > 0 ? 8 : 4;
+    slotBytesBySnapshot.set(snapshot, width);
+    return width;
+  }
   const samples: Array<{storeBytes: number; maxIndex: number}> = [];
   snapshot.nodes.forEach(node => {
     // `false` is memlab's documented stop signal for this walk; a bare `return`
