@@ -387,7 +387,10 @@ const GROUPS: Group[] = [
         'memlab_dead_context_variables',
         'Captured variables no live code can read, heap-wide: a value kept alive only because it shares a closure Context with a sibling closure that is still alive. Needs a V8 15.6+ (Chrome 156+) capture.',
       ],
-      ['memlab_retainer_trace', 'The shortest retainer path for one node.'],
+      [
+        'memlab_retainer_trace',
+        'The shortest retainer path for one node; `mode: "tree"` shows every owner as a bounded tree (`max_depth`, `max_nodes`, `max_siblings`) ending at a root or the page global.',
+      ],
       [
         'memlab_retainer_summary',
         'Retainer paths across many instances, clustered by shape.',

@@ -11,11 +11,18 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode, IHeapEdge} from '@memlab/core';
 import {z} from 'zod';
+import {
+  retainerTree,
+  type RetainerBranch,
+  type RetainerTree,
+} from '../node-distance.js';
 import {getSnapshot} from '../heap-state.js';
 import {
   classifyRetainerRoot,
   formatBytes,
+  formatNumber,
   formatNodeInline,
+  truncateNodeName,
   collapseRepeatedRuns,
   formatRetainerTree,
   isNodeWorthInspecting,
@@ -101,17 +108,99 @@ function countIndependentHolders(node: IHeapNode): {
   return {strong, ephemeron};
 }
 
+function nodeLabel(n: IHeapNode): string {
+  return `@${n.id} ${truncateNodeName(n.name, n.type, n.self_size, 60)} (${n.type})`;
+}
+
+function renderRetainerTree(
+  target: IHeapNode,
+  tree: RetainerTree,
+  showSizes: boolean,
+): string {
+  const lines = [
+    `## Retaining paths to ${nodeLabel(target)}`,
+    '',
+    tree.pathCount === 0
+      ? 'No path to a root within the limits.'
+      : `**${formatNumber(tree.pathCount)} path(s) to a root or a global**, nearest-root retainers first. Each branch is a separate owner: cutting one leaves the object reachable through the others (\`memlab_retainer_layers\` counts the independent ones).`,
+    '',
+    nodeLabel(target) +
+      (showSizes ? ` — retains ${formatBytes(target.retainedSize)}` : ''),
+  ];
+  const walk = (branches: RetainerBranch[], prefix: string): void => {
+    branches.forEach((b, i) => {
+      const last = i === branches.length - 1;
+      const root =
+        b.retainers.length > 0
+          ? ''
+          : b.joins
+            ? ' — joins a path shown above'
+            : b.truncated
+              ? ' — not followed further (limits reached)'
+              : b.heldBy != null && b.heldBy.nodeIndex !== 0
+                ? ` — held by ${nodeLabel(b.heldBy)}`
+                : ' — root';
+      lines.push(
+        `${prefix}${last ? '└─' : '├─'} ${b.edgeName} (${b.edgeType}) ← ${nodeLabel(b.node)}` +
+          (showSizes && root === ''
+            ? ` · retains ${formatBytes(b.node.retainedSize)}`
+            : '') +
+          root,
+      );
+      walk(b.retainers, prefix + (last ? '   ' : '│  '));
+    });
+  };
+  walk(tree.branches, '');
+  const hit = [
+    tree.limits.depth ? 'depth (raise `max_depth`)' : '',
+    tree.limits.nodes ? 'nodes visited (raise `max_nodes`)' : '',
+    tree.limits.siblings ? 'retainers per node (raise `max_siblings`)' : '',
+  ].filter(Boolean);
+  if (hit.length > 0) {
+    lines.push(
+      '',
+      `_Limits reached: ${hit.join(', ')}. Paths beyond them are not shown._`,
+    );
+  }
+  return lines.join('\n');
+}
+
 export function registerRetainerTrace(server: McpServer): void {
   server.tool(
     'memlab_retainer_trace',
     'Get the shortest path from a GC root to a specific heap node. This shows why the object is retained in memory by walking the pathEdge chain. Use memlab_retainer_summary to trace multiple instances of a class and group by common retainer patterns. Use memlab_get_referrers / memlab_get_references to explore incoming/outgoing edges from a node. When the shortest path crosses an edge only a DEV build has (React `_owner`/`_debug*`, Fast Refresh, a devtools module or console handle), it shows the shortest PRODUCTION path instead (`exclude_dev`, default true) and names the dev edge, or says that no production path exists.',
     {
       node_id: z.number().describe('The numeric ID of the heap node'),
+      mode: z
+        .enum(['shortest', 'tree'])
+        .optional()
+        .default('shortest')
+        .describe(
+          '"shortest" (default): the one shortest path. "tree": EVERY retaining path up to a GC root as a tree, bounded by `max_depth`, `max_nodes` and `max_siblings` — use it when an object may have more than one owner, since the shortest path alone suggests cutting it frees the object.',
+        ),
       max_depth: z
         .number()
+        .int()
+        .min(1)
         .optional()
         .describe(
-          'Maximum number of nodes in the trace. When set, shows only the first N nodes from the GC root. Useful for long traces where only the first few hops matter.',
+          'Shortest mode: show only the first N nodes from the GC root. Tree mode: the deepest path to follow (default 20).',
+        ),
+      max_nodes: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .default(200)
+        .describe('Tree mode: nodes to visit in total (default 200).'),
+      max_siblings: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .default(5)
+        .describe(
+          'Tree mode: retainers followed per node, nearest-root first (default 5).',
         ),
       show_sizes: z
         .boolean()
@@ -135,12 +224,36 @@ export function registerRetainerTrace(server: McpServer): void {
           'When the shortest path crosses a dev-only edge, trace the shortest PRODUCTION path instead (default true). Pass false to see the raw shortest path, dev edges included.',
         ),
     },
-    async ({node_id, max_depth, show_sizes, expand, exclude_dev}) => {
+    async ({
+      node_id,
+      mode,
+      max_depth,
+      max_nodes,
+      max_siblings,
+      show_sizes,
+      expand,
+      exclude_dev,
+    }) => {
       try {
         const snapshot = getSnapshot();
         const node = snapshot.getNodeById(node_id);
         if (!node) {
           return errorResult(`Node with id ${node_id} not found`);
+        }
+        if (mode === 'tree') {
+          return toolResult(
+            renderRetainerTree(
+              node,
+              retainerTree(
+                snapshot,
+                node,
+                max_depth ?? 20,
+                max_nodes,
+                max_siblings,
+              ),
+              show_sizes,
+            ),
+          );
         }
 
         if (!node.hasPathEdge) {

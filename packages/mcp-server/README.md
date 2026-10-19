@@ -313,7 +313,7 @@ Ranked lists page the same way: pass `offset` to skip rows, and every page ends 
 | `memlab_dominator_attribution` | Given several candidate retainers, how much each one actually dominates — a zero refutes a hypothesis. |
 | `memlab_retained_by` | Bytes retained ONLY through closure contexts, detached DOM, the DevTools console or event handlers: what removing every such retainer would free, with the largest classes. Filter any query or histogram the same way with `retained_by`. |
 | `memlab_dead_context_variables` | Captured variables no live code can read, heap-wide: a value kept alive only because it shares a closure Context with a sibling closure that is still alive. Needs a V8 15.6+ (Chrome 156+) capture. |
-| `memlab_retainer_trace` | The shortest retainer path for one node. |
+| `memlab_retainer_trace` | The shortest retainer path for one node; `mode: "tree"` shows every owner as a bounded tree (`max_depth`, `max_nodes`, `max_siblings`) ending at a root or the page global. |
 | `memlab_retainer_summary` | Retainer paths across many instances, clustered by shape. |
 | `memlab_referrer_summary` | Who points at this, grouped by edge. |
 | `memlab_pinch_points` | Single objects whose release would free the most. |
