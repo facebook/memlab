@@ -17,6 +17,7 @@ import v8 from 'v8';
 import zlib from 'zlib';
 import crypto from 'crypto';
 import {execFileSync} from 'child_process';
+import {isCheckpointRef, resolveCheckpointRef} from '../checkpoints.js';
 import {recordEviction, timedLoad} from '../perf-stats.js';
 import {minifiedWarning} from '../minified.js';
 import {z} from 'zod';
@@ -610,6 +611,9 @@ export function resolveSnapshotPath(filePath: string): {
    */
   sidecarBase: string;
 } {
+  if (isCheckpointRef(filePath)) {
+    filePath = resolveCheckpointRef(filePath).path;
+  }
   // Already a local file? Use it directly.
   const asLocal = path.resolve(filePath);
   if (!filePath.startsWith('manifold://') && fs.existsSync(asLocal)) {
@@ -1222,6 +1226,9 @@ export function registerLoadSnapshot(server: McpServer): void {
         } catch (fetchErr) {
           const msg =
             fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+          if (isCheckpointRef(file_path)) {
+            return errorResult(new Error(msg));
+          }
           return errorResult(
             new Error(
               `Failed to fetch "${file_path}" from Manifold: ${msg}\n` +

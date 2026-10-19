@@ -47,6 +47,8 @@ interface CdpMessage {
 export interface CaptureRow {
   target: 'page' | 'worker';
   title: string;
+  /** The page's URL (page rows only). */
+  url?: string;
   usedMB: number | null;
   status: string;
   path: string | null;
@@ -199,6 +201,35 @@ function safeName(s: string): string {
 }
 
 /** Capture the page and/or its workers; never throws for one worker. */
+/** The page targets a Chrome instance offers on its debugging port. */
+export async function listPageTargets(
+  port: number,
+): Promise<Array<{title: string; url: string}>> {
+  const endpoint = `http://127.0.0.1:${port}/json`;
+  let res: Response;
+  try {
+    res = await fetch(endpoint);
+  } catch (err) {
+    throw new Error(
+      `${endpoint} is unreachable (${String(err)}); is Chrome running with --remote-debugging-port=${port}?`,
+    );
+  }
+  let body: unknown = null;
+  try {
+    body = res.ok ? await res.json() : null;
+  } catch {
+    body = null;
+  }
+  if (!Array.isArray(body)) {
+    throw new Error(
+      `${endpoint} did not return a target list (HTTP ${res.status})`,
+    );
+  }
+  return (body as Array<Record<string, string>>)
+    .filter(t => t.type === 'page')
+    .map(t => ({title: t.title ?? '', url: t.url ?? ''}));
+}
+
 export async function captureLive(opts: CaptureOptions): Promise<CaptureRow[]> {
   const endpoint = `http://127.0.0.1:${opts.port}/json`;
   const hint = `is Chrome running with --remote-debugging-port=${opts.port}?`;
@@ -237,6 +268,7 @@ export async function captureLive(opts: CaptureOptions): Promise<CaptureRow[]> {
       rows.push({
         target: 'page',
         title: pages[0].title ?? pages[0].url ?? 'page',
+        url: pages[0].url,
         usedMB: null,
         status: 'ok',
         path: file,

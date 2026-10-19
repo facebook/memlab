@@ -142,7 +142,10 @@ memory limit.
 Start Chrome with `--remote-debugging-port=9222` and ask the assistant to run
 `memlab_capture` with an output directory. It snapshots the page and its
 dedicated workers, which a page snapshot never contains. Compare the page and
-workers with `memlab_realm_summary`.
+workers with `memlab_realm_summary`. `list_targets: true` lists the pages to
+choose from. Give each capture a `label` and refer to it later as
+`checkpoint:<label>` anywhere a snapshot path is accepted, for example
+`memlab_diff_snapshots({before: "checkpoint:baseline", after: "checkpoint:after"})`.
 
 ### From Node.js
 

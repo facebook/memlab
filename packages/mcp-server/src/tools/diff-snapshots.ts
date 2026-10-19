@@ -29,6 +29,7 @@ import {
   markdownTable,
   pathsHeader,
 } from '../utils.js';
+import {isCheckpointRef, resolveCheckpointRef} from '../checkpoints.js';
 import {splitClassKey} from './sequence-analysis.js';
 import {
   churnObjects,
@@ -90,6 +91,11 @@ interface ResolvedSnapshot {
 // graph). Order: (1) a resident handle, (2) a path matching a resident
 // snapshot's file, (3) load from disk.
 async function resolveDiffSnapshot(arg: string): Promise<ResolvedSnapshot> {
+  if (isCheckpointRef(arg)) {
+    const {path: file, checkpoint} = resolveCheckpointRef(arg);
+    const r = await resolveDiffSnapshot(file);
+    return {...r, label: `${arg} (captured ${checkpoint.captured_at})`};
+  }
   const byHandle = getSnapshotByHandle(arg);
   if (byHandle) {
     return {
