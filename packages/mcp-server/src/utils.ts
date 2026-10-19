@@ -19,6 +19,7 @@ import {
   getSessionConfig,
   isLightSnapshot,
   shouldEmitHeader,
+  takeActiveNotice,
 } from './heap-state.js';
 // ScanTimeoutError / makeScanBudget moved to analysis-budget.ts (shared, no
 // import cycle). Re-exported here so existing `from '../utils.js'` imports in
@@ -2004,7 +2005,8 @@ export function toolResult(text: string, headerOverride?: string | null) {
       : shouldEmitHeader()
         ? snapshotHeader()
         : '';
-  const body = header ? `${header}\n\n${text}` : text;
+  const notice = takeActiveNotice();
+  const body = [notice, header, text].filter(Boolean).join('\n\n');
   return {content: [{type: 'text' as const, text: body}]};
 }
 

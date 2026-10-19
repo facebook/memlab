@@ -10,6 +10,7 @@
 
 import {currentProgress} from './progress.js';
 import {releaseMemory} from './memory-release.js';
+import {detectEnv} from './tools/load-snapshot.js';
 import type {IHeapSnapshot} from '@memlab/core';
 import fs from 'fs';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
@@ -17,9 +18,12 @@ const {getFullHeapFromFile} = memlabHeapAnalysis;
 import {
   findResidentByPath,
   getCurrentHandle,
+  pinHandle,
   getSnapshotByHandle,
   removeSnapshot,
+  restoreCurrentHandle,
   setCurrentSnapshot,
+  unpinHandle,
   setSnapshot,
 } from './heap-state.js';
 import {beginAnalysisBudget} from './analysis-budget.js';
@@ -54,6 +58,7 @@ export async function withSnapshotAt<T>(
     resident != null ? getSnapshotByHandle(resident.handle) : null;
   const previousHandle = getCurrentHandle();
   let temporaryHandle: string | null = null;
+  pinHandle(previousHandle);
 
   try {
     if (snapshot == null) {
@@ -73,8 +78,10 @@ export async function withSnapshotAt<T>(
           fileName: localPath.replace(/^.*\//, ''),
           nodeCount: snapshot.nodes?.length ?? 0,
           edgeCount: snapshot.edges?.length ?? 0,
-          totalSize: 0,
-          env: 'unknown',
+          // Node 0 is V8's synthetic root: it dominates every node, so its
+          // retained size is the heap total.
+          totalSize: snapshot.nodes?.get(0)?.retainedSize ?? 0,
+          env: detectEnv(snapshot).env,
         },
         {replace: false},
       );
@@ -91,7 +98,10 @@ export async function withSnapshotAt<T>(
       snapshot = null;
       releaseMemory(1);
     }
-    if (previousHandle != null) setCurrentSnapshot(previousHandle);
+    // Same restore as a borrowed handle: back to the saved snapshot, or, if
+    // it was unloaded meanwhile, a fallback that the next result announces.
+    restoreCurrentHandle(previousHandle);
+    unpinHandle(previousHandle);
   }
 }
 

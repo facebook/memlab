@@ -215,6 +215,8 @@ Call **`memlab_tools`** first when you are not sure which tool fits. It prints t
 
 Tools are grouped by the question they answer. Within a group, try them in the order listed. A few tools appear in more than one group.
 
+Every single-snapshot tool takes an optional `snapshot`: a resident handle, or a `.heapsnapshot` path that is loaded for that call only and released afterwards. The active snapshot does not move, so two captures can be queried side by side without `memlab_snapshots({action: "switch"})` between calls.
+
 Every byte-size filter (`min_retained_size`, `min_self_size`, `min_bytes`, …) takes bytes or a size such as `"1MB"` or `"500KiB"` (KB = 1000 bytes, KiB = 1024). `memlab_query_objects` also takes ranges: `"1MB-"`, `"10KB-1MB"`, `"-1MB"`.
 
 Ranked lists page the same way: pass `offset` to skip rows, and every page ends with "Showing a–b of N … Next page: `offset: k`". Ties are broken by node id, so the same offset always shows the same rows. `memlab_snapshots({max_name_length: N})` clips node names in every tool for the rest of the session.

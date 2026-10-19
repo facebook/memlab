@@ -102,11 +102,27 @@ function touch(handle: string | null): void {
  * that dies — taking every resident snapshot with it. Evicting the coldest one
  * first turns an OOM crash into a slower session.
  */
+// Handles a borrowed call will restore as the active snapshot. The memory guard
+// must not evict them meanwhile, or the session's snapshot would move under it.
+// Counted, so nested borrows unpin correctly.
+const pinned = new Map<string, number>();
+
+export function pinHandle(handle: string | null): void {
+  if (handle != null) pinned.set(handle, (pinned.get(handle) ?? 0) + 1);
+}
+
+export function unpinHandle(handle: string | null): void {
+  if (handle == null) return;
+  const left = (pinned.get(handle) ?? 0) - 1;
+  if (left > 0) pinned.set(handle, left);
+  else pinned.delete(handle);
+}
+
 export function evictLeastRecentlyUsed(): SnapshotMetadata | null {
   let victim: string | null = null;
   let victimStamp = Infinity;
   for (const handle of loaded.keys()) {
-    if (handle === currentHandle) continue;
+    if (handle === currentHandle || pinned.has(handle)) continue;
     const stamp = lastUsed.get(handle) ?? 0;
     if (stamp < victimStamp) {
       victimStamp = stamp;
@@ -596,6 +612,39 @@ export function setCurrentSnapshot(handle: string): boolean {
   touch(handle);
   headerEmitted = false;
   return true;
+}
+
+/**
+ * Put back an active handle saved earlier, `null` included, for callers that
+ * switch the active snapshot temporarily.
+ */
+export function restoreCurrentHandle(handle: string | null): void {
+  // The memory guard cannot evict the saved handle (borrowers pin it), but an
+  // unload or a replace-mode load inside the call can still remove it. Then
+  // fall back the way `removeSnapshot` does, and say so in the next result.
+  const next =
+    handle == null || loaded.has(handle)
+      ? handle
+      : loaded.size > 0
+        ? [...loaded.keys()][0]
+        : null;
+  if (handle != null && next !== handle) {
+    activeNotice =
+      next != null
+        ? `⚠ The active snapshot \`${handle}\` was unloaded during the last call; \`${next}\` is active now.`
+        : `⚠ The active snapshot \`${handle}\` was unloaded during the last call; no snapshot is loaded now.`;
+  }
+  if (currentHandle !== next) headerEmitted = false;
+  currentHandle = next;
+}
+
+let activeNotice: string | null = null;
+
+/** A one-time notice that the active snapshot changed without being asked. */
+export function takeActiveNotice(): string | null {
+  const notice = activeNotice;
+  activeNotice = null;
+  return notice;
 }
 
 export function removeSnapshot(handle: string): boolean {

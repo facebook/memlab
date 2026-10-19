@@ -230,6 +230,11 @@ scope tree, and the tool says so.
 
 ## Working with more than one snapshot
 
+Every single-snapshot tool takes an optional `snapshot`: a resident handle, or
+a `.heapsnapshot` path that is loaded for that call only. The active snapshot
+does not move, so you can ask about two captures side by side without
+switching between calls.
+
 Leak detection needs a trend, not a single capture. Pass `keep_previous: true`
 when loading so earlier snapshots stay resident: each one gets a *handle*, and
 `memlab_snapshots` lists them, switches the active one, or unloads the ones you

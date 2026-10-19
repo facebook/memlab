@@ -9,6 +9,11 @@
  */
 
 import crypto from 'crypto';
+import {
+  snapshotParam,
+  takesSnapshotParam,
+  withSnapshotRef,
+} from './snapshot-ref.js';
 import {toolAnnotations} from './tool-annotations.js';
 import {isTerse, shouldEmitNote} from './heap-state.js';
 import {makeProgressReporter, runWithProgress} from './progress.js';
@@ -265,6 +270,9 @@ export function installAnalysisGuardrail(server: McpServer): void {
         !Array.isArray(maybeShape)
           ? (maybeShape as Record<string, unknown>)
           : null;
+      const statelessSnapshot =
+        shape != null && takesSnapshotParam(name, shape);
+      if (statelessSnapshot && shape != null) shape.snapshot = snapshotParam();
       recordToolHandler(name, inner, shape);
       // tool(name, [description,] shape, handler) → insert the annotations
       // between the shape and the handler; the SDK has an overload for both
@@ -292,9 +300,19 @@ export function installAnalysisGuardrail(server: McpServer): void {
           // `extra` is the second argument for a schema tool, the first
           // otherwise.
           const extra = hArgs.length > 1 ? hArgs[1] : hArgs[0];
+          const ref =
+            statelessSnapshot &&
+            params != null &&
+            typeof params === 'object' &&
+            typeof (params as {snapshot?: unknown}).snapshot === 'string'
+              ? (params as {snapshot: string}).snapshot
+              : null;
           const result = await runWithProgress(
             makeProgressReporter(extra, name.replace(/^memlab_/, '')),
-            async () => inner(...hArgs),
+            async () =>
+              ref != null
+                ? withSnapshotRef(ref, () => inner(...hArgs))
+                : inner(...hArgs),
           );
           return trimStandingNotes(result);
         } catch (e) {
