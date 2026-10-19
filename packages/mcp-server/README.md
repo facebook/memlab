@@ -371,6 +371,7 @@ Tools are grouped by the question they answer. Within a group, try them in the o
 
 | Tool | Use it when |
 | --- | --- |
+| `memlab_query_objects` | Any combination of filters in one call: class regex, node type, property name, detached, self / retained size ranges like "1MB-". Sorted, paged and cached per snapshot. |
 | `memlab_find_nodes_by_class` | By exact class name, or by `name_pattern` regex/substring. |
 | `memlab_search_nodes` | By name/type/size predicates. |
 | `memlab_find_by_property` | By a property name/value. |

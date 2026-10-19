@@ -520,6 +520,10 @@ const GROUPS: Group[] = [
     question: 'Inspect or find specific objects',
     tools: [
       [
+        'memlab_query_objects',
+        'Any combination of filters in one call: class regex, node type, property name, detached, self / retained size ranges like "1MB-". Sorted, paged and cached per snapshot.',
+      ],
+      [
         'memlab_find_nodes_by_class',
         'By exact class name, or by `name_pattern` regex/substring.',
       ],

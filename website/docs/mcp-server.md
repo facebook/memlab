@@ -194,7 +194,7 @@ The server ships about 150 tools, organized by the question they answer:
 | Detached DOM and event listeners | `memlab_detached_dom`, `memlab_dom_audit`, `memlab_event_listener_leaks`, `memlab_event_registry` |
 | Collections and caches | `memlab_cache_analysis`, `memlab_stale_collections`, `memlab_map_entries`, `memlab_weakref_census`, `memlab_property_distribution` |
 | Strings and duplication | `memlab_intern_opportunities`, `memlab_duplicated_strings`, `memlab_string_patterns`, `memlab_sliced_strings`, `memlab_duplicate_objects` |
-| Inspect or find specific objects | `memlab_get_node`, `memlab_object_shape`, `memlab_get_references`, `memlab_get_referrers`, `memlab_find_nodes_by_class`, `memlab_find_by_shape`, `memlab_closure_inspection` |
+| Inspect or find specific objects | `memlab_query_objects`, `memlab_get_node`, `memlab_object_shape`, `memlab_get_references`, `memlab_get_referrers`, `memlab_find_nodes_by_class`, `memlab_find_by_shape`, `memlab_closure_inspection` |
 | None of the above | `memlab_eval`, `memlab_eval_across`, `memlab_auto_investigate` |
 | Sharing a capture | `memlab_anonymize_snapshot` |
 | Session, batching and write-ups | `memlab_load_snapshot`, `memlab_snapshots`, `memlab_batch`, `memlab_finding_index`, `memlab_analyze_run` |
