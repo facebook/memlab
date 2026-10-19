@@ -10,9 +10,16 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import fs from 'fs';
+import {perfSnapshot} from '../perf-stats.js';
 import {SERVER_VERSION} from '../server-version.js';
 import {listSnapshots, getCurrentHandle} from '../heap-state.js';
-import {formatBytes, formatNumber, errorResult, textResult} from '../utils.js';
+import {
+  formatBytes,
+  formatNumber,
+  errorResult,
+  markdownTable,
+  textResult,
+} from '../utils.js';
 
 /**
  * The plugin's stable scripts path, when the launcher exported one. The plugin
@@ -68,6 +75,53 @@ export function registerServerStatus(server: McpServer): void {
         }
         if (all.length === 0) {
           lines.push('  (none loaded — use memlab_load_snapshot)');
+        }
+        const perf = perfSnapshot();
+        lines.push(
+          '',
+          `**Peak RSS:** ${formatBytes(perf.peakRss)} since start` +
+            (perf.evictions.length > 0
+              ? `; ${formatNumber(perf.evictions.length)} snapshot(s) evicted to make room (${perf.evictions.map(e => e.handle).join(', ')})`
+              : ''),
+        );
+        if (perf.loads.length > 0) {
+          lines.push(
+            '',
+            '**Recent loads**',
+            '',
+            markdownTable(
+              ['File', 'Kind', 'Nodes', 'Time', 'RSS before → after'],
+              perf.loads
+                .slice(-5)
+                .reverse()
+                .map(l => [
+                  l.file,
+                  l.kind,
+                  formatNumber(l.nodes),
+                  `${l.seconds.toFixed(1)} s`,
+                  `${formatBytes(l.rssBefore)} → ${formatBytes(l.rssAfter)}`,
+                ]),
+              new Set([2, 3]),
+            ),
+          );
+        }
+        if (perf.slowestTools.length > 0) {
+          lines.push(
+            '',
+            '**Slowest tools** (this session)',
+            '',
+            markdownTable(
+              ['Tool', 'Calls', 'Max', 'Mean', 'Last'],
+              perf.slowestTools.map(t => [
+                t.tool,
+                formatNumber(t.count),
+                `${(t.maxMs / 1000).toFixed(1)} s`,
+                `${(t.totalMs / t.count / 1000).toFixed(1)} s`,
+                `${(t.lastMs / 1000).toFixed(1)} s`,
+              ]),
+              new Set([1, 2, 3, 4]),
+            ),
+          );
         }
         lines.push(
           '',

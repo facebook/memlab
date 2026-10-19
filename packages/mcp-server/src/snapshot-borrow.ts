@@ -8,6 +8,7 @@
  * @oncall memory_lab
  */
 
+import {timedLoad} from './perf-stats.js';
 import {currentProgress} from './progress.js';
 import {releaseMemory} from './memory-release.js';
 import {detectEnv} from './tools/load-snapshot.js';
@@ -67,7 +68,9 @@ export async function withSnapshotAt<T>(
       currentProgress().note?.(
         `loading ${name} (the parse and dominator pass block without further output)`,
       );
-      snapshot = await getFullHeapFromFile(localPath);
+      snapshot = await timedLoad(localPath, 'temporary', () =>
+        getFullHeapFromFile(localPath),
+      );
       currentProgress().note?.(
         `loaded ${name} in ${Math.round((Date.now() - started) / 1000)}s`,
       );

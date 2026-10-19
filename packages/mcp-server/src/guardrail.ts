@@ -14,6 +14,7 @@ import {
   takesSnapshotParam,
   withSnapshotRef,
 } from './snapshot-ref.js';
+import {recordCall} from './perf-stats.js';
 import {toolAnnotations} from './tool-annotations.js';
 import {isTerse, shouldEmitNote} from './heap-state.js';
 import {makeProgressReporter, runWithProgress} from './progress.js';
@@ -296,6 +297,8 @@ export function installAnalysisGuardrail(server: McpServer): void {
           typeof override === 'number' ? override : undefined,
         );
         beginAnalysisBudget(timeoutMs);
+        // Timed in `finally`, so calls that time out or throw count too.
+        const started = Date.now();
         try {
           // `extra` is the second argument for a schema tool, the first
           // otherwise.
@@ -330,6 +333,7 @@ export function installAnalysisGuardrail(server: McpServer): void {
           }
           throw e;
         } finally {
+          recordCall(name, Date.now() - started);
           endAnalysisBudget();
         }
       };

@@ -624,7 +624,7 @@ const GROUPS: Group[] = [
       ],
       [
         'memlab_server_status',
-        'Confirm the server is alive; returns instantly.',
+        'Confirm the server is alive (returns instantly), and see what large snapshots cost it: peak RSS, recent loads with time and RSS before/after, evictions, and the slowest tools this session.',
       ],
       [
         'memlab_finding_index',

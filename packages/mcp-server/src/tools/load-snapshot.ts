@@ -17,6 +17,7 @@ import v8 from 'v8';
 import zlib from 'zlib';
 import crypto from 'crypto';
 import {execFileSync} from 'child_process';
+import {recordEviction, timedLoad} from '../perf-stats.js';
 import {minifiedWarning} from '../minified.js';
 import {z} from 'zod';
 import memlabCore from '@memlab/core';
@@ -1459,6 +1460,7 @@ export function registerLoadSnapshot(server: McpServer): void {
             const victim = evictLeastRecentlyUsed();
             if (victim == null) break;
             evicted.push(victim.handle);
+            recordEviction(victim.handle);
             headroomMB = getHeapHeadroomMB();
           }
           if (
@@ -1512,17 +1514,21 @@ export function registerLoadSnapshot(server: McpServer): void {
             // Parse only. `preparePathFinder` (shortest paths + dominators +
             // retained sizes + Fiber marking) is the half being skipped, and it
             // is the expensive half.
-            snapshot = await memlabUtils.getSnapshotFromFile(resolved, {
-              buildNodeIdIndex: true,
-              verbose: false,
-            });
+            snapshot = await timedLoad(resolved, 'light load', () =>
+              memlabUtils.getSnapshotFromFile(resolved, {
+                buildNodeIdIndex: true,
+                verbose: false,
+              }),
+            );
             progress.phase(
               4,
               PHASES,
               'parsed; dominator/retained-size pass SKIPPED (light mode)',
             );
           } else {
-            snapshot = await getFullHeapFromFile(resolved);
+            snapshot = await timedLoad(resolved, 'load', () =>
+              getFullHeapFromFile(resolved),
+            );
             progress.phase(
               4,
               PHASES,
