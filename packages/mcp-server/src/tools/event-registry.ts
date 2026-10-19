@@ -12,8 +12,7 @@ import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {
   DEFAULT_MIN_REGISTRY_EVENTS,
-  listenersFromArray,
-  type Listener,
+  registryEvents,
 } from '../emitter-shapes.js';
 import type {IHeapSnapshot} from '@memlab/core';
 import {getSnapshot} from '../heap-state.js';
@@ -60,23 +59,18 @@ function listenerRecordsByCallback(
     // Per node: a throw on one malformed node or edge must not discard every
     // count already taken, which would blank the whole rung's column.
     try {
-      const local: Array<[string, ReturnType<typeof listenersFromArray>]> = [];
-      let candidate = false;
-      for (const edge of node.references) {
-        if (edge.type !== 'property') continue;
-        const target = edge.toNode;
-        if (target.type !== 'object' || target.name !== 'Array') continue;
-        if (!candidate) {
-          candidate = true;
-          candidates++;
-        }
-        const listeners = listenersFromArray(target);
-        if (listeners.length > 0)
-          local.push([String(edge.name_or_index), listeners]);
-      }
-      if (local.length < minEvents) return;
+      const hasArray = node.references.some(
+        edge =>
+          edge.type === 'property' &&
+          edge.toNode.type === 'object' &&
+          edge.toNode.name === 'Array',
+      );
+      if (!hasArray) return;
+      candidates++;
+      const local = registryEvents(node, minEvents);
+      if (local == null) return;
       const counts: Array<[string, number]> = [];
-      for (const [event, listeners] of local) {
+      for (const {name: event, listeners} of local) {
         for (const l of listeners) {
           const cb = snap.getNodeById(l.callbackId);
           // The full event name: a 40-char prefix merged distinct events.
@@ -272,28 +266,14 @@ export function registerEventRegistry(server: McpServer): void {
         try {
           snapshot.nodes.forEach(node => {
             budget.tick();
-            if (node.id <= 3 || node.type !== 'object') return;
-
             // A registry container has >= min_events properties whose target is
             // an Array of listeners.
-            let eventProps = 0;
-            let hostListeners = 0;
-            const localEvents: Array<{name: string; listeners: Listener[]}> =
-              [];
-            for (const edge of node.references) {
-              if (edge.type !== 'property') continue;
-              const target = edge.toNode;
-              if (target.type !== 'object' || target.name !== 'Array') continue;
-              const listeners = listenersFromArray(target);
-              if (listeners.length === 0) continue;
-              eventProps++;
-              hostListeners += listeners.length;
-              localEvents.push({
-                name: String(edge.name_or_index),
-                listeners,
-              });
-            }
-            if (eventProps < min_events) return;
+            const localEvents = registryEvents(node, min_events);
+            if (localEvents == null) return;
+            const hostListeners = localEvents.reduce(
+              (s, e) => s + e.listeners.length,
+              0,
+            );
 
             containerCount++;
             perHostTotals.push(hostListeners);

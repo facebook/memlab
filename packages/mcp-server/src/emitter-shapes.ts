@@ -50,26 +50,67 @@ export interface StructuralRegistry {
  * 762 hosts / 11,016 listeners and the other "no accumulation found" — because
  * only one of them could recognise the population. One definition, two callers.
  */
+const EMPTY_SLOTS: ReadonlySet<string> = new Set([
+  'undefined',
+  'null',
+  'the_hole',
+]);
+
+/**
+ * An array is a listener list only if EVERY element is listener-shaped (holes
+ * and `undefined` aside). Accepting any array with one function in it took a
+ * React hook's `memoizedState: [callback, deps]` for an event list.
+ */
 export function listenersFromArray(arr: IHeapNode): Listener[] {
   const out: Listener[] = [];
   for (const e of arr.references) {
     if (e.type !== 'element') continue;
     const entry = e.toNode;
-    if (entry.id <= 3) continue;
+    if (entry.id <= 3 || entry.type === 'hidden') continue;
+    if (EMPTY_SLOTS.has(entry.name)) continue;
     if (entry.type === 'closure') {
       out.push({callbackId: entry.id, contextId: 0});
-    } else if (entry.type === 'object') {
-      let cb = 0;
-      let ctx = 0;
+      continue;
+    }
+    let cb = 0;
+    let ctx = 0;
+    if (entry.type === 'object') {
       for (const pe of entry.references) {
         const pn = String(pe.name_or_index);
         if (CALLBACK_PROPS.has(pn)) cb = pe.toNode.id;
         else if (CONTEXT_PROPS.has(pn)) ctx = pe.toNode.id;
       }
-      if (cb > 0) out.push({callbackId: cb, contextId: ctx});
     }
+    if (cb === 0) return [];
+    out.push({callbackId: cb, contextId: ctx});
   }
   return out;
+}
+
+/**
+ * The event lists of `node` if it is a registry container — an object with at
+ * least `minEvents` properties whose values are listener lists — else null.
+ * A module's `exports` is left out: an exported table of functions is code,
+ * not subscribers.
+ */
+export function registryEvents(
+  node: IHeapNode,
+  minEvents: number,
+): Array<{name: string; listeners: Listener[]}> | null {
+  if (node.id <= 3 || node.type !== 'object') return null;
+  const events: Array<{name: string; listeners: Listener[]}> = [];
+  for (const edge of node.references) {
+    if (edge.type !== 'property') continue;
+    const target = edge.toNode;
+    if (target.type !== 'object' || target.name !== 'Array') continue;
+    const listeners = listenersFromArray(target);
+    if (listeners.length > 0) {
+      events.push({name: String(edge.name_or_index), listeners});
+    }
+  }
+  if (events.length < minEvents) return null;
+  if (findOwningProperty(node) === 'exports') return null;
+  return events;
 }
 
 /**
@@ -97,19 +138,9 @@ export function findStructuralRegistries(
   const out: StructuralRegistry[] = [];
   snapshot.nodes.forEach(node => {
     onTick?.();
-    if (node.id <= 3 || node.type !== 'object') return;
-    let totalListeners = 0;
-    const events: Array<{name: string; listeners: Listener[]}> = [];
-    for (const edge of node.references) {
-      if (edge.type !== 'property') continue;
-      const target = edge.toNode;
-      if (target.type !== 'object' || target.name !== 'Array') continue;
-      const listeners = listenersFromArray(target);
-      if (listeners.length === 0) continue;
-      events.push({name: String(edge.name_or_index), listeners});
-      totalListeners += listeners.length;
-    }
-    if (events.length < minEvents) return;
+    const events = registryEvents(node, minEvents);
+    if (events == null) return;
+    const totalListeners = events.reduce((s, e) => s + e.listeners.length, 0);
     out.push({
       hostId: node.id,
       hostName: node.name,
