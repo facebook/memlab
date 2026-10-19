@@ -26,7 +26,8 @@ import {
  * Reachability from the synthetic GC roots with one node treated as a sink:
  * `blocked` is marked reached (so it is not reported as unreachable) but its
  * outgoing edges are never followed. Anything left unmarked is reachable ONLY
- * through `blocked`, i.e. it lives inside that node's retained subtree.
+ * through `blocked`, i.e. it lives inside that node's retained subtree. Weak
+ * edges are not followed: they keep nothing alive.
  *
  * Mirrors `computeReachableWithoutDevRoots` in dev-artifacts.ts, which does the
  * same walk with the dev/automation roots as sinks.
@@ -46,6 +47,7 @@ export function computeReachableWithoutNode(
   while (stack.length > 0) {
     const node = stack.pop() as IHeapNode;
     node.forEachReference((edge: IHeapEdge) => {
+      if (edge.type === 'weak') return;
       const to = edge.toNode;
       if (reached[to.nodeIndex]) return;
       reached[to.nodeIndex] = 1;
@@ -78,7 +80,7 @@ export function registerRetainerLayers(server: McpServer): void {
   server.tool(
     'memlab_retainer_layers',
     'Counterfactual retainer analysis: answer "if I cut this edge, would the object still be retained, and by what?". ' +
-      "Enumerates the INDEPENDENT retaining edges into a node — the incoming edges whose source is still reachable from a GC root when the target itself is treated as a sink — so back-edges from inside the target's own retained subtree are excluded. " +
+      "Enumerates the INDEPENDENT retaining edges into a node — the incoming strong edges whose source is still reachable from a GC root when the target itself is treated as a sink — so back-edges from inside the target's own retained subtree, and weak references, are excluded. " +
       'The object becomes unreachable only when ALL independent retainers are cut, so a count above 1 means any single fix leaves it retained by the others. ' +
       'Use this BEFORE writing a fix: memlab_retainer_trace and memlab_detached_dom --group_by retainer each report ONE path/grouping, which is why a stack of caches holding the same object looks like a single retainer and a partial fix reports a misleading win. ' +
       'Complements memlab_dominator_chain (accountability chain upward) and memlab_retainer_trace (one shortest path).',
@@ -113,8 +115,16 @@ export function registerRetainerLayers(server: McpServer): void {
         const groups = new Map<string, RetainerEdgeGroup>();
         let independentEdgeCount = 0;
         let backEdgeCount = 0;
+        const weakFrom = new Map<string, number>();
         for (const edge of target.referrers) {
           const from = edge.fromNode;
+          // A weak reference (from compiled code, a WeakMap key, a WeakRef)
+          // does not keep the target alive, so it is no retainer to cut.
+          if (edge.type === 'weak') {
+            const label = `${from.name} (${from.type})`;
+            weakFrom.set(label, (weakFrom.get(label) ?? 0) + 1);
+            continue;
+          }
           // A self-edge (V8 emits them for DOM nodes) cannot retain the target,
           // but the sink walk marks the target itself reached so it would
           // otherwise pass the test below. Count it with the back-edges.
@@ -166,8 +176,19 @@ export function registerRetainerLayers(server: McpServer): void {
             (backEdgeCount > 0
               ? `; ${formatNumber(backEdgeCount)} back-edge(s) from inside its own retained subtree excluded.`
               : '.'),
-          '',
         ];
+        const weakCount = [...weakFrom.values()].reduce((s, n) => s + n, 0);
+        if (weakCount > 0) {
+          const from = [...weakFrom.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([label, n]) => (n > 1 ? `${label} ×${n}` : label))
+            .join(', ');
+          lines.push(
+            `${formatNumber(weakCount)} weak reference(s) not counted — they do not keep the object alive (from ${from}${weakFrom.size > 3 ? ', …' : ''}).`,
+          );
+        }
+        lines.push('');
 
         if (independentEdgeCount === 0) {
           lines.push(
@@ -237,7 +258,7 @@ export function registerRetainerLayers(server: McpServer): void {
 
         lines.push(
           '',
-          '_Independence test: an incoming edge counts only if its source is still reachable from a GC root when the target is treated as a sink. ' +
+          '_Independence test: an incoming strong edge counts only if its source is still reachable from a GC root over strong edges when the target is treated as a sink. ' +
             "Edges failing that test originate inside the target's own retained subtree and cannot keep it alive._",
         );
 
