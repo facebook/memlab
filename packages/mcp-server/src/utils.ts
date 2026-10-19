@@ -169,7 +169,7 @@ export function typenameOf(node: IHeapNode): string | null {
 export function truncateNodeName(
   name: string,
   type: string,
-  selfSize: number,
+  _selfSize: number,
   maxLen = 150,
   aggressiveDom = false,
 ): string {
@@ -178,8 +178,15 @@ export function truncateNodeName(
     type === 'concatenated string' ||
     type === 'sliced string'
   ) {
-    if (name.length <= maxLen) return name;
-    return `${name.slice(0, maxLen)}… (${formatBytes(selfSize)} total)`;
+    // Source text is full of newlines, which break the line or cell it is
+    // printed in. Collapse only a bounded head: the name can be a multi-MB
+    // script source, and this runs once per table row.
+    const head = name.slice(0, maxLen * 2).replace(/\s+/g, ' ');
+    if (name.length <= maxLen * 2 && head.length <= maxLen) return head;
+    // Not the self size: for an external, concatenated or sliced string that
+    // is a header of a few dozen bytes, and a 6.7 MB script source read as
+    // "(52 B total)". The count is of source characters not shown.
+    return `${head.slice(0, maxLen)}… (+${formatNumber(Math.max(0, name.length - maxLen))} chars)`;
   }
 
   const isDomLike =
