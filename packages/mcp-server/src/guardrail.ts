@@ -259,6 +259,7 @@ export function installAnalysisGuardrail(server: McpServer): void {
     const name = String(toolArgs[0]);
     const lastIdx = toolArgs.length - 1;
     const handler = toolArgs[lastIdx];
+    let params: string[] = [];
     if (typeof handler === 'function') {
       const inner = handler as AnyFn;
       // Index the raw handler plus its zod shape so tools can dispatch to each
@@ -277,6 +278,7 @@ export function installAnalysisGuardrail(server: McpServer): void {
         shape != null && takesSnapshotParam(name, shape);
       if (statelessSnapshot && shape != null) shape.snapshot = snapshotParam();
       recordToolHandler(name, inner, shape);
+      if (shape != null) params = Object.keys(shape);
       // tool(name, [description,] shape, handler) → insert the annotations
       // between the shape and the handler; the SDK has an overload for both
       // forms. Registrations without a shape keep their form: there is no
@@ -284,7 +286,7 @@ export function installAnalysisGuardrail(server: McpServer): void {
       const hasAnnotations =
         lastIdx >= 4 && typeof toolArgs[lastIdx - 1] === 'object';
       if (shape != null && !hasAnnotations) {
-        toolArgs.splice(lastIdx, 0, toolAnnotations(name, Object.keys(shape)));
+        toolArgs.splice(lastIdx, 0, toolAnnotations(name, params));
       }
       const handlerIdx = toolArgs.length - 1;
       toolArgs[handlerIdx] = async (...hArgs: unknown[]) => {
@@ -341,7 +343,7 @@ export function installAnalysisGuardrail(server: McpServer): void {
       };
     }
     const registered = origTool(...toolArgs);
-    trackSdkTool(name, registered, toolsetsOf(name));
+    trackSdkTool(name, registered, toolsetsOf(name), params);
     return registered;
   };
 }

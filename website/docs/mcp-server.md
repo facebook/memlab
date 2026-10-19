@@ -294,7 +294,9 @@ also runs under a wall-clock budget (90 s by default; override it with
 ## Tool permissions and safety
 
 No tool ever modifies the heap snapshot it analyzes, and most tools are
-read-only analysis. Two groups are exceptions. Every tool declares MCP
+read-only analysis. Two groups are exceptions. Start the server with
+`MEMLAB_DISABLE_CODE_TOOLS=1` to turn off the tools that run JavaScript
+altogether. Every tool declares MCP
 annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`,
 `openWorldHint` and a `title`), so a client that honours them can auto-approve
 the read-only tools and keep asking for these.

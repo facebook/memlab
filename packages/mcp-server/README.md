@@ -131,7 +131,7 @@ Every tool declares MCP annotations (`readOnlyHint`, `destructiveHint`, `idempot
 ### Tools that execute JavaScript
 
 > [!CAUTION]
-> These tools run JavaScript supplied by the caller, or read from files a round directory provides, **with the full privileges of the MCP server process**. They use `node:vm` to scope the globals they inject, but [`node:vm` is not a security sandbox](https://nodejs.org/api/vm.html). Code can reach the host realm, for example with `Object.constructor('return process')()`, and from there touch the filesystem, network and shell. Treat each call as equivalent to running code on your machine. Heap snapshot contents are attacker-influenceable input, so a prompt injection could steer the model into running hostile code here. **Do not auto-approve these tools**, and avoid the `mcp__memlab__*` wildcard, which would auto-approve them.
+> These tools run JavaScript supplied by the caller, or read from files a round directory provides, **with the full privileges of the MCP server process**. They use `node:vm` to scope the globals they inject, but [`node:vm` is not a security sandbox](https://nodejs.org/api/vm.html). Code can reach the host realm, for example with `Object.constructor('return process')()`, and from there touch the filesystem, network and shell. Treat each call as equivalent to running code on your machine. Heap snapshot contents are attacker-influenceable input, so a prompt injection could steer the model into running hostile code here. **Do not auto-approve these tools**, and avoid the `mcp__memlab__*` wildcard, which would auto-approve them. To remove them altogether, start the server with `MEMLAB_DISABLE_CODE_TOOLS=1`.
 
 | Tool | What runs |
 | --- | --- |
@@ -531,6 +531,7 @@ The server keeps a few small files so that work survives a restart:
 | `NODE_OPTIONS` | Set `--max-old-space-size` here when running `memlab-mcp` or `dist/index.js` directly |
 | `MEMLAB_MAX_OLD_SPACE_MB` | Server heap in MB when launched by `memlab-cli` (minimum 512; default scales with RAM) |
 | `MEMLAB_ANALYSIS_TIMEOUT_MS` | Default per-call wall-clock budget (default 90000; `<= 0` disables it) |
+| `MEMLAB_DISABLE_CODE_TOOLS` | `1` turns off every tool that runs caller-supplied JavaScript (the table under [Tools that execute JavaScript](#tools-that-execute-javascript)); `memlab_tools({enable})` cannot turn them back on. Use `memlab_query_objects`, `memlab_retained_by` and `memlab_native_contexts` for queries instead |
 | `MEMLAB_TOOLSETS` | Expose only these tool groups, comma-separated: `core` (the ~20 everyday tools) and the question groups `composition`, `growth`, `retention`, `artifacts`, `dom`, `collections`, `strings`, `inspect`, `ask`, `sharing`, `session`. The session tools are always on, and `memlab_tools({enable: "growth"})` turns more groups on mid-session. Unset (or `all`) exposes every tool |
 | `MEMLAB_MCP_SERVER` | Server entry point `memlab-cli` runs, instead of the bundled `dist/index.js` |
 | `MEMLAB_CLI_VERBOSE` | `1` prints full tool output, with suggestions, from `memlab-cli script` |

@@ -10,7 +10,12 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
-import {enableToolsets, hiddenTools, selectedToolsets} from '../toolsets.js';
+import {
+  codeToolsAreDisabled,
+  enableToolsets,
+  hiddenTools,
+  selectedToolsets,
+} from '../toolsets.js';
 import {getRegisteredTool, listToolNames} from '../tool-registry.js';
 import {
   errorResult,
@@ -839,9 +844,16 @@ export function registerToolsIndex(server: McpServer): void {
 
         const hidden = new Set(hiddenTools());
         const sets = selectedToolsets();
+        const codeOff = codeToolsAreDisabled();
         const lines: string[] = [
           `# memlab tools by question (${registered.size} registered)`,
           '',
+          ...(codeOff
+            ? [
+                'Tools that run caller-supplied JavaScript are off (MEMLAB_DISABLE_CODE_TOOLS). For queries, use `memlab_query_objects`, `memlab_retained_by` and `memlab_native_contexts`.',
+                '',
+              ]
+            : []),
           ...(sets != null
             ? [
                 `Toolsets exposed: ${sets.join(', ')} (MEMLAB_TOOLSETS). ${formatNumber(hidden.size)} tool(s) marked _(hidden)_ below are off; \`memlab_tools({enable: "<toolset>"})\` turns a group on. Toolsets: ${TOOLSET_KEYS.join(', ')}.`,

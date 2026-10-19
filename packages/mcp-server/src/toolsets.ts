@@ -18,6 +18,8 @@
  * every tool is exposed as before.
  */
 
+import {runsCode} from './tool-annotations.js';
+
 interface SdkTool {
   enabled: boolean;
   enable(): void;
@@ -68,14 +70,37 @@ function parseSelection(raw: string | undefined): Set<string> | null {
 }
 
 let selected = parseSelection(process.env.MEMLAB_TOOLSETS);
-const sdkTools = new Map<string, {tool: SdkTool; toolsets: string[]}>();
+
+/**
+ * `MEMLAB_DISABLE_CODE_TOOLS=1` turns off every tool that runs caller-supplied
+ * JavaScript, for good: `memlab_tools({enable})` cannot bring them back. They
+ * run with the server's privileges, and snapshot contents can steer a model
+ * into calling them; the structured query tools cover most of what they are
+ * used for.
+ */
+const codeToolsDisabled = /^(1|true|yes)$/i.test(
+  process.env.MEMLAB_DISABLE_CODE_TOOLS ?? '',
+);
+
+export function codeToolsAreDisabled(): boolean {
+  return codeToolsDisabled;
+}
+const sdkTools = new Map<
+  string,
+  {tool: SdkTool; toolsets: string[]; params: string[]}
+>();
 
 /** The selected toolset keys, or null when every tool is exposed. */
 export function selectedToolsets(): string[] | null {
   return selected == null ? null : [...selected].sort();
 }
 
-function wanted(name: string, toolsets: string[]): boolean {
+function wanted(
+  name: string,
+  toolsets: string[],
+  params: string[] = [],
+): boolean {
+  if (codeToolsDisabled && runsCode(name, params)) return false;
   if (selected == null || ALWAYS.has(name)) return true;
   if (selected.has('core') && CORE_TOOLS.has(name)) return true;
   return toolsets.some(t => selected?.has(t));
@@ -86,11 +111,12 @@ export function trackSdkTool(
   name: string,
   tool: unknown,
   toolsets: string[],
+  params: string[] = [],
 ): void {
   const t = tool as SdkTool | undefined;
   if (t == null || typeof t.disable !== 'function') return;
-  sdkTools.set(name, {tool: t, toolsets});
-  if (!wanted(name, toolsets)) t.disable();
+  sdkTools.set(name, {tool: t, toolsets, params});
+  if (!wanted(name, toolsets, params)) t.disable();
 }
 
 /** Tool names currently hidden. */
@@ -115,7 +141,7 @@ export function enableToolsets(keys: string[]): string[] {
     for (const k of asked) selected.add(k);
   }
   const toEnable = [...sdkTools.entries()].filter(
-    ([name, e]) => !e.tool.enabled && wanted(name, e.toolsets),
+    ([name, e]) => !e.tool.enabled && wanted(name, e.toolsets, e.params),
   );
   // `enable()` notifies the client each time; flip the flag directly for all
   // but the last, whose `enable()` then sends one notification for the batch.

@@ -59,6 +59,14 @@ function takesCode(params: readonly string[]): boolean {
   return params.some(p => CODE_PARAMS.has(p) || p.endsWith('_code'));
 }
 
+/** Whether a tool runs caller-supplied JavaScript. */
+export function runsCode(
+  name: string,
+  params: readonly string[] = [],
+): boolean {
+  return RUNS_CODE.has(name) || takesCode(params);
+}
+
 // Change files outside the heap. `destructive` deletes or overwrites data;
 // `idempotent` means repeating the call with the same input changes nothing
 // more (a capture is new every time).
@@ -112,7 +120,7 @@ export function toolAnnotations(
   params: readonly string[] = [],
 ): ToolAnnotations {
   const title = toolTitle(name);
-  if (RUNS_CODE.has(name) || takesCode(params)) {
+  if (runsCode(name, params)) {
     return {
       title,
       readOnlyHint: false,
