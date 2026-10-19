@@ -21,10 +21,19 @@ import {
   errorResult,
 } from '../utils.js';
 
+const PRIMITIVE_TYPES = new Set([
+  'string',
+  'concatenated string',
+  'sliced string',
+  'number',
+  'symbol',
+  'bigint',
+]);
+
 export function registerGetReferences(server: McpServer): void {
   server.tool(
     'memlab_get_references',
-    'Get outgoing edges (references) from a heap node, sorted by target retained size. Shows what objects this node points to — its properties, elements, and closure captures. Supports edge_filter (match by edge name) and offset (pagination) so a node with thousands of references can be explored beyond the first page. Complements memlab_get_referrers (incoming edges). Use memlab_object_shape for a quick property overview, or memlab_closure_inspection for closure-specific analysis.',
+    'Get outgoing edges (references) from a heap node, sorted by target retained size (or `sort_by` self size or name). Shows what objects this node points to — its properties, elements, and closure captures. Supports edge_filter (match by edge name), exclude_primitives (drop string/number targets) and offset (pagination) so a node with thousands of references can be explored beyond the first page. Complements memlab_get_referrers (incoming edges). Use memlab_object_shape for a quick property overview, or memlab_closure_inspection for closure-specific analysis.',
     {
       node_id: z.number().describe('The numeric ID of the heap node'),
       limit: z
@@ -45,6 +54,20 @@ export function registerGetReferences(server: McpServer): void {
         .describe(
           'Case-insensitive substring; only edges whose name/index contains it are returned (e.g. "context", or a specific property name). Applied before sort + pagination, so you can isolate one edge among thousands instead of scanning the top-N.',
         ),
+      sort_by: z
+        .enum(['retained_size', 'self_size', 'name'])
+        .optional()
+        .default('retained_size')
+        .describe(
+          "Order by the target node's retained size (default), self size, or edge name.",
+        ),
+      exclude_primitives: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Leave out edges to strings, numbers, symbols and bigints, so only object-like targets remain (default false).',
+        ),
       compact: z
         .boolean()
         .optional()
@@ -53,7 +76,15 @@ export function registerGetReferences(server: McpServer): void {
           'Truncate target names to 60 chars to save tokens (default true). Set to false to see full names.',
         ),
     },
-    async ({node_id, limit, offset, edge_filter, compact}) => {
+    async ({
+      node_id,
+      limit,
+      offset,
+      edge_filter,
+      sort_by,
+      exclude_primitives,
+      compact,
+    }) => {
       try {
         const snapshot = getSnapshot();
         const node = snapshot.getNodeById(node_id);
@@ -74,13 +105,23 @@ export function registerGetReferences(server: McpServer): void {
               ? true
               : String(e.name_or_index).toLowerCase().includes(filterLc),
           )
+          .filter(
+            e => !exclude_primitives || !PRIMITIVE_TYPES.has(e.toNode.type),
+          )
           // Ties by id and edge name, so the same offset pages the same way.
-          .sort(
-            (a, b) =>
-              b.toNode.retainedSize - a.toNode.retainedSize ||
-              a.toNode.id - b.toNode.id ||
-              String(a.name_or_index).localeCompare(String(b.name_or_index)),
-          );
+          .sort((a, b) => {
+            const byName = () =>
+              String(a.name_or_index).localeCompare(String(b.name_or_index));
+            const primary =
+              sort_by === 'name'
+                ? byName()
+                : sort_by === 'self_size'
+                  ? // `IHeapNode` declares `self_size` (snake case) beside
+                    // `retainedSize`; tsc rejects any other spelling here.
+                    b.toNode.self_size - a.toNode.self_size
+                  : b.toNode.retainedSize - a.toNode.retainedSize;
+            return primary || a.toNode.id - b.toNode.id || byName();
+          });
         const paged = paginate(matched, offset, limit);
         const edges = paged.items;
         const safeOffset = paged.offset;

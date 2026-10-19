@@ -24,7 +24,7 @@ import {
 export function registerGetReferrers(server: McpServer): void {
   server.tool(
     'memlab_get_referrers',
-    'Get incoming edges (referrers) to a heap node, sorted by source retained size. Shows what objects hold references to this node. Supports edge_filter (match by edge name) and offset (pagination) so a widely-referenced singleton can be explored beyond the first page — e.g. "which referrers are NOT the dev-only Debug alias?". Complements memlab_get_references (outgoing edges). Use memlab_retainer_trace to see the full GC root path.',
+    'Get incoming edges (referrers) to a heap node, sorted by source retained size (or `sort_by` self size or name). Shows what objects hold references to this node. Supports edge_filter (match by edge name) and offset (pagination) so a widely-referenced singleton can be explored beyond the first page — e.g. "which referrers are NOT the dev-only Debug alias?". Complements memlab_get_references (outgoing edges). Use memlab_retainer_trace to see the full GC root path.',
     {
       node_id: z.number().describe('The numeric ID of the heap node'),
       limit: z
@@ -45,6 +45,13 @@ export function registerGetReferrers(server: McpServer): void {
         .describe(
           'Case-insensitive substring; only referrers whose edge name/index contains it are returned. Applied before sort + pagination, so you can isolate one referrer among hundreds instead of scanning the top-N.',
         ),
+      sort_by: z
+        .enum(['retained_size', 'self_size', 'name'])
+        .optional()
+        .default('retained_size')
+        .describe(
+          "Order by the source node's retained size (default), self size, or edge name.",
+        ),
       compact: z
         .boolean()
         .optional()
@@ -53,7 +60,7 @@ export function registerGetReferrers(server: McpServer): void {
           'Truncate source names to 60 chars to save tokens (default true). Set to false to see full names.',
         ),
     },
-    async ({node_id, limit, offset, edge_filter, compact}) => {
+    async ({node_id, limit, offset, edge_filter, sort_by, compact}) => {
       try {
         const snapshot = getSnapshot();
         const node = snapshot.getNodeById(node_id);
@@ -75,12 +82,19 @@ export function registerGetReferrers(server: McpServer): void {
               : String(e.name_or_index).toLowerCase().includes(filterLc),
           )
           // Ties by id and edge name, so the same offset pages the same way.
-          .sort(
-            (a, b) =>
-              b.fromNode.retainedSize - a.fromNode.retainedSize ||
-              a.fromNode.id - b.fromNode.id ||
-              String(a.name_or_index).localeCompare(String(b.name_or_index)),
-          );
+          .sort((a, b) => {
+            const byName = () =>
+              String(a.name_or_index).localeCompare(String(b.name_or_index));
+            const primary =
+              sort_by === 'name'
+                ? byName()
+                : sort_by === 'self_size'
+                  ? // `IHeapNode` declares `self_size` (snake case) beside
+                    // `retainedSize`; tsc rejects any other spelling here.
+                    b.fromNode.self_size - a.fromNode.self_size
+                  : b.fromNode.retainedSize - a.fromNode.retainedSize;
+            return primary || a.fromNode.id - b.fromNode.id || byName();
+          });
         const paged = paginate(matched, offset, limit);
         const edges = paged.items;
         const safeOffset = paged.offset;
