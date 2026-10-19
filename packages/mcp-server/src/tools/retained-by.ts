@@ -11,6 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
+import {structuredResult} from '../structured.js';
 import {getSnapshot, getSnapshotByHandle} from '../heap-state.js';
 import {
   RETAINED_BY,
@@ -24,7 +25,6 @@ import {
   formatBytes,
   formatNumber,
   markdownTable,
-  toolResult,
 } from '../utils.js';
 
 interface ClassRow {
@@ -73,6 +73,7 @@ export function registerRetainedBy(server: McpServer): void {
         const kinds: readonly RetainedBy[] =
           kind != null ? [kind] : RETAINED_BY;
         const summary: string[][] = [];
+        const kindsData: Array<Record<string, unknown>> = [];
         const details: string[] = [];
         for (const k of kinds) {
           const started = Date.now();
@@ -93,6 +94,12 @@ export function registerRetainedBy(server: McpServer): void {
             }
             row.count++;
             row.size += node.self_size;
+          });
+          kindsData.push({
+            kind: k,
+            objects: count,
+            self_size: size,
+            share_of_heap: heapSelf > 0 ? size / heapSelf : null,
           });
           summary.push([
             RETAINED_BY_LABEL[k],
@@ -147,7 +154,11 @@ export function registerRetainedBy(server: McpServer): void {
             : []),
           ...details,
         ];
-        return toolResult(lines.join('\n'));
+        return structuredResult(
+          lines.join('\n'),
+          {heap_self_size: heapSelf, kinds: kindsData},
+          {snapshot: handle},
+        );
       } catch (err) {
         return errorResult(err);
       }

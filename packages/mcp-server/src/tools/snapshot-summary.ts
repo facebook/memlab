@@ -13,6 +13,7 @@ import memlabCore from '@memlab/core';
 import type {IHeapNode, HeapNodeIdSet} from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
 import {z} from 'zod';
+import {structuredResult} from '../structured.js';
 import {heapStatistics} from '../heap-statistics.js';
 import {getSnapshot, getFilePath} from '../heap-state.js';
 import {
@@ -21,7 +22,6 @@ import {
   markdownTable,
   detectAppName,
   errorResult,
-  toolResult,
 } from '../utils.js';
 import {splitClassKey} from './sequence-analysis.js';
 
@@ -258,7 +258,35 @@ export function registerSnapshotSummary(server: McpServer): void {
           );
         }
 
-        return toolResult(lines.join('\n'));
+        return structuredResult(lines.join('\n'), {
+          nodes: nodeCount,
+          edges: edgeCount,
+          total_self_size: totalSelfSize,
+          statistics: {
+            total: stats.total,
+            extra_native_bytes: stats.extraNativeBytes,
+            native: {
+              total: stats.native.total,
+              typed_arrays: stats.native.typedArrays,
+            },
+            v8_heap: {
+              total: stats.v8heap.total,
+              code: stats.v8heap.code,
+              strings: stats.v8heap.strings,
+              js_arrays: stats.v8heap.jsArrays,
+              system: stats.v8heap.system,
+              other: stats.v8heap.other,
+            },
+          },
+          types: breakdown.map(b => ({
+            type: b.type,
+            count: b.count,
+            self_size: b.self_size,
+            ...(exact_retained_size
+              ? {retained_size: b.exact ?? 0}
+              : {retained_upper_bound: b.raw_retained}),
+          })),
+        });
       } catch (err) {
         return errorResult(err);
       }

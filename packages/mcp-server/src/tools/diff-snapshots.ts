@@ -28,7 +28,6 @@ import {
   formatNumber,
   markdownTable,
   pathsHeader,
-  toolResult,
 } from '../utils.js';
 import {splitClassKey} from './sequence-analysis.js';
 import {
@@ -36,6 +35,7 @@ import {
   classChurn,
   compareIsolates,
 } from '../isolate-identity.js';
+import {nodeRef, pageInfo, structuredResult} from '../structured.js';
 import {pageLines, paginate} from '../pagination.js';
 import type {ClassChurn, IsolateMatch} from '../isolate-identity.js';
 
@@ -140,12 +140,11 @@ function isolateLine(iso: IsolateMatch): string {
     : `**Different isolates (or a reload in between):** of ${formatNumber(iso.sampled)} sampled ids, ${formatNumber(iso.found)} exist in "after" and only ${pct}% of those are the same kind of object, so ids are not comparable. Histogram diff only.`;
 }
 
-function churnSection(
+function rankChurn(
   churn: Map<string, ClassChurn>,
-  limit: number,
   includeValueClasses: boolean,
-): string[] {
-  const rows = [...churn.values()]
+): ClassChurn[] {
+  return [...churn.values()]
     .filter(
       r =>
         (r.added > 0 || r.deleted > 0) &&
@@ -157,11 +156,14 @@ function churnSection(
         b.deletedSize - a.deletedSize ||
         a.key.localeCompare(b.key),
     );
+}
+
+function churnSection(rows: ClassChurn[], shown: ClassChurn[]): string[] {
   let added = 0;
   let deleted = 0;
   let addedSize = 0;
   let deletedSize = 0;
-  // Over the rows the table shows, so the headline and the table agree.
+  // The headline is the whole churn, over every class; the table lists `shown`.
   for (const r of rows) {
     added += r.added;
     deleted += r.deleted;
@@ -171,7 +173,7 @@ function churnSection(
   const signed = (n: number, f: (x: number) => string) =>
     `${n >= 0 ? '+' : '-'}${f(Math.abs(n))}`;
   return [
-    `### Object churn by id (${formatNumber(rows.length)} classes, showing ${Math.min(limit, rows.length)})`,
+    `### Object churn by id (${formatNumber(rows.length)} classes, showing ${shown.length})`,
     '',
     `${formatNumber(added)} new objects (${formatBytes(addedSize)} allocated and still alive) · ${formatNumber(deleted)} deleted (${formatBytes(deletedSize)} freed).`,
     '',
@@ -186,18 +188,16 @@ function churnSection(
         'Freed size',
         'Δ Size',
       ],
-      rows
-        .slice(0, limit)
-        .map(r => [
-          r.name.length > 60 ? `${r.name.slice(0, 57)}…` : r.name,
-          r.type,
-          formatNumber(r.added),
-          formatNumber(r.deleted),
-          signed(r.added - r.deleted, formatNumber),
-          formatBytes(r.addedSize),
-          formatBytes(r.deletedSize),
-          signed(r.addedSize - r.deletedSize, formatBytes),
-        ]),
+      shown.map(r => [
+        r.name.length > 60 ? `${r.name.slice(0, 57)}…` : r.name,
+        r.type,
+        formatNumber(r.added),
+        formatNumber(r.deleted),
+        signed(r.added - r.deleted, formatNumber),
+        formatBytes(r.addedSize),
+        formatBytes(r.deletedSize),
+        signed(r.addedSize - r.deletedSize, formatBytes),
+      ]),
       new Set([2, 3, 4, 5, 6, 7]),
     ),
     '',
@@ -213,7 +213,7 @@ function detailSection(
   which: 'added' | 'deleted',
   offset: number,
   pageSize: number,
-): string[] {
+): {lines: string[]; data: Record<string, unknown>} {
   // A full `type::name` key, or a bare name — which may itself contain `::`
   // (`blink::CSSValue`), so a key miss falls back to the name.
   const byKey = [...churn.values()].filter(r => r.key === className);
@@ -222,12 +222,18 @@ function detailSection(
       ? byKey
       : [...churn.values()].filter(r => r.name === className);
   if (candidates.length === 0) {
-    return [`No class \`${className}\` changed between the two snapshots.`];
+    return {
+      lines: [`No class \`${className}\` changed between the two snapshots.`],
+      data: {class: className, objects: []},
+    };
   }
   if (candidates.length > 1) {
-    return [
-      `\`${className}\` names several types; pass one of: ${candidates.map(r => `\`${r.key}\``).join(', ')}.`,
-    ];
+    return {
+      lines: [
+        `\`${className}\` names several types; pass one of: ${candidates.map(r => `\`${r.key}\``).join(', ')}.`,
+      ],
+      data: {class: className, candidates: candidates.map(r => r.key)},
+    };
   }
   const objs = churnObjects(before, after, candidates[0].key, which);
   const paged = paginate(objs, offset, pageSize);
@@ -250,7 +256,16 @@ function detailSection(
     ),
   ];
   lines.push('', ...pageLines(paged, 'objects'));
-  return lines;
+  return {
+    lines,
+    data: {
+      class: candidates[0].key,
+      detail: which,
+      ids_in: which === 'added' ? 'after' : 'before',
+      objects: paged.items.map(nodeRef),
+      pagination: pageInfo(paged),
+    },
+  };
 }
 
 export function registerDiffSnapshots(server: McpServer): void {
@@ -594,28 +609,39 @@ export function registerDiffSnapshots(server: McpServer): void {
             );
           }
         }
+        let churnRows: ClassChurn[] | null = null;
         if (byId) {
           const churn = classChurn(beforeSnapshot, afterSnapshot);
           if (class_name != null && detail != null) {
-            return toolResult(
-              [
-                ...lines,
-                ...detailSection(
-                  beforeSnapshot,
-                  afterSnapshot,
-                  churn,
-                  class_name,
-                  detail,
-                  offset,
-                  page_size,
+            const section = detailSection(
+              beforeSnapshot,
+              afterSnapshot,
+              churn,
+              class_name,
+              detail,
+              offset,
+              page_size,
+            );
+            return structuredResult(
+              [...lines, ...section.lines].join('\n'),
+              {
+                before: beforeResolved.label,
+                after: afterResolved.label,
+                same_isolate: iso?.sameIsolate ?? null,
+                ...section.data,
+              },
+              {
+                snapshot: null,
+                header: pathsHeader(
+                  [beforeArg, afterArg].map(a => a.replace(/^.*\//, '')),
                 ),
-              ].join('\n'),
-              pathsHeader(
-                [beforeArg, afterArg].map(a => a.replace(/^.*\//, '')),
-              ),
+              },
             );
           }
-          lines.push(...churnSection(churn, limit, include_value_classes), '');
+          const ranked = rankChurn(churn, include_value_classes);
+          // The table and the JSON list the same rows.
+          churnRows = ranked.slice(0, limit);
+          lines.push(...churnSection(ranked, churnRows), '');
         } else if (detail != null) {
           lines.push(
             '_`detail` needs id matching, and these captures are not from one isolate (or `identity: "histogram"` was set). Showing the histogram diff only._',
@@ -724,9 +750,47 @@ export function registerDiffSnapshots(server: McpServer): void {
             : `\n*Active snapshot left unchanged${activeHandle ? ` (handle: ${activeHandle})` : ''} (set_active:false).*`,
         );
 
-        return toolResult(
+        const row = (d: DiffEntry) => ({
+          name: d.name,
+          type: d.type,
+          before_count: d.before_count,
+          after_count: d.after_count,
+          count_delta: d.count_delta,
+          size_delta: d.size_delta,
+        });
+        return structuredResult(
           lines.join('\n'),
-          pathsHeader([beforeArg, afterArg].map(a => a.replace(/^.*\//, ''))),
+          {
+            before: beforeResolved.label,
+            after: afterResolved.label,
+            totals: {
+              before_nodes: totalBeforeNodes,
+              after_nodes: totalAfterNodes,
+              before_self_size: totalBeforeSize,
+              after_self_size: totalAfterSize,
+            },
+            same_isolate: iso?.sameIsolate ?? null,
+            grew: grew.slice(0, limit).map(row),
+            shrunk: shrunk.slice(0, limit).map(row),
+            ...(churnRows != null
+              ? {
+                  churn: churnRows.map(r => ({
+                    name: r.name,
+                    type: r.type,
+                    added: r.added,
+                    deleted: r.deleted,
+                    added_size: r.addedSize,
+                    deleted_size: r.deletedSize,
+                  })),
+                }
+              : {}),
+          },
+          {
+            snapshot: null,
+            header: pathsHeader(
+              [beforeArg, afterArg].map(a => a.replace(/^.*\//, '')),
+            ),
+          },
         );
       } catch (err) {
         return errorResult(err);

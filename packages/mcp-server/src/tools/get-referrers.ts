@@ -10,6 +10,7 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
+import {nodeRef, pageInfo, structuredResult} from '../structured.js';
 import {pageLines, paginate} from '../pagination.js';
 import {getSnapshot} from '../heap-state.js';
 import {
@@ -18,7 +19,6 @@ import {
   markdownTable,
   truncateNodeName,
   errorResult,
-  toolResult,
 } from '../utils.js';
 
 export function registerGetReferrers(server: McpServer): void {
@@ -143,7 +143,15 @@ export function registerGetReferrers(server: McpServer): void {
 
         lines.push('', ...pageLines(paged, 'referrers'));
 
-        return toolResult(lines.join('\n'));
+        return structuredResult(lines.join('\n'), {
+          node_id,
+          referrers: edges.map(e => ({
+            edge: String(e.name_or_index),
+            edge_type: e.type,
+            node: nodeRef(e.fromNode),
+          })),
+          pagination: pageInfo(paged),
+        });
       } catch (err) {
         return errorResult(err);
       }

@@ -10,13 +10,13 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
+import {structuredResult} from '../structured.js';
 import {getSnapshot} from '../heap-state.js';
 import type {IHeapNode} from '@memlab/core';
 import {
   queryNodes,
   formatQueryNodesResult,
   errorResult,
-  toolResult,
   makeScanBudget,
 } from '../utils.js';
 import type {OutputMode} from '../utils.js';
@@ -119,8 +119,27 @@ export function registerSearchNodes(server: McpServer): void {
           budget: makeScanBudget(timeout_ms),
         });
 
-        return toolResult(
+        const shown = result.nodes?.length ?? result.ids?.length ?? 0;
+        return structuredResult(
           formatQueryNodesResult(result, offset, effectiveLimit),
+          {
+            total: result.total_count,
+            ...(result.nodes != null ? {nodes: result.nodes} : {}),
+            ...(result.ids != null ? {ids: result.ids} : {}),
+            // A timed-out scan counted only what it reached: the total is
+            // unknown and there may be more past this page.
+            pagination: {
+              offset,
+              page_size: effectiveLimit,
+              total: result.timed_out ? null : result.total_count,
+              next_offset:
+                shown > 0 &&
+                (result.timed_out || offset + shown < result.total_count)
+                  ? offset + shown
+                  : null,
+            },
+            ...(result.timed_out ? {partial: true} : {}),
+          },
         );
       } catch (err) {
         return errorResult(err);

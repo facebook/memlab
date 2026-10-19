@@ -13,6 +13,7 @@ import type {IHeapNode, HeapNodeIdSet} from '@memlab/core';
 import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
 import {z} from 'zod';
+import {pageInfo, structuredResult} from '../structured.js';
 import {offsetParam, pageFooter, paginate} from '../pagination.js';
 import {getSnapshot} from '../heap-state.js';
 import {
@@ -356,7 +357,20 @@ export function registerShapeHistogram(server: McpServer): void {
           }
         }
 
-        return toolResult(lines.join('\n'));
+        return structuredResult(lines.join('\n'), {
+          sort_by: sort,
+          shapes: finalList.map(g => ({
+            properties: g.properties,
+            count: g.count,
+            self_size: g.totalSelfSize,
+            example_id: g.exampleNodeId,
+            ...(exclusive_retained ? {exclusive_size: g.exclusive} : {}),
+            ...(exact_retained_size
+              ? {retained_size: g.exact ?? 0}
+              : {retained_upper_bound: g.rawRetained}),
+          })),
+          pagination: pageInfo(page),
+        });
       } catch (err) {
         return errorResult(err);
       }

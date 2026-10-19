@@ -11,6 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapSnapshot} from '@memlab/core';
 import {z} from 'zod';
+import {pageInfo, structuredResult} from '../structured.js';
 import {getSnapshot, getSnapshotByHandle} from '../heap-state.js';
 import {pageLines, paginate} from '../pagination.js';
 import {
@@ -26,7 +27,6 @@ import {
   formatBytes,
   formatNumber,
   markdownTable,
-  toolResult,
 } from '../utils.js';
 
 // One heap-wide pass per snapshot; paging and filters reuse it.
@@ -177,7 +177,18 @@ export function registerDeadContextVariables(server: McpServer): void {
         }
         const analysis = deadContextAnalysis(snapshot);
         if (!analysis.hasScopeMetadata) {
-          return toolResult(noMetadataText(analysis));
+          return structuredResult(
+            noMetadataText(analysis),
+            {
+              has_scope_metadata: false,
+              scripts_without_scopes: analysis.scriptsWithoutScopes.map(x => ({
+                script_id: x.scriptId,
+                script: x.scriptName,
+                contexts: x.contextCount,
+              })),
+            },
+            {snapshot: handle},
+          );
         }
 
         const scopes = filterScopes(analysis.scopes, script, min_retained_size);
@@ -285,7 +296,40 @@ export function registerDeadContextVariables(server: McpServer): void {
               (missing.length > 5 ? `, … ${missing.length - 5} more` : ''),
           );
         }
-        return toolResult(lines.join('\n'));
+        return structuredResult(
+          lines.join('\n'),
+          {
+            has_scope_metadata: true,
+            dead_retained_size: deadBytes,
+            scopes: page.map(scope => ({
+              scope_info_id: scope.scopeInfoId,
+              script: scope.scriptName,
+              script_id: scope.scriptId,
+              name: scope.scopeName,
+              start: scope.start,
+              end: scope.end,
+              dead_retained_size: scopeDeadBytes(scope),
+              contexts: scope.contexts.map(c => ({
+                context_id: c.contextId,
+                retained_size: c.retainedSize,
+                dead_retained_size: c.deadRetainedSize,
+                dead_fields: c.deadFields.map(f => ({
+                  name: f.name,
+                  value_id: f.valueId,
+                  value_type: f.valueType,
+                  retained_size: f.retainedSize,
+                })),
+              })),
+            })),
+            pagination: pageInfo(paged),
+            scripts_without_scopes: analysis.scriptsWithoutScopes.map(x => ({
+              script_id: x.scriptId,
+              script: x.scriptName,
+              contexts: x.contextCount,
+            })),
+          },
+          {snapshot: handle},
+        );
       } catch (err) {
         return errorResult(err);
       }

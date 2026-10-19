@@ -11,6 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapEdge, IHeapNode, IHeapSnapshot} from '@memlab/core';
 import {z} from 'zod';
+import {nodeRef, pageInfo, structuredResult} from '../structured.js';
 import {getSnapshot, getSnapshotByHandle} from '../heap-state.js';
 import {pageLines, paginate} from '../pagination.js';
 import {
@@ -31,7 +32,6 @@ import {
   formatBytes,
   formatNumber,
   markdownTable,
-  toolResult,
 } from '../utils.js';
 
 type SortBy = 'retained_size' | 'self_size' | 'id';
@@ -354,7 +354,26 @@ export function registerQueryObjects(server: McpServer): void {
             );
           }
         }
-        return toolResult(lines.join('\n'));
+        return structuredResult(
+          lines.join('\n'),
+          {
+            filters: {
+              class_name,
+              node_type,
+              property_name,
+              is_detached,
+              native_context,
+              retained_by,
+              self_size,
+              retained_size,
+            },
+            sort_by,
+            total,
+            objects: page.items.map(o => nodeRef(at(snapshot, o))),
+            pagination: pageInfo(page),
+          },
+          {snapshot: handle},
+        );
       } catch (err) {
         return errorResult(err);
       }

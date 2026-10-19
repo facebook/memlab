@@ -10,6 +10,7 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
+import {structuredResult} from '../structured.js';
 import {getSnapshot} from '../heap-state.js';
 import {
   serializeNodeDetail,
@@ -17,7 +18,6 @@ import {
   formatNumber,
   errorResult,
   textResult,
-  toolResult,
 } from '../utils.js';
 
 /**
@@ -121,7 +121,7 @@ export function registerGetNode(server: McpServer): void {
               'Reload without `light` if you need it.',
           );
         }
-        return toolResult(lines.join('\n'));
+        return structuredResult(lines.join('\n'), {node: d});
       } catch (err) {
         return errorResult(err);
       }

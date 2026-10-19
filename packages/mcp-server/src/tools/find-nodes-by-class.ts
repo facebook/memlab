@@ -13,6 +13,7 @@ import type {IHeapNode} from '@memlab/core';
 import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
 import {z} from 'zod';
+import {nodeRef, pageInfo, structuredResult} from '../structured.js';
 import {offsetParam, pageFooter, type Page} from '../pagination.js';
 import {getSnapshot} from '../heap-state.js';
 import {
@@ -249,10 +250,18 @@ export function registerFindNodesByClass(server: McpServer): void {
           );
         }
 
+        const structured = {
+          class: label,
+          order,
+          total: totalCount,
+          ids: nodes.map(n => n.id),
+          pagination: pageInfo(page),
+        };
         if (output_mode === 'ids') {
-          return toolResult(
+          return structuredResult(
             `"${label}": ${formatNumber(totalCount)} total instances (showing ${nodes.length} IDs by ${order === 'newest' ? 'node id — newest first' : 'retained size'})\n\nIDs: ${nodes.map(n => n.id).join(', ')}` +
               (footer ? `\n\n${footer}` : ''),
+            structured,
           );
         }
 
@@ -261,9 +270,10 @@ export function registerFindNodesByClass(server: McpServer): void {
           totalCount > nodes.length
             ? ` (${formatNumber(totalCount)} total, showing ${order === 'newest' ? `the ${nodes.length} newest by node id` : `top ${nodes.length} by retained size`})`
             : '';
-        return toolResult(
+        return structuredResult(
           `Found ${formatNumber(totalCount)} "${label}" objects${countNote}\n\n${formatNodeSummaryTable(summaries)}` +
             (footer ? `\n\n${footer}` : ''),
+          {...structured, objects: nodes.map(nodeRef)},
         );
       } catch (err) {
         return errorResult(err);

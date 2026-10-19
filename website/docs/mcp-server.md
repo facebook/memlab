@@ -203,6 +203,9 @@ Ranked lists page the same way: `offset` skips rows, and every page ends with
 "Showing a–b of N … Next page: `offset: k`". Ties are broken by node id, so a
 given offset always shows the same rows. `memlab_snapshots` with
 `max_name_length` clips node names in every tool for the rest of the session.
+The main list and lookup tools also return `structuredContent`: the same rows
+as JSON, with node ids scoped by a `snapshot` handle, raw byte counts, the
+filters that applied and a `pagination` object.
 
 Ask the assistant to call **`memlab_tools`** to print the full index, grouped
 the same way, with a one-line "use it when" for every tool. It is the fastest

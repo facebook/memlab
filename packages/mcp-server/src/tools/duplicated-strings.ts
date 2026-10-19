@@ -11,6 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import {z} from 'zod';
+import {pageInfo, structuredResult} from '../structured.js';
 import {offsetParam, pageLines, paginate} from '../pagination.js';
 import {getSnapshot} from '../heap-state.js';
 import {withAnonymizedBanner} from '../anonymized-snapshot.js';
@@ -335,13 +336,24 @@ export function registerDuplicatedStrings(server: McpServer): void {
             )
           : '';
         const body = `Duplicated strings (${summaryLine}):\n\n${lines.join('\n')}\n\n**${page.total > page.items.length ? 'Interning savings for the rows shown' : 'Total interning savings'}: ${formatBytes(totalSavings)}** (if each string were stored only once, harness content excluded)\n${pageLines(page, 'duplicated values').join('\n')}${harnessNote}${ropeSection}${suggestionsSuppressed('memlab_duplicated_strings') ? '' : relatedNote}`;
-        return toolResult(
+        return structuredResult(
           withAnonymizedBanner(
             snapshot,
             suggestions.length > 0
               ? `${body}\n\n---\n\n${suggestions.join('\n')}`
               : body,
           ),
+          {
+            strings: duplicated.map(d => ({
+              value: d.value,
+              count: d.count,
+              total_size: d.total_size,
+              potential_savings: d.potential_savings,
+              actionability: d.actionability,
+              example_node_ids: d.example_node_ids,
+            })),
+            pagination: pageInfo(page),
+          },
         );
       } catch (err) {
         return errorResult(err);

@@ -11,6 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
+import {nodeRef, structuredResult} from '../structured.js';
 import {offsetParam, openPageFooter} from '../pagination.js';
 import {getSnapshot} from '../heap-state.js';
 import {
@@ -22,7 +23,6 @@ import {
   formatNumber,
   markdownTable,
   errorResult,
-  toolResult,
 } from '../utils.js';
 
 function sanitizeForTable(s: string): string {
@@ -247,9 +247,20 @@ export function registerLargestObjects(server: McpServer): void {
           );
         }
         const footer = openPageFooter(start, rows.length, hasMore);
-        return toolResult(
+        return structuredResult(
           `Top ${rows.length} objects by retained size${filterNote}\n\n${markdownTable(headers, rows, rightCols)}${collapseNote}` +
             (footer ? `\n\n${footer}` : ''),
+          {
+            objects: groups.map(g => ({
+              ...nodeRef(g.node),
+              merged_views: g.mergedCount,
+            })),
+            pagination: {
+              offset: start,
+              page_size: limit,
+              next_offset: hasMore ? start + rows.length : null,
+            },
+          },
         );
       } catch (err) {
         return errorResult(err);

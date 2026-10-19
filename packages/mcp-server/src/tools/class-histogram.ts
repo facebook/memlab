@@ -13,6 +13,7 @@ import {z} from 'zod';
 import memlabCore from '@memlab/core';
 import type {HeapNodeIdSet} from '@memlab/core';
 const {NumericSet} = memlabCore;
+import {pageInfo, structuredResult} from '../structured.js';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {
   nativeContextAttribution,
@@ -22,7 +23,6 @@ import {retainedByParam, retainedOnlyBy} from '../retention-filters.js';
 import {checkAnalysisDeadline} from '../analysis-budget.js';
 import {
   errorResult,
-  toolResult,
   formatBytes,
   formatNumber,
   markdownTable,
@@ -415,7 +415,22 @@ export function registerClassHistogram(server: McpServer): void {
           }
         }
 
-        return toolResult(lines.join('\n'));
+        return structuredResult(lines.join('\n'), {
+          sort_by: include_retained_size ? 'retained_size' : 'self_size',
+          classes: sorted.map(v => ({
+            name: splitClassKey(v.key).name,
+            type: v.type,
+            count: v.count,
+            self_size: v.total_self_size,
+            ...(include_retained_size
+              ? {
+                  retained_size: v.retained_size,
+                  retained_exact: v.retained_exact,
+                }
+              : {}),
+          })),
+          pagination: pageInfo(page),
+        });
       } catch (err) {
         return errorResult(err);
       }

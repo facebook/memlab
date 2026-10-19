@@ -11,6 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
+import {structuredResult} from '../structured.js';
 import {getSnapshot, getSnapshotByHandle} from '../heap-state.js';
 import {
   SHARED,
@@ -25,7 +26,6 @@ import {
   formatBytes,
   formatNumber,
   markdownTable,
-  toolResult,
 } from '../utils.js';
 
 export function registerNativeContexts(server: McpServer): void {
@@ -175,7 +175,26 @@ export function registerNativeContexts(server: McpServer): void {
             ),
           );
         }
-        return toolResult(lines.join('\n'));
+        return structuredResult(
+          lines.join('\n'),
+          {
+            total_self_size: total,
+            contexts: a.contexts.map(c => ({
+              id: c.id,
+              label: c.label,
+              detached: c.detached,
+              owned_size: c.attributedSize,
+              owned_count: c.attributedCount,
+              retained_size: c.retainedSize,
+            })),
+            shared: {size: a.sharedSize, count: a.sharedCount},
+            unattributed: {
+              size: a.unattributedSize,
+              count: a.unattributedCount,
+            },
+          },
+          {snapshot: handle},
+        );
       } catch (err) {
         return errorResult(err);
       }

@@ -16,6 +16,7 @@ import {
   type RetainerBranch,
   type RetainerTree,
 } from '../node-distance.js';
+import {nodeRef, structuredResult} from '../structured.js';
 import {getSnapshot} from '../heap-state.js';
 import {
   classifyRetainerRoot,
@@ -106,6 +107,18 @@ function countIndependentHolders(node: IHeapNode): {
     strong++;
   }
   return {strong, ephemeron};
+}
+
+function branchData(b: RetainerBranch): Record<string, unknown> {
+  return {
+    edge: b.edgeName,
+    edge_type: b.edgeType,
+    node: nodeRef(b.node),
+    distance: b.distance,
+    ...(b.joins ? {joins: true} : {}),
+    ...(b.heldBy != null ? {held_by: b.heldBy.id} : {}),
+    retainers: b.retainers.map(branchData),
+  };
 }
 
 function nodeLabel(n: IHeapNode): string {
@@ -241,19 +254,20 @@ export function registerRetainerTrace(server: McpServer): void {
           return errorResult(`Node with id ${node_id} not found`);
         }
         if (mode === 'tree') {
-          return toolResult(
-            renderRetainerTree(
-              node,
-              retainerTree(
-                snapshot,
-                node,
-                max_depth ?? 20,
-                max_nodes,
-                max_siblings,
-              ),
-              show_sizes,
-            ),
+          const tree = retainerTree(
+            snapshot,
+            node,
+            max_depth ?? 20,
+            max_nodes,
+            max_siblings,
           );
+          return structuredResult(renderRetainerTree(node, tree, show_sizes), {
+            mode: 'tree',
+            target: nodeRef(node),
+            path_count: tree.pathCount,
+            retainers: tree.branches.map(branchData),
+            limits_reached: tree.limits,
+          });
         }
 
         if (!node.hasPathEdge) {
@@ -595,7 +609,16 @@ export function registerRetainerTrace(server: McpServer): void {
           lines.push(parts.join(''));
         }
 
-        return toolResult(lines.join('\n'));
+        return structuredResult(lines.join('\n'), {
+          mode: 'shortest',
+          // Root first, target last; `edge` is the edge into the next node.
+          path: reverseItems.map(it => ({
+            ...nodeRef(it.node),
+            ...(it.edgeName != null
+              ? {edge: it.edgeName, edge_type: it.edgeType}
+              : {}),
+          })),
+        });
       } catch (err) {
         return errorResult(err);
       }
