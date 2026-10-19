@@ -12,6 +12,9 @@ import type {IHeapSnapshot} from '@memlab/core';
 import path from 'path';
 import {tickAnalysis} from './analysis-budget.js';
 
+/** A heap snapshot file: a snapshot or an allocation timeline. */
+export const SNAPSHOT_SUFFIX = /\.(heapsnapshot|heaptimeline)$/i;
+
 export type SnapshotEnv = 'browser' | 'node' | 'unknown';
 
 // Wrap the snapshot's full-collection iterators so every heap walk feeds the
@@ -328,7 +331,7 @@ function uniqueHandle(base: string): string {
   // Sanitize to a short slug, then disambiguate against existing handles.
   const slug =
     base
-      .replace(/\.heapsnapshot$/i, '')
+      .replace(SNAPSHOT_SUFFIX, '')
       .replace(/[^A-Za-z0-9._-]+/g, '_')
       .replace(/^_+|_+$/g, '')
       .slice(0, 40) || 'snapshot';
@@ -515,7 +518,7 @@ export function resolveHandle(ref: string): string | null {
   for (const [handle, {metadata}] of loaded) {
     if (metadata.filePath === ref) return handle;
   }
-  const base = ref.replace(/\.heapsnapshot$/i, '');
+  const base = ref.replace(SNAPSHOT_SUFFIX, '');
   if (base !== ref && loaded.has(base)) return base;
   // A reference that carries a DIRECTORY names one file even when another
   // resident shares its basename — but only if the two spellings compare
@@ -549,7 +552,7 @@ export function resolveHandle(ref: string): string | null {
 
 /** Two spellings of the same file, `.heapsnapshot` suffix optional on either. */
 function samePathIgnoringSuffix(a: string, b: string): boolean {
-  const strip = (p: string): string => p.replace(/\.heapsnapshot$/i, '');
+  const strip = (p: string): string => p.replace(SNAPSHOT_SUFFIX, '');
   const sa = strip(a);
   const sb = strip(b);
   // Absolute-resolved equality is the CWD-stable case. But `path.resolve` bakes
@@ -580,18 +583,13 @@ function isPathSuffix(longer: string, shorter: string): boolean {
  * twice over. Error paths use this to say which handles it could have meant.
  */
 export function handlesSharingBasename(ref: string): string[] {
-  const leaf = ref
-    .replace(/\.heapsnapshot$/i, '')
-    .split(/[/\\]/)
-    .pop();
+  const leaf = ref.replace(SNAPSHOT_SUFFIX, '').split(/[/\\]/).pop();
   if (leaf == null || leaf === '') return [];
   return [...loaded.entries()]
     .filter(
       ([, {metadata}]) =>
-        metadata.filePath
-          .replace(/\.heapsnapshot$/i, '')
-          .split(/[/\\]/)
-          .pop() === leaf,
+        metadata.filePath.replace(SNAPSHOT_SUFFIX, '').split(/[/\\]/).pop() ===
+        leaf,
     )
     .map(([handle]) => handle);
 }

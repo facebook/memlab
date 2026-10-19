@@ -29,6 +29,7 @@ const {getFullHeapFromFile} = memlabHeapAnalysis;
 // a 380 MB / 4.19M-node browser snapshot: parse 7.9s, preparePathFinder 9.9s.
 const {utils: memlabUtils} = memlabCore;
 import {
+  SNAPSHOT_SUFFIX,
   setSnapshot,
   getSnapshotMetadata,
   getSessionConfig,
@@ -690,7 +691,7 @@ export function resolveSnapshotPath(filePath: string): {
   let manifoldKey: string | null = null;
   if (filePath.startsWith('manifold://')) {
     manifoldKey = filePath.slice('manifold://'.length);
-  } else if (!filePath.includes('/') && /\.heapsnapshot$/i.test(filePath)) {
+  } else if (!filePath.includes('/') && SNAPSHOT_SUFFIX.test(filePath)) {
     // Bare snapshot filename → resolve against the default bucket's flat/ tree.
     manifoldKey = `${DEFAULT_MANIFOLD_BUCKET}/flat/${filePath}`;
   }
@@ -1060,7 +1061,7 @@ function largestLoadableSibling(
     const self = path.basename(filePath);
     const candidates = fs
       .readdirSync(dir)
-      .filter(f => f.endsWith('.heapsnapshot') && f !== self)
+      .filter(f => SNAPSHOT_SUFFIX.test(f) && f !== self)
       .map(f => {
         try {
           return {

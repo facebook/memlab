@@ -130,6 +130,9 @@ memory limit.
 
 ## Getting a heap snapshot
 
+Both `.heapsnapshot` files and `.heaptimeline` files (snapshots recorded with
+allocation tracking on) load.
+
 ### From Chrome DevTools
 
 1. Open DevTools (F12) and go to the **Memory** tab.

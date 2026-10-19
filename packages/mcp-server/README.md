@@ -182,6 +182,8 @@ To auto-approve the read-only tools while keeping the rest on manual approval, a
 
 ## Getting a Heap Snapshot
 
+Both `.heapsnapshot` files and `.heaptimeline` files (snapshots recorded with allocation tracking on) load, and either suffix may be left off a handle.
+
 ### Chrome DevTools
 
 1. Open DevTools (F12) > Memory tab
