@@ -110,7 +110,7 @@ const GROUPS: Group[] = [
       ],
       [
         'memlab_snapshot_summary',
-        'Node/edge counts and totals, when you only need the shape of the capture.',
+        'Node/edge counts, totals and the standard statistics split (V8 heap: code, strings, JS arrays, system; native: typed arrays), including native memory with no node (`extra_native_bytes`).',
       ],
       [
         'memlab_class_histogram',

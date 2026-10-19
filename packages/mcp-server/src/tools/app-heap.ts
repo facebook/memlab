@@ -9,8 +9,10 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
+import type {IHeapSnapshot} from '@memlab/core';
 import {minifiedWarning} from '../minified.js';
 import {z} from 'zod';
+import {extraNativeBytes} from '../heap-statistics.js';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {
   formatBytes,
@@ -39,6 +41,15 @@ import {computeHeapBudget} from '../heap-budget.js';
  * The partition itself lives in `heap-budget.ts`, shared with
  * `memlab_artifact_budget` so the two cannot report different splits.
  */
+function extraNativeLine(snapshot: IHeapSnapshot): string[] {
+  const extra = extraNativeBytes(snapshot);
+  return extra > 0
+    ? [
+        `Not in these totals: ${formatBytes(extra)} of native memory with no node in the graph (\`extra_native_bytes\`, e.g. ArrayBuffer backing stores).`,
+      ]
+    : [];
+}
+
 export function registerAppHeap(server: McpServer): void {
   server.tool(
     'memlab_app_heap',
@@ -78,6 +89,7 @@ export function registerAppHeap(server: McpServer): void {
           `**${formatBytes(app)} of ${formatBytes(total)} (${pct(app)}) is application memory** across ${formatNumber(appNodes)} nodes` +
             (meta ? ` in \`${meta.fileName}\`` : '') +
             '.',
+          ...extraNativeLine(snapshot),
           '',
         ];
 

@@ -13,6 +13,7 @@ import memlabCore from '@memlab/core';
 import type {IHeapNode, HeapNodeIdSet} from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
 import {z} from 'zod';
+import {heapStatistics} from '../heap-statistics.js';
 import {getSnapshot, getFilePath} from '../heap-state.js';
 import {
   formatBytes,
@@ -125,12 +126,67 @@ export function registerSnapshotSummary(server: McpServer): void {
         );
 
         const appName = detectAppName(snapshot);
+        const stats = heapStatistics(snapshot);
+        const share = (n: number): string =>
+          stats.total > 0 ? `${((100 * n) / stats.total).toFixed(1)}%` : '—';
         const lines = [
           `**File:** ${getFilePath()}`,
           ...(appName
             ? [`**Detected app:** \`${appName}\` (from bundle paths)`]
             : []),
           `**Nodes:** ${formatNumber(nodeCount)} | **Edges:** ${formatNumber(edgeCount)} | **Total Self Size:** ${formatBytes(totalSelfSize)}`,
+          '',
+          `**Statistics** — total ${formatBytes(stats.total)}` +
+            (stats.extraNativeBytes > 0
+              ? `, including ${formatBytes(stats.extraNativeBytes)} of native memory with no node (\`extra_native_bytes\`)`
+              : ''),
+          '',
+          markdownTable(
+            ['Category', 'Size', '% of total'],
+            [
+              [
+                'V8 heap',
+                formatBytes(stats.v8heap.total),
+                share(stats.v8heap.total),
+              ],
+              [
+                '· Code',
+                formatBytes(stats.v8heap.code),
+                share(stats.v8heap.code),
+              ],
+              [
+                '· Strings',
+                formatBytes(stats.v8heap.strings),
+                share(stats.v8heap.strings),
+              ],
+              [
+                '· JS arrays',
+                formatBytes(stats.v8heap.jsArrays),
+                share(stats.v8heap.jsArrays),
+              ],
+              [
+                '· System objects',
+                formatBytes(stats.v8heap.system),
+                share(stats.v8heap.system),
+              ],
+              [
+                '· Other JS objects',
+                formatBytes(stats.v8heap.other),
+                share(stats.v8heap.other),
+              ],
+              [
+                'Native',
+                formatBytes(stats.native.total),
+                share(stats.native.total),
+              ],
+              [
+                '· Typed array backing stores',
+                formatBytes(stats.native.typedArrays),
+                share(stats.native.typedArrays),
+              ],
+            ],
+            new Set([1, 2]),
+          ),
           '',
         ];
 

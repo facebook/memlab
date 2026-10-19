@@ -103,6 +103,11 @@ export function registerSnapshotHeader(server: McpServer): void {
         lines.push(
           `Nodes: ${formatNumber(counts.nodeCount)}   Edges: ${formatNumber(counts.edgeCount)}`,
         );
+        if (counts.extraNativeBytes > 0) {
+          lines.push(
+            `Native memory with no node (extra_native_bytes): ${formatBytes(counts.extraNativeBytes)} — part of the heap total but outside every node`,
+          );
+        }
 
         const captured = extractCaptureTime(fileName);
         if (captured) {

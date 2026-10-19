@@ -236,7 +236,7 @@ export function computeDefaultCeilings(): {
  */
 export function peekSnapshotCounts(
   localPath: string,
-): {nodeCount: number; edgeCount: number} | null {
+): {nodeCount: number; edgeCount: number; extraNativeBytes: number} | null {
   let fd: number | null = null;
   try {
     fd = fs.openSync(localPath, 'r');
@@ -246,7 +246,12 @@ export function peekSnapshotCounts(
     const n = head.match(/"node_count"\s*:\s*(\d+)/);
     const e = head.match(/"edge_count"\s*:\s*(\d+)/);
     if (!n || !e) return null;
-    return {nodeCount: Number(n[1]), edgeCount: Number(e[1])};
+    const x = head.match(/"extra_native_bytes"\s*:\s*(\d+)/);
+    return {
+      nodeCount: Number(n[1]),
+      edgeCount: Number(e[1]),
+      extraNativeBytes: x ? Number(x[1]) : 0,
+    };
   } catch {
     return null;
   } finally {

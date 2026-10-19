@@ -235,7 +235,8 @@ footprint with `memlab_server_status` and unload snapshots you no longer need.
 :::tip Peek before you load
 
 `memlab_snapshot_header` reads a snapshot's header — node/edge counts, capture
-time, file size — *without* parsing it, and tells you whether it fits under the
+time, file size, native memory with no node (`extra_native_bytes`) — *without*
+parsing it, and tells you whether it fits under the
 current load ceiling. Use it to pick a loadable capture in one step instead of
 attempting an oversized load.
 

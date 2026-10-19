@@ -10,6 +10,7 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
+import {extraNativeBytes} from '../heap-statistics.js';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {computeMemoryPartition, familyGroup} from '../heap-families.js';
 import type {PartitionRow} from '../heap-families.js';
@@ -100,7 +101,10 @@ export function registerMemoryPartition(server: McpServer): void {
           '',
           `**${formatBytes(app)}** partitioned (app memory) of ${formatBytes(p.total)} total` +
             (meta ? ` in \`${meta.fileName}\`` : '') +
-            `; loaded code ${formatBytes(p.loadedCode.code)} and bundle text ${formatBytes(p.loadedCode.bundle)} excluded.`,
+            `; loaded code ${formatBytes(p.loadedCode.code)} and bundle text ${formatBytes(p.loadedCode.bundle)} excluded.` +
+            (extraNativeBytes(snapshot) > 0
+              ? ` ${formatBytes(extraNativeBytes(snapshot))} of native memory has no node (\`extra_native_bytes\`) and is in no group.`
+              : ''),
           '',
           markdownTable(
             ['Group', 'Self bytes', '% of app'],
