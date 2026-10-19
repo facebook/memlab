@@ -10,6 +10,7 @@
 
 import type {IHeapEdge, IHeapNode, IHeapSnapshot} from '@memlab/core';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {attributeByShortestPath} from '../heap-families.js';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
@@ -282,11 +283,14 @@ export function registerModuleAttribution(server: McpServer): void {
         .optional()
         .default(25)
         .describe('Maximum modules to report (default 25).'),
-      min_bytes: z
-        .number()
+      min_bytes: sizeInput()
         .optional()
         .default(65536)
-        .describe('Ignore modules attributed less than this (default 64 KB).'),
+        .describe(
+          withSizeHint(
+            'Ignore modules attributed less than this (default 64 KB).',
+          ),
+        ),
       name_pattern: z
         .string()
         .optional()

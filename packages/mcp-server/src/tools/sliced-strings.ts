@@ -10,6 +10,7 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {getSnapshot} from '../heap-state.js';
 import {withAnonymizedBanner} from '../anonymized-snapshot.js';
 import {
@@ -40,11 +41,12 @@ export function registerSlicedStrings(server: McpServer): void {
         .optional()
         .default(20)
         .describe('Maximum number of parent strings to return (default 20)'),
-      min_parent_size: z
-        .number()
+      min_parent_size: sizeInput()
         .optional()
         .describe(
-          'Minimum parent string self size in bytes to include. Use to focus on large parents (e.g., 1048576 for 1 MB).',
+          withSizeHint(
+            'Minimum parent string self size in bytes to include. Use to focus on large parents (e.g., 1048576 for 1 MB).',
+          ),
         ),
     },
     async ({limit, min_parent_size}) => {

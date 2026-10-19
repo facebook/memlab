@@ -11,6 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapSnapshot} from '@memlab/core';
 import {z} from 'zod';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {pageInfo, structuredResult} from '../structured.js';
 import {getSnapshot, getSnapshotByHandle} from '../heap-state.js';
 import {pageLines, paginate} from '../pagination.js';
@@ -120,12 +121,13 @@ export function registerDeadContextVariables(server: McpServer): void {
         .string()
         .optional()
         .describe('Only scopes whose script name contains this text.'),
-      min_retained_size: z
-        .number()
+      min_retained_size: sizeInput()
         .optional()
         .default(0)
         .describe(
-          'Only dead variables whose value retains at least this many bytes (default 0).',
+          withSizeHint(
+            'Only dead variables whose value retains at least this much (default 0).',
+          ),
         ),
       offset: z
         .number()

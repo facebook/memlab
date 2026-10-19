@@ -11,6 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {getSnapshot} from '../heap-state.js';
 import {hasScopeMetadata} from '../context-analysis.js';
 import {cachedDeadSlots} from './dead-context-variables.js';
@@ -159,13 +160,14 @@ export function registerClosureInspection(server: McpServer): void {
         .describe(
           'Maximum scope chain depth to walk (default 10). Increase for deeply nested closures.',
         ),
-      min_retained_size: z
-        .number()
+      min_retained_size: sizeInput()
         .optional()
         .default(0)
         .describe(
-          'Only show captured variables retaining at least this many bytes (default 0 = show all). ' +
-            'Use e.g. 10240 for 10 KB to filter noise in deeply nested closures.',
+          withSizeHint(
+            'Only show captured variables retaining at least this many bytes (default 0 = show all). ' +
+              'Use e.g. 10240 for 10 KB to filter noise in deeply nested closures.',
+          ),
         ),
       max_variables: z
         .number()

@@ -215,6 +215,8 @@ Call **`memlab_tools`** first when you are not sure which tool fits. It prints t
 
 Tools are grouped by the question they answer. Within a group, try them in the order listed. A few tools appear in more than one group.
 
+Every byte-size filter (`min_retained_size`, `min_self_size`, `min_bytes`, …) takes bytes or a size such as `"1MB"` or `"500KiB"` (KB = 1000 bytes, KiB = 1024). `memlab_query_objects` also takes ranges: `"1MB-"`, `"10KB-1MB"`, `"-1MB"`.
+
 Ranked lists page the same way: pass `offset` to skip rows, and every page ends with "Showing a–b of N … Next page: `offset: k`". Ties are broken by node id, so the same offset always shows the same rows. `memlab_snapshots({max_name_length: N})` clips node names in every tool for the rest of the session.
 
 The main list and lookup tools (`memlab_query_objects`, `memlab_class_histogram`, `memlab_largest_objects`, `memlab_find_nodes_by_class`, `memlab_search_nodes`, `memlab_get_references`, `memlab_get_referrers`, `memlab_get_node`, `memlab_retainer_trace`, `memlab_diff_snapshots`, `memlab_shape_histogram`, `memlab_duplicated_strings`, `memlab_snapshot_summary`, `memlab_native_contexts`, `memlab_retained_by`, `memlab_dead_context_variables`) also return `structuredContent`: the same rows as JSON, with node ids scoped by a `snapshot` handle, raw byte counts, the filters that applied and a `pagination` object. A client can chain results without parsing the tables.

@@ -13,6 +13,7 @@ import type {IHeapEdge, IHeapNode, IHeapSnapshot} from '@memlab/core';
 import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
 import {z} from 'zod';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {
   describeSkipped,
@@ -796,12 +797,13 @@ export function registerDevArtifacts(server: McpServer): void {
         .describe(
           'List every artifact family this tool checks and whether roots for it were found in this snapshot (default false). A family that is missing from the built-in set produces a silent zero, which reads as "no artifacts here" — this makes the coverage visible so a miss can be recognised and, if needed, taught with MEMLAB_DEV_ARTIFACT_GLOBALS / MEMLAB_DEV_ARTIFACT_NODE_PATTERN.',
         ),
-      min_retained_size: z
-        .number()
+      min_retained_size: sizeInput()
         .optional()
         .default(65536)
         .describe(
-          'Only consider objects retaining at least this (default 64 KB). The default was 512 KB, which reported a measured ~10 KB console-retained string as `0 B dev-only` — the exact shape of an automation artifact is many small records and no large one, so a threshold tuned for single big objects hides the whole family. Objects under the threshold are still counted and aggregated by class below the table.',
+          withSizeHint(
+            'Only consider objects retaining at least this (default 64 KB). The default was 512 KB, which reported a measured ~10 KB console-retained string as `0 B dev-only` — the exact shape of an automation artifact is many small records and no large one, so a threshold tuned for single big objects hides the whole family. Objects under the threshold are still counted and aggregated by class below the table.',
+          ),
         ),
       only_dev: z
         .boolean()

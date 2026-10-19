@@ -21,6 +21,7 @@ import {
   shortestPathAvoidingDevEdges,
   shortestPathDevHop,
 } from '../dev-edges.js';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {minifiedSignal} from '../minified.js';
 import {promiseReactions} from '../promise-chains.js';
 import {
@@ -1376,13 +1377,12 @@ export function registerEval(server: McpServer): void {
         .describe(
           'Execution timeout in milliseconds. Defaults to a value SCALED from the loaded snapshot (60s floor, ~1s per 40k nodes), because a full-heap walk on a 6M-node graph takes minutes and a fixed 60s default made the first attempt abort on every large capture.',
         ),
-      max_result_bytes: z
-        .number()
-        .int()
-        .min(1024)
+      max_result_bytes: sizeInput(z.number().int().min(1024))
         .optional()
         .describe(
-          `Byte budget for the serialized \`result\` (default ${MAX_OUTPUT_SIZE}). Over budget, whole ENTRIES are dropped from the end of an array/object rather than the JSON being cut mid-string, and \`truncated: true\` is reported — so a large census stays valid and readable instead of needing a re-run with a hand-written limit.`,
+          withSizeHint(
+            `Byte budget for the serialized \`result\` (default ${MAX_OUTPUT_SIZE}). Over budget, whole ENTRIES are dropped from the end of an array/object rather than the JSON being cut mid-string, and \`truncated: true\` is reported — so a large census stays valid and readable instead of needing a re-run with a hand-written limit.`,
+          ),
         ),
       save_as: z
         .string()

@@ -21,6 +21,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {getSnapshot} from '../heap-state.js';
 import {entriesRetainedOf} from './cache-analysis.js';
 import {countEntries} from './collection-trend.js';
@@ -154,11 +155,14 @@ export function registerCacheInventory(server: McpServer): void {
     'memlab_cache_inventory',
     "Inventory of MODULE-LEVEL collections (Map / Set / WeakMap / Array) — held directly by a module's scope, OR as a property of one of the module's exported functions or classes (a memoizer's `fn.$$cache`, a class static) — ranked by what their entries hold: owning module, holder, entry count, entries-retained (dominator-deduped, so values also held elsewhere still count), what the entries are keyed by and hold, and whether the module already has a clear/reset/purge/evict function — the candidates an app could drop under memory pressure, in one call. Function-property caches are found through module records, so they are listed on a minified build too; a cache shared by many functions is one row.",
     {
-      min_bytes: z
-        .number()
+      min_bytes: sizeInput()
         .optional()
         .default(65536)
-        .describe('Hide collections holding less than this (default 64 KB).'),
+        .describe(
+          withSizeHint(
+            'Hide collections holding less than this (default 64 KB).',
+          ),
+        ),
       limit: z.number().optional().default(25).describe('Rows (default 25).'),
     },
     async ({min_bytes, limit}) => {

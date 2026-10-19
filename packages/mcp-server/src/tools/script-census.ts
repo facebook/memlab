@@ -11,6 +11,7 @@
 import type {IHeapNode} from '@memlab/core';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {getSnapshot} from '../heap-state.js';
 import {
   errorResult,
@@ -93,12 +94,13 @@ export function registerScriptCensus(server: McpServer): void {
         .optional()
         .default(20)
         .describe('Maximum individual scripts to list (default 20).'),
-      min_size: z
-        .number()
+      min_size: sizeInput()
         .optional()
         .default(65536)
         .describe(
-          'Ignore script sources smaller than this many bytes (default 64 KB).',
+          withSizeHint(
+            'Ignore script sources smaller than this many bytes (default 64 KB).',
+          ),
         ),
     },
     async ({limit, min_size}) => {

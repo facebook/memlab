@@ -11,6 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapSnapshot} from '@memlab/core';
 import {z} from 'zod';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {getSnapshot} from '../heap-state.js';
 import {buildPathTree} from '../heap-families.js';
 import type {PathTree} from '../heap-families.js';
@@ -47,12 +48,13 @@ export function registerPathTree(server: McpServer): void {
       'Shortest-path subtrees PARTITION the heap, so the sums add up and a cache whose entries are also referenced elsewhere still shows its real size — the dominator tree credits such objects to the root. ' +
       'Loaded code and bundle text count as 0. Pass `root_id` to expand one object instead of the GC roots.',
     {
-      min_bytes: z
-        .number()
+      min_bytes: sizeInput()
         .optional()
         .default(300 * 1024)
         .describe(
-          'Expand branches holding at least this many bytes (default 300 KB).',
+          withSizeHint(
+            'Expand branches holding at least this many bytes (default 300 KB).',
+          ),
         ),
       max_lines: z
         .number()

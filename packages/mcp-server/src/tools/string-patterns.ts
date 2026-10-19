@@ -10,6 +10,7 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {getSnapshot, isLightSnapshot} from '../heap-state.js';
 import {withAnonymizedBanner} from '../anonymized-snapshot.js';
 import {
@@ -43,11 +44,12 @@ export function registerStringPatterns(server: McpServer): void {
         .optional()
         .default(5)
         .describe('Minimum number of strings in a group to show (default 5)'),
-      min_total_size: z
-        .number()
+      min_total_size: sizeInput()
         .optional()
         .describe(
-          'Minimum total self size in bytes for a group to be shown. Use to filter to significant groups.',
+          withSizeHint(
+            'Minimum total self size in bytes for a group to be shown. Use to filter to significant groups.',
+          ),
         ),
       limit: z
         .number()

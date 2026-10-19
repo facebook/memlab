@@ -91,3 +91,36 @@ export function byteRangeParam(what: string) {
       `${what}: bytes (a minimum), or "1MB" (at least), "1MB-10MB", "-1MB" (at most), "500KB-". KB = 1000 bytes, KiB = 1024.`,
     );
 }
+
+/**
+ * A byte-size parameter that accepts a number of bytes or a size string
+ * ("1MB", "500KiB"), and hands the tool a number either way. Strings are
+ * converted during validation, so tool code is unchanged.
+ */
+export function sizeInput(base: z.ZodNumber = z.number()) {
+  return z.union([base, z.string()]).transform((value, ctx) => {
+    if (typeof value === 'number') return value;
+    try {
+      const bytes = parseByteSize(value);
+      // The base's own constraints (`.int()`, `.min()`) apply to a parsed
+      // string too, or "500B" would get past a floor that rejects 500.
+      const checked = base.safeParse(bytes);
+      if (!checked.success) {
+        for (const issue of checked.error.issues) ctx.addIssue(issue);
+        return z.NEVER;
+      }
+      return checked.data;
+    } catch (err) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return z.NEVER;
+    }
+  });
+}
+
+/** Append the accepted forms to a size parameter's description. */
+export function withSizeHint(description: string): string {
+  return `${description} Bytes, or a size such as "1MB" or "500KiB" (KB = 1000 bytes, KiB = 1024).`;
+}

@@ -10,6 +10,7 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {structuredResult} from '../structured.js';
 import {getSnapshot} from '../heap-state.js';
 import type {IHeapNode} from '@memlab/core';
@@ -37,14 +38,12 @@ export function registerSearchNodes(server: McpServer): void {
         .describe(
           'Node type filter (e.g. object, string, closure, regexp, number, array, hidden, native, code, synthetic)',
         ),
-      min_retained_size: z
-        .number()
+      min_retained_size: sizeInput()
         .optional()
-        .describe('Minimum retained size in bytes'),
-      min_self_size: z
-        .number()
+        .describe(withSizeHint('Minimum retained size in bytes')),
+      min_self_size: sizeInput()
         .optional()
-        .describe('Minimum self (shallow) size in bytes'),
+        .describe(withSizeHint('Minimum self (shallow) size in bytes')),
       is_detached: z
         .boolean()
         .optional()

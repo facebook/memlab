@@ -11,6 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {getSnapshot} from '../heap-state.js';
 import {
   errorResult,
@@ -112,12 +113,13 @@ export function registerExternalStrings(server: McpServer): void {
         .optional()
         .default(20)
         .describe('Largest blobs to list individually (default 20).'),
-      min_bytes: z
-        .number()
+      min_bytes: sizeInput()
         .optional()
         .default(64 * 1024)
         .describe(
-          'Only list blobs at least this large (default 65536). The long tail is thousands of sub-KB strings that carry almost none of the total.',
+          withSizeHint(
+            'Only list blobs at least this large (default 65536). The long tail is thousands of sub-KB strings that carry almost none of the total.',
+          ),
         ),
       modules_per_blob: z
         .number()

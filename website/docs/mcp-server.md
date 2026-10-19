@@ -199,6 +199,9 @@ The server ships about 150 tools, organized by the question they answer:
 | Sharing a capture | `memlab_anonymize_snapshot` |
 | Session, batching and write-ups | `memlab_load_snapshot`, `memlab_snapshots`, `memlab_batch`, `memlab_finding_index`, `memlab_analyze_run` |
 
+Every byte-size filter takes bytes or a size such as `"1MB"` or `"500KiB"`
+(KB = 1000 bytes, KiB = 1024).
+
 Ranked lists page the same way: `offset` skips rows, and every page ends with
 "Showing a–b of N … Next page: `offset: k`". Ties are broken by node id, so a
 given offset always shows the same rows. `memlab_snapshots` with

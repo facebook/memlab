@@ -16,6 +16,7 @@ import {
   moduleProvenanceOf,
   provenanceCell,
 } from '../dev-modules.js';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {
   formatBytes,
@@ -112,11 +113,12 @@ export function registerGrowthSignals(server: McpServer): void {
         .optional()
         .default(200)
         .describe('Minimum entry/element count to consider (default 200).'),
-      min_retained_size: z
-        .number()
+      min_retained_size: sizeInput()
         .optional()
         .default(262144)
-        .describe('Minimum retained size in bytes (default 256 KB).'),
+        .describe(
+          withSizeHint('Minimum retained size in bytes (default 256 KB).'),
+        ),
     },
     async ({limit, min_entries, min_retained_size}) => {
       try {

@@ -10,6 +10,7 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {
   isNodeWorthInspecting,
@@ -42,12 +43,13 @@ export function registerPinchPoints(server: McpServer): void {
         .optional()
         .default(15)
         .describe('Maximum number of pinch points to return (default 15)'),
-      min_retained_size: z
-        .number()
+      min_retained_size: sizeInput()
         .optional()
         .default(524288)
         .describe(
-          'Minimum retained size in bytes to consider (default 512 KB). Increase for large snapshots.',
+          withSizeHint(
+            'Minimum retained size in bytes to consider (default 512 KB). Increase for large snapshots.',
+          ),
         ),
       min_ratio: z
         .number()

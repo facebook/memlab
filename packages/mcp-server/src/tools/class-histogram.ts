@@ -13,6 +13,7 @@ import {z} from 'zod';
 import memlabCore from '@memlab/core';
 import type {HeapNodeIdSet} from '@memlab/core';
 const {NumericSet} = memlabCore;
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {pageInfo, structuredResult} from '../structured.js';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {
@@ -54,16 +55,16 @@ export function registerClassHistogram(server: McpServer): void {
         .optional()
         .default(1)
         .describe('Minimum instance count to include (default 1)'),
-      min_retained_size: z
-        .number()
+      min_retained_size: sizeInput()
         .optional()
         .describe(
-          'Minimum aggregate retained size in bytes to include. Use to filter to classes consuming significant memory (e.g., 1048576 for 1 MB). Ignored when include_retained_size is false.',
+          withSizeHint(
+            'Minimum aggregate retained size in bytes to include. Use to filter to classes consuming significant memory (e.g., 1048576 for 1 MB). Ignored when include_retained_size is false.',
+          ),
         ),
-      min_self_size: z
-        .number()
+      min_self_size: sizeInput()
         .optional()
-        .describe('Minimum total self size in bytes to include.'),
+        .describe(withSizeHint('Minimum total self size in bytes to include.')),
       name_pattern: z
         .string()
         .optional()

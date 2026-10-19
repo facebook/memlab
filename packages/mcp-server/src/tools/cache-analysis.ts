@@ -21,6 +21,7 @@ import {
   formatProductionPath,
   shortestPathAvoidingDevEdges,
 } from '../dev-edges.js';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {
   boundedDominatorRetainedSize,
@@ -491,12 +492,13 @@ export function registerCacheAnalysis(server: McpServer): void {
         .describe(
           'Minimum number of entries to consider a collection a potential cache (default 50)',
         ),
-      min_retained_size: z
-        .number()
+      min_retained_size: sizeInput()
         .optional()
         .default(524288)
         .describe(
-          'Minimum size in bytes, met by either the container or its entries (default 512 KB)',
+          withSizeHint(
+            'Minimum size in bytes, met by either the container or its entries (default 512 KB)',
+          ),
         ),
       collection_types: z
         .array(z.string())

@@ -13,6 +13,7 @@ import {z} from 'zod';
 import memlabCore from '@memlab/core';
 import type {IHeapNode, HeapNodeIdSet} from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {getSnapshot} from '../heap-state.js';
 import {
   errorResult,
@@ -55,14 +56,12 @@ export function registerAggregateNodes(server: McpServer): void {
         .optional()
         .describe('Regex pattern to match against node names'),
       type: z.string().optional().describe('Node type filter'),
-      min_retained_size: z
-        .number()
+      min_retained_size: sizeInput()
         .optional()
-        .describe('Minimum retained size in bytes'),
-      min_self_size: z
-        .number()
+        .describe(withSizeHint('Minimum retained size in bytes')),
+      min_self_size: sizeInput()
         .optional()
-        .describe('Minimum self (shallow) size in bytes'),
+        .describe(withSizeHint('Minimum self (shallow) size in bytes')),
       is_detached: z
         .boolean()
         .optional()

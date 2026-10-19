@@ -35,6 +35,7 @@ import {
   classChurn,
   compareIsolates,
 } from '../isolate-identity.js';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {nodeRef, pageInfo, structuredResult} from '../structured.js';
 import {pageLines, paginate} from '../pagination.js';
 import type {ClassChurn, IsolateMatch} from '../isolate-identity.js';
@@ -301,12 +302,13 @@ export function registerDiffSnapshots(server: McpServer): void {
         .describe(
           'Minimum absolute change in instance count to show (default 0). Use to filter noise.',
         ),
-      min_size_delta: z
-        .number()
+      min_size_delta: sizeInput()
         .optional()
         .default(0)
         .describe(
-          'Minimum absolute change in self size (bytes) to show (default 0).',
+          withSizeHint(
+            'Minimum absolute change in self size (bytes) to show (default 0).',
+          ),
         ),
       include_value_classes: z
         .boolean()

@@ -11,6 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode, IHeapEdge, IHeapSnapshot} from '@memlab/core';
 import {z} from 'zod';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {getSnapshot, getSnapshotEnv} from '../heap-state.js';
 import {
   formatBytes,
@@ -219,12 +220,13 @@ export function registerStaleCollections(server: McpServer): void {
         .describe(
           'Minimum number of stale entries to include a collection (default 1). Increase to filter out trivially small stale collections.',
         ),
-      min_stale_retained_size: z
-        .number()
+      min_stale_retained_size: sizeInput()
         .optional()
         .default(0)
         .describe(
-          'Minimum total stale retained size in bytes to include (default 0). Use e.g., 10240 for 10 KB to filter noise.',
+          withSizeHint(
+            'Minimum total stale retained size in bytes to include (default 0). Use e.g., 10240 for 10 KB to filter noise.',
+          ),
         ),
       detect_modes: z
         .array(

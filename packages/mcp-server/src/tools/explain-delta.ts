@@ -20,6 +20,7 @@ import {
   handlesSharingBasename,
   resolveHandle,
 } from '../heap-state.js';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {getRegisteredTool} from '../tool-registry.js';
 import {
   formatBytes,
@@ -150,12 +151,13 @@ export function registerExplainDelta(server: McpServer): void {
         .optional()
         .default(20)
         .describe('Maximum owners to report per direction (default 20).'),
-      min_delta_bytes: z
-        .number()
+      min_delta_bytes: sizeInput()
         .optional()
         .default(65536)
         .describe(
-          'Ignore owners whose attributed size moved by less than this (default 64 KB).',
+          withSizeHint(
+            'Ignore owners whose attributed size moved by less than this (default 64 KB).',
+          ),
         ),
       include_artifacts: z
         .boolean()

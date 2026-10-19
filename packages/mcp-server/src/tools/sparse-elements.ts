@@ -10,6 +10,7 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {getSnapshot, shouldEmitNote} from '../heap-state.js';
 import {
   errorResult,
@@ -96,12 +97,13 @@ export function registerSparseElements(server: McpServer): void {
         .describe(
           'Only count an instance when at most this fraction of its slots hold a value (default 0.5). Raise toward 1 to include stores that are merely over-allocated.',
         ),
-      min_group_bytes: z
-        .number()
+      min_group_bytes: sizeInput()
         .optional()
         .default(4096)
         .describe(
-          'Drop groups wasting less than this many bytes in total (default 4096).',
+          withSizeHint(
+            'Drop groups wasting less than this many bytes in total (default 4096).',
+          ),
         ),
       limit: z
         .number()

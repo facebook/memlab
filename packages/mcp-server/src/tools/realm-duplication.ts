@@ -11,6 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {attributeByShortestPath} from '../heap-families.js';
 import {moduleRecords} from '../module-registry.js';
 import {withSnapshotAt} from '../snapshot-borrow.js';
@@ -56,12 +57,13 @@ export function registerRealmDuplication(server: McpServer): void {
         .describe(
           'Snapshot paths, one per realm (page first is conventional).',
         ),
-      min_bytes: z
-        .number()
+      min_bytes: sizeInput()
         .optional()
         .default(16 * 1024)
         .describe(
-          'Hide modules whose duplicated bytes are below this (default 16 KB).',
+          withSizeHint(
+            'Hide modules whose duplicated bytes are below this (default 16 KB).',
+          ),
         ),
       limit: z
         .number()

@@ -13,6 +13,7 @@ import type {IHeapNode, HeapNodeIdSet} from '@memlab/core';
 import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
 import {z} from 'zod';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {pageInfo, structuredResult} from '../structured.js';
 import {offsetParam, pageFooter, paginate} from '../pagination.js';
 import {getSnapshot} from '../heap-state.js';
@@ -66,11 +67,12 @@ export function registerShapeHistogram(server: McpServer): void {
         .optional()
         .default(2)
         .describe('Minimum instance count to include (default 2)'),
-      min_retained_size: z
-        .number()
+      min_retained_size: sizeInput()
         .optional()
         .describe(
-          'Minimum aggregate retained size in bytes to include (e.g., 1048576 for 1 MB)',
+          withSizeHint(
+            'Minimum aggregate retained size in bytes to include (e.g., 1048576 for 1 MB)',
+          ),
         ),
       class_name: z
         .string()

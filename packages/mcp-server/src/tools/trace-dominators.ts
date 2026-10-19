@@ -11,6 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import {z} from 'zod';
+import {sizeInput, withSizeHint} from '../byte-size.js';
 import {getSnapshot} from '../heap-state.js';
 import {
   formatBytes,
@@ -120,11 +121,12 @@ export function registerTraceDominators(server: McpServer): void {
         .optional()
         .default(25)
         .describe('Maximum depth to trace (default 25)'),
-      min_retained_size: z
-        .number()
+      min_retained_size: sizeInput()
         .optional()
         .describe(
-          'Stop when retained size drops below this (bytes). Useful to avoid tracing into small leaf nodes.',
+          withSizeHint(
+            'Stop when retained size drops below this (bytes). Useful to avoid tracing into small leaf nodes.',
+          ),
         ),
       collapse_promises: z
         .boolean()
