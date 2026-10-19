@@ -82,6 +82,8 @@ npm install
 npm run build
 ```
 
+To check a build, `npm run test-fixtures` in `packages/mcp-server` drives the built server against snapshots it generates and checks invariants every report must keep: exact dead-variable answers on hand-built scope-tree snapshots, no share above 100%, partitions that add up, and complete, repeatable paging.
+
 Then configure (`~/.claude.json` for Claude Code, or `.mcp.json` for Cursor/Windsurf):
 
 ```json
