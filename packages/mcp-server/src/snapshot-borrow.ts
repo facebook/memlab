@@ -9,6 +9,7 @@
  */
 
 import {currentProgress} from './progress.js';
+import {releaseMemory} from './memory-release.js';
 import type {IHeapSnapshot} from '@memlab/core';
 import fs from 'fs';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
@@ -83,7 +84,13 @@ export async function withSnapshotAt<T>(
     }
     return await fn(snapshot);
   } finally {
-    if (temporaryHandle != null) removeSnapshot(temporaryHandle);
+    if (temporaryHandle != null) {
+      removeSnapshot(temporaryHandle);
+      // Ladder tools borrow one rung after another; free each before the next.
+      // This frame's own reference has to go first, or the GC keeps the rung.
+      snapshot = null;
+      releaseMemory(1);
+    }
     if (previousHandle != null) setCurrentSnapshot(previousHandle);
   }
 }

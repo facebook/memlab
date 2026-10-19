@@ -10,6 +10,7 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
+import {releaseMemory} from '../memory-release.js';
 import {
   listSnapshots,
   getCurrentHandle,
@@ -126,12 +127,19 @@ export function registerSnapshots(server: McpServer): void {
             return errorResult(`No resident snapshot with handle "${handle}".`);
           }
           const cur = getCurrentHandle();
+          const mem = releaseMemory();
           return textResult(
             [
               `Unloaded snapshot "${handle}".`,
               cur
                 ? `Active snapshot is now "${cur}".`
                 : 'No snapshots remain loaded.',
+              mem.collected
+                ? `Memory: resident ${formatBytes(mem.rssBefore)} → ${formatBytes(mem.rssAfter)}, JS heap and buffers ${formatBytes(mem.heapBefore)} → ${formatBytes(mem.heapAfter)}.` +
+                  (mem.rssAfter > mem.heapAfter * 1.5
+                    ? ' Resident memory stays above what is in use because the allocator keeps freed pages for reuse; the next load fills them rather than growing the process.'
+                    : '')
+                : `Memory: resident ${formatBytes(mem.rssAfter)} (garbage collection could not be triggered, so it is freed at V8's next collection).`,
               ...configChanges,
             ].join('\n'),
           );
