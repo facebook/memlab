@@ -228,6 +228,7 @@ Tools are grouped by the question they answer. Within a group, try them in the o
 | `memlab_timers` | Pending scheduler tasks grouped by the real callback and the payload it captures — a timer per record keeps the record alive for its whole delay. |
 | `memlab_framework_buffers` | The recurring framework buffers in one call: log arrays, module timing records, lazy-loader registry, scheduler queue, registry tables, giant objects, plus app-specific buffers from a probe file. |
 | `memlab_capture` | Take fresh snapshots of a live page AND its dedicated workers (a page snapshot never contains them). Skips threads blocked in Atomics.wait instead of hanging. |
+| `memlab_native_contexts` | Split ONE snapshot by realm (page, iframes, extension worlds, detached windows, Node `vm` contexts): bytes each NativeContext owns alone, shared bytes, unattributed bytes, and the largest classes in any of them. |
 | `memlab_realm_summary` | Page + worker snapshots side by side: app / bundle / code per realm, with shared Wasm modules and SharedArrayBuffers counted once. |
 | `memlab_co_holders` | Clusters of Maps/Sets/Arrays holding the same objects, with bytes freed by cutting one holder vs all of them. |
 | `memlab_realm_duplication` | Modules loaded in more than one realm (page + workers), with state bytes per realm and the duplicated total. |

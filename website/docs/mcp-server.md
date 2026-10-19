@@ -187,7 +187,7 @@ The server ships about 150 tools, organized by the question they answer:
 
 | Question | Representative tools |
 | --- | --- |
-| What is this heap made of? | `memlab_app_heap`, `memlab_memory_partition`, `memlab_quick_diagnosis`, `memlab_class_histogram`, `memlab_largest_objects`, `memlab_shape_histogram`, `memlab_what_if` |
+| What is this heap made of? | `memlab_app_heap`, `memlab_memory_partition`, `memlab_native_contexts`, `memlab_quick_diagnosis`, `memlab_class_histogram`, `memlab_largest_objects`, `memlab_shape_histogram`, `memlab_what_if` |
 | Is anything growing — and is it a leak? | `memlab_leak_report`, `memlab_shape_census_diff`, `memlab_collection_diff`, `memlab_ladder_probe`, `memlab_rate_model`, `memlab_settle_check`, `memlab_verify_fix` |
 | Who owns the growth / why is X retained? | `memlab_retainer_trace`, `memlab_retainer_summary`, `memlab_trace_all`, `memlab_react_owners`, `memlab_dominator_chain`, `memlab_pinch_points`, `memlab_explain_delta`, `memlab_dead_context_variables` |
 | Is it real, or a measurement artifact? | `memlab_artifact_budget`, `memlab_dev_artifacts`, `memlab_replicate`, `memlab_check_health` |

@@ -89,6 +89,10 @@ const GROUPS: Group[] = [
         'Take fresh snapshots of a live page AND its dedicated workers (a page snapshot never contains them). Skips threads blocked in Atomics.wait instead of hanging.',
       ],
       [
+        'memlab_native_contexts',
+        'Split ONE snapshot by realm (page, iframes, extension worlds, detached windows, Node `vm` contexts): bytes each NativeContext owns alone, shared bytes, unattributed bytes, and the largest classes in any of them.',
+      ],
+      [
         'memlab_realm_summary',
         'Page + worker snapshots side by side: app / bundle / code per realm, with shared Wasm modules and SharedArrayBuffers counted once.',
       ],
