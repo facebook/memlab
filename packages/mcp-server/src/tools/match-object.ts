@@ -215,7 +215,7 @@ export function registerMatchObject(server: McpServer): void {
         }
         lines.push(
           '',
-          '_Identity across captures is INFERRED from class, shape and retainer path — node ids are per-capture and cannot confirm it. A high score means "indistinguishable by the available evidence", not "the same object". Confirm with `memlab_retainer_trace` on both sides before drawing a conclusion._',
+          '_Identity across captures is INFERRED from class, shape and retainer path. Across isolates node ids cannot confirm it; between captures of one isolate, memlab_diff_snapshots matches by id exactly. A high score means "indistinguishable by the available evidence", not "the same object". Confirm with `memlab_retainer_trace` on both sides before drawing a conclusion._',
         );
         return toolResult(lines.join('\n'));
       } catch (err) {

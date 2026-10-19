@@ -209,8 +209,12 @@ and `schema: true` prints that tool's parameters.
 Leak detection needs a trend, not a single capture. Pass `keep_previous: true`
 when loading so earlier snapshots stay resident: each one gets a *handle*, and
 `memlab_snapshots` lists them, switches the active one, or unloads the ones you
-are done with. Node ids are only valid inside the snapshot they came from, so
-switch to the right handle before reusing an id.
+are done with. V8 keeps an object's id for its whole lifetime, so ids match
+across captures of the same isolate (one tab session, no reload) and nowhere
+else. `memlab_diff_snapshots` detects that case and matches objects by id,
+listing the objects allocated between two captures that are still alive; for
+captures of different isolates, switch to the right handle before reusing an
+id.
 
 Every resident snapshot holds its full graph in memory. Watch the server's
 footprint with `memlab_server_status` and unload snapshots you no longer need.

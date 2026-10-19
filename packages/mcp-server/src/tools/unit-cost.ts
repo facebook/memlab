@@ -206,7 +206,7 @@ export function registerUnitCost(server: McpServer): void {
         if (container_id != null && baseline_handle != null) {
           return errorResult(
             new Error(
-              'container_id cannot be combined with baseline_handle: node ids are per-capture, so the same id in the baseline is a different object (or nothing) and the marginal cost would be computed from two unrelated populations. Select the container in each snapshot separately, or use a shape.',
+              'container_id cannot be combined with baseline_handle: unless both captures come from one isolate, the same id in the baseline is a different object (or nothing) and the marginal cost would be computed from two unrelated populations. Select the container in each snapshot separately, or use a shape.',
             ),
           );
         }

@@ -287,7 +287,7 @@ Tools are grouped by the question they answer. Within a group, try them in the o
 | `memlab_react_update_queues` | The React eager-bailout family in one call: queue BREADTH vs chain LENGTH vs owning component. The breadth/length split is what separates a leak from "more hooks mounted". |
 | `memlab_settle_check` | Backlog or leak? Compares a busy rung against one captured after idle + GC — growth that comes back was work in flight. |
 | `memlab_growth_signals` | Single-snapshot signals that something is accumulating. |
-| `memlab_diff_snapshots` | Raw per-class deltas between two resident snapshots. |
+| `memlab_diff_snapshots` | Per-class deltas between two snapshots. For two captures of one tab session (same V8 isolate, detected automatically) it also matches objects by id: per class, how many are new and still alive, how many were freed, and their bytes, so churn no longer reads as zero. `class_name` + `detail: "added"\|"deleted"` lists those objects, paged. |
 | `memlab_hypothesis` | Test MANY predicates against every rung in ONE pass each, with an `expect` per predicate for a PASS/FAIL column. Use it instead of hand-writing a `memlab_eval` per theory — a second forEach over a multi-million-node graph aborts on the cumulative node budget. |
 | `memlab_verify_fix` | Did the fix work? Compares per-cycle growth RATES between a before ladder and an after ladder — from two sets of snapshot FILES, so no runtime gate is needed and an ungated or build-only fix is verified the same way. |
 | `memlab_ladder` | Name a ladder once and reference it as `ladder:<name>` from every trend tool. |

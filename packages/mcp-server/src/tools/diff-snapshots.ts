@@ -31,6 +31,12 @@ import {
   toolResult,
 } from '../utils.js';
 import {splitClassKey} from './sequence-analysis.js';
+import {
+  churnObjects,
+  classChurn,
+  compareIsolates,
+} from '../isolate-identity.js';
+import type {ClassChurn, IsolateMatch} from '../isolate-identity.js';
 
 interface ClassStats {
   count: number;
@@ -125,10 +131,133 @@ async function resolveDiffSnapshot(arg: string): Promise<ResolvedSnapshot> {
   };
 }
 
+function isolateLine(iso: IsolateMatch): string {
+  const pct =
+    iso.found > 0 ? ((iso.matched / iso.found) * 100).toFixed(1) : '0';
+  return iso.sameIsolate
+    ? `**Same isolate:** ${formatNumber(iso.found)} of ${formatNumber(iso.sampled)} sampled V8 heap ids survive with the same type and name (${pct}%), so objects are matched by id below. Blink (\`native\`) objects are keyed by address, which a freed object hands on, so they appear in the histogram diff only.`
+    : `**Different isolates (or a reload in between):** of ${formatNumber(iso.sampled)} sampled ids, ${formatNumber(iso.found)} exist in "after" and only ${pct}% of those are the same kind of object, so ids are not comparable. Histogram diff only.`;
+}
+
+function churnSection(
+  churn: Map<string, ClassChurn>,
+  limit: number,
+  includeValueClasses: boolean,
+): string[] {
+  const rows = [...churn.values()]
+    .filter(
+      r =>
+        (r.added > 0 || r.deleted > 0) &&
+        (includeValueClasses || !isValueNamedStringClass(r.type, r.name)),
+    )
+    .sort(
+      (a, b) =>
+        b.addedSize - a.addedSize ||
+        b.deletedSize - a.deletedSize ||
+        a.key.localeCompare(b.key),
+    );
+  let added = 0;
+  let deleted = 0;
+  let addedSize = 0;
+  let deletedSize = 0;
+  // Over the rows the table shows, so the headline and the table agree.
+  for (const r of rows) {
+    added += r.added;
+    deleted += r.deleted;
+    addedSize += r.addedSize;
+    deletedSize += r.deletedSize;
+  }
+  const signed = (n: number, f: (x: number) => string) =>
+    `${n >= 0 ? '+' : '-'}${f(Math.abs(n))}`;
+  return [
+    `### Object churn by id (${formatNumber(rows.length)} classes, showing ${Math.min(limit, rows.length)})`,
+    '',
+    `${formatNumber(added)} new objects (${formatBytes(addedSize)} allocated and still alive) · ${formatNumber(deleted)} deleted (${formatBytes(deletedSize)} freed).`,
+    '',
+    markdownTable(
+      [
+        'Class',
+        'Type',
+        '# New',
+        '# Deleted',
+        'Δ Count',
+        'Alloc size',
+        'Freed size',
+        'Δ Size',
+      ],
+      rows
+        .slice(0, limit)
+        .map(r => [
+          r.name.length > 60 ? `${r.name.slice(0, 57)}…` : r.name,
+          r.type,
+          formatNumber(r.added),
+          formatNumber(r.deleted),
+          signed(r.added - r.deleted, formatNumber),
+          formatBytes(r.addedSize),
+          formatBytes(r.deletedSize),
+          signed(r.addedSize - r.deletedSize, formatBytes),
+        ]),
+      new Set([2, 3, 4, 5, 6, 7]),
+    ),
+    '',
+    '_Sorted by allocated size. New objects were allocated after "before" and are still alive in "after" — on a leak-hunt ladder, the population to trace. Drill in with `class_name` + `detail: "added"`._',
+  ];
+}
+
+function detailSection(
+  before: IHeapSnapshot,
+  after: IHeapSnapshot,
+  churn: Map<string, ClassChurn>,
+  className: string,
+  which: 'added' | 'deleted',
+  offset: number,
+  pageSize: number,
+): string[] {
+  // A full `type::name` key, or a bare name — which may itself contain `::`
+  // (`blink::CSSValue`), so a key miss falls back to the name.
+  const byKey = [...churn.values()].filter(r => r.key === className);
+  const candidates =
+    byKey.length > 0
+      ? byKey
+      : [...churn.values()].filter(r => r.name === className);
+  if (candidates.length === 0) {
+    return [`No class \`${className}\` changed between the two snapshots.`];
+  }
+  if (candidates.length > 1) {
+    return [
+      `\`${className}\` names several types; pass one of: ${candidates.map(r => `\`${r.key}\``).join(', ')}.`,
+    ];
+  }
+  const objs = churnObjects(before, after, candidates[0].key, which);
+  const start = Math.min(offset, objs.length);
+  const page = objs.slice(start, start + pageSize);
+  const side = which === 'added' ? '"after"' : '"before"';
+  const lines = [
+    `### ${which === 'added' ? 'New' : 'Deleted'} \`${candidates[0].key}\` objects — showing ${page.length === 0 ? 0 : start + 1}–${start + page.length} of ${formatNumber(objs.length)}`,
+    '',
+    `Ids are in the ${side} snapshot.`,
+    '',
+    markdownTable(
+      ['Id', 'Self size', 'Retained', 'Edges'],
+      page.map(n => [
+        `@${n.id}`,
+        formatBytes(n.self_size),
+        formatBytes(n.retainedSize),
+        formatNumber(n.edge_count),
+      ]),
+      new Set([1, 2, 3]),
+    ),
+  ];
+  if (start + page.length < objs.length) {
+    lines.push('', `_Next page: \`offset: ${start + page.length}\`._`);
+  }
+  return lines;
+}
+
 export function registerDiffSnapshots(server: McpServer): void {
   server.tool(
     'memlab_diff_snapshots',
-    'Compare two heap snapshots by class histogram. Shows classes that grew, shrunk, appeared, or disappeared between "before" and "after" snapshots. Each side accepts either a resident snapshot handle (from memlab_snapshots) or a file path — resident handles are reused in place, so diffing a ladder you already loaded never re-parses a file. By default the "after" snapshot becomes the active snapshot (set set_active:false to leave your active snapshot unchanged). For an ordered sequence of 3+ snapshots, use memlab_sequence_analysis instead.',
+    'Compare two heap snapshots: classes that grew, shrunk, appeared or disappeared between "before" and "after". When both captures come from the SAME isolate (one tab session, no reload; detected automatically), objects are also matched by V8 object id, which V8 keeps stable for an object across every snapshot of one isolate: per class, how many objects are NEW (allocated after "before" and still alive), how many were DELETED, and their allocated and freed bytes — so churn shows as N new + N deleted rather than as Δ0. Pass `class_name` with `detail` to list the new or deleted objects themselves, largest first and paged, as ids ready for memlab_retainer_trace. Each side accepts either a resident snapshot handle (from memlab_snapshots) or a file path — resident handles are reused in place, so diffing a ladder you already loaded never re-parses a file. By default the "after" snapshot becomes the active snapshot (set set_active:false to leave your active snapshot unchanged). For an ordered sequence of 3+ snapshots, use memlab_sequence_analysis instead.',
     {
       before_path: z
         .string()
@@ -179,6 +308,39 @@ export function registerDiffSnapshots(server: McpServer): void {
         .describe(
           'Hide rows whose self-size delta is 0 B (default true) — these are usually noise.',
         ),
+      identity: z
+        .enum(['auto', 'id', 'histogram'])
+        .optional()
+        .default('auto')
+        .describe(
+          'How objects are matched. "auto" (default): by V8 object id when the two captures are detected as the same isolate, otherwise histogram only. "id": always by id (reported with a warning if the isolates differ). "histogram": class counts and sizes only.',
+        ),
+      class_name: z
+        .string()
+        .optional()
+        .describe(
+          'With `detail`: the class to drill into, as shown in the churn table (name, or `type::name` when a name has several types).',
+        ),
+      detail: z
+        .enum(['added', 'deleted'])
+        .optional()
+        .describe(
+          'With `class_name`: list that class\'s NEW objects (ids in the "after" snapshot) or DELETED objects (ids in the "before" snapshot), largest self size first. Needs id matching.',
+        ),
+      offset: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .default(0)
+        .describe('With `detail`: skip this many objects (paging).'),
+      page_size: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .default(50)
+        .describe('With `detail`: objects per page (default 50).'),
       set_active: z
         .boolean()
         .optional()
@@ -199,6 +361,11 @@ export function registerDiffSnapshots(server: McpServer): void {
       min_size_delta,
       include_value_classes,
       hide_zero_size_delta,
+      identity,
+      class_name,
+      detail,
+      offset,
+      page_size,
       set_active,
     }) => {
       try {
@@ -219,6 +386,11 @@ export function registerDiffSnapshots(server: McpServer): void {
         const afterSnapshot = afterResolved.snapshot;
         const beforeHist = buildHistogram(beforeSnapshot);
         const afterHist = buildHistogram(afterSnapshot);
+        const iso: IsolateMatch | null =
+          identity === 'histogram'
+            ? null
+            : compareIsolates(beforeSnapshot, afterSnapshot);
+        const byId = iso != null && (identity === 'id' || iso.sameIsolate);
 
         // Make "after" the active snapshot. If it is already resident, switch to
         // its handle in place; only a freshly-loaded snapshot needs registering
@@ -414,6 +586,43 @@ export function registerDiffSnapshots(server: McpServer): void {
           `| Self Size | ${formatBytes(totalBeforeSize)} | ${formatBytes(totalAfterSize)} | ${sign(sizeDelta)}${formatBytes(Math.abs(sizeDelta))} |`,
         );
         lines.push('');
+        if (iso != null) {
+          lines.push(isolateLine(iso), '');
+          if (byId && !iso.sameIsolate) {
+            lines.push(
+              '> ⚠ `identity: "id"` forces id matching anyway. These captures do not look like one isolate, so the churn below likely pairs unrelated objects that happen to share ids.',
+              '',
+            );
+          }
+        }
+        if (byId) {
+          const churn = classChurn(beforeSnapshot, afterSnapshot);
+          if (class_name != null && detail != null) {
+            return toolResult(
+              [
+                ...lines,
+                ...detailSection(
+                  beforeSnapshot,
+                  afterSnapshot,
+                  churn,
+                  class_name,
+                  detail,
+                  offset,
+                  page_size,
+                ),
+              ].join('\n'),
+              pathsHeader(
+                [beforeArg, afterArg].map(a => a.replace(/^.*\//, '')),
+              ),
+            );
+          }
+          lines.push(...churnSection(churn, limit, include_value_classes), '');
+        } else if (detail != null) {
+          lines.push(
+            '_`detail` needs id matching, and these captures are not from one isolate (or `identity: "histogram"` was set). Showing the histogram diff only._',
+            '',
+          );
+        }
 
         // Grew section
         if (grew.length > 0) {

@@ -40,7 +40,7 @@ export function registerEvalAcross(server: McpServer): void {
       '`memlab_eval` alone costs one switch + one paste + one manual diff per rung, which is enough friction that the question ' +
       'often just does not get asked. The code, the sandbox and the helper surface are identical to `memlab_eval` (this calls the ' +
       'same implementation, not a copy), so anything that runs there runs here.\n\n' +
-      'Node ids are per-capture, so write code that computes COMPARABLE values (counts, sizes, shapes, string values) rather than ' +
+      'Node ids match across rungs only when they come from one isolate (one tab session, no reload; memlab_diff_snapshots reports this), so write code that computes COMPARABLE values (counts, sizes, shapes, string values) rather than ' +
       'code that hardcodes ids from one rung. `helpers.load(name)` still refuses cross-snapshot reads unless you pass ' +
       '`{allowCrossSnapshot: true}`.\n\n' +
       'The active snapshot is restored when the run finishes, including on failure, so this does not disturb an in-progress investigation.',
@@ -158,7 +158,7 @@ export function registerEvalAcross(server: McpServer): void {
             : []),
           sections.join('\n\n'),
           '',
-          '_Values are comparable across rungs; node IDS are not — they are assigned per capture. Compare counts, sizes, shapes and string values, never ids._',
+          '_Values are comparable across rungs. Node ids are only comparable between captures of ONE isolate (same tab, no reload) — memlab_diff_snapshots detects that and matches objects by id; otherwise compare counts, sizes, shapes and string values._',
         ];
         return toolResult(lines.join('\n'));
       } catch (err) {

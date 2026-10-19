@@ -262,7 +262,7 @@ export function registerPopulationDiff(server: McpServer): void {
     'memlab_population_diff',
     'Compare the COMPOSITION of a population between two loaded snapshots, not just its size. Equal totals are not identity: a round that strands N objects and frees N others reports the same count at both ends, and reading that as "nothing leaked" is a wrong verdict a count comparison cannot catch. This breaks the population into buckets (class, dominator-owner class, node type, or object shape), reports both ends per bucket, and states which of the three cases holds — identical composition / equal totals but different composition / net growth. ' +
       'Populations: "detached" (all detached DOM), "class:<ClassName>", or "shape:prop1,prop2" (objects carrying all of those properties). ' +
-      'Buckets are keyed by CLASS, never by node id — ids are per-capture, so an id-keyed comparison reports every member as both added and removed. Both snapshots must be resident: load them with keep_previous:true.',
+      'Buckets are keyed by CLASS, never by node id, so it works across isolates too (across isolates an id-keyed comparison reports every member as both added and removed; for captures of ONE isolate, memlab_diff_snapshots matches by id). Both snapshots must be resident: load them with keep_previous:true.',
     {
       baseline_handle: z
         .string()

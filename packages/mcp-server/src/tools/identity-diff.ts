@@ -78,7 +78,7 @@ function keyCounts(
 export function registerIdentityDiff(server: McpServer): void {
   server.tool(
     'memlab_identity_diff',
-    'Same objects, or just the same number of objects? Matches a population across two snapshots by CONTENT rather than by node id, which is not comparable across captures.\n\n' +
+    'Same objects, or just the same number of objects? Matches a population across two snapshots by CONTENT rather than by node id. Use it across isolates (a reload, another session); between captures of ONE isolate, memlab_diff_snapshots matches by V8 object id, which is exact.\n\n' +
       'The distinction decides what kind of bug this is. A population whose members are replaced between captures is churn — a rate problem, and capping or reusing is the fix. A population whose members all persist is retention, and the fix is releasing them. The two look identical in every count-based diff, which is what `memlab_diff_snapshots` and a class histogram report.\n\n' +
       "The content key is the object's property names plus the string and boolean values it holds. That is a stand-in for identity, not identity: objects with identical content are indistinguishable to it. The report always states how distinct the keys actually were, so a weak answer is visible as one.",
     {

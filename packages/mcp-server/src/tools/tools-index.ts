@@ -308,7 +308,7 @@ const GROUPS: Group[] = [
       ],
       [
         'memlab_diff_snapshots',
-        'Raw per-class deltas between two resident snapshots.',
+        'Per-class deltas between two snapshots; for two captures of one tab session, also the new and freed objects per class, matched by id.',
       ],
       [
         'memlab_hypothesis',

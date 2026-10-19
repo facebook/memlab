@@ -748,7 +748,7 @@ export function registerSequenceAnalysis(server: McpServer): void {
         if (shouldEmitNote('seq:candidate-not-verdict')) {
           lines.push(
             '',
-            '_"↑ every step (LEAK candidate)" is the strong unbounded-growth signal — it is a candidate, not a verdict: confirm with `memlab_dev_artifacts` and a `memlab_retainer_trace` before calling it a leak; "grew net (noisy)" often reflects GC timing or navigation and warrants a closer look before treating as a leak. Object-identity matching across snapshots is not available (node ids differ per capture) — to localize a specific growing collection, load the last snapshot and use `memlab_cache_analysis` / `memlab_event_listener_leaks` / `memlab_growth_signals`._',
+            '_"↑ every step (LEAK candidate)" is the strong unbounded-growth signal — it is a candidate, not a verdict: confirm with `memlab_dev_artifacts` and a `memlab_retainer_trace` before calling it a leak; "grew net (noisy)" often reflects GC timing or navigation and warrants a closer look before treating as a leak. Between two captures of ONE isolate (one tab session, no reload), memlab_diff_snapshots matches objects by V8 id and lists the new ones still alive; across isolates ids do not match. To localize a specific growing collection, load the last snapshot and use `memlab_cache_analysis` / `memlab_event_listener_leaks` / `memlab_growth_signals`._',
           );
         } else {
           lines.push(
