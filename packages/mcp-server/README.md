@@ -182,7 +182,7 @@ To auto-approve the read-only tools while keeping the rest on manual approval, a
 
 ## Getting a Heap Snapshot
 
-Both `.heapsnapshot` files and `.heaptimeline` files (snapshots recorded with allocation tracking on) load, and either suffix may be left off a handle.
+Both `.heapsnapshot` files and `.heaptimeline` files (snapshots recorded with allocation tracking on) load, and either suffix may be left off a handle. `memlab_allocation_sites` reads the allocation stacks such a capture carries.
 
 ### Chrome DevTools
 
@@ -323,6 +323,7 @@ The main list and lookup tools (`memlab_query_objects`, `memlab_class_histogram`
 | `memlab_explain_delta` | WHERE a heap grew, attributed to the object that owns the new bytes rather than to what they are. |
 | `memlab_dominator_chain` | From one node up to the accountable application object. |
 | `memlab_dominator_attribution` | Given several candidate retainers, how much each one actually dominates — a zero refutes a hypothesis. |
+| `memlab_allocation_sites` | WHO allocated these objects: live objects grouped by the JavaScript stack that allocated them (needs a capture recorded with allocation tracking, e.g. a `.heaptimeline`). |
 | `memlab_retained_by` | Bytes retained ONLY through closure contexts, detached DOM, the DevTools console or event handlers: what removing every such retainer would free, with the largest classes. Filter any query or histogram the same way with `retained_by`. |
 | `memlab_dead_context_variables` | Captured variables no live code can read, heap-wide: a value kept alive only because it shares a closure Context with a sibling closure that is still alive. Needs a V8 15.6+ (Chrome 156+) capture. |
 | `memlab_retainer_trace` | The shortest retainer path for one node; `mode: "tree"` shows every owner as a bounded tree (`max_depth`, `max_nodes`, `max_siblings`) ending at a root or the page global. |

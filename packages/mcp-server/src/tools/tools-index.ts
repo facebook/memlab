@@ -387,6 +387,10 @@ const GROUPS: Group[] = [
         'Given several candidate retainers, how much each one actually dominates — a zero refutes a hypothesis.',
       ],
       [
+        'memlab_allocation_sites',
+        'WHO allocated these objects: live objects grouped by the JavaScript stack that allocated them (needs a capture recorded with allocation tracking, e.g. a `.heaptimeline`).',
+      ],
+      [
         'memlab_retained_by',
         'Bytes retained ONLY through closure contexts, detached DOM, the DevTools console or event handlers: what removing every such retainer would free, with the largest classes. Filter any query or histogram the same way with `retained_by`.',
       ],
