@@ -464,8 +464,8 @@ When analyzing large snapshots, use these options to reduce token usage:
   `include_node_ids: true` only when you need IDs for follow-up with
   `retainer_summary`
 - **`memlab_class_histogram` with `suppress_suggestions: true`** — omits
-  "Suggested next steps" boilerplate on repeat calls. The cumulative % column
-  lets you stop reading when you hit 95%
+  "Suggested next steps" boilerplate on repeat calls. With retained sizes on,
+  `% of heap` is each row's own share; rows overlap, so never add them up
 - **Session output controls** — pass `quiet: true` to `memlab_load_snapshot`
   (or `memlab_snapshots`) to print the `> Snapshot: …` header once per snapshot
   instead of on every result, and `suppress_suggestions: true` to drop the

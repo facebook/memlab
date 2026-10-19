@@ -291,20 +291,26 @@ export function registerClassHistogram(server: McpServer): void {
           computed.sort((a, b) => b.retained_size - a.retained_size);
         }
 
-        // Use total heap size as the denominator for cumulative % so it
-        // reflects each class's share of the entire heap, not just the
-        // filtered subset.
-        const totalRetainedAll = meta?.totalSize ?? 0;
+        // Each row's share of the whole heap, not of the filtered subset. A
+        // running total would be wrong: one class's instances can hold
+        // another's, so retained sizes of different rows overlap.
+        const heapTotal = meta?.totalSize ?? 0;
 
         const sorted = computed.slice(0, limit);
 
         const headers = include_retained_size
-          ? ['Class', 'Type', 'Count', 'Self Size', 'Retained Size', 'Cum %']
+          ? [
+              'Class',
+              'Type',
+              'Count',
+              'Self Size',
+              'Retained Size',
+              '% of heap',
+            ]
           : ['Class', 'Type', 'Count', 'Self Size'];
         const rightCols = include_retained_size
           ? new Set([2, 3, 4, 5])
           : new Set([2, 3]);
-        let cumRetained = 0;
         let shownEstimate = false;
         const rows = sorted.map(v => {
           const rawName = splitClassKey(v.key).name;
@@ -322,10 +328,9 @@ export function registerClassHistogram(server: McpServer): void {
               formatBytes(v.total_self_size),
             ];
           }
-          cumRetained += v.retained_size;
-          const cumPct =
-            totalRetainedAll > 0
-              ? ((cumRetained / totalRetainedAll) * 100).toFixed(1) + '%'
+          const heapPct =
+            heapTotal > 0
+              ? ((v.retained_size / heapTotal) * 100).toFixed(1) + '%'
               : '-';
           const retainedCell = v.retained_exact
             ? formatBytes(v.retained_size)
@@ -337,7 +342,7 @@ export function registerClassHistogram(server: McpServer): void {
             formatNumber(v.count),
             formatBytes(v.total_self_size),
             retainedCell,
-            cumPct,
+            heapPct,
           ];
         });
 
@@ -356,7 +361,13 @@ export function registerClassHistogram(server: McpServer): void {
             '',
             '_Retained size omitted (the default `include_retained_size:false`) for speed — sorted by self size. Only if the user explicitly wants dominator-aware retained sizes, re-run with `include_retained_size:true` (optionally with a high `min_self_size`/`min_count`); that path can be slow and may time out on very large heaps._',
           );
-        } else if (shownEstimate || anyEstimate) {
+        } else {
+          lines.push(
+            '',
+            '_Retained sizes overlap across classes (an instance of one class can hold instances of another), so rows are not added up._',
+          );
+        }
+        if (include_retained_size && (shownEstimate || anyEstimate)) {
           lines.push(
             '',
             `_Rows marked "~" show an upper-bound retained size (may double-count nested objects). A row is estimated when it is outside the heaviest ${formatNumber(max_retained_classes)} non-leaf classes (raise \`max_retained_classes\`), or when an instance's nearest dominating instance is deeper than the ${formatNumber(max_dominator_walk)}-step walk cap (raise \`max_dominator_walk\`). String/number rows are always exact._`,
