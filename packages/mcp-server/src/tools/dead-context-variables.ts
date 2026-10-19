@@ -12,6 +12,7 @@ import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapSnapshot} from '@memlab/core';
 import {z} from 'zod';
 import {getSnapshot, getSnapshotByHandle} from '../heap-state.js';
+import {pageLines, paginate} from '../pagination.js';
 import {
   analyzeContexts,
   scopeDeadBytes,
@@ -20,6 +21,7 @@ import {
 } from '../context-analysis.js';
 import {
   clampLabel,
+  clampLabelTo,
   errorResult,
   formatBytes,
   formatNumber,
@@ -194,7 +196,9 @@ export function registerDeadContextVariables(server: McpServer): void {
           lines.push('', 'No dead captured variables match.');
         }
 
-        const page = scopes.slice(offset, offset + page_size);
+        const paged = paginate(scopes, offset, page_size);
+        const page = paged.items;
+        const first = paged.offset;
         if (page.length > 0) {
           lines.push('');
           lines.push(
@@ -215,9 +219,11 @@ export function registerDeadContextVariables(server: McpServer): void {
                 const shown = [...names].slice(0, 4).map(n => `\`${n}\``);
                 if (names.size > 4) shown.push(`+${names.size - 4}`);
                 return [
-                  String(offset + i + 1),
+                  String(first + i + 1),
                   scopeLabel(scope),
-                  clampLabel(scope.scriptName || `@${scope.scriptId}`, 80),
+                  // A script URL, not a node name: the session name width does
+                  // not apply.
+                  clampLabelTo(scope.scriptName || `@${scope.scriptId}`, 80),
                   formatNumber(scope.contexts.length),
                   formatBytes(scopeDeadBytes(scope)),
                   shown.join(', '),
@@ -230,7 +236,7 @@ export function registerDeadContextVariables(server: McpServer): void {
           for (const [i, scope] of page.entries()) {
             lines.push('');
             lines.push(
-              `**${offset + i + 1}. ${scopeLabel(scope)}** in ${scope.scriptName || `script @${scope.scriptId}`} (ScopeInfo @${scope.scopeInfoId}, ${formatNumber(scope.fieldCount)} context slots)`,
+              `**${first + i + 1}. ${scopeLabel(scope)}** in ${scope.scriptName || `script @${scope.scriptId}`} (ScopeInfo @${scope.scopeInfoId}, ${formatNumber(scope.fieldCount)} context slots)`,
             );
             for (const ctx of scope.contexts.slice(0, contexts_per_scope)) {
               lines.push(
@@ -260,17 +266,7 @@ export function registerDeadContextVariables(server: McpServer): void {
               "_Rows for a script's root scope are module scopes on V8 15.7+. On a V8 15.6 capture they can be script-level `let`/`const`, which other scripts may read, so confirm those before acting._",
             );
           }
-          const end = offset + page.length;
-          lines.push('');
-          lines.push(
-            `Showing ${formatNumber(offset + 1)}–${formatNumber(end)} of ${formatNumber(scopes.length)} scopes.` +
-              (end < scopes.length ? ` Next page: \`offset: ${end}\`.` : ''),
-          );
-        } else if (scopes.length > 0) {
-          lines.push(
-            '',
-            `\`offset\` ${offset} is past the last of ${formatNumber(scopes.length)} scopes.`,
-          );
+          lines.push('', ...pageLines(paged, 'scopes'));
         }
 
         const missing = analysis.scriptsWithoutScopes;

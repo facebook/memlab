@@ -13,6 +13,7 @@ import type {IHeapNode} from '@memlab/core';
 import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
 import {z} from 'zod';
+import {offsetParam, pageFooter, type Page} from '../pagination.js';
 import {getSnapshot} from '../heap-state.js';
 import {
   filterLargestObjects,
@@ -23,6 +24,7 @@ import {
   errorResult,
   toolResult,
   makeNamePatternTest,
+  topKBy,
 } from '../utils.js';
 
 export function registerFindNodesByClass(server: McpServer): void {
@@ -69,6 +71,7 @@ export function registerFindNodesByClass(server: McpServer): void {
         .optional()
         .default(20)
         .describe('Maximum number of results (default 20)'),
+      offset: offsetParam(),
     },
     async ({
       class_name,
@@ -77,6 +80,7 @@ export function registerFindNodesByClass(server: McpServer): void {
       output_mode,
       limit,
       order,
+      offset,
     }) => {
       try {
         if (class_name == null && name_pattern == null) {
@@ -166,52 +170,89 @@ export function registerFindNodesByClass(server: McpServer): void {
           );
         }
 
+        const start = Math.max(0, offset);
+        const want = start + limit;
+        // A bounded heap keeps the top `start + limit` without collecting every
+        // match, which is cheap for the first pages but holds that many node
+        // objects for the whole scan. Deeper than HEAP_LIMIT, collect node
+        // ordinals and sort typed keys instead, resolving only this page. Both
+        // paths order the same way (newest: id descending; retained size:
+        // largest first, then scan order), so paging is seamless between them.
+        const HEAP_LIMIT = 10_000;
         let nodes: IHeapNode[];
-        if (order === 'newest') {
-          // Highest node ids = latest allocated within this snapshot. Keep a
-          // bounded top-N rather than collecting every match and sorting, so a
-          // class with a million instances does not materialize a huge array.
-          // Relies on the schema's integer `limit >= 1`: a fractional limit
-          // never satisfies `length === limit`, and `limit <= 0` would fall
-          // through to the eviction branch and keep one node anyway.
-          const newest: IHeapNode[] = [];
-          let minKept = -1;
+        let totalCount: number;
+        if (want <= HEAP_LIMIT) {
+          // Highest node ids = latest allocated within this snapshot.
+          let top: IHeapNode[];
+          if (order === 'newest') {
+            const newest = topKBy<IHeapNode>(want, (a, b) => b.id - a.id);
+            snapshot.nodes.forEach(node => {
+              if (classFilter(node)) newest.push(node);
+            });
+            top = newest.sorted();
+          } else {
+            top = filterLargestObjects(snapshot, classFilter, want);
+          }
+          // A short fetch is every match, so its length is the exact count;
+          // only a full one (there may be more) needs the counting pass.
+          totalCount = top.length;
+          if (top.length === want) {
+            totalCount = 0;
+            snapshot.nodes.forEach(node => {
+              if (classFilter(node)) totalCount++;
+            });
+          }
+          // The top `start + limit`, so this page is the tail of it.
+          nodes = top.slice(start);
+        } else {
+          const ordinals: number[] = [];
           snapshot.nodes.forEach(node => {
-            if (!classFilter(node)) return;
-            if (newest.length < limit) {
-              newest.push(node);
-              if (newest.length === limit) {
-                newest.sort((a, b) => a.id - b.id);
-                minKept = newest[0].id;
-              }
-              return;
+            if (classFilter(node)) ordinals.push(node.nodeIndex);
+          });
+          totalCount = ordinals.length;
+          // The ordinals are nodes this scan just visited, so each resolves; a
+          // miss is a broken snapshot, and dropping the row would shift every
+          // later page, so fail instead.
+          const nodeAt = (ordinal: number): IHeapNode => {
+            const node = snapshot.nodes.get(ordinal);
+            if (node == null) {
+              throw new Error(`node ordinal ${ordinal} did not resolve`);
             }
-            if (node.id <= minKept) return;
-            newest[0] = node;
-            newest.sort((a, b) => a.id - b.id);
-            minKept = newest[0].id;
-          });
-          nodes = newest.sort((a, b) => b.id - a.id);
-        } else {
-          nodes = filterLargestObjects(snapshot, classFilter, limit);
+            return node;
+          };
+          const key = new Float64Array(ordinals.length);
+          for (let i = 0; i < ordinals.length; i++) {
+            const node = nodeAt(ordinals[i]);
+            key[i] = order === 'newest' ? node.id : node.retainedSize;
+          }
+          // Ordinals are in scan order, so `a - b` breaks ties as the heap does.
+          const rank = Array.from({length: ordinals.length}, (_, i) => i);
+          rank.sort((a, b) => key[b] - key[a] || a - b);
+          nodes = rank.slice(start, want).map(i => nodeAt(ordinals[i]));
         }
 
-        let totalCount = 0;
-        if (nodes.length === limit) {
-          snapshot.nodes.forEach(node => {
-            if (classFilter(node)) totalCount++;
-          });
-        } else {
-          totalCount = nodes.length;
-        }
-
-        if (nodes.length === 0) {
+        if (totalCount === 0) {
           return toolResult(notFound());
+        }
+        const page: Page<IHeapNode> = {
+          items: nodes,
+          offset: start,
+          pageSize: limit,
+          total: totalCount,
+          nextOffset:
+            start + nodes.length < totalCount ? start + nodes.length : null,
+        };
+        const footer = pageFooter(page, 'instances');
+        if (nodes.length === 0) {
+          return toolResult(
+            `\`offset\` ${formatNumber(start)} is past the last of ${formatNumber(totalCount)} "${label}" objects; use a smaller offset.`,
+          );
         }
 
         if (output_mode === 'ids') {
           return toolResult(
-            `"${label}": ${formatNumber(totalCount)} total instances (showing ${nodes.length} IDs by ${order === 'newest' ? 'node id — newest first' : 'retained size'})\n\nIDs: ${nodes.map(n => n.id).join(', ')}`,
+            `"${label}": ${formatNumber(totalCount)} total instances (showing ${nodes.length} IDs by ${order === 'newest' ? 'node id — newest first' : 'retained size'})\n\nIDs: ${nodes.map(n => n.id).join(', ')}` +
+              (footer ? `\n\n${footer}` : ''),
           );
         }
 
@@ -221,7 +262,8 @@ export function registerFindNodesByClass(server: McpServer): void {
             ? ` (${formatNumber(totalCount)} total, showing ${order === 'newest' ? `the ${nodes.length} newest by node id` : `top ${nodes.length} by retained size`})`
             : '';
         return toolResult(
-          `Found ${formatNumber(totalCount)} "${label}" objects${countNote}\n\n${formatNodeSummaryTable(summaries)}`,
+          `Found ${formatNumber(totalCount)} "${label}" objects${countNote}\n\n${formatNodeSummaryTable(summaries)}` +
+            (footer ? `\n\n${footer}` : ''),
         );
       } catch (err) {
         return errorResult(err);

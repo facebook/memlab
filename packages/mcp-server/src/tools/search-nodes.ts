@@ -119,7 +119,9 @@ export function registerSearchNodes(server: McpServer): void {
           budget: makeScanBudget(timeout_ms),
         });
 
-        return toolResult(formatQueryNodesResult(result, offset));
+        return toolResult(
+          formatQueryNodesResult(result, offset, effectiveLimit),
+        );
       } catch (err) {
         return errorResult(err);
       }

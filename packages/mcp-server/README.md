@@ -213,6 +213,8 @@ Call **`memlab_tools`** first when you are not sure which tool fits. It prints t
 
 Tools are grouped by the question they answer. Within a group, try them in the order listed. A few tools appear in more than one group.
 
+Ranked lists page the same way: pass `offset` to skip rows, and every page ends with "Showing a–b of N … Next page: `offset: k`". Ties are broken by node id, so the same offset always shows the same rows. `memlab_snapshots({max_name_length: N})` clips node names in every tool for the rest of the session.
+
 ### What is this heap actually made of?
 
 | Tool | Use it when |

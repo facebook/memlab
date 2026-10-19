@@ -192,6 +192,11 @@ export interface SessionConfig {
    * on an earlier load still gets it on a later load that omits the argument.
    */
   suppressOrientation: boolean;
+  /**
+   * Width every node name is clipped to, replacing each tool's own default.
+   * null keeps the per-tool defaults.
+   */
+  maxNameLength: number | null;
 }
 
 const sessionConfig: SessionConfig = {
@@ -199,6 +204,7 @@ const sessionConfig: SessionConfig = {
   suppressSuggestions: false,
   terse: false,
   suppressOrientation: false,
+  maxNameLength: null,
 };
 
 // Tracks whether the header has been emitted since the current snapshot was
@@ -217,6 +223,9 @@ export function setSessionConfig(patch: Partial<SessionConfig>): SessionConfig {
   if (patch.terse != null) sessionConfig.terse = patch.terse;
   if (patch.suppressOrientation != null) {
     sessionConfig.suppressOrientation = patch.suppressOrientation;
+  }
+  if (patch.maxNameLength !== undefined) {
+    sessionConfig.maxNameLength = patch.maxNameLength;
   }
   return sessionConfig;
 }

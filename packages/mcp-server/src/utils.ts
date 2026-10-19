@@ -170,9 +170,12 @@ export function truncateNodeName(
   name: string,
   type: string,
   _selfSize: number,
-  maxLen = 150,
+  defaultLen = 150,
   aggressiveDom = false,
 ): string {
+  // `defaultLen` is the calling tool's column default; a session
+  // `max_name_length` replaces it, which is what the session width is for.
+  const maxLen = getSessionConfig().maxNameLength ?? defaultLen;
   if (
     type === 'string' ||
     type === 'concatenated string' ||
@@ -578,32 +581,77 @@ export function stratifyNodes(all: IHeapNode[], limit: number): IHeapNode[] {
   return [...picked.values()].slice(0, limit);
 }
 
+/**
+ * The best `k` of a stream, kept in a bounded min-heap: O(log k) per item
+ * instead of an O(k) insertion and copy, so asking for a deep page (a large
+ * `k`) does not multiply the cost of a full-heap scan by `k`. `cmp(a, b) < 0`
+ * means `a` ranks before `b`.
+ */
+export function topKBy<T>(
+  k: number,
+  cmp: (a: T, b: T) => number,
+): {push(item: T): void; sorted(): T[]} {
+  const heap: T[] = [];
+  // The heap root is the WORST kept item: the first to give way.
+  const worse = (i: number, j: number) => cmp(heap[i], heap[j]) > 0;
+  const swap = (i: number, j: number) => {
+    const t = heap[i];
+    heap[i] = heap[j];
+    heap[j] = t;
+  };
+  const down = (i: number) => {
+    for (;;) {
+      const l = 2 * i + 1;
+      const r = l + 1;
+      let m = i;
+      if (l < heap.length && worse(l, m)) m = l;
+      if (r < heap.length && worse(r, m)) m = r;
+      if (m === i) return;
+      swap(i, m);
+      i = m;
+    }
+  };
+  return {
+    push(item: T) {
+      if (k <= 0) return;
+      if (heap.length < k) {
+        heap.push(item);
+        for (let i = heap.length - 1; i > 0;) {
+          const p = (i - 1) >> 1;
+          if (!worse(i, p)) break;
+          swap(i, p);
+          i = p;
+        }
+      } else if (cmp(item, heap[0]) < 0) {
+        heap[0] = item;
+        down(0);
+      }
+    },
+    sorted() {
+      return [...heap].sort(cmp);
+    },
+  };
+}
+
 export function filterLargestObjectsCounted(
   snapshot: IHeapSnapshot,
   filter: (node: IHeapNode) => boolean,
   limit: number,
 ): {nodes: IHeapNode[]; matched: number} {
-  let result: IHeapNode[] = [];
+  // Largest retained size first; ties keep scan order.
+  const top = topKBy<{node: IHeapNode; size: number; order: number}>(
+    limit,
+    (a, b) => b.size - a.size || a.order - b.order,
+  );
   let matched = 0;
   snapshot.nodes.forEach(node => {
     if (!filter(node)) {
       return;
     }
+    top.push({node, size: node.retainedSize, order: matched});
     matched++;
-    const size = node.retainedSize;
-    let i: number;
-    for (i = result.length - 1; i >= 0; --i) {
-      if (result[i].retainedSize >= size) {
-        result.splice(i + 1, 0, node);
-        break;
-      }
-    }
-    if (i < 0) {
-      result.unshift(node);
-    }
-    result = result.slice(0, limit);
   });
-  return {nodes: result, matched};
+  return {nodes: top.sorted().map(e => e.node), matched};
 }
 
 /**
@@ -619,45 +667,89 @@ export function filterLargestObjectsCounted(
  * are never collapsed. `candidates` must be pre-sorted by retained size desc;
  * the highest dominator (ancestor) is kept as the representative, annotated with
  * `mergedCount` = how many views were folded into it.
+ *
+ * Rows are found through each candidate's dominator chain by node id rather
+ * than by scanning earlier rows, so a long run of equal sizes costs no more
+ * than a short one, and the state after N candidates is exactly the collapse of
+ * the first N: a caller can feed a longer list in steps.
  */
-export function collapseDominatorSubtrees(
-  candidates: IHeapNode[],
-  limit: number,
-  opts: {epsilon?: number; maxWalk?: number} = {},
-): Array<{node: IHeapNode; mergedCount: number}> {
-  const epsilon = opts.epsilon ?? 0.99;
-  const maxWalk = opts.maxWalk ?? 200;
-  const dominates = (ancestor: IHeapNode, n: IHeapNode): boolean => {
-    let cur: IHeapNode | null = n.dominatorNode ?? null;
-    let steps = 0;
-    while (cur && steps++ < maxWalk) {
-      if (cur.id === ancestor.id) return true;
-      cur = cur.dominatorNode ?? null;
-    }
-    return false;
-  };
-  const kept: Array<{node: IHeapNode; mergedCount: number}> = [];
-  for (const c of candidates) {
-    let merged = false;
-    for (const k of kept) {
-      const lo = Math.min(c.retainedSize, k.node.retainedSize);
-      const hi = Math.max(c.retainedSize, k.node.retainedSize);
-      const nearEqual = hi > 0 && lo / hi >= epsilon;
-      if (nearEqual && (dominates(k.node, c) || dominates(c, k.node))) {
-        // Same subtree: prefer the higher (ancestor) node as the representative.
-        if (dominates(c, k.node)) {
-          k.node = c;
+export class SubtreeCollapser {
+  readonly rows: Array<{node: IHeapNode; mergedCount: number}> = [];
+  // Node id of each row's current representative -> row index.
+  private readonly byNode = new Map<number, number>();
+  // Near-equal dominator ancestors of each row's current representative ->
+  // row index, and the ids each row put there, so a promotion replaces them.
+  private readonly byAncestor = new Map<number, number>();
+  private readonly ancestorsOfRow: number[][] = [];
+  private fed = 0;
+
+  constructor(
+    private readonly epsilon = 0.99,
+    private readonly maxWalk = 200,
+  ) {}
+
+  /** Candidates pushed so far. */
+  get count(): number {
+    return this.fed;
+  }
+
+  push(c: IHeapNode): void {
+    this.fed++;
+    if (c.retainedSize > 0) {
+      // Under a row's node: ancestors only grow, so stop at the first one too
+      // large to be near-equal. At most one row can match this way.
+      let under = -1;
+      let cur = c.dominatorNode ?? null;
+      for (let steps = 0; cur != null && steps < this.maxWalk; steps++) {
+        if (cur.retainedSize * this.epsilon > c.retainedSize) break;
+        const row = this.byNode.get(cur.id);
+        if (row != null) {
+          under = row;
+          break;
         }
-        k.mergedCount++;
-        merged = true;
-        break;
+        cur = cur.dominatorNode ?? null;
+      }
+      // Above a row's node: equal sizes can arrive child first. At most one
+      // row can match this way too.
+      const over = this.byAncestor.get(c.id) ?? -1;
+      // When c is both, join the more recent row, as a scan from the newest
+      // row back would.
+      if (under >= 0 && under > over) {
+        this.rows[under].mergedCount++;
+        return;
+      }
+      const below = over >= 0 ? over : null;
+      if (below != null) {
+        // The ancestor becomes the row's representative. Only a current
+        // representative and its own ancestors may attract later candidates.
+        this.byNode.delete(this.rows[below].node.id);
+        for (const id of this.ancestorsOfRow[below] ?? []) {
+          if (this.byAncestor.get(id) === below) this.byAncestor.delete(id);
+        }
+        this.ancestorsOfRow[below] = [];
+        this.rows[below].node = c;
+        this.rows[below].mergedCount++;
+        this.index(c, below);
+        return;
       }
     }
-    if (!merged) {
-      kept.push({node: c, mergedCount: 0});
+    this.rows.push({node: c, mergedCount: 0});
+    this.index(c, this.rows.length - 1);
+  }
+
+  private index(n: IHeapNode, row: number): void {
+    this.byNode.set(n.id, row);
+    if (n.retainedSize <= 0) return;
+    let cur = n.dominatorNode ?? null;
+    for (let steps = 0; cur != null && steps < this.maxWalk; steps++) {
+      if (cur.retainedSize * this.epsilon > n.retainedSize) break;
+      if (!this.byAncestor.has(cur.id)) {
+        this.byAncestor.set(cur.id, row);
+        (this.ancestorsOfRow[row] ??= []).push(cur.id);
+      }
+      cur = cur.dominatorNode ?? null;
     }
   }
-  return kept.slice(0, limit);
 }
 
 export type OutputMode = 'full' | 'count' | 'ids';
@@ -1356,8 +1448,20 @@ export function formatNumber(n: number): string {
  * embedded newline breaks out of the markdown cell or bullet it sits in. The
  * omitted length is reported so a clipped name is never mistaken for a short
  * one.
+ *
+ * `defaultLen` is the calling tool's column default, and a session
+ * `max_name_length` replaces it. A width the user asked for in this call, or a
+ * hard cap that must not shrink, goes through `clampLabelTo` instead.
  */
-export function clampLabel(name: string, maxLen = 120): string {
+export function clampLabel(name: string, defaultLen?: number): string {
+  return clampLabelTo(
+    name,
+    getSessionConfig().maxNameLength ?? defaultLen ?? 120,
+  );
+}
+
+/** `clampLabel` at exactly `maxLen`, ignoring the session width. */
+export function clampLabelTo(name: string, maxLen: number): string {
   const flat = name.replace(/\s+/g, ' ').trim();
   if (flat.length <= maxLen) return flat;
   return `${flat.slice(0, maxLen - 1)}… (+${formatNumber(
@@ -1441,7 +1545,8 @@ export function clipTableColumn(
   const clipped = rows.map((r, i) => {
     const cell = r[col];
     if (cell == null || cell.length <= max) return r;
-    footnotes.push(`- row ${i + 1}: ${clampLabel(cell, 300)}`);
+    // The footnote carries the full value: a session width must not clip it.
+    footnotes.push(`- row ${i + 1}: ${clampLabelTo(cell, 300)}`);
     const copy = [...r];
     copy[col] = `${cell.slice(0, max - 1)}…`;
     return copy;
@@ -1757,7 +1862,35 @@ export function blinkLegend(rendered: Iterable<string>): string {
 export function formatQueryNodesResult(
   result: QueryNodesResult,
   offset?: number,
+  limit?: number,
 ): string {
+  // The standard footer, when the caller pages: the next offset, and a
+  // notice if the requested one was past the end.
+  const footer = (shown: number): string => {
+    if (offset == null || limit == null) return '';
+    const start = Math.max(0, offset);
+    if (shown === 0 && start > 0 && result.total_count > 0) {
+      return `\n\n\`offset\` ${formatNumber(start)} is past the last of ${formatNumber(result.total_count)}; use a smaller offset.`;
+    }
+    if (shown === 0) return '';
+    const end = start + shown;
+    // A timed-out scan counted only what it reached: the total is a lower
+    // bound, and there may be more past this page.
+    if (result.timed_out) {
+      return `\n\nShowing ${formatNumber(start + 1)}–${formatNumber(end)} of at least ${formatNumber(result.total_count)}. Next page: \`offset: ${end}\`.`;
+    }
+    const pages = Math.ceil(result.total_count / Math.max(1, limit));
+    // As in `pageFooter`: a page number only on the page grid.
+    const onGrid = start % Math.max(1, limit) === 0;
+    return (
+      `\n\nShowing ${formatNumber(start + 1)}–${formatNumber(end)} of ${formatNumber(result.total_count)}` +
+      (pages > 1 && onGrid
+        ? ` (page ${Math.floor(start / Math.max(1, limit)) + 1} of ${formatNumber(pages)})`
+        : '') +
+      '.' +
+      (end < result.total_count ? ` Next page: \`offset: ${end}\`.` : '')
+    );
+  };
   const partial = result.timed_out
     ? '\n\n⚠ Scan hit its time budget and returned PARTIAL results (counts shown are a lower bound). Raise timeout_ms, add filters, or use an indexed tool — large browser heaps are slow to full-scan.'
     : '';
@@ -1767,14 +1900,14 @@ export function formatQueryNodesResult(
     }
     const lines = [`Total: ${formatNumber(result.total_count)} nodes\n`];
     lines.push(formatNodeSummaryTable(result.nodes));
-    return lines.join('\n') + partial;
+    return lines.join('\n') + footer(result.nodes.length) + partial;
   }
   if (result.ids != null) {
     const lines = [
       `Total: ${formatNumber(result.total_count)} | Showing ${formatNumber(result.ids.length)} (offset ${offset ?? 0})`,
     ];
     lines.push(`IDs: ${result.ids.join(', ')}`);
-    return lines.join('\n') + partial;
+    return lines.join('\n') + footer(result.ids.length) + partial;
   }
   return `Total matching nodes: ${formatNumber(result.total_count)}${partial}`;
 }

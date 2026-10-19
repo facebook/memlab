@@ -13,6 +13,7 @@ import type {IHeapNode, HeapNodeIdSet} from '@memlab/core';
 import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
 import {z} from 'zod';
+import {offsetParam, pageFooter, paginate} from '../pagination.js';
 import {getSnapshot} from '../heap-state.js';
 import {
   formatBytes,
@@ -58,6 +59,7 @@ export function registerShapeHistogram(server: McpServer): void {
         .optional()
         .default(20)
         .describe('Maximum number of shapes to return (default 20)'),
+      offset: offsetParam(),
       min_count: z
         .number()
         .optional()
@@ -105,6 +107,7 @@ export function registerShapeHistogram(server: McpServer): void {
     },
     async ({
       limit,
+      offset,
       min_count,
       min_retained_size,
       class_name,
@@ -249,14 +252,22 @@ export function registerShapeHistogram(server: McpServer): void {
           );
         }
 
+        // Ties by example node id, so the same offset pages the same way.
+        const tie = (a: {exampleNodeId: number}, b: {exampleNodeId: number}) =>
+          a.exampleNodeId - b.exampleNodeId;
         if (sort === 'count') {
-          finalList.sort((a, b) => b.count - a.count);
+          finalList.sort((a, b) => b.count - a.count || tie(a, b));
         } else if (sort === 'self_size') {
-          finalList.sort((a, b) => b.totalSelfSize - a.totalSelfSize);
+          finalList.sort(
+            (a, b) => b.totalSelfSize - a.totalSelfSize || tie(a, b),
+          );
         } else {
-          finalList.sort((a, b) => b.retainedRank - a.retainedRank);
+          finalList.sort(
+            (a, b) => b.retainedRank - a.retainedRank || tie(a, b),
+          );
         }
-        finalList = finalList.slice(0, limit);
+        const page = paginate(finalList, offset, limit);
+        finalList = page.items;
 
         if (finalList.length === 0) {
           return toolResult(
@@ -265,8 +276,9 @@ export function registerShapeHistogram(server: McpServer): void {
         }
 
         const lines: string[] = [
+          ...(page.notice != null ? [page.notice, ''] : []),
           `## Object Shape Histogram`,
-          `${formatNumber(shapeMap.size)} distinct shapes found, showing top ${finalList.length}`,
+          `${formatNumber(shapeMap.size)} distinct shapes found. ${pageFooter(page, 'matching shapes')}`,
           '',
         ];
 
@@ -283,7 +295,7 @@ export function registerShapeHistogram(server: McpServer): void {
               ? `${formatBytes(g.exact ?? 0)} retained, ${formatBytes(g.totalSelfSize)} self`
               : `retained ∈ [${formatBytes(g.totalSelfSize)}, ≤ ${formatBytes(g.rawRetained)}]`;
           lines.push(
-            `${i + 1}. **${propsDisplay}** — ${formatNumber(g.count)} instances, ${retainedStr}`,
+            `${page.offset + i + 1}. **${propsDisplay}** — ${formatNumber(g.count)} instances, ${retainedStr}`,
           );
           lines.push(`   Example: @${g.exampleNodeId}`);
         }

@@ -11,13 +11,15 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
+import {offsetParam, openPageFooter} from '../pagination.js';
 import {getSnapshot} from '../heap-state.js';
 import {
   isNodeWorthInspecting,
   filterLargestObjects,
-  collapseDominatorSubtrees,
+  SubtreeCollapser,
   truncateNodeName,
   formatBytes,
+  formatNumber,
   markdownTable,
   errorResult,
   toolResult,
@@ -65,6 +67,7 @@ export function registerLargestObjects(server: McpServer): void {
         .optional()
         .default(25)
         .describe('Maximum number of objects to return (default 25)'),
+      offset: offsetParam(),
       node_type: z
         .string()
         .optional()
@@ -85,7 +88,7 @@ export function registerLargestObjects(server: McpServer): void {
           'Collapse nodes that are different views of the same dominator subtree (same retained size + one dominates the other) into a single representative row, annotated with how many views were folded in (default true). Set false to see every node, including all internal nodes of one big subtree.',
         ),
     },
-    async ({limit, node_type, exclude_types, collapse_subtrees}) => {
+    async ({limit, offset, node_type, exclude_types, collapse_subtrees}) => {
       try {
         const snapshot = getSnapshot();
 
@@ -96,31 +99,98 @@ export function registerLargestObjects(server: McpServer): void {
         // When collapsing, over-fetch candidates so a single big subtree's many
         // same-retained-size views don't crowd out distinct subtrees before
         // dedup. Bounded so the retained-size sort stays cheap on huge heaps.
+        const start = Math.max(0, offset);
+        // Collapsing compares each candidate with its near-equal neighbours
+        // through dominator walks; that is for the top of the list, not for
+        // paging thousands of rows deep.
+        const MAX_COLLAPSE_OFFSET = 1000;
+        if (collapse_subtrees && start > MAX_COLLAPSE_OFFSET) {
+          return errorResult(
+            new Error(
+              `\`offset\` ${start} is deeper than collapse mode pages (${MAX_COLLAPSE_OFFSET}). Pass \`collapse_subtrees: false\`, or use memlab_query_objects, which pages any depth.`,
+            ),
+          );
+        }
+        const want = start + limit;
+        // One extra row tells whether a next page exists.
         const fetchLimit = collapse_subtrees
-          ? Math.min(Math.max(limit * 6, limit + 30), 300)
-          : limit;
+          ? Math.min(Math.max(want * 6, want + 30), 300 + start * 6)
+          : want + 1;
 
-        const candidates = filterLargestObjects(
-          snapshot,
-          (node: IHeapNode) => {
-            // An explicit node_type request overrides the default-view type
-            // filter, so normally-suppressed types are still reachable.
-            if (
-              !isNodeWorthInspecting(node, {
-                allowBlockedTypes: node_type != null,
-              })
-            )
-              return false;
-            if (node_type && node.type !== node_type) return false;
-            if (excludeSet && excludeSet.has(node.type)) return false;
-            return true;
-          },
-          fetchLimit,
-        );
-
-        const groups = collapse_subtrees
-          ? collapseDominatorSubtrees(candidates, limit)
-          : candidates.slice(0, limit).map(node => ({node, mergedCount: 0}));
+        const fetch = (n: number) =>
+          filterLargestObjects(
+            snapshot,
+            (node: IHeapNode) => {
+              // An explicit node_type request overrides the default-view type
+              // filter, so normally-suppressed types are still reachable.
+              if (
+                !isNodeWorthInspecting(node, {
+                  allowBlockedTypes: node_type != null,
+                })
+              )
+                return false;
+              if (node_type && node.type !== node_type) return false;
+              if (excludeSet && excludeSet.has(node.type)) return false;
+              return true;
+            },
+            n,
+          );
+        const candidates = fetch(fetchLimit);
+        let all: Array<{node: IHeapNode; mergedCount: number}>;
+        let read = candidates.length;
+        let capped = false;
+        if (!collapse_subtrees) {
+          all = candidates
+            .slice(0, want + 1)
+            .map(node => ({node, mergedCount: 0}));
+        } else {
+          const collapser = new SubtreeCollapser();
+          for (const c of candidates) collapser.push(c);
+          capped = candidates.length >= fetchLimit;
+          // Collapse folds a capped candidate list, so too few groups may only
+          // mean the cap was reached: read further before deciding whether a
+          // next page exists. A page an earlier call offered must not come
+          // back empty, so while this page has no row yet, keep reading until
+          // it has one or the list is exhausted. Candidates are a total order
+          // (size, then scan order), so one longer fetch starts with the ones
+          // already read, and feeding it in steps reproduces every group an
+          // earlier call saw: one more heap scan, not one per step.
+          if (capped && collapser.rows.length <= want) {
+            // The loop doubles what it has read: twice for any page, then on
+            // only while a deep page has no row. Fetch enough for the two
+            // doublings, and the whole budget only if a deep page needs it.
+            const MAX_CANDIDATES = 200_000;
+            let limit = Math.min(read * 4, MAX_CANDIDATES);
+            let more = fetch(limit);
+            for (
+              let i = 0;
+              collapser.rows.length <= want &&
+              (i < 2 || collapser.rows.length <= start);
+              i++
+            ) {
+              if (read >= more.length) {
+                // A list shorter than its fetch limit is the whole list.
+                if (more.length < limit || limit >= MAX_CANDIDATES) break;
+                limit = MAX_CANDIDATES;
+                more = fetch(limit);
+                if (read >= more.length) break;
+              }
+              const next = Math.min(read * 2, more.length);
+              for (let j = read; j < next; j++) collapser.push(more[j]);
+              read = next;
+            }
+            capped = read < more.length || more.length >= limit;
+          }
+          all = collapser.rows.slice(0, want + 1);
+        }
+        const groups = all.slice(start, want);
+        // A next page past MAX_COLLAPSE_OFFSET would be refused.
+        const pastDepth =
+          collapse_subtrees && all.length > want && want > MAX_COLLAPSE_OFFSET;
+        const hasMore = all.length > want && !pastDepth;
+        // Still capped with too few groups: say where collapse mode stopped
+        // rather than offer a next page that may be empty.
+        const stoppedAtCap = capped && all.length <= want;
 
         const headers = [
           'ID',
@@ -153,11 +223,33 @@ export function registerLargestObjects(server: McpServer): void {
           filterParts.length > 0 ? ` (${filterParts.join(', ')})` : '';
         const collapsed = groups.reduce((s, g) => s + g.mergedCount, 0);
         const collapseNote =
-          collapse_subtrees && collapsed > 0
+          (collapse_subtrees && collapsed > 0
             ? `\n_Collapsed ${collapsed} same-subtree view(s) into their representative rows; pass collapse_subtrees:false to see every node._`
-            : '';
+            : '') +
+          (stoppedAtCap && rows.length > 0
+            ? `\n_Collapse mode read the largest ${formatNumber(read)} objects; smaller ones are not grouped here. Pass \`collapse_subtrees: false\` to page past them._`
+            : '') +
+          (pastDepth
+            ? `\n_Collapse mode pages to offset ${MAX_COLLAPSE_OFFSET}; pass \`collapse_subtrees: false\` to continue past it._`
+            : '');
+        if (rows.length === 0 && start > 0 && stoppedAtCap) {
+          return errorResult(
+            new Error(
+              `\`offset\` ${start} is past the ${formatNumber(all.length)} group(s) collapse mode made from the largest ${formatNumber(read)} objects${filterNote}. Pass \`collapse_subtrees: false\` to page further.`,
+            ),
+          );
+        }
+        if (rows.length === 0 && start > 0) {
+          return errorResult(
+            new Error(
+              `\`offset\` ${start} is past the last object${filterNote}; use a smaller offset.`,
+            ),
+          );
+        }
+        const footer = openPageFooter(start, rows.length, hasMore);
         return toolResult(
-          `Top ${rows.length} objects by retained size${filterNote}\n\n${markdownTable(headers, rows, rightCols)}${collapseNote}`,
+          `Top ${rows.length} objects by retained size${filterNote}\n\n${markdownTable(headers, rows, rightCols)}${collapseNote}` +
+            (footer ? `\n\n${footer}` : ''),
         );
       } catch (err) {
         return errorResult(err);

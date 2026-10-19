@@ -10,6 +10,7 @@
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
+import {pageLines, paginate} from '../pagination.js';
 import {getSnapshot} from '../heap-state.js';
 import {
   formatBytes,
@@ -66,7 +67,6 @@ export function registerGetReferences(server: McpServer): void {
         const activeFilter =
           edge_filter != null && edge_filter.trim() !== '' ? edge_filter : null;
         const filterLc = activeFilter?.toLowerCase();
-        const safeOffset = Math.max(0, offset);
         const matched = node.references
           .slice()
           .filter(e =>
@@ -74,8 +74,16 @@ export function registerGetReferences(server: McpServer): void {
               ? true
               : String(e.name_or_index).toLowerCase().includes(filterLc),
           )
-          .sort((a, b) => b.toNode.retainedSize - a.toNode.retainedSize);
-        const edges = matched.slice(safeOffset, safeOffset + limit);
+          // Ties by id and edge name, so the same offset pages the same way.
+          .sort(
+            (a, b) =>
+              b.toNode.retainedSize - a.toNode.retainedSize ||
+              a.toNode.id - b.toNode.id ||
+              String(a.name_or_index).localeCompare(String(b.name_or_index)),
+          );
+        const paged = paginate(matched, offset, limit);
+        const edges = paged.items;
+        const safeOffset = paged.offset;
 
         const filterNote =
           activeFilter != null
@@ -112,18 +120,7 @@ export function registerGetReferences(server: McpServer): void {
         ]);
         lines.push(markdownTable(headers, rows, rightCols));
 
-        const shownEnd = safeOffset + edges.length;
-        if (shownEnd < matched.length) {
-          lines.push(
-            '',
-            `_${formatNumber(matched.length - shownEnd)} more — pass offset=${shownEnd} for the next page._`,
-          );
-        } else if (edges.length === 0 && safeOffset > 0 && matched.length > 0) {
-          lines.push(
-            '',
-            `_offset ${safeOffset} is past the last of ${formatNumber(matched.length)} matched references — use a smaller offset._`,
-          );
-        }
+        lines.push('', ...pageLines(paged, 'references'));
 
         return toolResult(lines.join('\n'));
       } catch (err) {

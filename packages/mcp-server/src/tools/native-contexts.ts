@@ -20,6 +20,7 @@ import {
 } from '../native-context.js';
 import {
   clampLabel,
+  clampLabelTo,
   errorResult,
   formatBytes,
   formatNumber,
@@ -73,18 +74,18 @@ export function registerNativeContexts(server: McpServer): void {
           `**${formatNumber(a.contexts.length)} native contexts.** Owned by one realm: ${formatBytes(attributed)} (${pct(attributed)}); shared: ${formatBytes(a.sharedSize)} (${pct(a.sharedSize)}); unattributed: ${formatBytes(a.unattributedSize)} (${pct(a.unattributedSize)}) — self sizes, adding up to ${formatBytes(total)}. (${((Date.now() - started) / 1000).toFixed(1)} s)`,
           '',
         ];
-        const rows = a.contexts
-          .slice(0, limit)
-          .map((c, i) => [
-            String(i + 1),
-            `@${c.id}`,
-            clampLabel(c.label || '(no tag)', 80),
-            c.detached ? 'yes' : '',
-            formatBytes(c.attributedSize),
-            pct(c.attributedSize),
-            formatNumber(c.attributedCount),
-            formatBytes(c.retainedSize),
-          ]);
+        const rows = a.contexts.slice(0, limit).map((c, i) => [
+          String(i + 1),
+          `@${c.id}`,
+          // A realm label (usually its URL), not a node name: the session
+          // name width does not apply.
+          clampLabelTo(c.label || '(no tag)', 80),
+          c.detached ? 'yes' : '',
+          formatBytes(c.attributedSize),
+          pct(c.attributedSize),
+          formatNumber(c.attributedCount),
+          formatBytes(c.retainedSize),
+        ]);
         rows.push(
           [
             '',

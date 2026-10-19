@@ -62,6 +62,14 @@ export function registerSnapshots(server: McpServer): void {
         .describe(
           "When set, toggles session-wide terse output: high-volume, low-decision sections (long per-property censuses and the like) are cut to a count plus the top few rows. One switch instead of remembering each tool's own summary flag, which is spelled differently in each.",
         ),
+      max_name_length: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe(
+          "Clip every node name in every tool to this many characters for the rest of the session (newlines collapsed). 0 restores each tool's own default.",
+        ),
       repeat_notes: z
         .boolean()
         .optional()
@@ -75,6 +83,7 @@ export function registerSnapshots(server: McpServer): void {
       quiet,
       suppress_suggestions,
       terse,
+      max_name_length,
       repeat_notes,
     }) => {
       try {
@@ -85,13 +94,21 @@ export function registerSnapshots(server: McpServer): void {
             'Standing notes reset — the next tool that has one will print it in full.',
           );
         }
-        if (quiet != null || suppress_suggestions != null || terse != null) {
+        if (
+          quiet != null ||
+          suppress_suggestions != null ||
+          terse != null ||
+          max_name_length != null
+        ) {
           setSessionConfig({
             ...(quiet != null ? {quietHeader: quiet} : {}),
             ...(suppress_suggestions != null
               ? {suppressSuggestions: suppress_suggestions}
               : {}),
             ...(terse != null ? {terse} : {}),
+            ...(max_name_length != null
+              ? {maxNameLength: max_name_length > 0 ? max_name_length : null}
+              : {}),
           });
           // Explicitly turning suppression OFF means "I want the trailers
           // back", which has to also clear the automatic budget — otherwise the
@@ -99,7 +116,7 @@ export function registerSnapshots(server: McpServer): void {
           if (suppress_suggestions === false) resetSuggestionBudget();
           const cfg = getSessionConfig();
           configChanges.push(
-            `Output config: quietHeader=${cfg.quietHeader}, suppressSuggestions=${cfg.suppressSuggestions}, terse=${cfg.terse}`,
+            `Output config: quietHeader=${cfg.quietHeader}, suppressSuggestions=${cfg.suppressSuggestions}, terse=${cfg.terse}, maxNameLength=${cfg.maxNameLength ?? 'per-tool default'}`,
           );
         }
 

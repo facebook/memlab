@@ -33,6 +33,7 @@ import {
   clipTableColumn,
 } from '../utils.js';
 import {splitClassKey} from './sequence-analysis.js';
+import {offsetParam, pageLines, paginate} from '../pagination.js';
 
 export function registerClassHistogram(server: McpServer): void {
   server.tool(
@@ -47,6 +48,7 @@ export function registerClassHistogram(server: McpServer): void {
         .optional()
         .default(20)
         .describe('Maximum number of classes to return (default 20)'),
+      offset: offsetParam(),
       min_count: z
         .number()
         .optional()
@@ -112,6 +114,7 @@ export function registerClassHistogram(server: McpServer): void {
     },
     async ({
       limit,
+      offset,
       min_count,
       min_retained_size,
       min_self_size,
@@ -222,7 +225,11 @@ export function registerClassHistogram(server: McpServer): void {
             retained_size: v.total_self_size,
             retained_exact: false,
           }));
-          computed.sort((a, b) => b.total_self_size - a.total_self_size);
+          computed.sort(
+            (a, b) =>
+              b.total_self_size - a.total_self_size ||
+              a.key.localeCompare(b.key),
+          );
         } else {
           // Pick the heaviest NON-LEAF classes (by raw retained, the upper
           // bound) to receive an exact dominator-deduped retained size. Leaf
@@ -288,7 +295,10 @@ export function registerClassHistogram(server: McpServer): void {
               v => v.retained_size >= min_retained_size,
             );
           }
-          computed.sort((a, b) => b.retained_size - a.retained_size);
+          computed.sort(
+            (a, b) =>
+              b.retained_size - a.retained_size || a.key.localeCompare(b.key),
+          );
         }
 
         // Each row's share of the whole heap, not of the filtered subset. A
@@ -296,7 +306,8 @@ export function registerClassHistogram(server: McpServer): void {
         // another's, so retained sizes of different rows overlap.
         const heapTotal = meta?.totalSize ?? 0;
 
-        const sorted = computed.slice(0, limit);
+        const page = paginate(computed, offset, limit);
+        const sorted = page.items;
 
         const headers = include_retained_size
           ? [
@@ -351,6 +362,8 @@ export function registerClassHistogram(server: McpServer): void {
           `Class histogram (${formatNumber(classMap.size)} total classes, showing ${rows.length})`,
           '',
           markdownTable(headers, clipped.rows, rightCols),
+          '',
+          ...pageLines(page, 'classes'),
           ...(clipped.footnotes.length > 0
             ? ['', 'Full class names of clipped rows:', ...clipped.footnotes]
             : []),

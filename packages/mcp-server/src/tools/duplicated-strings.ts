@@ -11,6 +11,7 @@
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import {z} from 'zod';
+import {offsetParam, pageLines, paginate} from '../pagination.js';
 import {getSnapshot} from '../heap-state.js';
 import {withAnonymizedBanner} from '../anonymized-snapshot.js';
 import {
@@ -99,6 +100,7 @@ export function registerDuplicatedStrings(server: McpServer): void {
         .optional()
         .default(15)
         .describe('Maximum number of results (default 15)'),
+      offset: offsetParam(),
       min_count: z
         .number()
         .optional()
@@ -121,7 +123,7 @@ export function registerDuplicatedStrings(server: McpServer): void {
           'Include example node IDs in the output for follow-up with retainer_summary. Omitted by default to save ~20-30 tokens per entry.',
         ),
     },
-    async ({limit, min_count, concatenated, include_node_ids}) => {
+    async ({limit, offset, min_count, concatenated, include_node_ids}) => {
       try {
         const snapshot = getSnapshot();
 
@@ -132,27 +134,30 @@ export function registerDuplicatedStrings(server: McpServer): void {
         const reused = stringIndexIsCached();
         const {byValue: stringMap} = buildStringIndex(snapshot);
 
-        const duplicated = Array.from(stringMap.entries())
+        const ranked = Array.from(stringMap.entries())
           .filter(([, stats]) => stats.count >= min_count)
-          .sort((a, b) => b[1].totalSize - a[1].totalSize)
-          .slice(0, limit)
-          .map(([value, stats]) => {
-            const per_copy_size =
-              stats.count > 0 ? stats.totalSize / stats.count : 0;
-            const potential_savings = (stats.count - 1) * per_copy_size;
-            return {
-              value:
-                value.length > 200 ? value.substring(0, 200) + '...' : value,
-              count: stats.count,
-              total_size: stats.totalSize,
-              total_size_formatted: formatBytes(stats.totalSize),
-              potential_savings,
-              example_node_ids: stats.exampleIds.slice(0, 3),
-              field_context: null as string | null,
-              actionability: null as string | null,
-              harness_what: null as string | null,
-            };
-          });
+          .sort(
+            (a, b) =>
+              b[1].totalSize - a[1].totalSize ||
+              (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0),
+          );
+        const page = paginate(ranked, offset, limit);
+        const duplicated = page.items.map(([value, stats]) => {
+          const per_copy_size =
+            stats.count > 0 ? stats.totalSize / stats.count : 0;
+          const potential_savings = (stats.count - 1) * per_copy_size;
+          return {
+            value: value.length > 200 ? value.substring(0, 200) + '...' : value,
+            count: stats.count,
+            total_size: stats.totalSize,
+            total_size_formatted: formatBytes(stats.totalSize),
+            potential_savings,
+            example_node_ids: stats.exampleIds.slice(0, 3),
+            field_context: null as string | null,
+            actionability: null as string | null,
+            harness_what: null as string | null,
+          };
+        });
 
         if (duplicated.length === 0) {
           return toolResult('No duplicated strings found.');
@@ -262,7 +267,7 @@ export function registerDuplicatedStrings(server: McpServer): void {
             d.potential_savings > 0
               ? `, savings: ${formatBytes(d.potential_savings)}`
               : '';
-          return `${i + 1}. "${val}" x ${d.count} copies, ${d.total_size_formatted} total${savingsLabel}${actionLabel}${nodeIdsPart}${context}`;
+          return `${page.offset + i + 1}. "${val}" x ${d.count} copies, ${d.total_size_formatted} total${savingsLabel}${actionLabel}${nodeIdsPart}${context}`;
         });
         // Cached failure payloads: duplicated JSON-ish strings carrying an
         // explicit failure/error marker. These are both wasted memory and a
@@ -329,7 +334,7 @@ export function registerDuplicatedStrings(server: McpServer): void {
               include_node_ids,
             )
           : '';
-        const body = `Duplicated strings (${summaryLine}):\n\n${lines.join('\n')}\n\n**Total interning savings: ${formatBytes(totalSavings)}** (if each string were stored only once, harness content excluded)${harnessNote}${ropeSection}${suggestionsSuppressed('memlab_duplicated_strings') ? '' : relatedNote}`;
+        const body = `Duplicated strings (${summaryLine}):\n\n${lines.join('\n')}\n\n**${page.total > page.items.length ? 'Interning savings for the rows shown' : 'Total interning savings'}: ${formatBytes(totalSavings)}** (if each string were stored only once, harness content excluded)\n${pageLines(page, 'duplicated values').join('\n')}${harnessNote}${ropeSection}${suggestionsSuppressed('memlab_duplicated_strings') ? '' : relatedNote}`;
         return toolResult(
           withAnonymizedBanner(
             snapshot,

@@ -12,6 +12,7 @@ import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapEdge, IHeapNode, IHeapSnapshot} from '@memlab/core';
 import {z} from 'zod';
 import {getSnapshot, getSnapshotByHandle} from '../heap-state.js';
+import {pageLines, paginate} from '../pagination.js';
 import {
   nativeContextAttribution,
   resolveNativeContextFilter,
@@ -25,6 +26,7 @@ import {
 } from '../byte-size.js';
 import {
   clampLabel,
+  clampLabelTo,
   errorResult,
   formatBytes,
   formatNumber,
@@ -225,8 +227,9 @@ export function registerQueryObjects(server: McpServer): void {
         .int()
         .min(10)
         .optional()
-        .default(100)
-        .describe('Truncate node names longer than this (default 100).'),
+        .describe(
+          'Truncate node names longer than this (default 100, or the session width set with memlab_snapshots).',
+        ),
     },
     async ({
       handle,
@@ -321,20 +324,21 @@ export function registerQueryObjects(server: McpServer): void {
         ];
         lines.push(...notes);
 
-        const end = Math.min(total, offset + page_size);
-        if (offset < end) {
-          const rows: string[][] = [];
-          for (let i = offset; i < end; ++i) {
-            const node = at(snapshot, result[i]);
-            rows.push([
-              String(i + 1),
+        const page = paginate<number>(result, offset, page_size);
+        if (page.items.length > 0) {
+          const rows = page.items.map((ordinal, i) => {
+            const node = at(snapshot, ordinal);
+            return [
+              String(page.offset + i + 1),
               `@${node.id}`,
               node.type,
-              clampLabel(node.name, max_name_length),
+              max_name_length != null
+                ? clampLabelTo(node.name, max_name_length)
+                : clampLabel(node.name, 100),
               formatBytes(node.self_size),
               formatBytes(node.retainedSize),
-            ]);
-          }
+            ];
+          });
           lines.push('');
           lines.push(
             markdownTable(
@@ -343,21 +347,12 @@ export function registerQueryObjects(server: McpServer): void {
               new Set([4, 5]),
             ),
           );
-          lines.push('');
-          lines.push(
-            `Showing ${formatNumber(offset + 1)}–${formatNumber(end)} of ${formatNumber(total)}.` +
-              (end < total ? ` Next page: \`offset: ${end}\`.` : ''),
-          );
+          lines.push('', ...pageLines(page));
           if (sort_by === 'retained_size') {
             lines.push(
               '_Retained sizes of rows can nest (one row may hold another), so they are not added up._',
             );
           }
-        } else if (total > 0) {
-          lines.push(
-            '',
-            `\`offset\` ${offset} is past the last of ${formatNumber(total)} results.`,
-          );
         }
         return toolResult(lines.join('\n'));
       } catch (err) {

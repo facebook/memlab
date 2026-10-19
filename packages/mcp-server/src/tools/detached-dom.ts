@@ -1003,7 +1003,8 @@ export function registerDetachedDom(server: McpServer): void {
           output_mode === 'ids'
             ? ''
             : formatReachabilitySplit(split, snapshot).join('\n') + '\n\n';
-        const output = splitBlock + formatQueryNodesResult(result, offset);
+        const output =
+          splitBlock + formatQueryNodesResult(result, offset, effectiveLimit);
         if (result.total_count > 0 && output_mode === 'full') {
           const devNote =
             devRoots && devRoots.byId.size > 0

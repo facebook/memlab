@@ -199,6 +199,11 @@ The server ships about 150 tools, organized by the question they answer:
 | Sharing a capture | `memlab_anonymize_snapshot` |
 | Session, batching and write-ups | `memlab_load_snapshot`, `memlab_snapshots`, `memlab_batch`, `memlab_finding_index`, `memlab_analyze_run` |
 
+Ranked lists page the same way: `offset` skips rows, and every page ends with
+"Showing a–b of N … Next page: `offset: k`". Ties are broken by node id, so a
+given offset always shows the same rows. `memlab_snapshots` with
+`max_name_length` clips node names in every tool for the rest of the session.
+
 Ask the assistant to call **`memlab_tools`** to print the full index, grouped
 the same way, with a one-line "use it when" for every tool. It is the fastest
 way to discover a tool you didn't know to ask for. `memlab_tools` with a `tool`

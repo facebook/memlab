@@ -36,6 +36,7 @@ import {
   classChurn,
   compareIsolates,
 } from '../isolate-identity.js';
+import {pageLines, paginate} from '../pagination.js';
 import type {ClassChurn, IsolateMatch} from '../isolate-identity.js';
 
 interface ClassStats {
@@ -229,11 +230,11 @@ function detailSection(
     ];
   }
   const objs = churnObjects(before, after, candidates[0].key, which);
-  const start = Math.min(offset, objs.length);
-  const page = objs.slice(start, start + pageSize);
+  const paged = paginate(objs, offset, pageSize);
+  const page = paged.items;
   const side = which === 'added' ? '"after"' : '"before"';
   const lines = [
-    `### ${which === 'added' ? 'New' : 'Deleted'} \`${candidates[0].key}\` objects — showing ${page.length === 0 ? 0 : start + 1}–${start + page.length} of ${formatNumber(objs.length)}`,
+    `### ${which === 'added' ? 'New' : 'Deleted'} \`${candidates[0].key}\` objects, largest first`,
     '',
     `Ids are in the ${side} snapshot.`,
     '',
@@ -248,9 +249,7 @@ function detailSection(
       new Set([1, 2, 3]),
     ),
   ];
-  if (start + page.length < objs.length) {
-    lines.push('', `_Next page: \`offset: ${start + page.length}\`._`);
-  }
+  lines.push('', ...pageLines(paged, 'objects'));
   return lines;
 }
 
