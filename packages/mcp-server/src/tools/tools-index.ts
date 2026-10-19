@@ -380,6 +380,10 @@ const GROUPS: Group[] = [
         'Given several candidate retainers, how much each one actually dominates — a zero refutes a hypothesis.',
       ],
       [
+        'memlab_retained_by',
+        'Bytes retained ONLY through closure contexts, detached DOM, the DevTools console or event handlers: what removing every such retainer would free, with the largest classes. Filter any query or histogram the same way with `retained_by`.',
+      ],
+      [
         'memlab_dead_context_variables',
         'Captured variables no live code can read, heap-wide: a value kept alive only because it shares a closure Context with a sibling closure that is still alive. Needs a V8 15.6+ (Chrome 156+) capture.',
       ],

@@ -18,6 +18,7 @@ import {
   nativeContextAttribution,
   resolveNativeContextFilter,
 } from '../native-context.js';
+import {retainedByParam, retainedOnlyBy} from '../retention-filters.js';
 import {checkAnalysisDeadline} from '../analysis-budget.js';
 import {
   errorResult,
@@ -39,7 +40,7 @@ export function registerClassHistogram(server: McpServer): void {
     'Show per-constructor/class instance count and total self size. Useful for identifying which types of objects dominate memory. ' +
       'By DEFAULT (`include_retained_size:false`) it returns a counts + self-size histogram in a single O(N) pass with NO dominator walk — fast and safe on snapshots with millions of nodes; rows are sorted by self size. ' +
       '⚠ Only pass `include_retained_size:true` when the user EXPLICITLY asks for dominator-aware retained sizes: that path walks the dominator tree and is the slow/memory-heavy part on large heaps. To stay tractable it then computes EXACT retained only for the heaviest `max_retained_classes` non-leaf classes (flat string/number classes are exact for free) and marks the rest with an upper-bound "~"; even so, on very large heaps with deep PromiseReaction/Context chains it can be slow and may hit the analysis time budget (returning "~" estimates) or, on older unbounded builds, time out the request entirely. ' +
-      'Use min_count/min_self_size/min_retained_size to filter, and `native_context` to limit it to one realm. Follow up with memlab_find_nodes_by_class to inspect specific classes, or memlab_retainer_trace on a sample node to see why objects are retained.',
+      'Use min_count/min_self_size/min_retained_size to filter; `native_context` limits it to one realm and `retained_by` to objects retained only through closure contexts, detached DOM, the console or event handlers. Follow up with memlab_find_nodes_by_class to inspect specific classes, or memlab_retainer_trace on a sample node to see why objects are retained.',
     {
       limit: z
         .number()
@@ -79,6 +80,7 @@ export function registerClassHistogram(server: McpServer): void {
         .describe(
           'Only objects owned by this realm: a NativeContext id from memlab_native_contexts, "shared" or "unattributed".',
         ),
+      retained_by: retainedByParam(),
       include_retained_size: z
         .boolean()
         .optional()
@@ -116,6 +118,7 @@ export function registerClassHistogram(server: McpServer): void {
       name_pattern,
       node_type,
       native_context,
+      retained_by,
       include_retained_size,
       max_retained_classes,
       max_dominator_walk,
@@ -136,6 +139,8 @@ export function registerClassHistogram(server: McpServer): void {
             keep: target.owner,
           };
         }
+        const retainedOnly =
+          retained_by != null ? retainedOnlyBy(snapshot, retained_by) : null;
 
         // Flat strings and numbers are leaf nodes: they dominate nothing but
         // themselves, so instances never overlap on the dominator tree and a
@@ -164,6 +169,7 @@ export function registerClassHistogram(server: McpServer): void {
           if (realm != null && realm.owner[node.nodeIndex] !== realm.keep) {
             return;
           }
+          if (retainedOnly != null && !retainedOnly[node.nodeIndex]) return;
           if (!nameMatches(node.name)) return;
           // Skip internal meta nodes
           if (node.id <= 3) return;

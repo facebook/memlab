@@ -16,6 +16,7 @@ import {
   nativeContextAttribution,
   resolveNativeContextFilter,
 } from '../native-context.js';
+import {retainedByParam, retainedOnlyBy} from '../retention-filters.js';
 import {
   byteRangeParam,
   inByteRange,
@@ -42,6 +43,8 @@ export interface ObjectQuery {
   retainedSize: ByteRange | null;
   /** Owner per ordinal and the owner to keep (see native-context.ts). */
   realm?: {owner: Int32Array; keep: number};
+  /** 1 for every ordinal retained only through the chosen retainer kind. */
+  retainedOnly?: Uint8Array;
 }
 
 /** A pattern as a case-insensitive regex, or as literal text if it is not one. */
@@ -76,6 +79,7 @@ export function matchObjects(
     if (q.realm != null && q.realm.owner[node.nodeIndex] !== q.realm.keep) {
       return;
     }
+    if (q.retainedOnly != null && !q.retainedOnly[node.nodeIndex]) return;
     if (q.nodeType != null && node.type !== q.nodeType) return;
     if (q.isDetached != null && node.is_detached !== q.isDetached) return;
     if (!inByteRange(node.retainedSize, q.retainedSize)) return;
@@ -154,7 +158,7 @@ function at(snapshot: IHeapSnapshot, ordinal: number): IHeapNode {
 export function registerQueryObjects(server: McpServer): void {
   server.tool(
     'memlab_query_objects',
-    'Query heap objects by any combination of filters in ONE call, instead of chaining class search, node search and property inspection: class or node name (regex), node type, an outgoing property or edge name (regex), detached or not, the owning realm (`native_context`), and self / retained size ranges like "1MB-" or "10KB-1MB". ' +
+    'Query heap objects by any combination of filters in ONE call, instead of chaining class search, node search and property inspection: class or node name (regex), node type, an outgoing property or edge name (regex), detached or not, the owning realm (`native_context`), what retains it exclusively (`retained_by`: closure contexts, detached DOM, the console, event handlers), and self / retained size ranges like "1MB-" or "10KB-1MB". ' +
       'Results are sorted (retained size by default, ties by id) and paged with `offset` / `page_size`; the last few queries are cached per snapshot, so paging does not rescan. ' +
       'Each row is a node id in the queried snapshot, ready for `memlab_get_node`, `memlab_retainer_trace` or `memlab_closure_inspection`. ' +
       'Examples: the 50 largest closures with a `callback` property (`node_type: "closure", property_name: "^callback$"`); every detached object over 1 MB (`is_detached: true, retained_size: "1MB-"`).',
@@ -191,6 +195,7 @@ export function registerQueryObjects(server: McpServer): void {
         .describe(
           'Only objects owned by this realm: a NativeContext id from memlab_native_contexts, "shared" (reached from several realms) or "unattributed".',
         ),
+      retained_by: retainedByParam(),
       self_size: byteRangeParam('Self size'),
       retained_size: byteRangeParam('Retained size'),
       sort_by: z
@@ -230,6 +235,7 @@ export function registerQueryObjects(server: McpServer): void {
       property_name,
       is_detached,
       native_context,
+      retained_by,
       self_size,
       retained_size,
       sort_by,
@@ -265,6 +271,9 @@ export function registerQueryObjects(server: McpServer): void {
             keep: target.owner,
           };
         }
+        if (retained_by != null) {
+          query.retainedOnly = retainedOnlyBy(snapshot, retained_by);
+        }
         if (class_name != null) {
           const p = textPattern(class_name);
           query.className = p.re;
@@ -285,6 +294,7 @@ export function registerQueryObjects(server: McpServer): void {
           property_name,
           is_detached,
           query.realm?.keep,
+          retained_by,
           query.selfSize,
           query.retainedSize,
           sort_by,
