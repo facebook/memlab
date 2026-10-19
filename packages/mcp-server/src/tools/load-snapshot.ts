@@ -790,7 +790,7 @@ export function extractCaptureTime(fileName: string): Date | null {
   return d;
 }
 
-function detectEnv(snapshot: IHeapSnapshot): {
+export function detectEnv(snapshot: IHeapSnapshot): {
   env: SnapshotEnv;
   workerKind: string | null;
 } {

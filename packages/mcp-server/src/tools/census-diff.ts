@@ -9,6 +9,7 @@
  */
 
 import {resolveLadderInputs, SEGMENT_ARG_DESCRIPTION} from '../run-manifest.js';
+import {detectEnv} from './load-snapshot.js';
 import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
@@ -327,14 +328,22 @@ export function registerCensusDiff(server: McpServer): void {
         // anything about the heap.
         const scanBudgetMs = scaledTimeoutMs(largestMB);
 
+        // Node.js has no DOM. Anything the detached-DOM census matched there
+        // would be a false positive, so a Node rung skips it. Tracked per rung:
+        // across environments the detached census compares nothing either.
+        const nodeRungs: string[] = [];
+        let rungLabel = '';
         const take = (snapshot: IHeapSnapshot): Record<CensusKind, Census> => {
           const out: Record<CensusKind, Census> = {
             detached: emptyCensus(),
             listeners: emptyCensus(),
           };
+          const isNode =
+            kinds.includes('detached') && detectEnv(snapshot).env === 'node';
+          if (isNode) nodeRungs.push(rungLabel);
           // One pass per kind, but only for the kinds asked for: the listener
           // walk visits every object's edges and is the expensive half.
-          if (kinds.includes('detached'))
+          if (kinds.includes('detached') && !isNode)
             out.detached = censusDetached(snapshot);
           if (kinds.includes('listeners'))
             out.listeners = censusListeners(snapshot);
@@ -342,8 +351,10 @@ export function registerCensusDiff(server: McpServer): void {
         };
 
         armScanBudgetFor(scanBudgetMs);
+        rungLabel = 'baseline';
         const baseCensus = await withSnapshotAt(baseRung.localPath, take);
         armScanBudgetFor(scanBudgetMs);
+        rungLabel = 'target';
         const targetCensus = await withSnapshotAt(targetRung.localPath, take);
 
         const lines: string[] = [];
@@ -355,6 +366,17 @@ export function registerCensusDiff(server: McpServer): void {
 
         let anyMoved = false;
         for (const kind of kinds) {
+          if (kind === 'detached' && nodeRungs.length > 0) {
+            lines.push(
+              '### Detached DOM',
+              '',
+              nodeRungs.length === 2
+                ? 'Not applicable: both rungs are Node.js snapshots, and DOM nodes do not exist there.'
+                : `Not applicable: the ${nodeRungs[0]} is a Node.js snapshot and the other rung is not, so a detached-DOM diff between them compares nothing.`,
+              '',
+            );
+            continue;
+          }
           const rows = diffCensus(baseCensus[kind], targetCensus[kind]);
           if (rows.some(r => r.delta !== 0)) anyMoved = true;
           lines.push(
