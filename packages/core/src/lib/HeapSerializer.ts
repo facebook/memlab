@@ -39,8 +39,21 @@ const FIELD_ORDER = [
   'trace_tree',
   'samples',
   'locations',
+  'scopes',
+  'scope_context_vars',
+  'scope_uses',
   'strings',
 ] as const;
+
+/**
+ * Written only when present: a reader that finds them expects the matching
+ * `meta.*_fields`, which older captures do not have.
+ */
+const OPTIONAL_FIELDS: ReadonlySet<string> = new Set([
+  'scopes',
+  'scope_context_vars',
+  'scope_uses',
+]);
 
 const DEFAULT_BUFFER_SIZE = 4 * 1024 * 1024;
 
@@ -281,8 +294,11 @@ export function serializeRawHeapSnapshot(
   try {
     writer.write(`{"snapshot":${JSON.stringify(fileFaithfulHeader(raw))}`);
     for (const field of FIELD_ORDER) {
-      writer.writeAscii(',\n');
       const value = (raw as unknown as Record<string, unknown>)[field];
+      if (value == null && OPTIONAL_FIELDS.has(field)) {
+        continue;
+      }
+      writer.writeAscii(',\n');
       if (field === 'strings') {
         writeStringArrayField(writer, field, (value ?? []) as string[]);
       } else if (field === 'trace_tree') {

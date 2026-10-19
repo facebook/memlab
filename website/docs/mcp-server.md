@@ -189,7 +189,7 @@ The server ships about 150 tools, organized by the question they answer:
 | --- | --- |
 | What is this heap made of? | `memlab_app_heap`, `memlab_memory_partition`, `memlab_quick_diagnosis`, `memlab_class_histogram`, `memlab_largest_objects`, `memlab_shape_histogram`, `memlab_what_if` |
 | Is anything growing — and is it a leak? | `memlab_leak_report`, `memlab_shape_census_diff`, `memlab_collection_diff`, `memlab_ladder_probe`, `memlab_rate_model`, `memlab_settle_check`, `memlab_verify_fix` |
-| Who owns the growth / why is X retained? | `memlab_retainer_trace`, `memlab_retainer_summary`, `memlab_trace_all`, `memlab_react_owners`, `memlab_dominator_chain`, `memlab_pinch_points`, `memlab_explain_delta` |
+| Who owns the growth / why is X retained? | `memlab_retainer_trace`, `memlab_retainer_summary`, `memlab_trace_all`, `memlab_react_owners`, `memlab_dominator_chain`, `memlab_pinch_points`, `memlab_explain_delta`, `memlab_dead_context_variables` |
 | Is it real, or a measurement artifact? | `memlab_artifact_budget`, `memlab_dev_artifacts`, `memlab_replicate`, `memlab_check_health` |
 | Detached DOM and event listeners | `memlab_detached_dom`, `memlab_dom_audit`, `memlab_event_listener_leaks`, `memlab_event_registry` |
 | Collections and caches | `memlab_cache_analysis`, `memlab_stale_collections`, `memlab_map_entries`, `memlab_weakref_census`, `memlab_property_distribution` |
@@ -203,6 +203,19 @@ Ask the assistant to call **`memlab_tools`** to print the full index, grouped
 the same way, with a one-line "use it when" for every tool. It is the fastest
 way to discover a tool you didn't know to ask for. `memlab_tools` with a `tool`
 and `schema: true` prints that tool's parameters.
+
+### Captured variables no live code can read
+
+All closures created in one scope share one V8 Context. A large value read
+only by a callback that has already run stays alive for as long as any
+sibling closure does. Snapshots from V8 15.6 (Chrome 156) and later include
+the source scope tree of every script. `memlab_dead_context_variables` checks
+each Context slot against the closures and suspended async functions still on
+the heap. It reports the variables nothing live can read, ranked by the bytes
+they retain. Each row gives the Context and value ids, ready for
+`memlab_retainer_trace`. For the most accurate results capture with Chrome 157
+or later, which leaves out script-level `let`/`const`. Older snapshots have no
+scope tree, and the tool says so.
 
 ## Working with more than one snapshot
 

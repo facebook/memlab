@@ -375,6 +375,10 @@ const GROUPS: Group[] = [
         'memlab_dominator_attribution',
         'Given several candidate retainers, how much each one actually dominates — a zero refutes a hypothesis.',
       ],
+      [
+        'memlab_dead_context_variables',
+        'Captured variables no live code can read, heap-wide: a value kept alive only because it shares a closure Context with a sibling closure that is still alive. Needs a V8 15.6+ (Chrome 156+) capture.',
+      ],
       ['memlab_retainer_trace', 'The shortest retainer path for one node.'],
       [
         'memlab_retainer_summary',

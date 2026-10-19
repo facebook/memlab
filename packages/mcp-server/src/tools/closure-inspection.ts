@@ -12,6 +12,8 @@ import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
+import {hasScopeMetadata} from '../context-analysis.js';
+import {cachedDeadSlots} from './dead-context-variables.js';
 import {
   errorResult,
   toolResult,
@@ -30,6 +32,8 @@ interface ScopeVariable {
   retained_size: number;
   string_value?: string;
   depth: number;
+  /** The Context holding the variable, when it came from the scope chain. */
+  context_id?: number;
 }
 
 function walkScopeChain(
@@ -63,6 +67,7 @@ function walkScopeChain(
           self_size: target.self_size,
           retained_size: target.retainedSize,
           depth,
+          context_id: currentContext.id,
         };
         if (target.isString) {
           const strNode = target.toStringNode();
@@ -141,7 +146,8 @@ export function registerClosureInspection(server: McpServer): void {
       'at each scope depth. For generators (suspended async functions), additionally decodes the ' +
       '`parameters_and_registers` array and resolves register slots to source variable names where the value is ' +
       'also context-allocated. Shows the function name, source location, and all bound variables with types and sizes. ' +
-      'Critical for diagnosing closure- and suspended-async-based memory leaks where a frame unintentionally retains large objects.',
+      'Critical for diagnosing closure- and suspended-async-based memory leaks where a frame unintentionally retains large objects. ' +
+      'To find, heap-wide, the captured variables no live code can read any more, use `memlab_dead_context_variables`.',
     {
       node_id: z
         .number()
@@ -323,6 +329,11 @@ export function registerClosureInspection(server: McpServer): void {
         );
         lines.push('');
 
+        const deadSlots = cachedDeadSlots(snapshot);
+        const isDead = (v: ScopeVariable): boolean =>
+          deadSlots != null &&
+          v.context_id != null &&
+          deadSlots.has(`${v.context_id}:${v.variable_name}`);
         if (filteredVars.length > 0) {
           const hasMultipleDepths =
             new Set(filteredVars.map(v => v.depth)).size > 1;
@@ -337,7 +348,7 @@ export function registerClosureInspection(server: McpServer): void {
               targetLabel = `@${v.target_id} "${sv.length > 60 ? sv.slice(0, 60) + '...' : sv}"`;
             }
             const row = [
-              v.variable_name,
+              isDead(v) ? `${v.variable_name} (dead)` : v.variable_name,
               targetLabel,
               v.target_type,
               formatBytes(v.retained_size),
@@ -348,6 +359,18 @@ export function registerClosureInspection(server: McpServer): void {
             return row;
           });
           lines.push(markdownTable(headers, rows, rightCols));
+
+          if (filteredVars.some(isDead)) {
+            lines.push('');
+            lines.push(
+              '_(dead): no live closure or suspended frame can read this variable any more; it is kept alive only by sharing its Context. See `memlab_dead_context_variables`._',
+            );
+          } else if (deadSlots == null && hasScopeMetadata(snapshot)) {
+            lines.push('');
+            lines.push(
+              '_Run `memlab_dead_context_variables` once to mark the variables here that no live code can read._',
+            );
+          }
 
           if (omittedVars.length > 0) {
             lines.push('');

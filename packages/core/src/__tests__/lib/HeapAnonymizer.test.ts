@@ -455,3 +455,105 @@ test(
   },
   timeout,
 );
+
+/** Attach V8 15.6+ scope sections to a parsed capture that predates them. */
+function addScopeSections(
+  heap: {snapshot: Record<string, unknown> & {strings: string[]}},
+  varNameIdx: number,
+): void {
+  const raw = heap.snapshot;
+  const meta = (raw.snapshot as {meta: Record<string, unknown>}).meta;
+  meta.scope_fields = [
+    'script_node_index',
+    'scope_id',
+    'depth',
+    'scope_context_vars_count',
+    'scope_uses_count',
+  ];
+  meta.scope_context_var_fields = ['name'];
+  meta.scope_use_fields = ['declaring_scope_id', 'slot_index'];
+  // a root scope declaring one variable, and a negative-id child reading it
+  raw.scopes = [0, -2, 0, 1, 0, 0, -1, 1, 0, 1];
+  raw.scope_context_vars = [varNameIdx];
+  raw.scope_uses = [-2, 0];
+}
+
+test(
+  'scope sections survive a parse / serialize / parse round trip',
+  async () => {
+    const sourceFile = dumpNodeHeapSnapshot();
+    const out = `${sourceFile}.scopes`;
+    try {
+      const heap = await HeapParser.parse(sourceFile, {});
+      addScopeSections(heap as never, 1);
+      serializeHeapSnapshot(heap, out);
+
+      const reparsed = await HeapParser.parse(out, {});
+      const raw = reparsed.snapshot;
+      expect(raw.scopes).toEqual([0, -2, 0, 1, 0, 0, -1, 1, 0, 1]);
+      expect(raw.scope_context_vars).toEqual([1]);
+      expect(raw.scope_uses).toEqual([-2, 0]);
+      expect(raw.snapshot.meta.scope_use_fields).toEqual([
+        'declaring_scope_id',
+        'slot_index',
+      ]);
+      expect(reparsed.nodes.length).toBe(heap.nodes.length);
+    } finally {
+      for (const file of [sourceFile, out]) {
+        if (fs.existsSync(file)) {
+          fs.unlinkSync(file);
+        }
+      }
+    }
+  },
+  timeout,
+);
+
+test(
+  'a capture without scope sections is written without them',
+  async () => {
+    const sourceFile = dumpNodeHeapSnapshot();
+    const out = `${sourceFile}.noscopes`;
+    try {
+      const heap = await HeapParser.parse(sourceFile, {});
+      serializeHeapSnapshot(heap, out);
+      expect(fs.readFileSync(out, 'utf8').includes('"scopes"')).toBe(false);
+    } finally {
+      for (const file of [sourceFile, out]) {
+        if (fs.existsSync(file)) {
+          fs.unlinkSync(file);
+        }
+      }
+    }
+  },
+  timeout,
+);
+
+test(
+  'a scope variable name keeps its text when the same text is a string value',
+  async () => {
+    const varName = ['scopeVar', 'Canary', 'b81e'].join('');
+    const holder = {value: varName};
+
+    const sourceFile = dumpNodeHeapSnapshot();
+    try {
+      const heap = await HeapParser.parse(sourceFile, {});
+      const idx = heap.snapshot.strings.indexOf(varName);
+      // positive control: the text is in the table as a heap string value
+      expect(idx).toBeGreaterThanOrEqual(0);
+      addScopeSections(heap as never, idx);
+
+      anonymizeHeapSnapshot(heap);
+      const raw = heap.snapshot;
+      expect(raw.strings[(raw.scope_context_vars ?? [])[0]]).toBe(varName);
+      // ... while the string value itself is still redacted
+      expect(raw.strings.filter(s => s === varName).length).toBe(1);
+    } finally {
+      if (fs.existsSync(sourceFile)) {
+        fs.unlinkSync(sourceFile);
+      }
+    }
+    expect(holder.value).toBe(varName);
+  },
+  timeout,
+);

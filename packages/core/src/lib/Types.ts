@@ -2324,6 +2324,12 @@ export type HeapSnapshotMeta = {
   trace_node_fields: HeapTraceNodeFields;
   sample_fields: HeapSampleFields;
   location_fields: HeapLocationFields;
+  /** V8 15.6+: one record per source scope, a pre-order walk per script */
+  scope_fields?: string[];
+  /** V8 15.6+: one record per context-allocated variable of a scope */
+  scope_context_var_fields?: string[];
+  /** V8 15.6+: one record per context slot a scope reads */
+  scope_use_fields?: string[];
 };
 
 /** @internal */
@@ -2343,6 +2349,9 @@ export type RawHeapSnapshot = {
   trace_tree: number;
   samples: number[];
   locations: number[];
+  scopes?: number[];
+  scope_context_vars?: number[];
+  scope_uses?: number[];
   strings: string[];
 };
 

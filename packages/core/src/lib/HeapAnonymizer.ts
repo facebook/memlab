@@ -680,6 +680,17 @@ export function anonymizeRawHeapSnapshot(
     }
   }
 
+  // Variable names in the scope tree (V8 15.6+) are labels too: the same
+  // names as the context slot edges, which a value-only redaction must keep.
+  const scopeVars = raw.scope_context_vars;
+  const varFields = raw.snapshot.meta.scope_context_var_fields ?? [];
+  const varNameOffset = varFields.indexOf('name');
+  if (scopeVars != null && varNameOffset >= 0) {
+    for (let i = varNameOffset; i < scopeVars.length; i += varFields.length) {
+      isLabel[scopeVars[i]] = 1;
+    }
+  }
+
   const ruleCounts = new Map<string, number>();
   // -1 = not content-sensitive; CUSTOM_RULE_ID for the caller's callback;
   // otherwise the index of the matching built-in rule.
