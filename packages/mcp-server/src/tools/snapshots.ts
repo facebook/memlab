@@ -70,6 +70,12 @@ export function registerSnapshots(server: McpServer): void {
         .describe(
           "Clip every node name in every tool to this many characters for the rest of the session (newlines collapsed). 0 restores each tool's own default.",
         ),
+      table_format: z
+        .enum(['markdown', 'csv'])
+        .optional()
+        .describe(
+          'How every tool renders tables for the rest of the session: aligned markdown (default) or compact CSV in a fenced block, which costs far fewer tokens on long rankings.',
+        ),
       repeat_notes: z
         .boolean()
         .optional()
@@ -84,6 +90,7 @@ export function registerSnapshots(server: McpServer): void {
       suppress_suggestions,
       terse,
       max_name_length,
+      table_format,
       repeat_notes,
     }) => {
       try {
@@ -98,7 +105,8 @@ export function registerSnapshots(server: McpServer): void {
           quiet != null ||
           suppress_suggestions != null ||
           terse != null ||
-          max_name_length != null
+          max_name_length != null ||
+          table_format != null
         ) {
           setSessionConfig({
             ...(quiet != null ? {quietHeader: quiet} : {}),
@@ -109,6 +117,7 @@ export function registerSnapshots(server: McpServer): void {
             ...(max_name_length != null
               ? {maxNameLength: max_name_length > 0 ? max_name_length : null}
               : {}),
+            ...(table_format != null ? {tableFormat: table_format} : {}),
           });
           // Explicitly turning suppression OFF means "I want the trailers
           // back", which has to also clear the automatic budget — otherwise the
@@ -116,7 +125,7 @@ export function registerSnapshots(server: McpServer): void {
           if (suppress_suggestions === false) resetSuggestionBudget();
           const cfg = getSessionConfig();
           configChanges.push(
-            `Output config: quietHeader=${cfg.quietHeader}, suppressSuggestions=${cfg.suppressSuggestions}, terse=${cfg.terse}, maxNameLength=${cfg.maxNameLength ?? 'per-tool default'}`,
+            `Output config: quietHeader=${cfg.quietHeader}, suppressSuggestions=${cfg.suppressSuggestions}, terse=${cfg.terse}, maxNameLength=${cfg.maxNameLength ?? 'per-tool default'}, tableFormat=${cfg.tableFormat}`,
           );
         }
 

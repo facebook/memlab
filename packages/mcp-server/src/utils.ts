@@ -1555,11 +1555,37 @@ export function clipTableColumn(
   return {rows: clipped, footnotes};
 }
 
+function csvCell(cell: string): string {
+  return /[",\r\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell;
+}
+
+/**
+ * A table as compact CSV in a fenced block: no padding, no separator row.
+ * Markdown pads every cell to its column width, which on a 50-row ranking of
+ * long names is most of the tokens.
+ */
+function csvTable(headers: string[], rows: string[][]): string {
+  const lines = [
+    headers.map(csvCell).join(','),
+    // One field per header, as the markdown table has, even for a short row.
+    ...rows.map(r => headers.map((_, i) => csvCell(r[i] ?? '')).join(',')),
+  ];
+  // A quoted cell can span lines, and a line of backticks inside it would
+  // close a ``` fence; a fence longer than any backtick run cannot be closed.
+  let longest = 0;
+  for (const run of lines.join('\n').match(/`+/g) ?? []) {
+    longest = Math.max(longest, run.length);
+  }
+  const fence = '`'.repeat(Math.max(3, longest + 1));
+  return [`${fence}csv`, ...lines, fence].join('\n');
+}
+
 export function markdownTable(
   headers: string[],
   rows: string[][],
   alignRight?: Set<number>,
 ): string {
+  if (getSessionConfig().tableFormat === 'csv') return csvTable(headers, rows);
   // Compute column widths
   const widths = headers.map((h, i) =>
     Math.max(h.length, ...rows.map(r => (r[i] ?? '').length)),

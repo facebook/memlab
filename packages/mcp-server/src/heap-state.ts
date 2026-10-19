@@ -216,6 +216,8 @@ export interface SessionConfig {
    * null keeps the per-tool defaults.
    */
   maxNameLength: number | null;
+  /** How tables render: aligned markdown (default) or compact CSV. */
+  tableFormat: 'markdown' | 'csv';
 }
 
 const sessionConfig: SessionConfig = {
@@ -224,6 +226,7 @@ const sessionConfig: SessionConfig = {
   terse: false,
   suppressOrientation: false,
   maxNameLength: null,
+  tableFormat: 'markdown',
 };
 
 // Tracks whether the header has been emitted since the current snapshot was
@@ -246,6 +249,7 @@ export function setSessionConfig(patch: Partial<SessionConfig>): SessionConfig {
   if (patch.maxNameLength !== undefined) {
     sessionConfig.maxNameLength = patch.maxNameLength;
   }
+  if (patch.tableFormat != null) sessionConfig.tableFormat = patch.tableFormat;
   return sessionConfig;
 }
 
