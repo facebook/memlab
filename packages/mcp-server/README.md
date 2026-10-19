@@ -124,6 +124,8 @@ memlab-cli stop --socket /tmp/memlab.sock
 
 By default, Claude Code prompts you to approve each MCP tool call. **No tool ever modifies the heap snapshot it analyzes.** Most tools are read-only analysis that is safe to auto-approve. The exceptions fall into two groups.
 
+Every tool declares MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` and a `title`), from one table in `src/tool-annotations.ts`. A client that honours them can auto-approve the 134 read-only tools and keep prompting for the ones below: the code runners are marked destructive and open-world, `memlab_prune_run` destructive, and the other writers not read-only.
+
 ### Tools that execute JavaScript
 
 > [!CAUTION]

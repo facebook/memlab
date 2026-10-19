@@ -271,7 +271,10 @@ also runs under a wall-clock budget (90 s by default; override it with
 ## Tool permissions and safety
 
 No tool ever modifies the heap snapshot it analyzes, and most tools are
-read-only analysis. Two groups are exceptions.
+read-only analysis. Two groups are exceptions. Every tool declares MCP
+annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`,
+`openWorldHint` and a `title`), so a client that honours them can auto-approve
+the read-only tools and keep asking for these.
 
 :::danger Do not auto-approve tools that execute JavaScript
 

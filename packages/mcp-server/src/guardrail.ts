@@ -9,6 +9,7 @@
  */
 
 import crypto from 'crypto';
+import {toolAnnotations} from './tool-annotations.js';
 import {isTerse, shouldEmitNote} from './heap-state.js';
 import {makeProgressReporter, runWithProgress} from './progress.js';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -265,7 +266,17 @@ export function installAnalysisGuardrail(server: McpServer): void {
           ? (maybeShape as Record<string, unknown>)
           : null;
       recordToolHandler(name, inner, shape);
-      toolArgs[lastIdx] = async (...hArgs: unknown[]) => {
+      // tool(name, [description,] shape, handler) → insert the annotations
+      // between the shape and the handler; the SDK has an overload for both
+      // forms. Registrations without a shape keep their form: there is no
+      // annotations overload for them.
+      const hasAnnotations =
+        lastIdx >= 4 && typeof toolArgs[lastIdx - 1] === 'object';
+      if (shape != null && !hasAnnotations) {
+        toolArgs.splice(lastIdx, 0, toolAnnotations(name, Object.keys(shape)));
+      }
+      const handlerIdx = toolArgs.length - 1;
+      toolArgs[handlerIdx] = async (...hArgs: unknown[]) => {
         // The SDK calls handler(args, extra) for schema tools, handler(extra)
         // otherwise. Read an optional per-call timeout_ms off the params.
         const params = hArgs[0];
