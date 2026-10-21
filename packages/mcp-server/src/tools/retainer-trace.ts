@@ -125,6 +125,33 @@ function nodeLabel(n: IHeapNode): string {
   return `@${n.id} ${truncateNodeName(n.name, n.type, n.self_size, 60)} (${n.type})`;
 }
 
+/** Branches a limit stopped before they reached a root. */
+function countTruncated(branches: RetainerBranch[]): number {
+  let n = 0;
+  for (const b of branches) {
+    if (b.truncated) n++;
+    n += countTruncated(b.retainers);
+  }
+  return n;
+}
+
+function treeHeadline(tree: RetainerTree): string {
+  const truncated = countTruncated(tree.branches);
+  const cut =
+    truncated > 0
+      ? `${formatNumber(truncated)} branch(es) below were cut short by a limit before reaching a root (marked "not followed further"); raise the limit named at the end to see where they lead.`
+      : '';
+  if (tree.pathCount > 0) {
+    return (
+      `**${formatNumber(tree.pathCount)} path(s) to a root or a global**, nearest-root retainers first. Each branch is a separate owner: cutting one leaves the object reachable through the others (\`memlab_retainer_layers\` counts the independent ones).` +
+      (cut ? ` In addition, ${cut}` : '')
+    );
+  }
+  return cut
+    ? `No complete path to a root within the limits: ${cut}`
+    : 'No path to a root within the limits.';
+}
+
 function renderRetainerTree(
   target: IHeapNode,
   tree: RetainerTree,
@@ -133,9 +160,7 @@ function renderRetainerTree(
   const lines = [
     `## Retaining paths to ${nodeLabel(target)}`,
     '',
-    tree.pathCount === 0
-      ? 'No path to a root within the limits.'
-      : `**${formatNumber(tree.pathCount)} path(s) to a root or a global**, nearest-root retainers first. Each branch is a separate owner: cutting one leaves the object reachable through the others (\`memlab_retainer_layers\` counts the independent ones).`,
+    treeHeadline(tree),
     '',
     nodeLabel(target) +
       (showSizes ? ` — retains ${formatBytes(target.retainedSize)}` : ''),
@@ -265,6 +290,7 @@ export function registerRetainerTrace(server: McpServer): void {
             mode: 'tree',
             target: nodeRef(node),
             path_count: tree.pathCount,
+            truncated_branches: countTruncated(tree.branches),
             retainers: tree.branches.map(branchData),
             limits_reached: tree.limits,
           });
