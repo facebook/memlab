@@ -516,8 +516,30 @@ test(
     const out = `${sourceFile}.noscopes`;
     try {
       const heap = await HeapParser.parse(sourceFile, {});
+      expect(heap.snapshot.scopes).toBeUndefined();
+      expect(heap.snapshot.scope_context_vars).toBeUndefined();
+      expect(heap.snapshot.scope_uses).toBeUndefined();
       serializeHeapSnapshot(heap, out);
-      expect(fs.readFileSync(out, 'utf8').includes('"scopes"')).toBe(false);
+
+      // Match each name only where it could appear as a top level key.
+      // `serializeRawHeapSnapshot` starts every field on a fresh line and
+      // escapes newlines inside string values, so a line beginning
+      // `"scopes":` is a field the writer emitted. A plain
+      // `includes('"scopes"')` also matches the string table, where V8
+      // interns `scopes` as an ordinary heap string, so it fails on every
+      // capture no matter which sections are written.
+      const text = fs.readFileSync(out, 'utf8');
+      expect(/^"scopes":/m.test(text)).toBe(false);
+      expect(/^"scope_context_vars":/m.test(text)).toBe(false);
+      expect(/^"scope_uses":/m.test(text)).toBe(false);
+
+      // Read the file back as well, so the claim does not rest on the
+      // writer's line layout alone: a serializer that emitted `"scopes":[]`
+      // without separating fields by line would satisfy the matches above.
+      const reparsed = await HeapParser.parse(out, {});
+      expect(reparsed.snapshot.scopes).toBeUndefined();
+      expect(reparsed.snapshot.scope_context_vars).toBeUndefined();
+      expect(reparsed.snapshot.scope_uses).toBeUndefined();
     } finally {
       for (const file of [sourceFile, out]) {
         if (fs.existsSync(file)) {
