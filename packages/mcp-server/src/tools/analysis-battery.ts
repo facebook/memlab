@@ -160,8 +160,6 @@ interface Step {
 function buildPlan(
   profile: string,
   runDir: string,
-  paths: string[],
-  cycles: number,
   finalRung: string,
   baseRung: string,
   hasSettleRung: boolean,
@@ -905,8 +903,6 @@ export function registerAnalysisBattery(server: McpServer): void {
           buildPlan(
             profile,
             run_dir,
-            manifest.paths,
-            manifest.cycles,
             finalRung,
             baseRung,
             hasSettleRung,
