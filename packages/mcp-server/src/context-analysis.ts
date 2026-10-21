@@ -456,7 +456,6 @@ function buildLiveFunctions(
 }
 
 function resolveScopeInfoScript(
-  snapshot: IHeapSnapshot,
   memo: Map<number, number | undefined>,
   scopeInfo: IHeapNode,
 ): number | undefined {
@@ -532,11 +531,7 @@ export function analyzeContexts(snapshot: IHeapSnapshot): ContextAnalysis {
       groups.set(ctx.scopeInfoIdx, null);
       continue;
     }
-    const scriptIdx = resolveScopeInfoScript(
-      snapshot,
-      scan.scopeInfoScript,
-      scopeInfo,
-    );
+    const scriptIdx = resolveScopeInfoScript(scan.scopeInfoScript, scopeInfo);
     const script = scriptIdx != null ? scan.scripts.get(scriptIdx) : undefined;
     if (scriptIdx == null || script == null) {
       groups.set(ctx.scopeInfoIdx, null);

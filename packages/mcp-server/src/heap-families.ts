@@ -326,10 +326,7 @@ export class DominatorFamilyResolver {
   private readonly names: string[] = [];
   private readonly nameIdx = new Map<string, number>();
 
-  constructor(
-    private readonly snapshot: IHeapSnapshot,
-    seeds: ReadonlyMap<number, string>,
-  ) {
+  constructor(snapshot: IHeapSnapshot, seeds: ReadonlyMap<number, string>) {
     // -1 unknown, -2 no family, >=0 index into names.
     this.memo = new Int32Array(snapshot.nodes.length).fill(-1);
     for (const [idx, fam] of seeds) this.memo[idx] = this.intern(fam);
