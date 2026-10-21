@@ -53,6 +53,7 @@
     "./packages/api",
     "./packages/cli",
     "./packages/memlab",
-    "./packages/mcp-server"
+    "./packages/mcp-server",
+    "./packages/playwright"
   ]
 }
