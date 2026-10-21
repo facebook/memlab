@@ -19,7 +19,6 @@ import {
   formatBytes,
   formatNumber,
   errorResult,
-  textResult,
 } from '../utils.js';
 
 /**

@@ -18,7 +18,6 @@ import {
   formatNumber,
   markdownTable,
   errorResult,
-  textResult,
   toolResult,
 } from '../utils.js';
 

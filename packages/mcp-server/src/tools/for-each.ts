@@ -16,7 +16,6 @@ const {utils} = memlabCore;
 import {getSnapshot} from '../heap-state.js';
 import {
   errorResult,
-  textResult,
   toolResult,
   serializeNodeSummary,
   serializeNodeDetail,

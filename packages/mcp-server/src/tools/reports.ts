@@ -23,7 +23,6 @@ import {
   queryNodes,
   formatQueryNodesResult,
   errorResult,
-  textResult,
   toolResult,
 } from '../utils.js';
 import type {OutputMode} from '../utils.js';

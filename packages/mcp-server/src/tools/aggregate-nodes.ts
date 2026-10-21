@@ -17,7 +17,6 @@ import {sizeInput, withSizeHint} from '../byte-size.js';
 import {getSnapshot} from '../heap-state.js';
 import {
   errorResult,
-  textResult,
   toolResult,
   formatBytes,
   formatNumber,

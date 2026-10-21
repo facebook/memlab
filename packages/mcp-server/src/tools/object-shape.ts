@@ -19,7 +19,6 @@ import {
   formatNodeInline,
   markdownTable,
   errorResult,
-  textResult,
   toolResult,
 } from '../utils.js';
 

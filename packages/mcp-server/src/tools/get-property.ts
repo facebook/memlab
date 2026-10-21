@@ -16,7 +16,6 @@ import {
   formatBytes,
   formatNumber,
   errorResult,
-  textResult,
   toolResult,
 } from '../utils.js';
 import type {NodeDetail} from '../utils.js';
