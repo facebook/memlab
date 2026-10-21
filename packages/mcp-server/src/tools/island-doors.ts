@@ -94,7 +94,7 @@ function isSyntheticRoot(node: IHeapNode): boolean {
  * references, but the document is reached from a child by referrers, and a
  * one-directional walk silently returns a fraction of the island.
  */
-function buildIsland(snapshot: IHeapSnapshot, seeds: IHeapNode[]): Set<number> {
+function buildIsland(seeds: IHeapNode[]): Set<number> {
   const island = new Set<number>();
   const stack: IHeapNode[] = [];
   for (const seed of seeds) {
@@ -141,7 +141,6 @@ function buildIsland(snapshot: IHeapSnapshot, seeds: IHeapNode[]): Set<number> {
  * failure of the premise, not truncated silently.
  */
 function buildReachableIsland(
-  snapshot: IHeapSnapshot,
   seeds: IHeapNode[],
   maxNodes: number,
 ): {island: Set<number>; capped: boolean} {
@@ -610,11 +609,7 @@ export function registerIslandDoors(server: McpServer): void {
         let island: Set<number>;
         let ownersInfo: ReturnType<typeof populationOwners> | null = null;
         if (island_mode === 'reachable') {
-          const built = buildReachableIsland(
-            snapshot,
-            usedSeeds,
-            max_island_nodes,
-          );
+          const built = buildReachableIsland(usedSeeds, max_island_nodes);
           island = built.island;
           islandCapped = built.capped;
         } else if (island_mode === 'dominated') {
@@ -630,7 +625,7 @@ export function registerIslandDoors(server: McpServer): void {
           }
           island = buildDominatedIsland(snapshot, ownersInfo.owners);
         } else {
-          island = buildIsland(snapshot, usedSeeds);
+          island = buildIsland(usedSeeds);
         }
         let islandSelf = 0;
         for (const id of island) {
