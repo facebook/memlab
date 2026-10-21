@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "memlab": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["packages/mcp-server/bin/memlab-mcp.js"],
+      "env": {
+        "NODE_OPTIONS": "--max-old-space-size=8192"
+      }
+    }
+  }
+}
