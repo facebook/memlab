@@ -54,12 +54,10 @@ function isFunctionType(type: string): boolean {
 }
 
 export default class Script {
-  private code: string;
   private ast: Nullable<ParseResult>;
   private closureScopeTree: ClosureScope;
 
   constructor(code: string) {
-    this.code = code;
     this.ast = parse(code, {
       sourceType: 'script',
     });
@@ -111,29 +109,6 @@ export default class Script {
       throw utils.haltOrThrow('cannot find parent scope');
     }
     return parentClosureScope;
-  }
-
-  private findGrandparentFunctionClosureScope(
-    locToClosureScopeMap: Map<string, ClosureScope>,
-    path: NodePath<FunctionClass | Identifier>,
-  ): Nullable<ClosureScope> {
-    const parentPath = this.findParentFunctionPath(path);
-    if (!parentPath) {
-      throw utils.haltOrThrow('cannot find parent scope');
-    }
-    const grandparentPath = this.findParentFunctionPath(
-      parentPath as NodePath<FunctionClass>,
-    );
-    if (!grandparentPath) {
-      return null;
-    }
-    const grandparentClosureScope = locToClosureScopeMap.get(
-      this.locToStr(grandparentPath.node.loc),
-    );
-    if (!grandparentClosureScope) {
-      throw utils.haltOrThrow('cannot find parent scope');
-    }
-    return grandparentClosureScope;
   }
 
   private buildClosureScopeTree(ast: ParseResult): ClosureScope {
