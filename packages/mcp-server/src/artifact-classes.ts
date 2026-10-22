@@ -231,14 +231,6 @@ export function classifyNonProductionString(
 }
 
 /**
- * Back-compatible wrapper returning just the description. Prefer
- * {@link classifyNonProductionString} when the caller can act on the kind.
- */
-export function classifyHarnessString(value: string): string | null {
-  return classifyNonProductionString(value)?.what ?? null;
-}
-
-/**
  * React Fast Refresh module-scope registries, by the edge name that binds each
  * one. These live in the refresh runtime's closure and are reachable only
  * through compiled-code constant pools, so a retainer-root scan does not find
