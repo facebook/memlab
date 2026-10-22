@@ -1182,7 +1182,7 @@ export function objectContentSignature(
 /**
  * Keyed by the snapshot object, so an entry is dropped when the snapshot is.
  */
-const appNameCache = new WeakMap<object, {name: string | null}>();
+const appNameCache = new WeakMap<IHeapSnapshot, {name: string | null}>();
 
 /**
  * Best-effort detection of which app a Node snapshot came from, by tallying the
@@ -1196,10 +1196,10 @@ const appNameCache = new WeakMap<object, {name: string | null}>();
  * and a standing-note key, say) should not pay for it again.
  */
 export function detectAppName(snapshot: IHeapSnapshot): string | null {
-  const cached = appNameCache.get(snapshot as unknown as object);
+  const cached = appNameCache.get(snapshot);
   if (cached != null) return cached.name;
   const name = computeAppName(snapshot);
-  appNameCache.set(snapshot as unknown as object, {name});
+  appNameCache.set(snapshot, {name});
   return name;
 }
 
