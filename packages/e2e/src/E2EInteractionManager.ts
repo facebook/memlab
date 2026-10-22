@@ -82,7 +82,7 @@ export default class E2EInteractionManager {
   constructor(page: Page, browser: Browser) {
     this.page = page;
     this.browser = browser;
-    this.networkManager = new NetworkManager(page);
+    this.networkManager = new NetworkManager();
   }
 
   public async getChosenCDPSession(): Promise<CDPSession> {

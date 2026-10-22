@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 
-import type {CDPSession, Page} from 'puppeteer-core';
+import type {CDPSession} from 'puppeteer-core';
 import type {AnyValue, Nullable} from '@memlab/core';
 
 import {config, info} from '@memlab/core';
@@ -26,12 +26,10 @@ const patterns = ['*'];
 
 export default class NetworkManager {
   private cdpSession: Nullable<CDPSession> = null;
-  private page: Page;
   private requestCache: Map<string, string>;
   private scriptManager: ScriptManager;
 
-  constructor(page: Page) {
-    this.page = page;
+  constructor() {
     this.requestCache = new Map();
     this.scriptManager = new ScriptManager();
   }
