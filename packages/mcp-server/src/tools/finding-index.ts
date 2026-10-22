@@ -707,11 +707,6 @@ export type LoadedFindingIndex = {
  */
 let lastWorkstream: string | undefined;
 
-/** Exported for tests; resets the sticky scope. */
-export function setLastWorkstream(ws?: string): void {
-  lastWorkstream = ws;
-}
-
 export function stickyWorkstream(ws?: string): string | undefined {
   return ws != null && ws !== '' ? ws : lastWorkstream;
 }
