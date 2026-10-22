@@ -140,10 +140,6 @@ export function devEdgeReason(
   return null;
 }
 
-export function isDevEdge(edge: IHeapEdge, holder: IHeapNode): boolean {
-  return devEdgeReason(edge.name_or_index, holder) != null;
-}
-
 const MODULE_FACTORY_PREFIX = '$module_';
 const devModuleCache = new WeakMap<IHeapSnapshot, Map<number, string>>();
 
