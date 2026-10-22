@@ -291,7 +291,7 @@ export function registerDuplicatedStrings(server: McpServer): void {
           );
           suggestions.push(
             `⚠️ **Cached failure payloads detected:** ${failurePayloads.length} of the duplicated strings look like cached error/failure responses ` +
-              `(${totalFailureCopies.toLocaleString('en-US')} copies, ${formatBytes(failureBytes)}). ` +
+              `(${formatNumber(totalFailureCopies)} copies, ${formatBytes(failureBytes)}). ` +
               'This usually means an upstream dependency is failing AND those failures are being cached. ' +
               'Check the upstream call (permissions, timeouts, bad input) and avoid caching error responses (or cache them with a short TTL).',
           );

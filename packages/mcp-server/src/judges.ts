@@ -33,6 +33,7 @@ import {
 } from './snapshot-borrow.js';
 import {snapshotExists} from './snapshot-index.js';
 import {linearFit, probeRung} from './tools/ladder-probe.js';
+import {formatNumber} from './utils.js';
 
 export type Expectation =
   'no-growth' | 'returns-to-baseline' | 'bounded' | 'zero-at-rest';
@@ -509,7 +510,7 @@ export function judgeFired(o: JudgeOutcome): boolean {
 }
 
 function fmt(n: number): string {
-  return Number.isInteger(n) ? n.toLocaleString('en-US') : n.toFixed(3);
+  return Number.isInteger(n) ? formatNumber(n) : n.toFixed(3);
 }
 
 /**

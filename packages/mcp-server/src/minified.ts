@@ -21,6 +21,7 @@
  */
 
 import type {IHeapSnapshot} from '@memlab/core';
+import {formatNumber} from './utils.js';
 
 const SHORT_NAME_MAX = 2;
 const MINIFIED_SHARE = 0.3;
@@ -62,7 +63,7 @@ export function minifiedWarning(snapshot: IHeapSnapshot): string | null {
   const s = minifiedSignal(snapshot);
   if (!s.minified) return null;
   return (
-    `⚠ **Minified build** (${(s.shortNameShare * 100).toFixed(0)}% of ${s.namedClosures.toLocaleString('en-US')} named closures have a 1-2 character name). ` +
+    `⚠ **Minified build** (${(s.shortNameShare * 100).toFixed(0)}% of ${formatNumber(s.namedClosures)} named closures have a 1-2 character name). ` +
     'Class, function and closure-variable names are mangled, so a probe that looks one up by its source name ' +
     '(`byClass`, `byContextVar`, `allByEdgeName`, …) finds nothing and reads 0. ' +
     "Resolve module state through the module registry instead: `helpers.module('<ModuleName>')` and " +
