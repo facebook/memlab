@@ -48,19 +48,6 @@ export interface NodeDetail extends NodeSummary {
   string_value?: string;
 }
 
-export interface EdgeSummary {
-  edge_name: string;
-  edge_type: string;
-}
-
-export interface OutgoingEdge extends EdgeSummary {
-  to_node: NodeSummary;
-}
-
-export interface IncomingEdge extends EdgeSummary {
-  from_node: NodeSummary;
-}
-
 function truncateDomClasses(name: string): string {
   const classMatch = name.match(/^(.*?\s)class="([^"]*)"(.*)$/);
   if (!classMatch) return name;
@@ -256,22 +243,6 @@ export function serializeNodeDetail(node: IHeapNode): NodeDetail {
   }
 
   return detail;
-}
-
-export function serializeOutgoingEdge(edge: IHeapEdge): OutgoingEdge {
-  return {
-    edge_name: String(edge.name_or_index),
-    edge_type: edge.type,
-    to_node: serializeNodeSummary(edge.toNode),
-  };
-}
-
-export function serializeIncomingEdge(edge: IHeapEdge): IncomingEdge {
-  return {
-    edge_name: String(edge.name_or_index),
-    edge_type: edge.type,
-    from_node: serializeNodeSummary(edge.fromNode),
-  };
 }
 
 const NODE_TYPE_BLOCK_LIST = new Set([
@@ -2097,10 +2068,6 @@ export function suggestionsSuppressed(toolKey?: string): boolean {
 export function resetSuggestionBudget(): void {
   suggestionTrailersEmitted = 0;
   perToolTrailersEmitted.clear();
-}
-
-export function jsonResult(data: unknown) {
-  return textResult(JSON.stringify(data, null, 2));
 }
 
 export function errorResult(err: unknown) {
