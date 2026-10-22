@@ -133,7 +133,7 @@ function isFiberNode(node: Optional<IHeapNode>): boolean {
 
 // quickly check the detachedness field
 // need to call markDetachedFiberNode(node) before this function
-// does not traverse and check the existance of HostRoot
+// does not traverse and check the existence of HostRoot
 // NOTE: Doesn't work for FiberNode without detachedness field
 function isDetachedFiberNode(node: IHeapNode): boolean {
   return isFiberNode(node) && isDetached(node);

@@ -153,7 +153,7 @@ export default class Script {
     // 1. This is a var use in the containing scope
     // 2. This is a var defined in the direct parent scope
     //    of the containing scope
-    // If true, add the identifer name to the usedVariablesFromParentScope
+    // If true, add the identifier name to the usedVariablesFromParentScope
     // of the containing scope
     const fillInVarInfo = function (path: NodePath<Identifier>) {
       // if the identifier is a function name of a function definition
