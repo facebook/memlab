@@ -392,7 +392,11 @@ export function registerHypothesis(server: McpServer): void {
             'Pass `predicate` (one hypothesis) or `predicates` (several tested in the same pass).',
           );
         }
-        const specs = batch
+        const specs: Array<{
+          label: string;
+          predicate: string;
+          expect?: Expectation;
+        }> = batch
           ? (predicates ?? [])
           : [{label: predicate as string, predicate: predicate as string}];
 
@@ -525,11 +529,7 @@ export function registerHypothesis(server: McpServer): void {
           // One row per hypothesis, so the candidate explanations are compared
           // side by side rather than across separate calls whose rungs may not
           // have been the same load.
-          const expectations = specs.map(sp =>
-            'expect' in sp
-              ? ((sp as {expect?: Expectation}).expect ?? null)
-              : null,
-          );
+          const expectations = specs.map(sp => sp.expect ?? null);
           const anyExpect = expectations.some(e => e != null);
           const verdicts = specs.map((_, t) => {
             const e = expectations[t];
