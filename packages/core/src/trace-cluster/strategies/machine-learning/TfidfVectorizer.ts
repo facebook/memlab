@@ -130,8 +130,8 @@ export class TfidfVectorizer {
 
         // normalizing the values
         const dotSum = atfidf
-          .map(([_, tfidfValue]) => tfidfValue * tfidfValue)
-          .reduce((sum, tfidfValueSquered) => sum + tfidfValueSquered, 0);
+          .map(([, tfidfValue]) => tfidfValue * tfidfValue)
+          .reduce((sum, tfidfValueSquared) => sum + tfidfValueSquared, 0);
 
         const dotSumSqrRoot = Math.sqrt(dotSum);
 
