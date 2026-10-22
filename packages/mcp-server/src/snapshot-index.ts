@@ -35,7 +35,6 @@
 import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import fs from 'fs';
 import crypto from 'crypto';
-import path from 'path';
 import {promisify} from 'util';
 import zlib from 'zlib';
 
@@ -604,21 +603,4 @@ export function rekeySidecarToArchive(snapshotPath: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** Every sidecar sitting beside the snapshots of a run directory. */
-export function sidecarsIn(dir: string): string[] {
-  const out: string[] = [];
-  for (const sub of [path.join(dir, 'snapshots'), dir]) {
-    let entries: string[];
-    try {
-      entries = fs.readdirSync(sub);
-    } catch {
-      continue;
-    }
-    for (const e of entries) {
-      if (e.endsWith('.memlab-index.json')) out.push(path.join(sub, e));
-    }
-  }
-  return out;
 }
