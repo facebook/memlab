@@ -546,7 +546,7 @@ export function registerHypothesis(server: McpServer): void {
             markdownTable(
               [
                 'Hypothesis',
-                ...rungs.map((r, i) => `#${i + 1}`),
+                ...rungs.map((_, i) => `#${i + 1}`),
                 ...(rungs.length > 1 ? ['Δ', 'Trend'] : []),
                 ...(anyExpect ? ['Expected', 'Result'] : []),
               ],

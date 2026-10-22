@@ -431,7 +431,7 @@ export function registerSwitchMatrix(server: McpServer): void {
           .filter(a => a.off.size === 0)
           .flatMap(a =>
             spec.invariants
-              .filter((inv, i) => cellOf(grid[i][arms.indexOf(a)]) === 'red')
+              .filter((_, i) => cellOf(grid[i][arms.indexOf(a)]) === 'red')
               .map(inv => `${inv.name} in ${a.label}`),
           );
 
