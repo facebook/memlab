@@ -89,12 +89,10 @@ function edgeLabel(edge: IHeapEdge): string | null {
  * tree — this runs on a LIGHT parse with no dominators) until it finds a class
  * name worth printing, and falls back to `<context>` for a module-scope closure
  * binding, which is where most module singletons live.
+ *
+ * Returns the signature plus the node it names as owner (a context for
+ * `<context>`).
  */
-export function collectionSignature(node: IHeapNode): string | null {
-  return collectionOwner(node)?.sig ?? null;
-}
-
-/** The signature plus the node it names as owner (a context for `<context>`). */
 export function collectionOwner(
   node: IHeapNode,
 ): {sig: string; owner: IHeapNode | null} | null {
