@@ -139,16 +139,20 @@ function checkURL(page: Page, intendedURL: string): void {
   compareURL(page, intendedURL);
 }
 
+// A marker set on the page's `window`; a reload starts a fresh `window`
+// without it.
+type ReloadCheckWindow = Window & {__memlab_check_reload?: number};
+
 async function injectPageReloadChecker(page: Page): Promise<void> {
   await page.evaluate(() => {
-    // @ts-expect-error TODO: add Window shim type
-    window.__memlab_check_reload = 1;
+    (window as ReloadCheckWindow).__memlab_check_reload = 1;
   });
 }
 
 async function checkPageReload(page: Page): Promise<void> {
-  // @ts-expect-error TODO: add Window shim type
-  const flag = await page.evaluate(() => window.__memlab_check_reload);
+  const flag = await page.evaluate(
+    () => (window as ReloadCheckWindow).__memlab_check_reload,
+  );
   if (flag !== 1) {
     utils.haltOrThrow(
       'The page is reloaded. MemLab cannot analyze heap across page reloads. ' +
