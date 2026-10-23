@@ -87,3 +87,64 @@ test('Check isWeakMapEdge', async () => {
   expect(utils.isWeakMapEdge(weakMapEdgeMock)).toBe(true);
   expect(utils.isWeakMapEdge(edgeMock)).toBe(false);
 });
+
+test('Check getReadablePercent', async () => {
+  expect(utils.getReadablePercent(0)).toBe('0%');
+  expect(utils.getReadablePercent(0.5)).toBe('50%');
+  expect(utils.getReadablePercent(1)).toBe('100%');
+  expect(utils.getReadablePercent(1.5)).toBe('150%');
+  expect(utils.getReadablePercent(-0.25)).toBe('-25%');
+  // at most two decimals, and trailing zeros are dropped
+  expect(utils.getReadablePercent(0.123)).toBe('12.3%');
+  expect(utils.getReadablePercent(0.1234)).toBe('12.34%');
+  expect(utils.getReadablePercent(0.12344)).toBe('12.34%');
+  expect(utils.getReadablePercent(0.00001)).toBe('0%');
+  expect(utils.getReadablePercent(NaN)).toBe('NaN%');
+});
+
+test('Check getReadableTime', async () => {
+  expect(utils.getReadableTime(0)).toBe('0ms');
+  expect(utils.getReadableTime(999)).toBe('999ms');
+  expect(utils.getReadableTime(1000)).toBe('1s');
+  expect(utils.getReadableTime(1500)).toBe('1.5s');
+  // one decimal, truncated rather than rounded, so 59.99s stays in seconds
+  expect(utils.getReadableTime(59999)).toBe('59.9s');
+  expect(utils.getReadableTime(60 * 1000)).toBe('1min');
+  expect(utils.getReadableTime(90 * 1000)).toBe('1.5min');
+  expect(utils.getReadableTime(60 * 60 * 1000)).toBe('1hr');
+  expect(utils.getReadableTime(90 * 60 * 1000)).toBe('1.5hr');
+  expect(utils.getReadableTime(60 * 60 * 60 * 1000)).toBe('2.5 days');
+});
+
+test('Check camelCaseToReadableString', async () => {
+  expect(utils.camelCaseToReadableString('fooBarBaz')).toBe('foo bar baz');
+  expect(utils.camelCaseToReadableString('FooBar')).toBe('foo bar');
+  expect(utils.camelCaseToReadableString('  leadingSpace ')).toBe(
+    'leading space',
+  );
+  expect(utils.camelCaseToReadableString('already lower')).toBe(
+    'already lower',
+  );
+  expect(utils.camelCaseToReadableString('')).toBe('');
+  expect(
+    utils.camelCaseToReadableString('fooBarBaz', {capitalizeFirstWord: true}),
+  ).toBe('Foo bar baz');
+  expect(utils.camelCaseToReadableString('', {capitalizeFirstWord: true})).toBe(
+    '',
+  );
+});
+
+test('Check convertCLIArgsToReadableCommand', async () => {
+  expect(utils.convertCLIArgsToReadableCommand([])).toBe('');
+  expect(utils.convertCLIArgsToReadableCommand(['memlab', 'run'])).toBe(
+    'memlab run',
+  );
+  // arguments with whitespace are quoted
+  expect(
+    utils.convertCLIArgsToReadableCommand(['--scenario', '/tmp/a b.js']),
+  ).toBe('--scenario "/tmp/a b.js"');
+  // arguments already wrapped in escaped quotes are unescaped, not re-quoted
+  expect(
+    utils.convertCLIArgsToReadableCommand(['--work-dir', '\\"/tmp/x y\\"']),
+  ).toBe('--work-dir "/tmp/x y"');
+});
