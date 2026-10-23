@@ -1432,6 +1432,15 @@ export function clampLabel(name: string, defaultLen?: number): string {
   );
 }
 
+/** Cut tool output at `max` characters and say that it was cut, and at what size. */
+export function truncateOutput(str: string, max: number): string {
+  if (str.length <= max) return str;
+  return (
+    str.slice(0, max) +
+    `\n... [truncated, output exceeded ${Math.round(max / 1024)}KB]`
+  );
+}
+
 /** Keep a value on one markdown table row: no line breaks, no `|`. */
 export function sanitizeForTable(s: string): string {
   return s.replace(/[\n\r\t]/g, ' ').replace(/\|/g, '¦');

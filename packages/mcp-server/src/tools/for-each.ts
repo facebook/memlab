@@ -25,14 +25,10 @@ import {
   isNodeWorthInspecting,
   filterLargestObjects,
   queryNodes,
+  truncateOutput,
 } from '../utils.js';
 
 const MAX_OUTPUT_SIZE = 50 * 1024; // 50KB
-
-function truncate(str: string, max: number): string {
-  if (str.length <= max) return str;
-  return str.slice(0, max) + '\n... [truncated, output exceeded 50KB]';
-}
 
 export function registerForEach(server: McpServer): void {
   server.tool(
@@ -240,7 +236,7 @@ export function registerForEach(server: McpServer): void {
           output = String(sandbox.__result);
         }
 
-        output = truncate(output, MAX_OUTPUT_SIZE);
+        output = truncateOutput(output, MAX_OUTPUT_SIZE);
         return toolResult(output);
       } catch (err) {
         if (

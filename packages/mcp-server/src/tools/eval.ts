@@ -88,6 +88,7 @@ import {
   objectContentSignature,
   boundedDominatorRetainedSize,
   suggestionsSuppressed,
+  truncateOutput,
 } from '../utils.js';
 
 /**
@@ -100,14 +101,6 @@ import {
 const MAX_CLASS_NAME_CHARS = 120;
 
 const MAX_OUTPUT_SIZE = 50 * 1024; // 50KB
-
-function truncate(str: string, max: number): string {
-  if (str.length <= max) return str;
-  return (
-    str.slice(0, max) +
-    `\n... [truncated, output exceeded ${Math.round(max / 1024)}KB]`
-  );
-}
 
 /**
  * Wall-clock budget for one eval, scaled from the loaded graph.
@@ -4389,10 +4382,10 @@ export async function runEval({
 
     // Pretty-printing adds indentation the byte budget above did not account
     // for, so the string clamp stays as a backstop; it should rarely fire now.
-    output = truncate(output, budgetBytes * 2);
+    output = truncateOutput(output, budgetBytes * 2);
 
     if (consoleOutput.length > 0) {
-      const consolePart = truncate(
+      const consolePart = truncateOutput(
         consoleOutput.join('\n'),
         MAX_OUTPUT_SIZE - output.length > 1024 ? 4096 : 1024,
       );
