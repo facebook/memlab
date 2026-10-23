@@ -148,3 +148,52 @@ test('Check convertCLIArgsToReadableCommand', async () => {
     utils.convertCLIArgsToReadableCommand(['--work-dir', '\\"/tmp/x y\\"']),
   ).toBe('--work-dir "/tmp/x y"');
 });
+
+test('Check isURLEqual', async () => {
+  expect(utils.isURLEqual('https://a.com/x', 'https://a.com/x')).toBe(true);
+  // a trailing slash on the path does not matter
+  expect(utils.isURLEqual('https://a.com/x/', 'https://a.com/x')).toBe(true);
+  expect(utils.isURLEqual('https://a.com', 'https://a.com/')).toBe(true);
+  // query parameters compare as a multiset, in any order
+  expect(
+    utils.isURLEqual('https://a.com/x?a=1&b=2', 'https://a.com/x?b=2&a=1'),
+  ).toBe(true);
+  expect(
+    utils.isURLEqual('https://a.com/x?a=1&a=2', 'https://a.com/x?a=2&a=1'),
+  ).toBe(true);
+  expect(
+    utils.isURLEqual('https://a.com/x?a=2&a=1', 'https://a.com/x?a=1&a=2'),
+  ).toBe(true);
+  expect(utils.isURLEqual('https://a.com/x?a=1', 'https://a.com/x?a=2')).toBe(
+    false,
+  );
+  expect(utils.isURLEqual('https://a.com/x?a=1', 'https://a.com/x')).toBe(
+    false,
+  );
+  // every other part of the URL has to match exactly
+  expect(utils.isURLEqual('https://a.com/x#h', 'https://a.com/x')).toBe(false);
+  expect(utils.isURLEqual('http://a.com/x', 'https://a.com/x')).toBe(false);
+  expect(utils.isURLEqual('https://a.com:8080/x', 'https://a.com/x')).toBe(
+    false,
+  );
+  expect(utils.isURLEqual('https://a.com/x', 'https://b.com/x')).toBe(false);
+  expect(utils.isURLEqual('https://a.com/x', 'https://a.com/X')).toBe(false);
+  // a string that does not parse as a URL is never equal, even to itself
+  expect(utils.isURLEqual('not a url', 'not a url')).toBe(false);
+});
+
+test('Check normalizeBaseUrl', async () => {
+  expect(utils.normalizeBaseUrl('')).toBe('');
+  expect(utils.normalizeBaseUrl('https://a.com')).toBe('https://a.com/');
+  expect(utils.normalizeBaseUrl('https://a.com/')).toBe('https://a.com/');
+  expect(utils.normalizeBaseUrl('https://a.com/app')).toBe(
+    'https://a.com/app/',
+  );
+  // a URL that names a page keeps it as-is
+  expect(utils.normalizeBaseUrl('https://a.com/index.html')).toBe(
+    'https://a.com/index.html',
+  );
+  expect(utils.normalizeBaseUrl('https://a.com/page.htm')).toBe(
+    'https://a.com/page.htm',
+  );
+});
