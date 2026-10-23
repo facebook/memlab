@@ -1486,7 +1486,8 @@ function getReadableTime(ms: number): string {
     return `${p1(time, 1)}hr`;
   }
   time /= 24;
-  return `${p1(time, 1)} days`;
+  const days = p1(time, 1);
+  return `${days} ${days === 1 ? 'day' : 'days'}`;
 }
 
 function shouldShowMoreInfo(node: IHeapNode): boolean {

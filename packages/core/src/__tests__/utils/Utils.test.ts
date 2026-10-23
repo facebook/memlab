@@ -113,6 +113,9 @@ test('Check getReadableTime', async () => {
   expect(utils.getReadableTime(90 * 1000)).toBe('1.5min');
   expect(utils.getReadableTime(60 * 60 * 1000)).toBe('1hr');
   expect(utils.getReadableTime(90 * 60 * 1000)).toBe('1.5hr');
+  expect(utils.getReadableTime(24 * 60 * 60 * 1000)).toBe('1 day');
+  expect(utils.getReadableTime(25 * 60 * 60 * 1000)).toBe('1 day');
+  expect(utils.getReadableTime(36 * 60 * 60 * 1000)).toBe('1.5 days');
   expect(utils.getReadableTime(60 * 60 * 60 * 1000)).toBe('2.5 days');
 });
 
