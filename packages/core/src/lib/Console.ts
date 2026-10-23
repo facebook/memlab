@@ -313,8 +313,7 @@ class MemLabConsole {
     delete this.sections.dict[lastSection.name];
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  private shouldBeConcise(_msgType: string): boolean {
+  private shouldBeConcise(): boolean {
     if (!this.config || !this.config.runningMode) {
       return false;
     }
@@ -400,7 +399,7 @@ class MemLabConsole {
 
   public table(...args: AnyValue[]): void {
     if (
-      this.shouldBeConcise('table') ||
+      this.shouldBeConcise() ||
       this.config.isTest ||
       this.config.muteConsole ||
       this.config.muteConfig?.muteTable
@@ -428,7 +427,7 @@ class MemLabConsole {
   }
 
   public topLevel(msg: string): void {
-    if (this.shouldBeConcise('topLevel')) {
+    if (this.shouldBeConcise()) {
       return this.overwrite(msg);
     }
     this.logMsg(msg);
@@ -440,7 +439,7 @@ class MemLabConsole {
   }
 
   public highLevel(msg: string): void {
-    if (this.shouldBeConcise('highLevel')) {
+    if (this.shouldBeConcise()) {
       return this.overwrite(msg);
     }
     this.logMsg(msg);
@@ -452,7 +451,7 @@ class MemLabConsole {
   }
 
   public midLevel(msg: string): void {
-    if (this.shouldBeConcise('midLevel')) {
+    if (this.shouldBeConcise()) {
       return this.overwrite(msg);
     }
     this.logMsg(msg);
@@ -464,7 +463,7 @@ class MemLabConsole {
   }
 
   public lowLevel(msg: string, options: ConsoleOutputOptions = {}): void {
-    if (this.shouldBeConcise('lowLevel')) {
+    if (this.shouldBeConcise()) {
       return this.overwrite(msg);
     }
     this.logMsg(msg);
@@ -481,7 +480,7 @@ class MemLabConsole {
   }
 
   public success(msg: string): void {
-    if (this.shouldBeConcise('success')) {
+    if (this.shouldBeConcise()) {
       return this.overwrite(msg);
     }
     this.logMsg(msg);
@@ -518,7 +517,7 @@ class MemLabConsole {
   }
 
   public nextLine(): void {
-    if (this.shouldBeConcise('nextLine')) {
+    if (this.shouldBeConcise()) {
       return this.overwrite('');
     }
     this.logMsg('');
