@@ -2,7 +2,7 @@
 
 > **AnonymizePhase** = `"read"` \| `"anonymize"` \| `"write"`
 
-Defined in: core/src/lib/HeapAnonymizer.ts:838
+Defined in: core/src/lib/HeapAnonymizer.ts:849
 
 The three phases [anonymizeHeapSnapshotFile](../functions/anonymizeHeapSnapshotFile.md) moves through. Reading is
 the slow one on a large capture — a multi-hundred-MB `.heapsnapshot` spends

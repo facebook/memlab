@@ -2,7 +2,7 @@
 
 > **AnonymizeProgressCallback** = (`phase`, `step`, `totalSteps`) => `void`
 
-Defined in: core/src/lib/HeapAnonymizer.ts:848
+Defined in: core/src/lib/HeapAnonymizer.ts:859
 
 Called as each phase STARTS, so a caller can show which one is running.
 

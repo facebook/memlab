@@ -2,7 +2,7 @@
 
 > **auditHeapSnapshotFile**(`inputFile`, `options?`, `onProgress?`): `Promise`\<[`AnonymizeReport`](../type-aliases/AnonymizeReport.md)\>
 
-Defined in: core/src/lib/HeapAnonymizer.ts:952
+Defined in: core/src/lib/HeapAnonymizer.ts:963
 
 Report what anonymizing a capture WOULD remove, and what it would leave,
 without writing anything.

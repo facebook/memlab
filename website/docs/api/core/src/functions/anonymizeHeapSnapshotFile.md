@@ -2,7 +2,7 @@
 
 > **anonymizeHeapSnapshotFile**(`inputFile`, `outputFile`, `options?`, `onProgress?`): `Promise`\<[`AnonymizeReport`](../type-aliases/AnonymizeReport.md)\>
 
-Defined in: core/src/lib/HeapAnonymizer.ts:905
+Defined in: core/src/lib/HeapAnonymizer.ts:916
 
 Anonymize a `.heapsnapshot` file and write the result to another file.
 

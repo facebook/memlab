@@ -2,7 +2,7 @@
 
 > **serializeHeapSnapshot**(`snapshot`, `outputFile`): `void`
 
-Defined in: core/src/lib/HeapSerializer.ts:346
+Defined in: core/src/lib/HeapSerializer.ts:362
 
 Write a parsed (and possibly modified) heap snapshot to a `.heapsnapshot`
 file that Chrome DevTools, memlab and any other V8 snapshot reader can open.
