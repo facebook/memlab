@@ -23,19 +23,16 @@ import {
 
 const COLLECTION_NAMES = new Set(['Map', 'Set', 'WeakMap', 'WeakSet', 'Array']);
 
-function isCollectionNode(node: IHeapNode): boolean {
+export function isCollectionNode(node: IHeapNode): boolean {
   return node.type === 'object' && COLLECTION_NAMES.has(node.name);
 }
 
-function isStaleNode(node: IHeapNode): boolean {
-  // Detached DOM nodes
-  if (node.is_detached || node.name.startsWith('Detached ')) return true;
-  // Detached React Fiber nodes
-  if (node.name === 'FiberNode' && node.is_detached) return true;
-  return false;
+// Detached DOM nodes, and detached React Fiber nodes (`is_detached` covers both).
+export function isStaleNode(node: IHeapNode): boolean {
+  return node.is_detached || node.name.startsWith('Detached ');
 }
 
-function getCollectionChildren(node: IHeapNode): IHeapEdge[] {
+export function getCollectionChildren(node: IHeapNode): IHeapEdge[] {
   // For Map/Set, follow the 'table' edge to get internal hash table children
   if (node.name === 'Map' || node.name === 'Set') {
     const tableEdge = node.references.find(e => e.name_or_index === 'table');

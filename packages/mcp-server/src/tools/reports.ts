@@ -9,7 +9,7 @@
  */
 
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
-import type {IHeapNode, IHeapEdge} from '@memlab/core';
+import type {IHeapNode} from '@memlab/core';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
 import {
@@ -27,6 +27,11 @@ import {
 } from '../utils.js';
 import type {OutputMode} from '../utils.js';
 import {splitClassKey} from './sequence-analysis.js';
+import {
+  getCollectionChildren,
+  isCollectionNode,
+  isStaleNode,
+} from './stale-collections.js';
 
 // --- Detached DOM analysis ---
 
@@ -103,26 +108,6 @@ function runDuplicatedStrings(limit: number): string {
 }
 
 // --- Stale Collections analysis ---
-
-const COLLECTION_NAMES = new Set(['Map', 'Set', 'WeakMap', 'WeakSet', 'Array']);
-
-function isCollectionNode(node: IHeapNode): boolean {
-  return node.type === 'object' && COLLECTION_NAMES.has(node.name);
-}
-
-function isStaleNode(node: IHeapNode): boolean {
-  return node.is_detached || node.name.startsWith('Detached ');
-}
-
-function getCollectionChildren(node: IHeapNode): IHeapEdge[] {
-  if (node.name === 'Map' || node.name === 'Set') {
-    const tableEdge = node.references.find(e => e.name_or_index === 'table');
-    if (tableEdge) {
-      return tableEdge.toNode.references;
-    }
-  }
-  return node.references;
-}
 
 function runStaleCollections(limit: number): string {
   const snapshot = getSnapshot();
