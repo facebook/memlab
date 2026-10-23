@@ -148,7 +148,8 @@ function intEdge(node: IHeapNode, name: string): number | undefined {
   return intValue(internal(node, name));
 }
 
-function isContext(node: IHeapNode): boolean {
+/** A V8 closure context: `system / Context`, or one with a scope suffix. */
+export function isContext(node: IHeapNode): boolean {
   const name = node.name;
   return name === 'system / Context' || name.startsWith('system / Context / ');
 }

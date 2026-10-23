@@ -10,6 +10,7 @@
 
 import type {IHeapEdge, IHeapNode, IHeapSnapshot} from '@memlab/core';
 import {z} from 'zod';
+import {isContext} from './context-analysis.js';
 
 /**
  * "Retained ONLY through X": objects reachable from the roots, but no longer
@@ -67,11 +68,6 @@ export function reachableAvoiding(
     });
   }
   return seen;
-}
-
-function isContext(node: IHeapNode): boolean {
-  const name = node.name;
-  return name === 'system / Context' || name.startsWith('system / Context / ');
 }
 
 function hasCode(node: IHeapNode): boolean {
