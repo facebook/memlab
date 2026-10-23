@@ -35,13 +35,6 @@ interface BufferRow {
 
 const COLLECTIONS = new Set(['Map', 'Set', 'Array', 'WeakMap']);
 
-function edgeTo(node: IHeapNode, name: string): IHeapNode | null {
-  for (const e of node.references) {
-    if (String(e.name_or_index) === name) return e.toNode;
-  }
-  return null;
-}
-
 function held(node: IHeapNode, snapshot: IHeapSnapshot): number {
   return Math.max(
     node.retainedSize,
@@ -104,7 +97,10 @@ export function moduleRegistryIds(snapshot: IHeapSnapshot): Set<number> {
 
 /** A registry's own table: the object plus its out-of-object property store. */
 export function registryTableBytes(registry: IHeapNode): number {
-  return registry.self_size + (edgeTo(registry, 'properties')?.self_size ?? 0);
+  return (
+    registry.self_size +
+    (registry.getReferenceNode('properties')?.self_size ?? 0)
+  );
 }
 
 /**

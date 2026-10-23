@@ -24,16 +24,9 @@ import {
   toolResult,
 } from '../utils.js';
 
-function edgeTo(node: IHeapNode, name: string): IHeapNode | null {
-  for (const e of node.references) {
-    if (String(e.name_or_index) === name) return e.toNode;
-  }
-  return null;
-}
-
 function elementTargets(node: IHeapNode): IHeapNode[] {
   const out: IHeapNode[] = [];
-  const backing = edgeTo(node, 'elements');
+  const backing = node.getReferenceNode('elements');
   for (const src of backing != null ? [node, backing] : [node]) {
     for (const e of src.references) {
       if (e.type === 'element' && e.toNode.type === 'object')
@@ -175,7 +168,7 @@ export function registerModelCensus(server: McpServer): void {
         // sub-collections repeat records the main collection already has.
         const sized = collections
           .map(c => {
-            const m = edgeTo(c, '_models');
+            const m = c.getReferenceNode('_models');
             return {c, models: m != null ? elementTargets(m) : []};
           })
           .sort((a, b) => b.models.length - a.models.length);
@@ -193,9 +186,9 @@ export function registerModelCensus(server: McpServer): void {
           const mine = models.filter(m => owner.get(m.id) === i);
           if (mine.length === 0) continue;
           const label = labeler.labelOf(c);
-          const index = edgeTo(c, '_index');
+          const index = c.getReferenceNode('_index');
           if (index != null && mine.length >= min_models) {
-            const store = edgeTo(index, 'properties');
+            const store = index.getReferenceNode('properties');
             indexRows.push({
               label,
               models: mine.length,
@@ -223,7 +216,7 @@ export function registerModelCensus(server: McpServer): void {
             g.ids.push(m.id);
             g.props += ownPropCount(m);
             g.header += m.self_size;
-            g.propStore += edgeTo(m, 'properties')?.self_size ?? 0;
+            g.propStore += m.getReferenceNode('properties')?.self_size ?? 0;
             g.satellites += satelliteArrayBytes(m);
           }
         }

@@ -30,13 +30,6 @@ const TASK_SHAPE = [
   'sortIndex',
 ];
 
-function edgeTo(node: IHeapNode, name: string): IHeapNode | null {
-  for (const e of node.references) {
-    if (String(e.name_or_index) === name) return e.toNode;
-  }
-  return null;
-}
-
 function hasProps(node: IHeapNode, props: ReadonlyArray<string>): boolean {
   const names = new Set<string>();
   for (const e of node.references) {
@@ -49,7 +42,7 @@ function hasProps(node: IHeapNode, props: ReadonlyArray<string>): boolean {
 function contextVars(fn: IHeapNode): {fns: IHeapNode[]; objs: IHeapNode[]} {
   const fns: IHeapNode[] = [];
   const objs: IHeapNode[] = [];
-  const ctx = edgeTo(fn, 'context');
+  const ctx = fn.getReferenceNode('context');
   if (ctx == null) return {fns, objs};
   for (const e of ctx.references) {
     if (e.type !== 'context') continue;
@@ -68,7 +61,7 @@ function contextVars(fn: IHeapNode): {fns: IHeapNode[]; objs: IHeapNode[]} {
 function unwrap(fn: IHeapNode): {inner: IHeapNode; depth: number} {
   let cur = fn;
   for (let depth = 0; depth < 4; depth++) {
-    const guarded = edgeTo(cur, '__isMetaErrorGuarded') != null;
+    const guarded = cur.getReferenceNode('__isMetaErrorGuarded') != null;
     const {fns, objs} = contextVars(cur);
     const next = fns.find(f => f.id !== cur.id);
     if (next == null) return {inner: cur, depth};
@@ -158,13 +151,13 @@ export function registerTimers(server: McpServer): void {
         let cancelled = 0;
         const groups = new Map<string, TimerGroup>();
         for (const t of tasks) {
-          const cb = edgeTo(t, 'callback');
+          const cb = t.getReferenceNode('callback');
           if (cb == null || cb.type !== 'closure') {
             cancelled++;
             continue;
           }
           const {inner} = unwrap(cb);
-          const shared = edgeTo(inner, 'shared');
+          const shared = inner.getReferenceNode('shared');
           const payload = payloadOf(inner);
           const mod = sourceOfNode(snapshot, inner).module ?? '?';
           const pShape = payload != null ? shapeOf(payload) : '—';
