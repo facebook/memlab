@@ -31,39 +31,10 @@ import {
   toolResult,
   clipTableColumn,
   envLabelOf,
+  getContentPreview,
+  sanitizeForTable,
 } from '../utils.js';
 import {splitClassKey} from './sequence-analysis.js';
-
-function sanitizeForTable(s: string): string {
-  return s.replace(/[\n\r\t]/g, ' ').replace(/\|/g, '¦');
-}
-
-function getContentPreview(node: IHeapNode): string {
-  if (node.isString) {
-    const strNode = node.toStringNode();
-    if (strNode) {
-      const val = strNode.stringValue;
-      const preview = val.length > 40 ? val.slice(0, 40) + '…' : val;
-      return sanitizeForTable(preview);
-    }
-  }
-  const props: string[] = [];
-  for (const edge of node.references) {
-    if (
-      edge.type === 'property' ||
-      edge.type === 'element' ||
-      edge.type === 'shortcut'
-    ) {
-      props.push(String(edge.name_or_index));
-      if (props.length >= 3) break;
-    }
-  }
-  if (props.length > 0) {
-    const more = node.edge_count > props.length ? ', …' : '';
-    return `{${props.join(', ')}${more}}`;
-  }
-  return '';
-}
 
 export function registerQuickDiagnosis(server: McpServer): void {
   server.tool(
@@ -162,7 +133,7 @@ export function registerQuickDiagnosis(server: McpServer): void {
           truncateNodeName(n.name, n.type, n.self_size, 50),
           n.type,
           formatBytes(n.retainedSize),
-          getContentPreview(n),
+          getContentPreview(n, 40, 3),
         ]);
         lines.push(
           `## Top ${objRows.length} Objects by Retained Size`,

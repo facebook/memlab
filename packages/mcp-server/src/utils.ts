@@ -1432,6 +1432,48 @@ export function clampLabel(name: string, defaultLen?: number): string {
   );
 }
 
+/** Keep a value on one markdown table row: no line breaks, no `|`. */
+export function sanitizeForTable(s: string): string {
+  return s.replace(/[\n\r\t]/g, ' ').replace(/\|/g, '¦');
+}
+
+/**
+ * A one-cell preview of a node: the start of a string's value (up to
+ * `maxChars`), or the names of an object's first `maxProps` properties and
+ * elements.
+ */
+export function getContentPreview(
+  node: IHeapNode,
+  maxChars: number,
+  maxProps: number,
+): string {
+  if (node.isString) {
+    const strNode = node.toStringNode();
+    if (strNode) {
+      const val = strNode.stringValue;
+      const preview =
+        val.length > maxChars ? val.slice(0, maxChars) + '…' : val;
+      return sanitizeForTable(preview);
+    }
+  }
+  const props: string[] = [];
+  for (const edge of node.references) {
+    if (
+      edge.type === 'property' ||
+      edge.type === 'element' ||
+      edge.type === 'shortcut'
+    ) {
+      props.push(String(edge.name_or_index));
+      if (props.length >= maxProps) break;
+    }
+  }
+  if (props.length > 0) {
+    const more = node.edge_count > props.length ? ', …' : '';
+    return `{${props.join(', ')}${more}}`;
+  }
+  return '';
+}
+
 /** `clampLabel` at exactly `maxLen`, ignoring the session width. */
 export function clampLabelTo(name: string, maxLen: number): string {
   const flat = name.replace(/\s+/g, ' ').trim();
