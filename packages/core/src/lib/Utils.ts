@@ -1792,18 +1792,17 @@ function getSnapshotFilePath(
   return config.externalSnapshotFilePaths[tab.idx - 1];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function equalOrMatch(v1: any, v2: any): boolean {
+function equalOrMatch(v1: unknown, v2: unknown): boolean {
   const t1 = typeof v1;
   const t2 = typeof v2;
   if (t1 === t2) {
     return v1 === v2;
   }
-  if (t1 === 'string' && v2 instanceof RegExp) {
-    return v2.test(v1 as string);
+  if (typeof v1 === 'string' && v2 instanceof RegExp) {
+    return v2.test(v1);
   }
-  if (t2 === 'string' && v1 instanceof RegExp) {
-    return v1.test(v2 as string);
+  if (typeof v2 === 'string' && v1 instanceof RegExp) {
+    return v1.test(v2);
   }
   return false;
 }

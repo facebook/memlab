@@ -197,3 +197,21 @@ test('Check normalizeBaseUrl', async () => {
     'https://a.com/page.htm',
   );
 });
+
+test('Check equalOrMatch', async () => {
+  expect(utils.equalOrMatch('target', 'target')).toBe(true);
+  expect(utils.equalOrMatch('target', 'final')).toBe(false);
+  expect(utils.equalOrMatch(1, 1)).toBe(true);
+  // a string is matched against a RegExp, in either argument position
+  expect(utils.equalOrMatch('target', /^tar/)).toBe(true);
+  expect(utils.equalOrMatch(/^tar/, 'target')).toBe(true);
+  expect(utils.equalOrMatch('final', /^tar/)).toBe(false);
+  // values of different types are never equal
+  expect(utils.equalOrMatch('1', 1)).toBe(false);
+  expect(utils.equalOrMatch(1, /1/)).toBe(false);
+  expect(utils.equalOrMatch(undefined, /.*/)).toBe(false);
+  // two objects compare by identity, so two RegExps never match each other
+  const re = /.*/;
+  expect(utils.equalOrMatch(re, re)).toBe(true);
+  expect(utils.equalOrMatch(/.*/, /.*/)).toBe(false);
+});
