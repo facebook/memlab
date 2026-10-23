@@ -218,3 +218,32 @@ test('Check equalOrMatch', async () => {
   expect(utils.equalOrMatch(re, re)).toBe(true);
   expect(utils.equalOrMatch(/.*/, /.*/)).toBe(false);
 });
+
+test('Check mapToObject and objectToMap', async () => {
+  const map = new Map([
+    ['branch', 'main'],
+    ['gk', 'on'],
+  ]);
+  const obj = utils.mapToObject(map);
+  expect(obj).toEqual({branch: 'main', gk: 'on'});
+  // a null-prototype record, so keys like `__proto__` stay plain entries
+  expect(Object.getPrototypeOf(obj)).toBe(null);
+  const withProtoKey = utils.mapToObject(new Map([['__proto__', 'x']]));
+  expect(Object.keys(withProtoKey)).toEqual(['__proto__']);
+  expect(withProtoKey['__proto__']).toBe('x');
+  expect(utils.mapToObject(new Map())).toEqual({});
+
+  // insertion order survives a round trip
+  const back = utils.objectToMap(obj);
+  expect(Array.from(back.entries())).toEqual([
+    ['branch', 'main'],
+    ['gk', 'on'],
+  ]);
+  // only own enumerable keys are copied
+  const inherited = Object.create({fromProto: 'no'});
+  inherited.own = 'yes';
+  expect(Array.from(utils.objectToMap(inherited).entries())).toEqual([
+    ['own', 'yes'],
+  ]);
+  expect(utils.objectToMap({}).size).toBe(0);
+});
