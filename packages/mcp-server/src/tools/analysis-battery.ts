@@ -40,6 +40,7 @@ import {z} from 'zod';
 import type {RunManifest} from '../run-manifest.js';
 import {loadRunManifest} from '../run-manifest.js';
 import {hasInvariants} from '../judges.js';
+import {resolveProbeSet} from '../probe-sets.js';
 import {getRegisteredTool} from '../tool-registry.js';
 import {makeProgressReporter} from '../progress.js';
 import {snapshotExists} from '../snapshot-index.js';
@@ -378,6 +379,11 @@ const DIGEST_PATTERNS: ReadonlyArray<{tool: RegExp; re: RegExp; max: number}> =
       max: 6,
     },
     {tool: /positive_controls/, re: /PASS|FAIL|n\/a/, max: 4},
+    {
+      tool: /ladder_probe/,
+      re: /^_Probe set|^### `|^\*\*Rate:|^\*\*Expectation:|^\*\*UNMEASURED|^\*\*-?[\d,.]+ → /,
+      max: 40,
+    },
     {tool: /^memlab_census$/, re: /^\| [a-z_:]+ /, max: 14},
     {
       tool: /judges/,
@@ -912,6 +918,12 @@ export function registerAnalysisBattery(server: McpServer): void {
         .describe(
           'Tools to leave out of the profile, e.g. ["memlab_auto_investigate", "quick_diagnosis"] (the `memlab_` prefix is optional). For a deep battery whose answers you already have another way. `memlab_load_snapshot` cannot be skipped.',
         ),
+      probes: z
+        .string()
+        .optional()
+        .describe(
+          'A probe set saved with `memlab_probes` to measure at every rung (a `memlab_ladder_probe` step, with OK / VIOLATED per probe that has an `expect`). Default: the set whose `match` appears in the round\'s URL filter, if exactly one does. `"none"` turns it off.',
+        ),
       async: z
         .boolean()
         .optional()
@@ -930,6 +942,7 @@ export function registerAnalysisBattery(server: McpServer): void {
         wait_for_rungs,
         wait_timeout_ms,
         skip,
+        probes,
         async: runAsync,
       },
       extra,
@@ -1070,22 +1083,33 @@ export function registerAnalysisBattery(server: McpServer): void {
         const hasSettleRung =
           manifest.settleRungPath != null &&
           snapshotExists(manifest.settleRungPath);
+        const probeSet =
+          probes === 'none' ? null : resolveProbeSet(probes, run_dir);
+        const basePlan = buildPlan(
+          profile,
+          run_dir,
+          finalRung,
+          baseRung,
+          hasSettleRung,
+          manifest.positiveControls.length > 0,
+          hasInvariants(run_dir),
+        );
+        if (probeSet != null) {
+          // With the ladder steps, before the deep dive's load: the rungs
+          // they kept parsed are reused.
+          const at = basePlan.findIndex(
+            st => st.tool === 'memlab_load_snapshot',
+          );
+          basePlan.splice(at < 0 ? basePlan.length : at, 0, {
+            tool: 'memlab_ladder_probe',
+            args: {run_dir, probes: probeSet.name},
+          });
+        }
         const {
           plan,
           skipped: skippedTools,
           refused: refusedSkips,
-        } = applySkip(
-          buildPlan(
-            profile,
-            run_dir,
-            finalRung,
-            baseRung,
-            hasSettleRung,
-            manifest.positiveControls.length > 0,
-            hasInvariants(run_dir),
-          ),
-          skip,
-        );
+        } = applySkip(basePlan, skip);
 
         const progress = makeProgressReporter(extra, 'battery');
         const tracked: BatteryRun = {

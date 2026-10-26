@@ -25,6 +25,7 @@ import {
   computeReachableWithoutDevRoots,
 } from './dev-artifacts.js';
 import type {IHeapSnapshot} from '@memlab/core';
+import {resolveProbeSet} from '../probe-sets.js';
 import {
   errorResult,
   formatNumber,
@@ -202,6 +203,12 @@ export function registerAbCompare(server: McpServer): void {
         .describe(
           'name -> probe code, or name -> {code, cap}. Each probe assigns a number to `result`.',
         ),
+      probes: z
+        .string()
+        .optional()
+        .describe(
+          "A probe set saved with `memlab_probes`, compared alongside `metrics` (with each probe's `cap`). Without `metrics`, the set whose `match` appears in the round's URL filter is used.",
+        ),
       census: z
         .array(z.string())
         .optional()
@@ -236,6 +243,7 @@ export function registerAbCompare(server: McpServer): void {
     async ({
       run_dir,
       metrics,
+      probes: probeSet,
       census,
       prelude,
       timeout_ms,
@@ -246,6 +254,26 @@ export function registerAbCompare(server: McpServer): void {
         const specs = Object.entries(
           (metrics ?? {}) as Record<string, MetricSpec>,
         );
+        const picked =
+          probeSet != null && probeSet !== ''
+            ? resolveProbeSet(probeSet, run_dir)
+            : specs.length === 0
+              ? resolveProbeSet(undefined, run_dir)
+              : null;
+        if (picked != null) {
+          for (const [name, p] of Object.entries(picked.set.probes)) {
+            // A metric the caller named wins over a set probe of that name.
+            if (specs.some(([n]) => n === name)) continue;
+            specs.push([name, {code: p.code, cap: p.cap}]);
+          }
+          // The set's probes need its prelude; the caller's runs after it.
+          if (picked.set.prelude != null) {
+            prelude =
+              prelude == null
+                ? picked.set.prelude
+                : `${picked.set.prelude}\n${prelude}`;
+          }
+        }
         const builtins = BUILTIN.filter(b => (census ?? []).includes(b.name));
         const unknown = (census ?? []).filter(
           c => !BUILTIN.some(b => b.name === c),
@@ -460,6 +488,12 @@ export function registerAbCompare(server: McpServer): void {
           '',
           `OFF arm: ${off.paths.length} rungs, cycles ${off.cycles.join(', ')}. ON arm: ${on.paths.length} rungs, cycles ${on.cycles.join(', ')}. Each arm is fitted against its own cycles.`,
           '',
+          ...(picked != null
+            ? [
+                `_Probe set \`${picked.name}\`${picked.auto ? ` (its \`match\` \`${picked.set.match}\` is in the round's URL filter)` : ''}._`,
+                '',
+              ]
+            : []),
           markdownTable(
             [
               'Metric',

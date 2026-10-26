@@ -408,6 +408,10 @@ const GROUPS: Group[] = [
         'Captured variables no live code can read, heap-wide: a value kept alive only because it shares a closure Context with a sibling closure that is still alive. Needs a V8 15.6+ (Chrome 156+) capture.',
       ],
       [
+        'memlab_probes',
+        "Save an app's probes once (code, `cap`, `expect` flat/bounded) in a named set; `ladder_probe`, `ab_compare` and the battery run a set whose `match` is in the round's URL filter, with OK / VIOLATED per probe.",
+      ],
+      [
         'memlab_element_census',
         'Retained React elements and fibers by component: fibers mounted / alternate / detached, elements by holder (mounted tree, closure, update queue, dev debug field…); per-rung growth with `run_dir`.',
       ],

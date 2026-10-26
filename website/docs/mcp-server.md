@@ -260,6 +260,23 @@ temporaries is labelled as this artifact. A production compile calls the hook
 directly and does not create it: read the module from a production capture
 with `memlab_module_source` and `compare_to` to confirm.
 
+### Saved probes
+
+A hunt on one app measures the same few populations every round. Save each
+once with `memlab_probes`: `memlab_eval` code that assigns a number to
+`result`, plus an optional `expect` (`flat` or `bounded`) and `cap`. Probes
+live in named sets in `~/.memlab/probes.json`. Give a set a `match`, a
+substring of the round's URL filter, and `memlab_ladder_probe`,
+`memlab_ab_compare` and `memlab_analysis_battery` run it without being asked,
+printing OK or VIOLATED for every probe that has an `expect`. Any of them also
+takes `probes: "<set>"`.
+
+```js
+memlab_probes({mode: 'save', set: 'myapp', match: 'myapp.example.com',
+  name: 'open_dialogs', code: "result = helpers.byClass('Dialog').length",
+  expect: 'flat'})
+```
+
 ## Reading the numbers
 
 memlab and the browser's own heap profiler read the same snapshot, but a few

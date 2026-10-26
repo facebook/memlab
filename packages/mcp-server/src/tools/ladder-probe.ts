@@ -27,6 +27,8 @@ import {
 import {runEval, storedFnSources} from './eval.js';
 import {snapshotExists} from '../snapshot-index.js';
 import {resolveLadderPaths} from './ladder.js';
+import {judgeExpectation, resolveProbeSet} from '../probe-sets.js';
+import type {ProbeExpectation} from '../probe-sets.js';
 import {
   describeCycleAxis,
   ladderSpanSeconds,
@@ -799,6 +801,12 @@ export function registerLadderProbe(server: McpServer): void {
         .describe(
           'Exact cumulative cycle count at each rung, when the ladder is NOT evenly spaced (the common case — rungs are placed on a schedule, not at equal intervals). Must match `paths` in length; overrides `cycles`.',
         ),
+      probes: z
+        .string()
+        .optional()
+        .describe(
+          "A probe set saved with `memlab_probes`, measured alongside `code` / `metrics`. With neither given and a `run_dir`, the set whose `match` appears in the round's URL filter is used. Probes with an `expect` get an OK / VIOLATED line.",
+        ),
       visibility_probe: z
         .string()
         .optional()
@@ -853,6 +861,7 @@ export function registerLadderProbe(server: McpServer): void {
       paths,
       code,
       metrics,
+      probes,
       cycles,
       cycles_per_rung,
       visibility_probe,
@@ -989,17 +998,42 @@ export function registerLadderProbe(server: McpServer): void {
 
         // `code` and `metrics` are the same feature at different arities; one
         // pass over the ladder answers either.
-        const metricList: Array<{name: string; code: string}> = [];
+        const metricList: Array<{
+          name: string;
+          code: string;
+          expect?: ProbeExpectation;
+          cap?: number;
+        }> = [];
         if (code != null && code.trim() !== '') {
           metricList.push({name: label ?? 'probe', code});
         }
         for (const [name, mCode] of Object.entries(metrics ?? {})) {
           metricList.push({name, code: mCode});
         }
+        const picked =
+          probes != null && probes !== ''
+            ? resolveProbeSet(probes, run_dir)
+            : metricList.length === 0
+              ? resolveProbeSet(undefined, run_dir)
+              : null;
+        if (picked != null) {
+          for (const [name, p] of Object.entries(picked.set.probes)) {
+            // A metric the caller named wins over a set probe of that name.
+            if (metricList.some(m => m.name === name)) continue;
+            metricList.push({name, code: p.code, expect: p.expect, cap: p.cap});
+          }
+          // The set's probes need its prelude; the caller's runs after it.
+          if (picked.set.prelude != null) {
+            prelude =
+              prelude == null
+                ? picked.set.prelude
+                : `${picked.set.prelude}\n${prelude}`;
+          }
+        }
         if (metricList.length === 0) {
           return errorResult(
             new Error(
-              'Pass `code` for a single probe, or `metrics` for several measured in one pass over the ladder.',
+              'Pass `code` for a single probe, `metrics` for several measured in one pass over the ladder, or `probes` for a set saved with `memlab_probes`.',
             ),
           );
         }
@@ -1219,6 +1253,12 @@ export function registerLadderProbe(server: McpServer): void {
           );
           lines.push('');
         }
+        if (picked != null) {
+          lines.push(
+            `_Probe set \`${picked.name}\`${picked.auto ? ` (its \`match\` \`${picked.set.match}\` is in the round's URL filter)` : ''}._`,
+            '',
+          );
+        }
         // State how the axis was obtained. A reader cannot otherwise tell a
         // measured axis from an assumed one, and the tables look identical.
         lines.push(describeCycleAxis(axisSource, cycles_per_rung ?? null));
@@ -1368,6 +1408,10 @@ export function registerLadderProbe(server: McpServer): void {
           lines.push(
             `**${formatNumber(first)} → ${formatNumber(last)}** (Δ ${delta >= 0 ? '+' : ''}${formatNumber(delta)}) across ${usable.length} usable rung(s).`,
           );
+          const expectation = judgeExpectation(headerYs, m.expect, m.cap);
+          if (expectation != null) {
+            lines.push(`**Expectation:** ${expectation}`);
+          }
           // `singleX` is tested FIRST: when both apply, the assumed-axis text
           // tells the reader to pass `run_dir`/`cycles_per_rung`, which fixes
           // nothing if every rung shares one cycle count. Same withheld rate,

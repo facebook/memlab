@@ -142,10 +142,10 @@ Every tool declares MCP annotations (`readOnlyHint`, `destructiveHint`, `idempot
 | `memlab_eval`, `memlab_eval_across` | The `code` (and `prelude`) you pass |
 | `memlab_for_each` | The `filter_code` / `map_code` / `reduce_code` strings |
 | `memlab_hypothesis` | The `predicate` / `predicates` |
-| `memlab_ladder_probe`, `memlab_replicate` | The probe `code` (and `prelude`) |
+| `memlab_ladder_probe`, `memlab_replicate` | The probe `code` (and `prelude`); `memlab_ladder_probe` also a saved probe set (`probes`, or the set whose `match` is in the round's URL filter) |
 | `memlab_judges`, `memlab_calibrate_judges`, `memlab_switch_matrix` | Invariant probes from `invariants`, `invariants_file`, or a round's `invariants.json` |
-| `memlab_ab_compare` | The probe `metrics` and `prelude` |
-| `memlab_analysis_battery` | Runs `memlab_judges` when the round directory holds an `invariants.json` |
+| `memlab_ab_compare` | The probe `metrics` and `prelude`, and a saved probe set (as for `memlab_ladder_probe`) |
+| `memlab_analysis_battery` | Runs `memlab_judges` when the round directory holds an `invariants.json`, and a saved probe set whose `match` is in the round's URL filter (`probes: "none"` turns it off) |
 | `memlab_batch`, `memlab_start_job` | Can call any other tool, including the ones above |
 
 ### Tools with side effects outside the heap
@@ -157,7 +157,7 @@ Every tool declares MCP annotations (`readOnlyHint`, `destructiveHint`, `idempot
 | `memlab_anonymize_snapshot` | Writes a rewritten snapshot to `output_path` (nothing with `audit_only: true`) |
 | `memlab_analysis_battery` | Writes per-tool reports to `out_dir` (default `<run_dir>/analysis`) |
 | `memlab_finding_index` | Updates the findings file, and `export` writes to the `to` path |
-| `memlab_metric`, `memlab_ladder` | Persist small JSON state files (see [State and Cache Files](#state-and-cache-files)) |
+| `memlab_metric`, `memlab_ladder`, `memlab_probes` | Persist small JSON state files (see [State and Cache Files](#state-and-cache-files)) |
 
 To auto-approve the read-only tools while keeping the rest on manual approval, allowlist the tools you use explicitly. Put the list in `~/.claude/settings.json` (user-level) or `.claude/settings.json` (project-level):
 
@@ -348,6 +348,7 @@ The main list and lookup tools (`memlab_query_objects`, `memlab_class_histogram`
 | `memlab_allocation_sites` | WHO allocated these objects: live objects grouped by the JavaScript stack that allocated them (needs a capture recorded with allocation tracking, e.g. a `.heaptimeline`). |
 | `memlab_retained_by` | Bytes retained ONLY through closure contexts, detached DOM, the DevTools console or event handlers: what removing every such retainer would free, with the largest classes. Filter any query or histogram the same way with `retained_by`. |
 | `memlab_dead_context_variables` | Captured variables no live code can read, heap-wide: a value kept alive only because it shares a closure Context with a sibling closure that is still alive. Needs a V8 15.6+ (Chrome 156+) capture. |
+| `memlab_probes` | Save an app's probes once (code, `cap`, `expect` flat/bounded) in a named set; `ladder_probe`, `ab_compare` and the battery run a set whose `match` is in the round's URL filter, with OK / VIOLATED per probe. |
 | `memlab_element_census` | Retained React elements and fibers by component: fibers mounted / alternate / detached, elements by holder (mounted tree, closure, update queue, dev debug field…); per-rung growth with `run_dir`. |
 | `memlab_error_callsites` | Where retained Error objects were created, from the stack frames V8 captured (survives a truncated `.stack`); groups by top frames, names the JSX site of React `_debugStack` Errors. |
 | `memlab_model_duplicates` | Records that share an identity value (`identity_path`, e.g. `__x_id._serialized`): copies of a one-per-id model, where the extras are held and what they retain; per-rung counts with `run_dir`. |
@@ -546,6 +547,7 @@ The server keeps a few small files so that work survives a restart:
 | `~/.memlab-mcp/findings.json` (or `findings.<workstream>.json`) | `memlab_finding_index` | `MEMLAB_FINDINGS_INDEX` (file, or a directory) |
 | `~/.memlab-mcp/judge-calibration.json` | `memlab_calibrate_judges` | `MEMLAB_JUDGE_LEDGER` |
 | `~/.memlab/metrics.json`, `~/.memlab/eval-store.json` | `memlab_metric`, `helpers.remember` in `memlab_eval` | `MEMLAB_STATE_DIR` |
+| `~/.memlab/probes.json` | `memlab_probes`: saved probe sets, which `memlab_ladder_probe`, `memlab_ab_compare` and `memlab_analysis_battery` run | `MEMLAB_STATE_DIR` |
 | `~/.memlab/battery-caveats.json` | `memlab_analysis_battery`: run.json caveats already printed for a sweep (a round's parent directory), so later rounds print them as one "unchanged" line | `MEMLAB_STATE_DIR` |
 | `$TMPDIR/memlab-cache-<uid>/` | Decompressed `.gz` snapshots (and Manifold fetches), mode `0700` | — |
 
