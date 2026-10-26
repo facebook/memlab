@@ -266,6 +266,10 @@ const GROUPS: Group[] = [
         'Module-scope Maps/Sets/Arrays ranked by what their entries hold, with the owning module and any clear/reset API it already has — memory-pressure candidates in one call.',
       ],
       [
+        'memlab_module_source',
+        'The served source of one module (`__d` span) read from the snapshot: is the fix served (`gate`), is it a dev-compile artifact (`compare_to` a prod capture), what does it do (`grep`).',
+      ],
+      [
         'memlab_source_for_node',
         'Which module\'s code a node belongs to (closure scope chain → Haste module, exact), for going from "which object" to "which file" without code search.',
       ],
