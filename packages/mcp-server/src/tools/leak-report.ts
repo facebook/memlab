@@ -33,6 +33,8 @@ import {
   toolResult,
 } from '../utils.js';
 import {artifactLabel} from '../artifact-classes.js';
+import {ladderShape} from '../ladder-shape.js';
+import {linearFit} from './ladder-probe.js';
 import {
   buildHistogram,
   computeSequenceTrends,
@@ -308,6 +310,64 @@ export function integerRatios(
   return out;
 }
 
+/** Per-cycle (or per-rung) rate of the first and the last ladder step. */
+function stepRates(
+  counts: number[],
+  axis: number[] | null,
+): {first: number; last: number} | null {
+  if (counts.length < 3) return null;
+  const x = (i: number) => axis?.[i] ?? i;
+  const n = counts.length - 1;
+  const first = (counts[1] - counts[0]) / Math.max(x(1) - x(0), 1e-9);
+  const last = (counts[n] - counts[n - 1]) / Math.max(x(n) - x(n - 1), 1e-9);
+  return {first, last};
+}
+
+/**
+ * The last step added under 20% of what the first did, and the steps between
+ * were not a steady post-mount rate: STEP+LINEAR also has a small last step,
+ * and it is a leak.
+ */
+function saturates(counts: number[], axis: number[] | null): boolean {
+  const r = stepRates(counts, axis);
+  if (
+    r == null ||
+    r.first <= 0 ||
+    r.last >= 0.2 * r.first ||
+    ladderShape(counts, axis) === 'STEP+LINEAR'
+  ) {
+    return false;
+  }
+  // Warm-up slows at EVERY step. A steady rate that only drops on the last
+  // step is a leak whose final rung happened to be quiet, not saturation.
+  const x = (i: number) => axis?.[i] ?? i;
+  const rates = counts
+    .slice(1)
+    .map((c, i) => (c - counts[i]) / Math.max(x(i + 1) - x(i), 1e-9));
+  return rates.every((v, i) => i === 0 || v < 0.8 * rates[i - 1]);
+}
+
+function lastStepShare(counts: number[], axis: number[] | null): string {
+  const r = stepRates(counts, axis);
+  return r == null || r.first <= 0
+    ? '?'
+    : Math.round((100 * r.last) / r.first).toString();
+}
+
+/**
+ * ` (STEP+LINEAR, post-step +x/cycle)` when the first rung-to-rung jump is a
+ * mount and the rest grows linearly: the post-step slope is the leak rate, and
+ * the overall Δ/cycle overstates it.
+ */
+function postStepNote(counts: number[], axis: number[] | null): string {
+  if (counts.length < 4 || ladderShape(counts, axis) !== 'STEP+LINEAR') {
+    return '';
+  }
+  const xs = counts.map((_, i) => axis?.[i] ?? i).slice(1);
+  const fit = linearFit(xs, counts.slice(1));
+  return ` (STEP+LINEAR, post-step ${fit.slope >= 0 ? '+' : ''}${fit.slope.toFixed(2)}/${axis != null ? 'cycle' : 'rung'})`;
+}
+
 export function registerLeakReport(server: McpServer): void {
   server.tool(
     'memlab_leak_report',
@@ -446,6 +506,7 @@ export function registerLeakReport(server: McpServer): void {
         });
         paths = inputs.paths;
         cycles = inputs.cycles;
+        const ladderAxis = inputs.cyclesPerRung ?? null;
         // The runner measures the account it drove; asking the caller to
         // copy those counts back in meant they were almost never passed.
         const contentFromRun =
@@ -793,6 +854,7 @@ export function registerLeakReport(server: McpServer): void {
         for (let i = 2; i < headers.length - 2; i++) rightCols.add(i);
 
         let leakCandidates = 0;
+        let saturatingClasses = 0;
         let devOnlyClasses = 0;
         let drainedClasses = 0;
         let heldClasses = 0;
@@ -951,6 +1013,15 @@ export function registerLeakReport(server: McpServer): void {
             verdict = '⏸ at the idle floor — grows without interaction';
           } else if (belowIdleFloor) {
             verdict = '⏸ BELOW the idle floor — idle alone produces more';
+          } else if (
+            r.trend === 'monotonic-up' &&
+            saturates(r.counts, ladderAxis)
+          ) {
+            // Grew at every rung, but the last step adds a fifth of what the
+            // first did: warm-up (preloading, first-open loads) or a cache
+            // filling toward a bound, which went flat on longer ladders.
+            saturatingClasses++;
+            verdict = `↑ every step but SATURATING — last step at ${lastStepShare(r.counts, ladderAxis)}% of the first; extend the ladder before filing`;
           } else if (r.trend === 'monotonic-up') {
             // "LEAK candidate" is the line that gets quoted out of this
             // table, so it must not appear when the evidence that would
@@ -960,8 +1031,8 @@ export function registerLeakReport(server: McpServer): void {
               settleError != null || settleMissing
                 ? '↑ every step — UNSETTLED, the settle rung could not be read'
                 : settle != null
-                  ? '↑ every step AND survived settle — LEAK candidate'
-                  : '↑ every step — LEAK candidate';
+                  ? `↑ every step${postStepNote(r.counts, ladderAxis)} AND survived settle — LEAK candidate`
+                  : `↑ every step${postStepNote(r.counts, ladderAxis)} — LEAK candidate`;
             if (settleError == null && !settleMissing) {
               leakCandidates++;
               // Counted HERE, in the branch that already survived every
@@ -1262,6 +1333,9 @@ export function registerLeakReport(server: McpServer): void {
               : '') +
             (artifactRows.length > 0 && !include_artifacts
               ? `; ${formatNumber(artifactRows.length)} known measurement artifact(s) not shown (\`include_artifacts: true\`)`
+              : '') +
+            (saturatingClasses > 0
+              ? `; ${formatNumber(saturatingClasses)} grew every step but SATURATING (the last step under 20% of the first: warm-up or a filling cache — \`memlab_rate_model\` and a longer ladder decide)`
               : '') +
             '.',
         );

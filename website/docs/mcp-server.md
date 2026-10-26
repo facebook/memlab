@@ -304,6 +304,12 @@ figures are defined or grouped differently:
   beside it. On a dev build a single dev-only hash table can double in size
   partway through a run, and the raw total then grows by megabytes with no
   change in the app.
+- **Warm-up is not a leak.** A class that grows at every rung while each step
+  adds less than the one before (preloading, first-open loads) reads
+  `SATURATING` in `memlab_leak_report` once its last step adds under 20% of
+  what its first did. It is not counted as a leak candidate. A mount followed
+  by steady growth reads `STEP+LINEAR`, with its post-step rate, which is the
+  leak rate; the overall Δ/cycle overstates it.
 - **Named dev-build patterns.** `memlab_dev_artifacts` tags the known
   development-build patterns it finds: `react-compiler-hook-guard`,
   `owner-stack-event-path`, `devtools-console` and `fast-refresh-registry`.

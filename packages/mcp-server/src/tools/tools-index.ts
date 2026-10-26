@@ -295,7 +295,7 @@ const GROUPS: Group[] = [
       ],
       [
         'memlab_leak_report',
-        'The ladder verdict: per-class growth across an ordered set of snapshots.',
+        'The ladder verdict: per-class growth across an ordered set of snapshots; SATURATING (warm-up) and STEP+LINEAR (post-step rate) rows are told apart from linear growth.',
       ],
       [
         'memlab_growth_cohort',
