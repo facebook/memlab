@@ -99,7 +99,8 @@ export function fiberComponentName(fiber: IHeapNode): string | null {
   return null;
 }
 
-function elementTypeName(node: IHeapNode, depth: number): string | null {
+/** The component name of an element's or fiber's `type` value. */
+export function elementTypeName(node: IHeapNode, depth = 0): string | null {
   if (depth > 2) return null;
   if (node.type === 'string' || node.type === 'concatenated string') {
     const value = node.toStringNode()?.stringValue ?? node.name;

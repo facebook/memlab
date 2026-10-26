@@ -408,6 +408,10 @@ const GROUPS: Group[] = [
         'Captured variables no live code can read, heap-wide: a value kept alive only because it shares a closure Context with a sibling closure that is still alive. Needs a V8 15.6+ (Chrome 156+) capture.',
       ],
       [
+        'memlab_element_census',
+        'Retained React elements and fibers by component: fibers mounted / alternate / detached, elements by holder (mounted tree, closure, update queue, dev debug field…); per-rung growth with `run_dir`.',
+      ],
+      [
         'memlab_error_callsites',
         'Where retained Error objects were created, from the stack frames V8 captured (survives a truncated `.stack`); groups by top frames, names the JSX site of React `_debugStack` Errors.',
       ],
