@@ -557,15 +557,26 @@ function nextCalls(runDir: string, perTool: Map<string, string>): string[] {
   // its own sibling, inflating the count and listing the round twice in the
   // suggestion it produced.
   const parent = path.dirname(self);
-  let siblings: string[] = [];
+  let candidates: string[] = [];
   try {
-    siblings = fs
+    candidates = fs
       .readdirSync(parent)
       .map(e => path.resolve(parent, e))
-      .filter(d => d !== self && fs.existsSync(path.join(d, 'run.json')));
+      .filter(d => d !== self && fs.existsSync(path.join(d, 'run.json')))
+      // Numeric-aware, so r9 sorts before r10 and "latest" means latest.
+      .sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
   } catch {
-    siblings = [];
+    candidates = [];
   }
+  // Finished rounds only. Failed smoke attempts and probe directories also
+  // hold a run.json, and listing them all put ~2 KB of paths (28 dirs) into
+  // every digest of one sweep.
+  const siblings = candidates.filter(isUsableRound);
+  const skipped = candidates.length - siblings.length;
+  const skippedNote =
+    skipped > 0
+      ? ` (${skipped} other dir(s) skipped: unfinished, failed, or under ${MIN_USABLE_RUNGS} rungs)`
+      : '';
   if (siblings.length >= 1) {
     // `self`, not `runDir`. The siblings are absolute, so a relative
     // `run_dir` produces a copy-pasteable call whose first entry is resolved
@@ -575,13 +586,19 @@ function nextCalls(runDir: string, perTool: Map<string, string>): string[] {
     const SAMPLE_MAX = 3;
     const sample = [self, ...siblings].slice(0, SAMPLE_MAX);
     out.push(
-      `\`memlab_compare_rounds({run_dirs: ${JSON.stringify(sample)}})\` — ${siblings.length + 1} rounds share \`${parent}\`${siblings.length + 1 > SAMPLE_MAX ? `; the call above names the first ${SAMPLE_MAX}, add the rest` : ''}. ` +
+      `\`memlab_compare_rounds({run_dirs: ${JSON.stringify(sample)}})\` — ${siblings.length + 1} finished rounds share \`${parent}\`${skippedNote}${siblings.length + 1 > SAMPLE_MAX ? `; the call above names the first ${SAMPLE_MAX}, add the rest` : ''}. ` +
         'A per-cycle rate that lands on a whole number, and a population that grew while `app_delta` was negative, are both invisible in one round.',
     );
   }
-  if (siblings.length >= 3) {
+  // hunt_report reads each round's battery output.
+  const analysed = siblings.filter(d =>
+    fs.existsSync(path.join(d, 'analysis')),
+  );
+  if (analysed.length >= 3) {
+    const REPORT_MAX = 8;
+    const latest = analysed.slice(-(REPORT_MAX - 1));
     out.push(
-      `\`memlab_hunt_report({run_dirs: ${JSON.stringify([self, ...siblings])}})\` — ${siblings.length + 1} rounds is a sweep; the write-up is a tool call, not a document to assemble by hand.`,
+      `\`memlab_hunt_report({run_dirs: ${JSON.stringify([...latest, self])}})\` — ${analysed.length + 1} analysed rounds is a sweep${analysed.length + 1 > REPORT_MAX ? `; the call names the latest ${REPORT_MAX}` : ''}; the write-up is a tool call, not a document to assemble by hand.`,
     );
   }
 
@@ -594,6 +611,24 @@ function nextCalls(runDir: string, perTool: Map<string, string>): string[] {
     );
   }
   return out.slice(0, 5);
+}
+
+const MIN_USABLE_RUNGS = 4;
+
+/** A round the runner finished (`round.done` DONE) with enough rungs to compare. */
+function isUsableRound(dir: string): boolean {
+  try {
+    const done = JSON.parse(
+      fs.readFileSync(path.join(dir, 'round.done'), 'utf8'),
+    ) as {status?: unknown; rungs?: unknown};
+    return (
+      done.status === 'DONE' &&
+      typeof done.rungs === 'number' &&
+      done.rungs >= MIN_USABLE_RUNGS
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** `run.json` parsed, or null while it is not a complete JSON document. */
