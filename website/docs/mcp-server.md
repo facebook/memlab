@@ -196,7 +196,7 @@ The server ships about 150 tools, organized by the question they answer:
 | --- | --- |
 | What is this heap made of? | `memlab_app_heap`, `memlab_memory_partition`, `memlab_native_contexts`, `memlab_quick_diagnosis`, `memlab_class_histogram`, `memlab_largest_objects`, `memlab_shape_histogram`, `memlab_what_if` |
 | Is anything growing — and is it a leak? | `memlab_leak_report`, `memlab_shape_census_diff`, `memlab_collection_diff`, `memlab_ladder_probe`, `memlab_rate_model`, `memlab_settle_check`, `memlab_verify_fix` |
-| Who owns the growth / why is X retained? | `memlab_retainer_trace`, `memlab_retainer_summary`, `memlab_trace_all`, `memlab_react_owners`, `memlab_dominator_chain`, `memlab_pinch_points`, `memlab_explain_delta`, `memlab_dead_context_variables`, `memlab_retained_by`, `memlab_allocation_sites` |
+| Who owns the growth / why is X retained? | `memlab_retainer_trace`, `memlab_retainer_summary`, `memlab_trace_all`, `memlab_react_owners`, `memlab_dominator_chain`, `memlab_pinch_points`, `memlab_explain_delta`, `memlab_dead_context_variables`, `memlab_scope_chains`, `memlab_retained_by`, `memlab_allocation_sites` |
 | Is it real, or a measurement artifact? | `memlab_artifact_budget`, `memlab_dev_artifacts`, `memlab_replicate`, `memlab_check_health`, `memlab_module_source` (the module's served source, dev compile vs prod compile) |
 | Detached DOM and event listeners | `memlab_detached_dom`, `memlab_dom_audit`, `memlab_event_listener_leaks`, `memlab_event_registry` |
 | Collections and caches | `memlab_cache_analysis`, `memlab_stale_collections`, `memlab_map_entries`, `memlab_weakref_census`, `memlab_property_distribution` |
@@ -239,6 +239,26 @@ they retain. Each row gives the Context and value ids, ready for
 `memlab_retainer_trace`. For the most accurate results capture with Chrome 157
 or later, which leaves out script-level `let`/`const`. Older snapshots have no
 scope tree, and the tool says so.
+
+### Scope chains
+
+A function that captures a closure from its previous call pins that call's
+whole Context, and so on back to the first call. Every link is a
+`system / Context`, so a chain that grows by one per interaction never shows
+up in a class count. `memlab_scope_chains` follows context → captured closure
+→ that closure's Context, keeping only links between Contexts of the same
+function. For each function it reports the longest chain, the linking
+variables and the head's id. With `run_dir` or `paths` it gives the longest
+chain at every rung, so you can tell a chain that keeps growing from one
+that stops.
+
+The React Compiler's development build makes chains on its own. It wraps each
+hook call in a guard closure that captures the hook's arguments, so the
+compiler temporaries `t0`…`tN` end up in Contexts and cached effect closures
+link each render to the previous one. A chain linked only through those
+temporaries is labelled as this artifact. A production compile calls the hook
+directly and does not create it: read the module from a production capture
+with `memlab_module_source` and `compare_to` to confirm.
 
 ## Reading the numbers
 
