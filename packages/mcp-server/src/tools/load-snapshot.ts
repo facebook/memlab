@@ -44,6 +44,8 @@ import {
   shouldEmitNote,
 } from '../heap-state.js';
 import {makeProgressReporter} from '../progress.js';
+import {getRegisteredTool} from '../tool-registry.js';
+import {startJob} from './jobs.js';
 import type {SnapshotEnv} from '../heap-state.js';
 import {workerTitleFromFile} from '../realm.js';
 import {detectAnonymizedStrings} from '../anonymized-snapshot.js';
@@ -1166,6 +1168,12 @@ export function registerLoadSnapshot(server: McpServer): void {
         .describe(
           'Count-only load: parse the graph but SKIP the dominator / retained-size / shortest-path pass (default false). Roughly halves load time (measured on a 380 MB / 4.19M-node capture: 18s → 8s) for questions that only need counts, names, types, self sizes or string values. The saving is time, not memory — the parsed graph is the bulk of the working set. A light snapshot REFUSES any tool that needs retained sizes, dominators or retainer paths (memlab_retainer_trace, memlab_detached_dom, memlab_largest_objects, memlab_dominator_*, …) instead of silently reporting zeros; reload without light to run those. Light-safe: memlab_class_histogram (include_retained_size:false), memlab_search_nodes, memlab_search_strings, memlab_string_patterns, memlab_snapshot_summary, memlab_snapshot_header, memlab_snapshots.',
         ),
+      async: z
+        .boolean()
+        .optional()
+        .describe(
+          'Load as a background job and return a job id at once; collect the load report with memlab_job_status. For a 400 MB+ capture whose parse and dominator pass outlast the client tool timeout (~120 s). The parse blocks the server, so a poll sent during it is answered when that pass ends. The snapshot becomes active when the job finishes.',
+        ),
     },
     async (
       {
@@ -1181,9 +1189,38 @@ export function registerLoadSnapshot(server: McpServer): void {
         force,
         force_reload,
         light,
+        async: background,
       },
       extra: unknown,
     ) => {
+      if (background === true) {
+        const self = getRegisteredTool('memlab_load_snapshot');
+        if (self == null) {
+          return errorResult('memlab_load_snapshot is not registered');
+        }
+        const args = {
+          file_path,
+          alias,
+          keep_previous,
+          quiet,
+          repeat_notes,
+          suppress_suggestions,
+          max_file_size_mb,
+          max_nodes,
+          max_edges,
+          force,
+          force_reload,
+          light,
+        };
+        const job = startJob('memlab_load_snapshot', jobExtra =>
+          self.handler(args, jobExtra),
+        );
+        if (typeof job === 'string') return errorResult(new Error(job));
+        return textResult(
+          `Started loading \`${path.basename(file_path)}\` as job \`${job.id}\`. ` +
+            `Poll with \`memlab_job_status({job_id: "${job.id}"})\`; the snapshot becomes active when it finishes.`,
+        );
+      }
       // BEFORE any early return. Reset at the diagnosis phase, this sat
       // behind the resident-cache hit and behind every guard that returns an
       // error, so `repeat_notes: true` on a cache hit did nothing at all and

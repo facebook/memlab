@@ -317,7 +317,8 @@ give a ladder in three ways:
 - **`ladder:<name>`:** a name registered once with `memlab_ladder`.
 
 Ladder tools can run longer than an assistant's tool timeout. Start them with
-`memlab_start_job` and collect the result with `memlab_job_status`. Every call
+`memlab_start_job` and collect the result with `memlab_job_status`. A large
+snapshot can be loaded the same way with `memlab_load_snapshot({async: true})`. Every call
 also runs under a wall-clock budget (90 s by default; override it with
 `timeout_ms` or `MEMLAB_ANALYSIS_TIMEOUT_MS`), so a runaway scan returns a clean
 "analysis stopped" result instead of wedging the server.
