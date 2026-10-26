@@ -277,6 +277,37 @@ function buildPlan(
 }
 
 /**
+ * The output file stem for each step of a plan. A tool that runs twice (the
+ * ladder pass and the single-snapshot pass of `memlab_detached_dom`, or of
+ * `memlab_event_registry` in the deep profile) used to write both runs to
+ * `<tool>.txt`, so the second silently replaced the first. A repeated tool is
+ * suffixed by what tells its runs apart: `.ladder` for the run over the round,
+ * its `group_by` if it has one, else `.snapshot`.
+ */
+export function outputStems(plan: readonly Step[]): string[] {
+  const count = new Map<string, number>();
+  for (const st of plan) count.set(st.tool, (count.get(st.tool) ?? 0) + 1);
+  const used = new Set<string>();
+  return plan.map(st => {
+    let stem = st.tool;
+    if ((count.get(st.tool) ?? 0) > 1) {
+      const a = st.args;
+      const variant =
+        a.run_dir != null
+          ? 'ladder'
+          : typeof a.group_by === 'string'
+            ? a.group_by
+            : 'snapshot';
+      stem = `${st.tool}.${variant}`;
+    }
+    for (let n = 2; used.has(stem); n++)
+      stem = `${stem.replace(/\.\d+$/, '')}.${n}`;
+    used.add(stem);
+    return stem;
+  });
+}
+
+/**
  * The plan without the tools the caller asked to skip. `memlab_load_snapshot`
  * cannot be skipped: every single-snapshot tool after it reads the rung it
  * loads.
@@ -363,7 +394,12 @@ const DIGEST_PATTERNS: ReadonlyArray<{tool: RegExp; re: RegExp; max: number}> =
 const ROW_TABLE_TOOLS =
   /leak_report|cache_analysis|stale_collections|growth_signals|react_update_queues/;
 
-function digestFor(tool: string, text: string, digestRows?: number): string[] {
+function digestFor(
+  tool: string,
+  text: string,
+  digestRows?: number,
+  fileStem: string = tool,
+): string[] {
   const spec = DIGEST_PATTERNS.find(p => p.tool.test(tool));
   if (!spec) return [];
   const rowBudget =
@@ -418,7 +454,7 @@ function digestFor(tool: string, text: string, digestRows?: number): string[] {
   }
   if (suppressed > 0) {
     out.push(
-      `_… ${suppressed} more row(s) in \`${tool}.txt\` (\`digest_rows\`)._`,
+      `_… ${suppressed} more row(s) in \`${fileStem}.txt\` (\`digest_rows\`)._`,
     );
   }
   return out;
@@ -972,7 +1008,9 @@ export function registerAnalysisBattery(server: McpServer): void {
           // write), and a progress line that goes backwards reads as a hang.
           let finished = 0;
 
-          for (const step of plan) {
+          const stems = outputStems(plan);
+          for (const [stepIndex, step] of plan.entries()) {
+            const stem = stems[stepIndex];
             finished++;
             // A load that never RAN leaves the previous round's snapshot resident,
             // which is the same wrong answer as a load that ran and failed — so
@@ -1024,13 +1062,14 @@ export function registerAnalysisBattery(server: McpServer): void {
               loadFailed = true;
             }
             const ms = Date.now() - started;
-            const file = path.join(outDir, `${step.tool}.txt`);
+            const file = path.join(outDir, `${stem}.txt`);
             // Recorded BEFORE the write: the app_delta headline is lifted
             // from this map, and a failed disk write is no reason to lose it.
-            perToolText.set(step.tool, text);
+            // Keyed by stem, which is the tool name for a tool run once.
+            perToolText.set(stem, text);
             try {
               fs.writeFileSync(file, text, 'utf8');
-              written.push({tool: step.tool, bytes: text.length, ms});
+              written.push({tool: stem, bytes: text.length, ms});
             } catch (err: unknown) {
               // Inside the per-step boundary, like the tool call above it. A
               // write failure — a full disk being the realistic one, and this
@@ -1045,9 +1084,9 @@ export function registerAnalysisBattery(server: McpServer): void {
             }
             tracked.doneSteps = finished;
 
-            const d = digestFor(step.tool, text, digest_rows);
+            const d = digestFor(step.tool, text, digest_rows, stem);
             if (d.length > 0) {
-              digestLines.push(`### ${step.tool}`, ...d, '');
+              digestLines.push(`### ${stem}`, ...d, '');
             }
           }
 
