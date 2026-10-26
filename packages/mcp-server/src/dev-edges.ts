@@ -26,6 +26,7 @@
 import type {IHeapEdge, IHeapNode, IHeapSnapshot} from '@memlab/core';
 import {ScanTimeoutError, tickAnalysis} from './analysis-budget.js';
 import {classifyModuleName} from './dev-modules.js';
+import {clampLabel} from './utils.js';
 
 /**
  * Globals installed by browser dev tools / extensions. Anything retained ONLY
@@ -359,14 +360,19 @@ export function shortestPathAvoidingDevEdges(
 }
 
 /** `root .edge → Name @id …`, eliding the middle of a long path. */
+const PATH_NAME_MAX = 60;
+
 export function formatProductionPath(
   steps: Array<{node: IHeapNode; edgeName: string}>,
   maxHops = 12,
 ): string {
+  // A C++ root or a frame symbol can be hundreds of characters long, and one
+  // leak-report bullet reached 1,127 of them.
+  const name = (node: IHeapNode) => clampLabel(node.name, PATH_NAME_MAX);
   const hops = steps.map((st, i) =>
     i === 0
-      ? st.node.name
-      : `.${steps[i - 1].edgeName} → ${st.node.name} @${st.node.id}`,
+      ? name(st.node)
+      : `.${steps[i - 1].edgeName} → ${name(st.node)} @${st.node.id}`,
   );
   if (hops.length <= maxHops) return hops.join(' ');
   const head = Math.floor(maxHops / 3);

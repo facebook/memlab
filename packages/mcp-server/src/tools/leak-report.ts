@@ -131,7 +131,7 @@ interface Evidence {
  * multi-megabyte string names reaching the parts of the report that did not
  * truncate.
  */
-const DISPLAY_NAME_MAX = 120;
+const DISPLAY_NAME_MAX = 60;
 
 function displayName(row: {name: string; type: string}): string {
   return row.name.length > 0
@@ -150,7 +150,7 @@ function displayName(row: {name: string; type: string}): string {
  * newline collapse matters as much as the length cap: an embedded newline also
  * breaks out of the markdown bullet it was sitting in.
  */
-const PROSE_NAME_MAX = 80;
+const PROSE_NAME_MAX = 60;
 
 /**
  * Past this, a class name is not inlined into a copy-paste tool call at all.
@@ -991,7 +991,7 @@ export function registerLeakReport(server: McpServer): void {
             if (hop != null) {
               const prod = shortestPathAvoidingDevEdges(snapshot, probe);
               productionPaths.push(
-                `\`${clampLabel(label, 60)}\` (@${probe.id}, shortest path via \`.${hop.edgeName}\`, ${hop.reason}): ` +
+                `\`${label}\` (@${probe.id}, shortest path via \`.${hop.edgeName}\`, ${hop.reason}): ` +
                   (prod.kind === 'found'
                     ? formatProductionPath(prod.steps, 8)
                     : prod.kind === 'none'
@@ -1056,7 +1056,7 @@ export function registerLeakReport(server: McpServer): void {
               const g = growthRetainer(ev);
               if (g.populationLabel != null) {
                 retainerSplits.push(
-                  `\`${label}\`: newest → \`${clampLabel(g.label, 120)}\`, population at large → \`${clampLabel(g.populationLabel, 120)}\``,
+                  `\`${label}\`: newest → \`${clampLabel(g.label, 60)}\`, population at large → \`${clampLabel(g.populationLabel, 60)}\``,
                 );
               }
               const shown =
