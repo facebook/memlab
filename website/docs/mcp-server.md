@@ -305,7 +305,11 @@ while one interaction repeats. Most of them load each rung transiently and
 release it, so a long ladder doesn't have to fit in memory at once.
 `memlab_analysis_battery` runs several of them over the same rungs, so it
 keeps rungs parsed between its steps while memory allows
-(`MEMLAB_RETAIN_RUNGS` caps how many). You can
+(`MEMLAB_RETAIN_RUNGS` caps how many). It writes `battery.done.json` to its
+output directory last, so a script can wait on that one file;
+`memlab_battery_status({battery_id, wait_ms})` waits for it from the assistant
+side, and `wait_for_rungs: "all"` queues a battery until the round's
+`round.done` marker appears. You can
 give a ladder in three ways:
 
 - **`paths`:** an ordered list of snapshot files. Cycle counts are read from

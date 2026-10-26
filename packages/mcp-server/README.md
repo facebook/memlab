@@ -302,7 +302,7 @@ The main list and lookup tools (`memlab_query_objects`, `memlab_class_histogram`
 | `memlab_analysis_battery` | Run a whole round's analysis in one call, write per-tool detail to disk, return only a digest — the way to read a multi-round sweep without spending a context window on it. |
 | `memlab_retention_windows` | What windows could BOUND this population — timeouts, TTLs, cleanup intervals? Run it before calling any growth unbounded: a ladder shorter than the app's window cannot tell a leak from a working set. |
 | `memlab_prune_run` | Reclaim the disk a round occupies by gzipping its rungs (still analysable) or deleting them. A sweep is tens of GB. |
-| `memlab_battery_status` | Poll a `memlab_analysis_battery({async: true})` run and collect its report when it finishes. |
+| `memlab_battery_status` | Wait on a `memlab_analysis_battery({async: true})` run (`wait_ms`, up to 110 s) and collect its report when it finishes; `battery.done.json` in its output directory is written last. |
 | `memlab_start_job` | Run ANY tool in the background and get a job id at once — for ladder tools that would outlive the client tool timeout. |
 | `memlab_positive_controls` | Measure the round's declared positive controls — known accumulators — so a flat result can be trusted as clean rather than blind. |
 | `memlab_judges` | Judge a round against its stated invariants at rest — PASS / LEAK / BACKLOG / UNSETTLED / UNVERIFIED per plain-words claim, every probe on every rung and the settle rung in one pass. |

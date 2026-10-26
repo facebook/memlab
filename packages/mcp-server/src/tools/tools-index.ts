@@ -239,7 +239,7 @@ const GROUPS: Group[] = [
       ],
       [
         'memlab_battery_status',
-        'Poll a `memlab_analysis_battery({async: true})` run and collect its report when it finishes.',
+        'Wait on a `memlab_analysis_battery({async: true})` run (`wait_ms`, up to 110 s) and collect its report when it finishes; `battery.done.json` in its output directory is written last.',
       ],
       [
         'memlab_start_job',

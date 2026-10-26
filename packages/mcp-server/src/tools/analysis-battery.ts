@@ -660,7 +660,7 @@ function readSettledManifest(runDir: string, want: number): RunManifest | null {
  */
 async function waitForReadyRungs(
   runDir: string,
-  want: number,
+  want: number | 'all',
   timeoutMs: number,
   signal?: AbortSignal,
 ): Promise<{ready: number; elapsedMs: number; manifest: RunManifest | null}> {
@@ -700,7 +700,20 @@ async function waitForReadyRungs(
       );
     }
     const ready = countReady();
-    if (ready >= want) {
+    if (want === 'all') {
+      // The runner writes `round.done` after the last rung and the final
+      // run.json, so every rung it lists is ready.
+      if (fs.existsSync(path.join(runDir.replace(/\/$/, ''), 'round.done'))) {
+        const settled = readSettledManifest(runDir, 0);
+        if (settled != null) {
+          return {
+            ready: settled.paths.length,
+            elapsedMs: Date.now() - started,
+            manifest: settled,
+          };
+        }
+      }
+    } else if (ready >= want) {
       const settled = readSettledManifest(runDir, want);
       if (settled != null) {
         return {ready, elapsedMs: Date.now() - started, manifest: settled};
@@ -755,12 +768,10 @@ export function registerAnalysisBattery(server: McpServer): void {
           'Budget for the whole battery. Checked BETWEEN steps — a whole-heap pass is one synchronous block and cannot be interrupted — so the guarantee is that no NEW step starts past the deadline.',
         ),
       wait_for_rungs: z
-        .number()
-        .int()
-        .min(2)
+        .union([z.number().int().min(2), z.literal('all')])
         .optional()
         .describe(
-          'Wait until this many rungs have a `.ready` marker AND run.json lists them, before starting, instead of failing on a round still being driven. The runner writes `<rung>.ready` as each capture completes, which is what makes "analyse rung N while N+1 is driving" possible — but nothing in the analysis tools watched for it, so analysis could only begin once the whole round was over. The manifest is part of the wait because the runner rewrites run.json in place after writing the marker, so the moment the markers are satisfied is exactly when that file may be half-written. Times out after `wait_timeout_ms` and reports how many rungs it saw. The wait happens BEFORE the plan is built (the plan is derived from run.json, which is not final until the rungs are), so it also precedes the handle returned by `async` — see that parameter.',
+          '`"all"` waits for the runner\'s `round.done` marker and then analyses every rung run.json lists, so a battery can be queued the moment a round starts. A number waits until this many rungs have a `.ready` marker AND run.json lists them, before starting, instead of failing on a round still being driven. The runner writes `<rung>.ready` as each capture completes, which is what makes "analyse rung N while N+1 is driving" possible — but nothing in the analysis tools watched for it, so analysis could only begin once the whole round was over. The manifest is part of the wait because the runner rewrites run.json in place after writing the marker, so the moment the markers are satisfied is exactly when that file may be half-written. Times out after `wait_timeout_ms` and reports how many rungs it saw. The wait happens BEFORE the plan is built (the plan is derived from run.json, which is not final until the rungs are), so it also precedes the handle returned by `async` — see that parameter.',
         ),
       wait_timeout_ms: z
         .number()
@@ -821,12 +832,15 @@ export function registerAnalysisBattery(server: McpServer): void {
             const secs = formatNumber(Math.round(waited.elapsedMs / 1000));
             return errorResult(
               new Error(
-                waited.ready < wait_for_rungs
-                  ? `waited ${secs}s for ${wait_for_rungs} ready rung(s) and saw ${waited.ready}. ` +
+                wait_for_rungs === 'all'
+                  ? `waited ${secs}s for \`round.done\` in ${run_dir} and it never appeared (${waited.ready} rung(s) ready so far). ` +
+                      'The runner writes it when the round ends; a round still driving needs a longer `wait_timeout_ms`, and one that died never writes it.'
+                  : waited.ready < wait_for_rungs
+                    ? `waited ${secs}s for ${wait_for_rungs} ready rung(s) and saw ${waited.ready}. ` +
                       'The runner writes `<rung>.ready` as each capture completes; a round that has stopped writing them has ' +
                       'either finished with fewer rungs than expected or died. Check the runner, or re-run without ' +
                       '`wait_for_rungs` to analyse what is there.'
-                  : `waited ${secs}s: ${wait_for_rungs} ready rung(s) arrived, but run.json never settled into a complete ` +
+                    : `waited ${secs}s: ${wait_for_rungs} ready rung(s) arrived, but run.json never settled into a complete ` +
                       'manifest listing that many. The runner rewrites it in place after each capture, so a half-written read ' +
                       'is retried for the rest of the budget — exhausting that budget means the round is writing markers ' +
                       'without extending the manifest. Check the runner, or drop `wait_for_rungs` to analyse what is listed.',
@@ -1282,11 +1296,69 @@ export function registerAnalysisBattery(server: McpServer): void {
           release();
         };
 
+        // Written LAST, so a shell or another session can wait on one file
+        // instead of guessing from which `<tool>.txt` files exist (several
+        // exist before the final step). A stale marker from an earlier run
+        // into this directory is removed first, before any handle returns.
+        const doneFile = path.join(outDir, 'battery.done.json');
+        const reportFile = path.join(outDir, 'battery.md');
+        fs.rmSync(doneFile, {force: true});
+        const mark = (status: 'done' | 'failed', error?: string): void => {
+          const finishedAt = Date.now();
+          try {
+            fs.writeFileSync(
+              doneFile,
+              JSON.stringify(
+                {
+                  status,
+                  battery_id: tracked.id,
+                  run_dir,
+                  profile,
+                  out_dir: outDir,
+                  started_at: new Date(tracked.startedAt).toISOString(),
+                  finished_at: new Date(finishedAt).toISOString(),
+                  elapsed_s: Math.round(
+                    (finishedAt - tracked.startedAt) / 1000,
+                  ),
+                  // Null when the report could not be written; `error` says why.
+                  report:
+                    status === 'done' && error == null ? reportFile : null,
+                  error: error ?? null,
+                },
+                null,
+                2,
+              ),
+            );
+          } catch (err: unknown) {
+            process.stderr.write(
+              `[battery ${tracked.id}] could not write ${doneFile}: ${String(err)}\n`,
+            );
+          }
+        };
+        const executeAndMark = async (): Promise<string> => {
+          try {
+            const text = await execute();
+            let writeError: string | undefined;
+            try {
+              fs.writeFileSync(reportFile, text, 'utf8');
+            } catch (err: unknown) {
+              // The run finished; only the file is missing. The report is
+              // still returned to the caller.
+              writeError = `could not write ${reportFile}: ${String(err)}`;
+            }
+            mark('done', writeError);
+            return text;
+          } catch (err: unknown) {
+            mark('failed', err instanceof Error ? err.message : String(err));
+            throw err;
+          }
+        };
+
         // Synchronous by default: a short battery answered inline is simpler
         // than a handle nobody has to poll.
         if (runAsync !== true) {
           try {
-            return toolResult(await execute());
+            return toolResult(await executeAndMark());
           } finally {
             finish();
           }
@@ -1304,7 +1376,7 @@ export function registerAnalysisBattery(server: McpServer): void {
           finish();
           throw e;
         }
-        void execute().then(
+        void executeAndMark().then(
           text => {
             tracked.result = text;
             tracked.finishedAt = Date.now();
@@ -1334,7 +1406,7 @@ export function registerAnalysisBattery(server: McpServer): void {
             '',
             `\`${path.basename(run_dir.replace(/\/$/, ''))}\` (${profile}), ${plan.length} tool(s), writing to \`${outDir}/\`.`,
             '',
-            `Poll it with \`memlab_battery_status({battery_id: "${tracked.id}"})\`. The full report comes back from that call once it finishes; per-tool output lands in \`${outDir}/<tool>.txt\` as each step completes, so a specific question can be answered before the whole battery is done.`,
+            `Wait on it with \`memlab_battery_status({battery_id: "${tracked.id}", wait_ms: 110000})\`, or from a shell on \`${doneFile}\`, which is written last. The full report comes back from that call once it finishes; per-tool output lands in \`${outDir}/<tool>.txt\` as each step completes, so a specific question can be answered before the whole battery is done.`,
             '',
             '_A standard battery is 7-10 minutes. Started this way it does not occupy the tool timeout, so there is no backgrounding and no interleaved completion notification — but nothing polls on your behalf either._',
           ].join('\n'),
@@ -1355,8 +1427,26 @@ export function registerAnalysisBattery(server: McpServer): void {
         .describe(
           'The id returned by `memlab_analysis_battery({async: true})`. Omit to list every tracked battery.',
         ),
+      wait_ms: z
+        .number()
+        .int()
+        .min(0)
+        .max(110000)
+        .optional()
+        .describe(
+          'Wait up to this long (at most 110000, under the client tool timeout) for a running battery to finish before answering, instead of returning RUNNING at once. Returns as soon as it finishes. Without `battery_id`, waits on the one running battery (if exactly one is).',
+        ),
     },
-    async ({battery_id}) => {
+    async ({battery_id: requested, wait_ms}) => {
+      // `wait_ms` with no id means the one running battery, rather than a
+      // listing that returns at once and ignores the wait.
+      const running = [...batteries.values()].filter(b => b.finishedAt == null);
+      const battery_id =
+        requested != null && requested !== ''
+          ? requested
+          : wait_ms != null && wait_ms > 0 && running.length === 1
+            ? running[0].id
+            : undefined;
       if (battery_id == null || battery_id === '') {
         const all = [...batteries.values()];
         if (all.length === 0) {
@@ -1412,6 +1502,14 @@ export function registerAnalysisBattery(server: McpServer): void {
           ),
         );
       }
+      if (wait_ms != null && wait_ms > 0) {
+        const until = Date.now() + wait_ms;
+        while (run.finishedAt == null && Date.now() < until) {
+          await new Promise(r =>
+            setTimeout(r, Math.min(500, Math.max(0, until - Date.now()))),
+          );
+        }
+      }
       const elapsed = Math.round(
         ((run.finishedAt ?? Date.now()) - run.startedAt) / 1000,
       );
@@ -1428,7 +1526,7 @@ export function registerAnalysisBattery(server: McpServer): void {
               ? `, now running \`${run.currentTool}\``
               : '') +
             `. Output so far is in \`${run.outDir}/\`.\n\n` +
-            '_Poll again rather than waiting: each completed tool has already written its full output to disk._',
+            `_Pass \`wait_ms\` (up to 110000) to wait for it, or watch \`${path.join(run.outDir, 'battery.done.json')}\`, which is written last. Each completed tool has already written its full output to disk._`,
         );
       }
       if (run.error != null) {
