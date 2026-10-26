@@ -14,7 +14,7 @@ import {
   DEFAULT_MIN_REGISTRY_EVENTS,
   registryEvents,
 } from '../emitter-shapes.js';
-import type {IHeapSnapshot} from '@memlab/core';
+import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import {getSnapshot} from '../heap-state.js';
 import {ladderShape} from '../ladder-shape.js';
 import {
@@ -37,17 +37,88 @@ import {
   ScanTimeoutError,
 } from '../utils.js';
 
+const GROUP_KEYS = ['event', 'callback', 'emitter', 'context'] as const;
+type GroupKey = (typeof GROUP_KEYS)[number];
+const DEFAULT_GROUP: GroupKey[] = ['event', 'callback'];
+const GROUP_LABELS: Record<GroupKey, string> = {
+  event: 'Event',
+  callback: 'Callback',
+  emitter: 'Emitter',
+  context: 'Context class',
+};
+
 /**
- * Listener records per `event -> callback` in one snapshot, from every object
- * with >= `minEvents` event-name -> listener-array properties.
+ * The emitter a registry container belongs to, as `<owner class>.<property>`
+ * (`_class.$Events$p_eventMap`): the container itself is a plain Object.
+ */
+function emitterOf(container: IHeapNode): string {
+  for (const e of container.referrers) {
+    if (e.type === 'property') {
+      return `${e.fromNode.name}.${String(e.name_or_index)}`;
+    }
+  }
+  return container.name;
+}
+
+/** The listener's context node, or null for none / `undefined` / `null`. */
+function realContext(snap: IHeapSnapshot, contextId: number): IHeapNode | null {
+  const ctx = contextId === 0 ? null : snap.getNodeById(contextId);
+  return ctx == null || ctx.name === 'undefined' || ctx.name === 'null'
+    ? null
+    : ctx;
+}
+
+/** One listener's group key; `\u0000` joins the parts. */
+function groupKeyOf(
+  snap: IHeapSnapshot,
+  groupBy: GroupKey[],
+  event: string,
+  emitter: string,
+  callbackId: number,
+  contextId: number,
+): string {
+  return groupBy
+    .map(k => {
+      if (k === 'event') return event;
+      if (k === 'emitter') return emitter;
+      if (k === 'callback') {
+        return snap.getNodeById(callbackId)?.name || '(anonymous)';
+      }
+      return realContext(snap, contextId)?.name ?? '(no context)';
+    })
+    .join('\u0000');
+}
+
+function isDefaultGroup(groupBy: GroupKey[]): boolean {
+  return groupBy.join() === DEFAULT_GROUP.join();
+}
+
+function groupHeader(groupBy: GroupKey[]): string {
+  return isDefaultGroup(groupBy)
+    ? 'Event → callback'
+    : groupBy.map(k => GROUP_LABELS[k]).join(' · ');
+}
+
+function renderKey(key: string, groupBy: GroupKey[]): string {
+  const text = key
+    .split('\u0000')
+    .join(isDefaultGroup(groupBy) ? ' → ' : ' · ');
+  return text.length > 100 ? `${text.slice(0, 99)}…` : text;
+}
+
+/**
+ * Listener records per group (default `event -> callback`) in one snapshot,
+ * from every object with >= `minEvents` event-name -> listener-array
+ * properties.
  *
  * Counted by callback NAME, not by closure: one callback closure bound by 246
  * records is ONE closure node, so `iterByClass(callbackName)` returned 1 while
  * the records — the thing that grows — numbered 246.
  */
-function listenerRecordsByCallback(
+function listenerRecordsByGroup(
   snap: IHeapSnapshot,
   minEvents: number,
+  groupBy: GroupKey[],
 ): Map<string, number> {
   const out = new Map<string, number>();
   let skipped = 0;
@@ -70,11 +141,21 @@ function listenerRecordsByCallback(
       const local = registryEvents(node, minEvents);
       if (local == null) return;
       const counts: Array<[string, number]> = [];
+      const emitter = groupBy.includes('emitter') ? emitterOf(node) : '';
       for (const {name: event, listeners} of local) {
         for (const l of listeners) {
-          const cb = snap.getNodeById(l.callbackId);
           // The full event name: a 40-char prefix merged distinct events.
-          counts.push([`${event} → ${cb?.name || '(anonymous)'}`, 1]);
+          counts.push([
+            groupKeyOf(
+              snap,
+              groupBy,
+              event,
+              emitter,
+              l.callbackId,
+              l.contextId,
+            ),
+            1,
+          ]);
         }
       }
       // Committed only once the node is fully read: a half-counted node
@@ -105,6 +186,7 @@ async function listenerLadder(args: {
   segment?: number | 'all';
   minEvents: number;
   limit: number;
+  groupBy: GroupKey[];
 }): Promise<ReturnType<typeof toolResult>> {
   const inputs = resolveLadderInputs({
     run_dir: args.run_dir,
@@ -118,7 +200,7 @@ async function listenerLadder(args: {
     try {
       perRung.push(
         await withSnapshotAt(rung.localPath, snap =>
-          listenerRecordsByCallback(snap, args.minEvents),
+          listenerRecordsByGroup(snap, args.minEvents, args.groupBy),
         ),
       );
     } catch (err) {
@@ -163,10 +245,10 @@ async function listenerLadder(args: {
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || b.range - a.range);
   const segmentNote = describeSegmentSelection(inputs.segment, inputs.manifest);
   const lines = [
-    '## Listener records by callback, across the ladder',
+    `## Listener records by ${isDefaultGroup(args.groupBy) ? 'callback' : args.groupBy.map(k => GROUP_LABELS[k].toLowerCase()).join(' × ')}, across the ladder`,
     '',
     ...(segmentNote != null ? [segmentNote, ''] : []),
-    `_${rungs.length} rungs; ${formatNumber(keys.size)} event → callback pair(s), ${formatNumber(rows.length)} changed._`,
+    `_${rungs.length} rungs; ${formatNumber(keys.size)} group(s), ${formatNumber(rows.length)} changed._`,
     '',
   ];
   if (rows.length === 0) {
@@ -175,7 +257,7 @@ async function listenerLadder(args: {
     lines.push(
       markdownTable(
         [
-          'Event → callback',
+          groupHeader(args.groupBy),
           ...rungs.map((_, i) => `#${i + 1}`),
           'Δ',
           'Δ/cycle',
@@ -184,7 +266,7 @@ async function listenerLadder(args: {
         rows
           .slice(0, args.limit)
           .map(r => [
-            r.k.length > 80 ? `${r.k.slice(0, 79)}…` : r.k,
+            renderKey(r.k, args.groupBy),
             ...r.series.map(v => (v == null ? '—' : formatNumber(v))),
             `${r.delta >= 0 ? '+' : ''}${formatNumber(r.delta)}`,
             r.span != null && r.span > 0 ? (r.delta / r.span).toFixed(3) : '—',
@@ -224,6 +306,13 @@ export function registerEventRegistry(server: McpServer): void {
           "A leak-hunt round's output directory. Switches to LADDER mode: listener records per `event -> callback` at every rung, with Δ/cycle and a shape verdict (STEP / STEP+LINEAR / LINEAR / ONSET / SATURATING / DRAINS) per row.",
         ),
       segment: segmentArg(),
+      group_by: z
+        .array(z.enum(GROUP_KEYS))
+        .min(1)
+        .optional()
+        .describe(
+          'Group listener records by any of `event`, `callback`, `emitter` (owner class and property of the registry, e.g. `_class.$Events$p_eventMap`) and `context` (class of the listener\'s context object), e.g. `["emitter", "context", "callback"]` to ask whose records these are. Adds a table with distinct contexts per group; with `run_dir`, the ladder rows use this key (default `["event", "callback"]`).',
+        ),
       timeout_ms: z
         .number()
         .optional()
@@ -232,7 +321,7 @@ export function registerEventRegistry(server: McpServer): void {
           'Wall-clock scan budget (default 45000); returns partial results on very large browser heaps instead of hanging. Single-snapshot mode only: with `run_dir` each rung gets a budget scaled to its size.',
         ),
     },
-    async ({min_events, limit, run_dir, segment, timeout_ms}) => {
+    async ({min_events, limit, run_dir, segment, group_by, timeout_ms}) => {
       try {
         if (run_dir != null && run_dir !== '') {
           return await listenerLadder({
@@ -240,6 +329,7 @@ export function registerEventRegistry(server: McpServer): void {
             segment,
             minEvents: min_events,
             limit,
+            groupBy: group_by ?? DEFAULT_GROUP,
           });
         }
         const snapshot = getSnapshot();
@@ -259,6 +349,10 @@ export function registerEventRegistry(server: McpServer): void {
         const perHostTotals: number[] = [];
         let totalListenersAll = 0;
         let totalDuplicateExtra = 0;
+        const groups = new Map<
+          string,
+          {records: number; contexts: Set<number>; emitters: Set<number>}
+        >();
 
         try {
           snapshot.nodes.forEach(node => {
@@ -275,6 +369,33 @@ export function registerEventRegistry(server: McpServer): void {
             containerCount++;
             perHostTotals.push(hostListeners);
             totalListenersAll += hostListeners;
+            if (group_by != null) {
+              const emitter = group_by.includes('emitter')
+                ? emitterOf(node)
+                : '';
+              for (const ev of localEvents) {
+                for (const l of ev.listeners) {
+                  const key = groupKeyOf(
+                    snapshot,
+                    group_by,
+                    ev.name,
+                    emitter,
+                    l.callbackId,
+                    l.contextId,
+                  );
+                  let g = groups.get(key);
+                  if (g == null) {
+                    g = {records: 0, contexts: new Set(), emitters: new Set()};
+                    groups.set(key, g);
+                  }
+                  g.records++;
+                  if (realContext(snapshot, l.contextId) != null) {
+                    g.contexts.add(l.contextId);
+                  }
+                  g.emitters.add(node.id);
+                }
+              }
+            }
 
             for (const ev of localEvents) {
               const e = perEvent.get(ev.name) ?? {
@@ -390,6 +511,33 @@ export function registerEventRegistry(server: McpServer): void {
           formatNumber(e.duplicatePairs),
         ]);
         lines.push(markdownTable(headers, rows, rightCols));
+        if (group_by != null && groups.size > 0) {
+          lines.push(
+            '',
+            `### Listener records by ${group_by.map(k => GROUP_LABELS[k].toLowerCase()).join(' × ')}`,
+            '',
+            markdownTable(
+              [
+                groupHeader(group_by),
+                'Records',
+                'Distinct contexts',
+                'Registries',
+              ],
+              [...groups.entries()]
+                .sort((a, b) => b[1].records - a[1].records)
+                .slice(0, limit)
+                .map(([key, g]) => [
+                  renderKey(key, group_by),
+                  formatNumber(g.records),
+                  formatNumber(g.contexts.size),
+                  formatNumber(g.emitters.size),
+                ]),
+              new Set([1, 2, 3]),
+            ),
+            '',
+            '_Records far above distinct contexts: the same subscribers bound many times. Distinct contexts that grow per rung: subscribers piling up (`run_dir` with this `group_by`)._',
+          );
+        }
         if (timedOut) {
           lines.push(
             '',

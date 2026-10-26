@@ -479,7 +479,10 @@ const GROUPS: Group[] = [
         'Detached nodes, with a pinned-vs-GC-eligible split; `group_by:"dominator"` groups by what a fix would actually free.',
       ],
       ['memlab_event_listener_leaks', 'Listeners that outlived their target.'],
-      ['memlab_event_registry', 'What is registered on what.'],
+      [
+        'memlab_event_registry',
+        'What is registered on what; `group_by` emitter × context class × callback says whose listener records they are, per rung with `run_dir`.',
+      ],
     ],
   },
   {
