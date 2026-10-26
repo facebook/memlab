@@ -375,6 +375,13 @@ in `memlab_eval` names a collection by its path from a module scope
 on the next with `helpers.load(name, {allowCrossSnapshot: true})`, and diff;
 `memlab_eval({mode: "recipes"})` has the full example.
 
+Within one isolate, a heap object's id also tells you when V8 first saw it:
+heap objects get odd ids in increasing order, while native and synthetic nodes
+get even ids derived from an address or hash. In `memlab_eval`,
+`helpers.newest(ids, n)` and `helpers.ageRank(id)` order objects by that id, and
+`helpers.maxObjectId()` saved on one rung splits a population on the next into
+objects that already existed and objects allocated since.
+
 Every resident snapshot holds its full graph in memory. Watch the server's
 footprint with `memlab_server_status` and unload snapshots you no longer need.
 

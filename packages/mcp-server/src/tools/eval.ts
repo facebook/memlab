@@ -1417,6 +1417,7 @@ export function registerEval(server: McpServer): void {
             'moduleSource(name, {maxLen?})->[{script, offset, kind, length, source}] (the module\'s served source: the `__d("<name>"` span of every script that defines it, or a script whose URL names it; `source` is capped at maxLen, default 20000 — the in-eval form of memlab_module_source, for reading a declaration or a call site next to a heap query), ' +
             "moduleExportProp(moduleName, prop, {class?})->id|null (an export property, else a top-level variable named prop, else — with class, e.g. {class:'Map'} — the module's ONLY top-level variable of that class: the minification-safe way to reach a module-level cache), " +
             'minified()->{minified, shortNameShare, namedClosures} (is this a minified bundle? name-based lookups read 0 there), ' +
+            "newest(ids, n=10)->ids[] & ageRank(nodeOrId)->0..1|null & maxObjectId()->id (by heap-object id, the odd ids V8 hands out in increasing order: larger = first seen later by the heap profiler; SAME ISOLATE ONLY — ids from another tab or a reload mean nothing; between two rungs, ids above the earlier rung's maxObjectId() were allocated since it; native/synthetic nodes have even ids with no age and are skipped), " +
             'stringsBySize({minLen=1000, limit=1000})->[{id, length}] (flat string nodes longest first, from an index built once per snapshot; Node.js snapshots truncate string contents at 1024 characters), ' +
             'scripts({match?})->[{id, url, sourceId, length}] (every script and its source string, longest first; read one with stringValue(sourceId, {maxLen}) — a source search over these does not scan every string node), ' +
             'stringsWithPrefix(prefix, {limit?})->ids[] (string nodes whose value starts with prefix, e.g. "blob:"; bucketed once per snapshot, so repeated prefix questions do not re-walk the heap — for a per-rung COUNT across a ladder, `memlab_string_prefix_census` answers from the sidecar index without loading at all), ' +
@@ -2162,6 +2163,46 @@ export async function runEval({
         out.push(row);
       }
       return out;
+    };
+    // V8 numbers heap objects with odd ids handed out in increasing order the
+    // first time the heap profiler sees them. Native and synthetic nodes get
+    // even ids derived from an address or hash, which say nothing about age.
+    const isObjectId = (id: number) => id % 2 === 1;
+    const sortedObjectIds = (): Float64Array => {
+      const scratch = getEvalScratch();
+      let sorted = scratch.__memlabSortedObjectIds as Float64Array | undefined;
+      if (sorted == null) {
+        const ids: number[] = [];
+        snapshot.nodes.forEach(node => {
+          if (isObjectId(node.id)) ids.push(node.id);
+        });
+        sorted = Float64Array.from(ids).sort();
+        scratch.__memlabSortedObjectIds = sorted;
+      }
+      return sorted;
+    };
+    const newest = (ids: Array<number | {id: number}>, n = 10): number[] =>
+      ids
+        .map(x => (typeof x === 'number' ? x : x.id))
+        .filter(isObjectId)
+        .sort((a, b) => b - a)
+        .slice(0, n);
+    const ageRank = (nodeOrId: number | {id: number}): number | null => {
+      const id = typeof nodeOrId === 'number' ? nodeOrId : nodeOrId.id;
+      if (!isObjectId(id) || snapshot.getNodeById(id) == null) return null;
+      const sorted = sortedObjectIds();
+      let lo = 0;
+      let hi = sorted.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (sorted[mid] < id) lo = mid + 1;
+        else hi = mid;
+      }
+      return sorted.length <= 1 ? 1 : lo / (sorted.length - 1);
+    };
+    const maxObjectId = (): number => {
+      const sorted = sortedObjectIds();
+      return sorted.length > 0 ? sorted[sorted.length - 1] : 0;
     };
     // String nodes bucketed by their first characters, built once per
     // snapshot: a prefix question is then a bucket scan, not another walk of
@@ -4401,6 +4442,9 @@ export async function runEval({
       stringsWithPrefix,
       stringsBySize,
       scripts: scriptsHelper,
+      newest,
+      ageRank,
+      maxObjectId,
       sourceOf,
       stableKey,
       byStableKey,
@@ -5249,6 +5293,12 @@ function describeEnvLines(): string[] {
     '- `helpers.contextSlotCensus({minCount, limit}) -> [{slot, scopes, closures}]` — every captured variable name in the heap ranked by how many scopes hold it. Use it to FIND the name to pass to `byContextSlot` when the leak is a closure capture and the class names are minified.',
     '- `helpers.contextOf(nodeOrId) -> node | null` — the scope a closure captured, e.g. `system / Context / scope @767271`. **Do not hand-roll this**: the hop is an `internal` edge NAMED `context`, not a `context`-TYPED edge, so the reflexive filter returns null on every closure in the heap (see the edge-type section below). Returns null for a non-closure — note `helpers.byClass`/`nodesByClass` also match the class-NAME STRING node, so filter on `type === "closure"` before asking for a scope.',
     '- `helpers.closureCensus({minCount?, pattern?}) -> [{name, count, withScope}]` — closure classes with how many instances captured a scope. `count` alone cannot separate "1,000 copies of a function" from "1,000 copies each pinning a distinct scope", and only the second is a retention story. Cached.',
+    '',
+    '## Age by node id (same isolate only)',
+    "V8 gives a heap object an ODD snapshot id the first time the heap profiler sees it, and those ids only grow within one isolate (one tab session, no reload). So a larger id was first seen later. Across two rungs of one isolate, ids above the earlier rung's `maxObjectId()` were allocated after it. Within the objects first seen by ONE capture, id order is heap-walk order, not allocation order (unless allocation tracking was on). Native and synthetic nodes have EVEN ids derived from an address or hash: they carry no age, and a plain max over all ids picks one of them.",
+    '- `helpers.newest(ids, n = 10) -> ids[]` — the n largest heap-object ids, newest first (even ids are dropped).',
+    "- `helpers.ageRank(nodeOrId) -> number | null` — the share of this snapshot's heap objects with a smaller id: 0 is the oldest, 1 the newest. Null for an even id or one not in this snapshot. The sorted id list is built once per snapshot.",
+    '- `helpers.maxObjectId() -> id` — the largest heap-object id in this snapshot. To split a population into "existed at the earlier rung" and "allocated since", save it on the earlier rung (`helpers.save("maxId", helpers.maxObjectId())`) and compare ids against it on the later rung with `helpers.load("maxId", {allowCrossSnapshot: true})` — only for rungs of the same isolate.',
     '',
     '## Modules and their source',
     "A bundled app keeps its module registry and every script's source text in the heap. These reach both by module NAME, which survives minification.",
