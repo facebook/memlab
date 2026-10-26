@@ -52,6 +52,27 @@ function misconfigured(c: PositiveControl): string | null {
 }
 
 /**
+ * The control's `requires_step` steps that landed this round, or null when it
+ * declares none or the runner recorded no step counts (exercised is unknown).
+ */
+function landedRequiredSteps(
+  c: PositiveControl,
+  stepsLanded: Record<string, number> | null,
+): string[] | null {
+  if (c.requiresStep.length === 0 || stepsLanded == null) return null;
+  const patterns = c.requiresStep.map(
+    p => new RegExp(`^${p.split('*').map(escapeRegExp).join('.*')}$`),
+  );
+  return Object.entries(stepsLanded)
+    .filter(([name, n]) => n > 0 && patterns.some(re => re.test(name)))
+    .map(([name]) => name);
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
  * Largest value the control takes over every holder of its edge. `found` and
  * `uncountable` (a map-size edge never on a collection) tell a declaration
  * error apart from a probe that saw no growth; both would read as a flat 0.
@@ -93,7 +114,7 @@ function measure(
 export function registerPositiveControls(server: McpServer): void {
   server.tool(
     'memlab_positive_controls',
-    'Measure the round\'s POSITIVE CONTROLS (run.json `positive_controls`, written by the leak-hunt runner from the app preset): known accumulators that should grow with interaction. PASS means the measurement can see growth, so a flat result elsewhere is a clean surface; FAIL means a probe or the drive is blind, and every flat result in the round is suspect. An idle round (a combo, or the round directory, named "idle") reports n/a.',
+    'Measure the round\'s POSITIVE CONTROLS (run.json `positive_controls`, written by the leak-hunt runner from the app preset): known accumulators that should grow with interaction. PASS means the measurement can see growth, so a flat result elsewhere is a clean surface; FAIL means a probe or the drive is blind, and every flat result in the round is suspect. An idle round (a combo, or the round directory, named "idle") reports n/a, and so does a control whose `requires_step` steps (names from run.json `steps`, `*` wildcard) all landed 0 times: that combo never exercises it.',
     {
       run_dir: z.string().describe("A leak-hunt round's output directory."),
       segment: segmentIndexArg(
@@ -190,9 +211,13 @@ export function registerPositiveControls(server: McpServer): void {
           // Unknowable with no readable rung, and an idle round may never
           // create the collection at all.
           const anyRead = series[i].some(v => v != null);
+          // No step that grows it landed, so a flat or missing collection is
+          // expected: not a blind probe.
+          const exercisedBy = landedRequiredSteps(c, manifest.stepsLanded);
+          const unexercised = exercisedBy != null && exercisedBy.length === 0;
           const bad =
             misconfigured(c) ??
-            (!anyRead
+            (!anyRead || unexercised
               ? null
               : !found[i]
                 ? idle
@@ -201,16 +226,19 @@ export function registerPositiveControls(server: McpServer): void {
                 : !countable[i]
                   ? `map-size edge \`${c.edge}\` is not on a Map, Set or Array`
                   : null);
+          const passes = pts.length >= 3 && grows && fit.slope > 0;
           const verdict =
             bad != null
               ? `**FAIL** (${bad})`
               : idle
                 ? 'n/a (idle round)'
-                : pts.length < 3
-                  ? '**FAIL** (fewer than 3 readable rungs, so a mount step cannot be told from growth)'
-                  : grows && fit.slope > 0
-                    ? `**PASS** (+${fit.slope.toFixed(3)}/cycle, ${shape})`
-                    : `**FAIL** (${shape}: no per-interaction growth)`;
+                : passes
+                  ? `**PASS** (+${fit.slope.toFixed(3)}/cycle, ${shape})`
+                  : unexercised
+                    ? `n/a (no step that exercises it landed; needs ${c.requiresStep.join(' or ')})`
+                    : pts.length < 3
+                      ? '**FAIL** (fewer than 3 readable rungs, so a mount step cannot be told from growth)'
+                      : `**FAIL** (${shape}: no per-interaction growth)`;
           return [
             c.name,
             series[i].map(v => (v == null ? '—' : formatNumber(v))).join(' → '),
@@ -218,6 +246,8 @@ export function registerPositiveControls(server: McpServer): void {
           ];
         });
         const failed = rows.some(r => String(r[2]).includes('FAIL'));
+        const allNA =
+          rows.length > 0 && rows.every(r => String(r[2]).startsWith('n/a'));
         return toolResult(
           [
             '## Positive controls',
@@ -241,7 +271,9 @@ export function registerPositiveControls(server: McpServer): void {
               ? '⚠ **A positive control did not grow.** Either the probe cannot see this population or the drive did not exercise it — treat every flat result in this round as unproven until that is explained.'
               : idle
                 ? '_Idle round: controls are expected to stay flat here._'
-                : '_Every control grew, so the measurement can see accumulation on this round._',
+                : allNA
+                  ? "_No control is exercised by this round's steps, so none can prove the probes see growth here: flat results are unproven, not failed. Declare a control this combo exercises to cover it._"
+                  : '_Every exercised control grew, so the measurement can see accumulation on this round._',
           ].join('\n'),
         );
       } catch (err) {

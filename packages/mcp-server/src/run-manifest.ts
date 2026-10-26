@@ -106,6 +106,11 @@ export interface RunManifest {
   positiveControls: PositiveControl[];
   /** run.json `positive_controls` entries dropped as malformed (bad kind, …). */
   droppedPositiveControls: number;
+  /**
+   * Landed count per driven step (run.json `steps`), or null when the runner
+   * recorded none.
+   */
+  stepsLanded: Record<string, number> | null;
 }
 
 export interface PositiveControl {
@@ -115,6 +120,11 @@ export interface PositiveControl {
   /** `map-size`: entries of the Map/Set/Array; `modulesMap-prefix`: registry keys starting with `prefix`. */
   kind: 'map-size' | 'modulesMap-prefix';
   prefix?: string;
+  /**
+   * Step names (a `*` matches any run of characters) that exercise the
+   * control. A round where none of them landed cannot grow it.
+   */
+  requiresStep: string[];
 }
 
 /** `rung_02_c375.heapsnapshot` -> 375. */
@@ -365,6 +375,10 @@ export function loadRunManifest(runDir: string): RunManifest {
                 edge: o.edge,
                 kind: o.kind,
                 prefix: typeof o.prefix === 'string' ? o.prefix : undefined,
+                requiresStep:
+                  typeof o.requires_step === 'string'
+                    ? [o.requires_step]
+                    : asStringArray(o.requires_step),
               },
             ]
           : [];
@@ -392,6 +406,7 @@ export function loadRunManifest(runDir: string): RunManifest {
     droppedPositiveControls: Array.isArray(raw.positive_controls)
       ? raw.positive_controls.length - positiveControls.length
       : 0,
+    stepsLanded: stepsLanded(raw.steps),
     content: numericRecord(environment?.content),
     viewport:
       typeof environment?.viewport === 'string' ? environment.viewport : null,
@@ -403,6 +418,17 @@ function numericRecord(v: unknown): Record<string, number> | null {
   const out: Record<string, number> = {};
   for (const [k, n] of Object.entries(v as Record<string, unknown>)) {
     if (typeof n === 'number' && Number.isFinite(n) && n >= 0) out[k] = n;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/** run.json `steps` (`{name: {attempted, landed, …}}`) as name -> landed. */
+function stepsLanded(v: unknown): Record<string, number> | null {
+  if (v == null || typeof v !== 'object') return null;
+  const out: Record<string, number> = {};
+  for (const [k, stats] of Object.entries(v as Record<string, unknown>)) {
+    const landed = (stats as Record<string, unknown> | null)?.landed;
+    if (typeof landed === 'number') out[k] = landed;
   }
   return Object.keys(out).length > 0 ? out : null;
 }
