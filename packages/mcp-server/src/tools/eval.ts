@@ -58,6 +58,7 @@ import {
   listSavedResults,
   setSavedResult,
   getEvalScratch,
+  getSnapshotByHandle,
   getSnapshotMetadata,
   getSessionConfig,
   noteAlreadyEmitted,
@@ -398,6 +399,35 @@ export function unwrapNode<T>(node: T): T {
  * it, and this class of silent-zero bug has produced published errors before.
  */
 const RETAINED_SIZE_PROPS = new Set(['retainedSize', 'retained_size']);
+
+interface FiberHookRow {
+  index: number;
+  statefulOrdinal: number | null;
+  kind: string;
+  memoizedState: string;
+  pending: Array<{value: string; count: number}> | null;
+  lastRenderedState: string | null;
+  bailout: boolean | null;
+}
+
+const baselineCountsCache = new WeakMap<IHeapSnapshot, Map<string, number>>();
+
+/** `type::name` -> count for a baseline snapshot, names truncated like classCounts. */
+function baselineClassCounts(
+  snap: IHeapSnapshot,
+  truncate: (name: string) => string,
+): Map<string, number> {
+  const cached = baselineCountsCache.get(snap);
+  if (cached != null) return cached;
+  const counts = new Map<string, number>();
+  snap.nodes.forEach((node: IHeapNode) => {
+    if (node.id <= 3) return;
+    const key = `${node.type}::${truncate(node.name)}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+  baselineCountsCache.set(snap, counts);
+  return counts;
+}
 
 function wrapNode(node: unknown): unknown {
   if (node == null) return node;
@@ -1340,7 +1370,7 @@ export function registerEval(server: McpServer): void {
             'pathTree()->{subtreeBytes(id), parent(id), children(id, {minBytes?, limit?})->[{id,name,edge,bytes}], roots()} (the shortest-path tree with app bytes per subtree — it partitions the heap, so shared caches keep their size; built ONCE per snapshot and kept across calls), ' +
             "familyOf(nodeOrId)->family|null (nearest framework family on the dominator chain, as memlab_memory_partition counts it), pathLabel(nodeOrId)->`module:<Name>.<export>`|`global:<name>`|… (first owner on the shortest path; minification-safe), shapeFamily(nodeOrId)->family|null (the node's own record family by property names) — all memoized per snapshot, " +
             'rootPathAvoidingDev(nodeOrId)->[{id,name,type,edge}]|null (shortest GC-root path using no React DEV/Fast Refresh/devtools edge; null = the node does not exist in a production build; throws if the analysis budget runs out first), ' +
-            "fiberHooks(componentName, {limit?})->[{fiber, hooks:[{index, statefulOrdinal, kind, memoizedState, pending, lastRenderedState, bailout}]}] (a component's hook list in order; statefulOrdinal counts only useState/useReducer, so it maps to the Nth such call in source; `pending` is null when nothing is queued, else [{value, count}]), " +
+            "fiberHooks(componentName, {limit?, onlyPending?, aggregate?})->[{fiber, hooks:[{index, statefulOrdinal, kind, memoizedState, pending, lastRenderedState, bailout}]}] (a component's hook list in order; statefulOrdinal counts only useState/useReducer, so it maps to the Nth such call in source; `pending` is null when nothing is queued, else [{value, count}]; `onlyPending` keeps only hooks (and fibers) with something queued; `aggregate` instead returns [{hookIndex, statefulOrdinal, kind, value, count, fibers}] summed over every fiber), " +
             'stringValue(nodeOrId, {maxLen?, slices?: "parent"|"marker"})->string (text of a flat, `(concatenated string)` or `(sliced string)` node; a slice is returned as its whole parent because the snapshot records no offset, or as `‹slice›` with slices:"marker"), ' +
             'props(nodeOrId)->{prop: scalar | {ref,name,type}} & getProp(nodeOrId, name) & shapeSignature(nodeOrId, {maxStringLen?}) (content signature for dedup checks), ' +
             'shapeKeys(nodeOrId)->Set<string> & ownProps(nodeOrId) & hasShape(nodeOrId, [names], {exact?,exclude?}) (own JS properties ONLY — USE THESE FOR SHAPE MATCHING; props() falls back to an internal-edge walk and injects length/map/__via/__note, which makes a props()-based shape test silently return zero matches), ' +
@@ -1348,8 +1378,8 @@ export function registerEval(server: McpServer): void {
             'byClass(name, {type?})->ids[] & byTypename(name)->ids[] & withProp(name, {edgeTypes?})->ids[] & byEdgeName(name)->ids[] (INDEXED lookups — built once per snapshot then memoized in a session scratch, so repeated questions are index-speed not full-scan; byClass covers EVERY node type, matching memlab_find_nodes_by_class, so closures/strings/arrays/natives are found — pass {type:"object"} to narrow. NOTE byClass also returns the CONSTRUCTOR closure and the `Foo (prototype)` object alongside the instances, and tracing one of those yields a meaningless modulesMap path; use iterByClass, whose instancesOnly defaults true, when you mean instances. withProp matches `property` AND `context` edges by default, so a CLOSURE-CAPTURED variable is found — pass {edgeTypes:["property"]} for own properties only, and byEdgeName to ignore edge type entirely), ' +
             'aggregateRetained(ids[])->{retained,exact} (dominator-deduped retained for a SET of ids, no double-counting), ' +
             'iterByClass(name, {type?, instancesOnly?})->nodes[] & iterByType(type)->nodes[] (INDEXED iteration — no full scan; instancesOnly defaults TRUE and drops the constructor closure, the `Foo (prototype)` object and `system/SharedFunctionInfo/Foo`, which otherwise come back as class members whose only "properties" are length/map and make a per-instance loop produce garbage), ' +
-            'classCounts({pattern?, type?, minCount?})->[{name,type,count,selfSize}] (one-pass histogram, cached), ' +
-            'entries(nodeOrId)->[{key,value}] (generic Map/Set/WeakMap/Array/object walk, holes filtered), ' +
+            'classCounts({pattern?, type?, minCount?, baseline?, minDelta?})->[{name,type,count,selfSize, baselineCount?, delta?}] (one-pass histogram, cached; with `baseline` (a resident handle) only classes that grew by ≥minDelta, largest delta first), ' +
+            "entries(nodeOrId, {limit?, keyPattern?})->[{key,value}] (generic Map/Set/WeakMap/Array/object walk, holes filtered; keyPattern is a case-insensitive regex on the key or the key node's name), " +
             'edgeTarget(nodeOrId, edgeName)->node|null, walkChain(startOrNode, edgeName, {maxHops?, collectIds?})->{length, terminated:"cycle"|"end"|"cap", truncated} (USE THIS instead of a hand-written `while` over `.next` — a hand-rolled loop cannot tell a circular list from its own hop cap, and reports the cap as if it were the length), isRealDetached(node)->boolean (same filtering the tools apply internally), ' +
             'dominates(id, {population?, limit?})->{count,selfSize,ids,truncated}, ' +
             'remember(name, value)/recall(name?) (persist ACROSS sessions), ' +
@@ -2142,37 +2172,85 @@ export async function runEval({
 
     // Hooks of every fiber rendering `componentName`, in list order, each with
     // its stateful ordinal and, for a stateful hook, its pending chain.
-    const fiberHooks = (componentName: string, opts: {limit?: number} = {}) => {
-      const out: unknown[] = [];
+    const fiberHooks = (
+      componentName: string,
+      opts: {limit?: number; onlyPending?: boolean; aggregate?: boolean} = {},
+    ) => {
+      const out: Array<{fiber: number; hooks: FiberHookRow[]}> = [];
       snapshot.nodes.forEach(node => {
         // memlab's IHeapNodes.forEach stops when the callback returns false.
-        if (out.length >= (opts.limit ?? 20)) return false;
+        // Aggregation sums over every fiber, so only an explicit limit caps it.
+        if (out.length >= (opts.limit ?? (opts.aggregate ? Infinity : 20))) {
+          return false;
+        }
         if (!isFiberNode(node) || fiberComponentName(node) !== componentName) {
           return undefined;
         }
-        out.push({
-          fiber: node.id,
-          hooks: hooksOfFiber(node).map(h => {
-            const d =
-              h.queue != null
-                ? describeQueue(h.queue, node, undefined, h)
-                : null;
-            return {
-              index: h.index,
-              statefulOrdinal: h.statefulOrdinal,
-              kind: h.kind,
-              memoizedState: describeValue(edgeTo(h.hook, 'memoizedState')),
-              // null, not [], when nothing is queued: an empty array is truthy,
-              // so `if (h.pending)` selected every hook.
-              pending: d != null && d.actions.length > 0 ? d.actions : null,
-              lastRenderedState: d?.lastRenderedState ?? null,
-              bailout: d?.bailout ?? null,
-            };
-          }),
+        const hooks: FiberHookRow[] = hooksOfFiber(node).map(h => {
+          const d =
+            h.queue != null ? describeQueue(h.queue, node, undefined, h) : null;
+          return {
+            index: h.index,
+            statefulOrdinal: h.statefulOrdinal,
+            kind: h.kind,
+            memoizedState: describeValue(edgeTo(h.hook, 'memoizedState')),
+            // null, not [], when nothing is queued: an empty array is truthy,
+            // so `if (h.pending)` selected every hook.
+            pending: d != null && d.actions.length > 0 ? d.actions : null,
+            lastRenderedState: d?.lastRenderedState ?? null,
+            bailout: d?.bailout ?? null,
+          };
         });
+        const kept = opts.onlyPending
+          ? hooks.filter(h => h.pending != null)
+          : hooks;
+        if (!opts.onlyPending || kept.length > 0) {
+          out.push({fiber: node.id, hooks: kept});
+        }
         return undefined;
       });
-      return out;
+      if (!opts.aggregate) return out;
+      // One row per (hook position, pending value), summed over every fiber:
+      // the question is usually "which hook queues the same value on every
+      // instance", and 72 KB of per-fiber rows was answered in Python.
+      const groups = new Map<
+        string,
+        {
+          hookIndex: number;
+          statefulOrdinal: number | null;
+          kind: string;
+          value: string | null;
+          count: number;
+          fibers: number;
+        }
+      >();
+      for (const f of out) {
+        for (const h of f.hooks) {
+          const values = h.pending ?? [{value: null, count: 0}];
+          // `fibers` counts instances, once per fiber and group.
+          const counted = new Set<string>();
+          for (const a of values) {
+            const key = `${h.index}\u0000${a.value}`;
+            const g = groups.get(key) ?? {
+              hookIndex: h.index,
+              statefulOrdinal: h.statefulOrdinal,
+              kind: h.kind,
+              value: a.value,
+              count: 0,
+              fibers: 0,
+            };
+            g.count += a.count;
+            if (!counted.has(key)) {
+              counted.add(key);
+              g.fibers++;
+            }
+            groups.set(key, g);
+          }
+        }
+      }
+      return [...groups.values()].sort(
+        (a, b) => b.count - a.count || a.hookIndex - b.hookIndex,
+      );
     };
 
     // The text of a flat, concatenated or sliced string; '' for a non-string.
@@ -3328,11 +3406,15 @@ export async function runEval({
       pattern?: string;
       type?: string;
       minCount?: number;
+      baseline?: string;
+      minDelta?: number;
     }): Array<{
       name: string;
       type: string;
       count: number;
       selfSize: number;
+      baselineCount?: number;
+      delta?: number;
     }> => {
       const cacheKey = '__classCounts';
       let all = scratch[cacheKey] as
@@ -3378,12 +3460,30 @@ export async function runEval({
       }
       const matches = makeNamePatternTest(opts?.pattern);
       const minCount = opts?.minCount ?? 1;
-      return all.filter(
+      const kept = all.filter(
         r =>
           r.count >= minCount &&
           (opts?.type == null || r.type === opts.type) &&
           matches(r.name),
       );
+      if (opts?.baseline == null) return kept;
+      // Growth against another resident snapshot, filtered here rather than
+      // by shipping two whole histograms back to diff client-side.
+      const base = getSnapshotByHandle(opts.baseline);
+      if (base == null) {
+        throw new Error(
+          `classCounts: baseline "${opts.baseline}" is not a resident snapshot handle (memlab_snapshots lists them).`,
+        );
+      }
+      const baseCounts = baselineClassCounts(base, truncateClassName);
+      const minDelta = opts.minDelta ?? 1;
+      return kept
+        .map(r => {
+          const baselineCount = baseCounts.get(`${r.type}::${r.name}`) ?? 0;
+          return {...r, baselineCount, delta: r.count - baselineCount};
+        })
+        .filter(r => r.delta >= minDelta)
+        .sort((a, b) => b.delta - a.delta);
     };
 
     // Walk a dotted path of edges, reporting WHERE it stopped.
@@ -3547,6 +3647,28 @@ export async function runEval({
     // Set; WeakMap tables and plain arrays needed a manual `references`
     // walk with hole filtering every time.
     const entries = (
+      nodeOrId: unknown,
+      opts: {limit?: number; keyPattern?: string} = {},
+    ): Array<{key: unknown; value: unknown}> => {
+      const all = allEntries(nodeOrId);
+      const test =
+        opts.keyPattern != null ? makeNamePatternTest(opts.keyPattern) : null;
+      const kept =
+        test == null
+          ? all
+          : all.filter(e => {
+              const k = e.key as {name?: unknown} | string | number | null;
+              const text =
+                k != null && typeof k === 'object'
+                  ? k.name == null
+                    ? ''
+                    : String(k.name)
+                  : String(k);
+              return test(text);
+            });
+      return opts.limit != null ? kept.slice(0, opts.limit) : kept;
+    };
+    const allEntries = (
       nodeOrId: unknown,
     ): Array<{key: unknown; value: unknown}> => {
       const n =
@@ -4977,7 +5099,7 @@ function describeEnvLines(): string[] {
     '- `helpers.byEdgeName(name) -> ids[]` — every holder of an edge NAMED `name`, whatever its type (`property`, `context`, `internal`, `element`, `hidden`, …). Use when you do not know, or do not care, how the name is attached. `helpers.byContextVar(name, {returns?, chain?}) -> ids[]` is the closure-variable case spelled out: the scopes holding a captured variable of that name (`{returns: "closures"}` for the closures instead). Both are indexed.',
     '- `helpers.nodesByClass(name, {type?}) -> node[]` (alias of `iterByClass`) — the same lookup returning NODE OBJECTS. Prefer it over `byClass`: ids from `byClass` are not all resolvable through `snapshot.getNodeById` — native classes such as `AudioContext` / `OpusRecorder` come back null — so the reflexive `byClass(x).map(id => getNodeById(id).referrers)` throws `Cannot read properties of null` and needs defensive `if (!n) continue` boilerplate on every native-touching eval.',
     '- `helpers.iterByClass(name, {type?}) -> node[]` / `helpers.iterByType(type) -> node[]` — indexed iteration; no full scan, index built once per snapshot.',
-    '- `helpers.classCounts({pattern?, type?, minCount?}) -> [{name, type, count, selfSize}]` — one-pass class histogram, cached; `pattern` is a case-insensitive regex (substring fallback).',
+    '- `helpers.classCounts({pattern?, type?, minCount?, baseline?, minDelta?}) -> [{name, type, count, selfSize, baselineCount?, delta?}]` — one-pass class histogram, cached; `pattern` is a case-insensitive regex (substring fallback). With `baseline` (a resident snapshot handle) it returns only classes that grew by at least `minDelta` (default 1), largest delta first.',
     '- `helpers.entries(nodeOrId) -> [{key, value}]` — generic container walk: Map/WeakMap (paired, SMI gaps handled), Set/WeakSet, Array (both direct `element` edges and the `(object elements)` backing store), plain object properties. Holes and `__proto__`/`map` are filtered.',
     '- `helpers.derefPath(nodeOrId, "value._PSD.trans") -> {found, stoppedAt, missingEdge?, available?, node}` — walk a dotted edge path and, on failure, say WHICH hop failed and what was there instead. Use this instead of chaining edgeTarget: a null halfway looks identical to a null at the end, which is how a probe tests the wrong level and reports a confident zero.',
     '- `helpers.findWithin(nodeOrId, edgeName, {maxDepth}) -> [{path,id,name}]` — is this property anywhere within N hops, and at what path? Answers "which level is it on?" in one call.',
