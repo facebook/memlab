@@ -332,6 +332,8 @@ interface ReachabilitySplit {
   pinnedIds: number[];
   browserOwnedCount: number;
   browserOwnedIds: number[];
+  /** Pinned, but every path runs through a dev root: absent in production. */
+  devOnlyIds: number[];
 }
 
 function emptySplit(): ReachabilitySplit {
@@ -343,6 +345,7 @@ function emptySplit(): ReachabilitySplit {
     pinnedIds: [],
     browserOwnedCount: 0,
     browserOwnedIds: [],
+    devOnlyIds: [],
   };
 }
 
@@ -356,24 +359,39 @@ function formatReachabilitySplit(
   split: ReachabilitySplit,
   snapshot: IHeapSnapshot,
 ): string[] {
+  // The headline is what a production build would still hold: a pinned node
+  // reached only through a dev root (React `_debugStack`, Fast Refresh) or
+  // sitting in a detached browsing context is no application leak. Leading
+  // with all pinned nodes called 71-73% dev-only detached DOM "actionable".
+  const devOnly = new Set(split.devOnlyIds);
+  const browserOnly = split.browserOwnedIds.filter(id => !devOnly.has(id));
+  const excluded = new Set([...devOnly, ...browserOnly]);
+  const productionIds = split.pinnedIds.filter(id => !excluded.has(id));
   const deduped = boundedDominatorRetainedSize(
-    new NumericSet(split.pinnedIds),
+    new NumericSet(productionIds),
     snapshot,
   );
   const bound = deduped.exact ? '' : ' (upper bound; deep dominator chain)';
-  const browserOwnedDeduped = boundedDominatorRetainedSize(
-    new NumericSet(split.browserOwnedIds),
-    snapshot,
-  );
+  const dedupe = (ids: number[]) =>
+    formatBytes(
+      boundedDominatorRetainedSize(new NumericSet(ids), snapshot).retained,
+    );
   return [
-    `- Pinned (retainer path to a GC root — actionable leak): ${formatNumber(split.pinnedCount)} nodes, **${formatBytes(deduped.retained)} reclaimable**${bound} (dominator-deduped)`,
-    `  - sum over nodes: ${formatBytes(split.pinnedRetained)} — double-counts nested detached subtrees; do NOT quote this as the size of the leak`,
-    `- No retainer path found (likely GC-eligible / weak-only — exclude from leak totals): ${formatNumber(split.noPathCount)} nodes, ${formatBytes(split.noPathRetained)}`,
-    ...(split.browserOwnedCount > 0
+    excluded.size > 0
+      ? `**Actionable (pinned, production): ${formatNumber(productionIds.length)} nodes, ${formatBytes(deduped.retained)} reclaimable**${bound} (dominator-deduped), of ${formatNumber(split.pinnedCount)} pinned`
+      : `**Actionable (pinned: retainer path to a GC root): ${formatNumber(productionIds.length)} nodes, ${formatBytes(deduped.retained)} reclaimable**${bound} (dominator-deduped)`,
+    ...(devOnly.size > 0
       ? [
-          `- **Of the pinned nodes, ${formatNumber(split.browserOwnedCount)} (${formatBytes(browserOwnedDeduped.retained)} dominator-deduped) sit inside DETACHED BROWSING CONTEXTS with no application referrer** — stale iframes held by Blink's binding layer. No application change frees these; subtract them before quoting a leak total. The app-attributable figure is therefore **${formatBytes(Math.max(0, deduped.retained - browserOwnedDeduped.retained))}**.`,
+          `- also pinned, but only through dev roots (React \`_debugStack\`, Fast Refresh, DevTools; absent in production): ${formatNumber(devOnly.size)} nodes, ${dedupe([...devOnly])}`,
         ]
       : []),
+    ...(browserOnly.length > 0
+      ? [
+          `- also pinned, but inside DETACHED BROWSING CONTEXTS with no application referrer (stale iframes held by Blink's binding layer; no application change frees them): ${formatNumber(browserOnly.length)} nodes, ${dedupe(browserOnly)}`,
+        ]
+      : []),
+    `- sum over all pinned nodes: ${formatBytes(split.pinnedRetained)} — double-counts nested detached subtrees; do NOT quote this as the size of the leak`,
+    `- No retainer path found (likely GC-eligible / weak-only — exclude from leak totals): ${formatNumber(split.noPathCount)} nodes, ${formatBytes(split.noPathRetained)}`,
   ];
 }
 
@@ -657,10 +675,14 @@ export function registerDetachedDom(server: McpServer): void {
             totalDetached++;
             totalRetainedAll += node.retainedSize;
             const pinned = isPinned(node);
+            const nodeIsDevOnly = devRoots
+              ? classifyDevOnly(node, devRoots, reached).devOnly
+              : false;
             if (pinned) {
               split.pinnedCount++;
               split.pinnedRetained += node.retainedSize;
               split.pinnedIds.push(node.id);
+              if (nodeIsDevOnly) split.devOnlyIds.push(node.id);
               if (isBrowserOwned(node, browserContexts)) {
                 split.browserOwnedCount++;
                 split.browserOwnedIds.push(node.id);
@@ -669,9 +691,6 @@ export function registerDetachedDom(server: McpServer): void {
               split.noPathCount++;
               split.noPathRetained += node.retainedSize;
             }
-            const nodeIsDevOnly = devRoots
-              ? classifyDevOnly(node, devRoots, reached).devOnly
-              : false;
             if (nodeIsDevOnly) {
               devOnlyRetained += node.retainedSize;
             }
@@ -973,6 +992,9 @@ export function registerDetachedDom(server: McpServer): void {
             split.pinnedCount++;
             split.pinnedRetained += node.retainedSize;
             split.pinnedIds.push(node.id);
+            if (devRoots && classifyDevOnly(node, devRoots, reached).devOnly) {
+              split.devOnlyIds.push(node.id);
+            }
             if (isBrowserOwned(node, browserContexts2)) {
               split.browserOwnedCount++;
               split.browserOwnedIds.push(node.id);
