@@ -613,6 +613,82 @@ function nextCalls(runDir: string, perTool: Map<string, string>): string[] {
   return out.slice(0, 5);
 }
 
+/**
+ * Caveats already printed for a sweep, so each is shown once per sweep.
+ * `{[sweep dir]: {[caveat key]: first round}}` under MEMLAB_STATE_DIR.
+ * One sweep repeated the same 7 lines (DEAD PROP x5, absent ABProps, the
+ * served-JS scan) in every round's digest.
+ */
+const CAVEAT_LEDGER_MAX_SWEEPS = 50;
+
+function caveatLedgerFile(): string {
+  return path.join(
+    process.env.MEMLAB_STATE_DIR ?? path.join(os.homedir(), '.memlab'),
+    'battery-caveats.json',
+  );
+}
+
+/**
+ * Counts in a caveat (scanned 12/40, 3 prop(s)) vary per round; the text does
+ * not. Digits inside a name (`web_memlab_fixes_4`) are kept: a new prop is a
+ * new caveat.
+ */
+function caveatKey(caveat: string): string {
+  return caveat.replace(/(?<![A-Za-z_])\d+(\.\d+)?/g, '#');
+}
+
+export function splitRepeatedCaveats(
+  runDir: string,
+  caveats: string[],
+): {fresh: string[]; repeated: number; since: string | null} {
+  const self = path.resolve(runDir.replace(/\/$/, ''));
+  const sweep = path.dirname(self);
+  const round = path.basename(self);
+  const file = caveatLedgerFile();
+  let ledger: Record<string, Record<string, string>> = {};
+  try {
+    ledger = JSON.parse(fs.readFileSync(file, 'utf8')) as typeof ledger;
+  } catch {
+    ledger = {};
+  }
+  const seen = ledger[sweep] ?? {};
+  const fresh: string[] = [];
+  let repeated = 0;
+  let since: string | null = null;
+  for (const c of caveats) {
+    const first = seen[caveatKey(c)];
+    // Re-analysing the same round shows its caveats again.
+    if (first != null && first !== round) {
+      repeated++;
+      if (
+        since === null ||
+        first.localeCompare(since, undefined, {numeric: true}) < 0
+      ) {
+        since = first;
+      }
+    } else {
+      fresh.push(c);
+      seen[caveatKey(c)] = round;
+    }
+  }
+  // Re-inserted last, so the oldest sweeps are the ones dropped.
+  delete ledger[sweep];
+  ledger[sweep] = seen;
+  const sweeps = Object.keys(ledger);
+  for (const old of sweeps.slice(0, -CAVEAT_LEDGER_MAX_SWEEPS)) {
+    delete ledger[old];
+  }
+  try {
+    fs.mkdirSync(path.dirname(file), {recursive: true});
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(ledger));
+    fs.renameSync(tmp, file);
+  } catch {
+    // Best effort: a digest that repeats caveats is still correct.
+  }
+  return {fresh, repeated, since};
+}
+
 const MIN_USABLE_RUNGS = 4;
 
 /** A round the runner finished (`round.done` DONE) with enough rungs to compare. */
@@ -1223,8 +1299,19 @@ export function registerAnalysisBattery(server: McpServer): void {
           ];
 
           if (manifest.caveats.length > 0) {
-            lines.push('**Caveats recorded by the runner:**');
-            for (const c of manifest.caveats) lines.push(`- ${c}`);
+            const {fresh, repeated, since} = splitRepeatedCaveats(
+              run_dir,
+              manifest.caveats,
+            );
+            if (fresh.length > 0) {
+              lines.push('**Caveats recorded by the runner:**');
+              for (const c of fresh) lines.push(`- ${c}`);
+            }
+            if (repeated > 0) {
+              lines.push(
+                `_${repeated} caveat(s) unchanged since \`${since}\`, an earlier round of this sweep; all are in run.json \`caveats\`._`,
+              );
+            }
             lines.push('');
           }
           if (manifest.splitAfterRung.length > 0) {

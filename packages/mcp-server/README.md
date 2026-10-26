@@ -541,6 +541,7 @@ The server keeps a few small files so that work survives a restart:
 | `~/.memlab-mcp/findings.json` (or `findings.<workstream>.json`) | `memlab_finding_index` | `MEMLAB_FINDINGS_INDEX` (file, or a directory) |
 | `~/.memlab-mcp/judge-calibration.json` | `memlab_calibrate_judges` | `MEMLAB_JUDGE_LEDGER` |
 | `~/.memlab/metrics.json`, `~/.memlab/eval-store.json` | `memlab_metric`, `helpers.remember` in `memlab_eval` | `MEMLAB_STATE_DIR` |
+| `~/.memlab/battery-caveats.json` | `memlab_analysis_battery`: run.json caveats already printed for a sweep (a round's parent directory), so later rounds print them as one "unchanged" line | `MEMLAB_STATE_DIR` |
 | `$TMPDIR/memlab-cache-<uid>/` | Decompressed `.gz` snapshots (and Manifold fetches), mode `0700` | — |
 
 ## Environment Variables
