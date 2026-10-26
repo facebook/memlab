@@ -2338,42 +2338,11 @@ export async function runEval({
       opts: {limit?: number; onlyPending?: boolean; aggregate?: boolean} = {},
     ) => {
       const out: Array<{fiber: number; hooks: FiberHookRow[]}> = [];
-      snapshot.nodes.forEach(node => {
-        // memlab's IHeapNodes.forEach stops when the callback returns false.
-        // Aggregation sums over every fiber, so only an explicit limit caps it.
-        if (out.length >= (opts.limit ?? (opts.aggregate ? Infinity : 20))) {
-          return false;
-        }
-        if (!isFiberNode(node) || fiberComponentName(node) !== componentName) {
-          return undefined;
-        }
-        const hooks: FiberHookRow[] = hooksOfFiber(node).map(h => {
-          const d =
-            h.queue != null ? describeQueue(h.queue, node, undefined, h) : null;
-          return {
-            index: h.index,
-            statefulOrdinal: h.statefulOrdinal,
-            kind: h.kind,
-            memoizedState: describeValue(edgeTo(h.hook, 'memoizedState')),
-            // null, not [], when nothing is queued: an empty array is truthy,
-            // so `if (h.pending)` selected every hook.
-            pending: d != null && d.actions.length > 0 ? d.actions : null,
-            lastRenderedState: d?.lastRenderedState ?? null,
-            bailout: d?.bailout ?? null,
-          };
-        });
-        const kept = opts.onlyPending
-          ? hooks.filter(h => h.pending != null)
-          : hooks;
-        if (!opts.onlyPending || kept.length > 0) {
-          out.push({fiber: node.id, hooks: kept});
-        }
-        return undefined;
-      });
-      if (!opts.aggregate) return out;
       // One row per (hook position, pending value), summed over every fiber:
       // the question is usually "which hook queues the same value on every
-      // instance", and 72 KB of per-fiber rows was answered in Python.
+      // instance", and 72 KB of per-fiber rows was answered in Python. Folded
+      // during the scan, so a component with thousands of instances never
+      // holds its per-fiber rows.
       const groups = new Map<
         string,
         {
@@ -2385,8 +2354,8 @@ export async function runEval({
           fibers: number;
         }
       >();
-      for (const f of out) {
-        for (const h of f.hooks) {
+      const fold = (hooks: FiberHookRow[]) => {
+        for (const h of hooks) {
           const values = h.pending ?? [{value: null, count: 0}];
           // `fibers` counts instances, once per fiber and group.
           const counted = new Set<string>();
@@ -2408,7 +2377,44 @@ export async function runEval({
             groups.set(key, g);
           }
         }
-      }
+      };
+      // Aggregation sums over every fiber, so only an explicit limit caps it.
+      const cap = opts.limit ?? (opts.aggregate ? Infinity : 20);
+      let taken = 0;
+      snapshot.nodes.forEach(node => {
+        // memlab's IHeapNodes.forEach stops when the callback returns false.
+        if (taken >= cap) return false;
+        if (!isFiberNode(node) || fiberComponentName(node) !== componentName) {
+          return undefined;
+        }
+        const hooks: FiberHookRow[] = hooksOfFiber(node).map(h => {
+          const d =
+            h.queue != null ? describeQueue(h.queue, node, undefined, h) : null;
+          return {
+            index: h.index,
+            statefulOrdinal: h.statefulOrdinal,
+            kind: h.kind,
+            memoizedState: describeValue(edgeTo(h.hook, 'memoizedState')),
+            // null, not [], when nothing is queued: an empty array is truthy,
+            // so `if (h.pending)` selected every hook.
+            pending: d != null && d.actions.length > 0 ? d.actions : null,
+            lastRenderedState: d?.lastRenderedState ?? null,
+            bailout: d?.bailout ?? null,
+          };
+        });
+        const kept = opts.onlyPending
+          ? hooks.filter(h => h.pending != null)
+          : hooks;
+        if (opts.onlyPending && kept.length === 0) return undefined;
+        taken++;
+        if (opts.aggregate) {
+          fold(kept);
+        } else {
+          out.push({fiber: node.id, hooks: kept});
+        }
+        return undefined;
+      });
+      if (!opts.aggregate) return out;
       return [...groups.values()].sort(
         (a, b) => b.count - a.count || a.hookIndex - b.hookIndex,
       );
