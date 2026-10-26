@@ -79,12 +79,20 @@ const config = {
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     {
+      colorMode: {
+        defaultMode: 'dark',
+        respectPrefersColorScheme: false,
+      },
+      prism: {
+        theme: require('prism-react-renderer/themes/github'),
+        darkTheme: require('prism-react-renderer/themes/vsDark'),
+      },
       navbar: {
         title: 'memlab',
-        // logo: {
-        //   alt: 'memlab Project Logo',
-        //   src: 'img/logo.png',
-        // },
+        logo: {
+          alt: 'memlab logo',
+          src: 'img/logo.png',
+        },
         items: [
           {
             type: 'doc',
@@ -93,9 +101,28 @@ const config = {
             label: 'Docs',
           },
           {
+            type: 'doc',
+            docId: 'guides/guides-find-leaks',
+            position: 'left',
+            label: 'Guides',
+          },
+          {
+            type: 'doc',
+            docId: 'api/index',
+            position: 'left',
+            label: 'API',
+          },
+          {
+            type: 'doc',
+            docId: 'mcp-server',
+            position: 'left',
+            label: 'MCP',
+          },
+          {
             href: 'https://github.com/facebook/memlab',
-            label: 'GitHub',
             position: 'right',
+            className: 'header-github-link',
+            'aria-label': 'GitHub repository',
           },
         ],
       },
@@ -103,15 +130,23 @@ const config = {
         style: 'dark',
         links: [
           {
-            title: 'Guides',
+            title: 'Docs',
             items: [
               {
                 label: 'Getting Started',
-                to: 'docs/intro',
+                to: 'docs/getting-started',
               },
               {
                 label: 'How it works',
-                to: '/docs/how-memlab-works',
+                to: 'docs/how-memlab-works',
+              },
+              {
+                label: 'CLI',
+                to: 'docs/cli/CLI-commands',
+              },
+              {
+                label: 'MCP Server',
+                to: 'docs/mcp-server',
               },
             ],
           },
@@ -134,6 +169,14 @@ const config = {
               {
                 label: 'GitHub',
                 href: 'https://github.com/facebook/memlab',
+              },
+              {
+                label: 'npm',
+                href: 'https://www.npmjs.com/package/memlab',
+              },
+              {
+                label: 'Engineering blog',
+                href: 'https://engineering.fb.com/2022/09/12/open-source/memlab/',
               },
             ],
           },
@@ -170,7 +213,7 @@ const config = {
           src: 'img/oss_logo.png',
           href: 'https://opensource.facebook.com',
         },
-        copyright: `Copyright © 2022 Meta Platforms, Inc.`,
+        copyright: `Copyright © ${new Date().getFullYear()} Meta Platforms, Inc.`,
       },
       algolia: {
         // The application ID provided by Algolia

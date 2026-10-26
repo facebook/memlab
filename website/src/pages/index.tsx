@@ -16,17 +16,15 @@ import React, {
   useState,
 } from 'react';
 import clsx from 'clsx';
+import '@fontsource-variable/geist';
 import Layout from '@theme/Layout';
 import Link from '@docusaurus/Link';
 import CodeBlock from '../components/CodeBlock';
 import TerminalStatic from '../components/TerminalStatic';
-import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import useBaseUrl from '@docusaurus/useBaseUrl';
 import styles from './styles.module.css';
 import TerminalReplay from '../components/TerminalReplay';
 import Showcase from '../components/Showcase';
-import * as Three from 'three';
-import NET from 'vanta/dist/vanta.net.min';
 import useWindowSize from '../lib/useWindowSize';
 
 import normalizeTypeSpeed from '../lib/TypeSpeedNormalization';
@@ -37,16 +35,15 @@ const GITHUB_URL = 'https://github.com/facebook/memlab';
 const NPM_URL = 'https://www.npmjs.com/package/memlab';
 
 // the animated terminal is rendered at a fixed 780px width, so it is only
-// mounted on the wide two-column layout that has room for it
-const TERMINAL_REPLAY_MIN_WIDTH = 1400;
-const VANTA_MIN_WIDTH = 997;
+// mounted when the viewport has room for it
+const TERMINAL_REPLAY_MIN_WIDTH = 900;
 
 const stdouts = normalizeTypeSpeed(homePageStdouts);
-const MIN_POINTS = 6;
-const MAX_POINTS = 16;
+
+type Tone = 'outCommand' | 'outSuccess' | 'outDim' | 'outLeak';
 
 // shown instead of the animated terminal on viewports that cannot fit it
-const SAMPLE_OUTPUT: Array<{text: string; tone?: string}> = [
+const SAMPLE_OUTPUT: Array<{text: string; tone?: Tone}> = [
   {text: '$ memlab run --scenario test.js', tone: 'outCommand'},
   {text: ''},
   {text: 'MemLab found 46 leak(s)', tone: 'outSuccess'},
@@ -56,20 +53,48 @@ const SAMPLE_OUTPUT: Array<{text: string; tone?: string}> = [
   {text: '  --20 (element)--->  [InternalNode](native) @130981728'},
   {text: '  --1 (element)--->  [EventListener](native) @131009888'},
   {text: '  --context (internal)--->  [<function scope>](object) @181905'},
-  {text: '  --bigArray (variable)--->  [Array](object) @182925 [8.3MB]'},
+  {
+    text: '  --bigArray (variable)--->  [Array](object) @182925 [8.3MB]',
+    tone: 'outLeak',
+  },
+];
+
+// one leak story shared by the trace card and the MCP session: a dialog
+// subscribes to an app-wide event bus on mount and never unsubscribes
+const TRACE_NODES: Array<{
+  edge?: string;
+  node: string;
+  kind: string;
+  size?: string;
+}> = [
+  {node: 'Window', kind: 'GC root'},
+  {edge: 'eventBus', node: 'EventBus', kind: 'object'},
+  {edge: 'listeners', node: 'Array', kind: 'object'},
+  {edge: '[0]', node: 'handleThemeChange()', kind: 'closure'},
+  {edge: 'dialog', node: 'SettingsDialog', kind: 'captured variable'},
+  {
+    edge: 'container',
+    node: 'Detached <div class="settings">',
+    kind: '1,205 detached nodes',
+    size: '7.4MB',
+  },
 ];
 
 interface FeatureItem {
   title: string;
   icon: ReactNode;
-  docUrl?: string;
+  docUrl: string;
   description: ReactNode;
+  badge?: string;
+  visual?: ReactNode;
+  wide?: boolean;
 }
 
 interface StepItem {
   title: string;
-  docUrl?: string;
+  docUrl: string;
   description: string;
+  file: string;
   body: ReactNode;
 }
 
@@ -79,15 +104,143 @@ function Icon({children}: {children: ReactNode}): React.ReactElement {
       aria-hidden={true}
       className={styles.featureIcon}
       fill="none"
-      height="24"
+      height="20"
       stroke="currentColor"
       strokeLinecap="round"
       strokeLinejoin="round"
       strokeWidth="1.6"
       viewBox="0 0 24 24"
-      width="24">
+      width="20">
       {children}
     </svg>
+  );
+}
+
+function TraceVisual(): React.ReactElement {
+  return (
+    <div className={styles.trace}>
+      <div className={styles.traceHeader}>
+        <span className={styles.traceCommand}>
+          $ memlab run --scenario settings.js
+        </span>
+        <span className={styles.traceRetained}>1 leak · 7.4MB</span>
+      </div>
+      <ol aria-label="Example retainer trace" className={styles.traceList}>
+        {TRACE_NODES.map(({edge, kind, node, size}, i) => (
+          <li
+            className={clsx(
+              styles.traceRow,
+              i === TRACE_NODES.length - 1 && styles.traceLeak,
+            )}
+            key={node}>
+            <span className={styles.traceDot} />
+            {edge != null && <span className={styles.traceEdge}>.{edge}</span>}
+            <span className={styles.traceNode}>{node}</span>
+            <span className={styles.traceKind}>{kind}</span>
+            {size != null && <span className={styles.traceSize}>{size}</span>}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function ToolCall({
+  args,
+  children,
+  name,
+}: {
+  args?: string;
+  children: ReactNode;
+  name: string;
+}): React.ReactElement {
+  return (
+    <div className={styles.agentBlock}>
+      <div>
+        <span className={styles.agentBullet}>●</span>
+        <span className={styles.agentTool}>{name}</span>
+        <span className={styles.agentArgs}>({args ?? ''})</span>
+      </div>
+      <div className={styles.agentResult}>{children}</div>
+    </div>
+  );
+}
+
+function AgentVisual(): React.ReactElement {
+  return (
+    <WindowFrame className={styles.agentWindow} title="agent · memlab mcp">
+      <div aria-hidden={true} className={styles.agent}>
+        <p className={styles.agentPrompt}>
+          The heap grows every time I open and close Settings. The snapshots are
+          in ./snaps. What is leaking?
+        </p>
+        <ToolCall args="./snaps/*.heapsnapshot" name="memlab_load_snapshot">
+          6 snapshots: a baseline + 5 open/close cycles
+        </ToolCall>
+        <ToolCall name="memlab_leak_report">
+          <div>Grows on 5 of 5 cycles:</div>
+          <div className={styles.agentRow}>
+            <span>SettingsDialog</span>
+            <span className={styles.agentBad}>+1 / cycle</span>
+          </div>
+          <div className={styles.agentRow}>
+            <span>Detached HTMLDivElement</span>
+            <span className={styles.agentBad}>+241 / cycle</span>
+          </div>
+          <div className={styles.agentRow}>
+            <span>Retained</span>
+            <span className={styles.agentBad}>+7.4MB / cycle</span>
+          </div>
+        </ToolCall>
+        <ToolCall name="memlab_settle_check">
+          None of it comes back after idle + GC: a leak, not work in flight.
+        </ToolCall>
+        <ToolCall name="memlab_dev_artifacts">
+          0 B retained only by DevTools or extensions.
+        </ToolCall>
+        <ToolCall args="SettingsDialog" name="memlab_retainer_trace">
+          <div>window</div>
+          <div className={styles.agentRow}>
+            <span>&nbsp;&nbsp;.eventBus.listeners[0]</span>
+            <span>handleThemeChange()</span>
+          </div>
+          <div className={styles.agentRow}>
+            <span>&nbsp;&nbsp;&nbsp;&nbsp;.dialog</span>
+            <span>SettingsDialog</span>
+          </div>
+          <div className={styles.agentRow}>
+            <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.container</span>
+            <span className={styles.agentBad}>Detached &lt;div&gt; 7.4MB</span>
+          </div>
+        </ToolCall>
+        <p className={styles.agentSay}>
+          <code>SettingsDialog</code> subscribes <code>handleThemeChange</code>{' '}
+          to <code>eventBus</code> on mount and never unsubscribes. The listener
+          closure keeps every closed dialog reachable from <code>window</code>.
+          Return the unsubscribe from the effect:
+        </p>
+        <pre className={styles.agentCode}>
+          {`useEffect(
+  () => eventBus.on('theme', handleThemeChange),
+  [],
+);`}
+        </pre>
+        <p className={styles.agentPrompt}>
+          Fixed. New snapshots are in ./snaps-fixed.
+        </p>
+        <ToolCall args="./snaps → ./snaps-fixed" name="memlab_verify_fix">
+          <div className={styles.agentRow}>
+            <span>Growth / cycle</span>
+            <span className={styles.agentGood}>7.4MB → 0 B</span>
+          </div>
+          <div className={styles.agentRow}>
+            <span>Detached nodes</span>
+            <span className={styles.agentGood}>1,205 → 0</span>
+          </div>
+          <div className={styles.agentGood}>✓ Leak fixed</div>
+        </ToolCall>
+      </div>
+    </WindowFrame>
   );
 }
 
@@ -104,9 +257,30 @@ const features: FeatureItem[] = [
     description: (
       <>
         Drive your app with the Puppeteer API. memlab diffs the heap snapshots,
-        filters out the noise, and clusters what actually leaked.
+        filters out the noise, and hands you the retainer trace of what actually
+        leaked.
       </>
     ),
+    visual: <TraceVisual />,
+  },
+  {
+    title: 'MCP server for AI agents',
+    docUrl: 'docs/mcp-server',
+    badge: 'New',
+    wide: true,
+    icon: (
+      <Icon>
+        <rect height="11" rx="2.5" width="16" x="4" y="8" />
+        <path d="M12 8V4.5M9 13.5h.01M15 13.5h.01M9.5 17h5" />
+      </Icon>
+    ),
+    description: (
+      <>
+        Hand heap snapshots to Claude Code, Cursor, or any MCP client and
+        investigate memory in plain English.
+      </>
+    ),
+    visual: <AgentVisual />,
   },
   {
     title: 'Heap traversal API',
@@ -174,22 +348,6 @@ const features: FeatureItem[] = [
       </>
     ),
   },
-  {
-    title: 'MCP server for AI agents',
-    docUrl: 'docs/mcp-server',
-    icon: (
-      <Icon>
-        <rect height="11" rx="2.5" width="16" x="4" y="8" />
-        <path d="M12 8V4.5M9 13.5h.01M15 13.5h.01M9.5 17h5" />
-      </Icon>
-    ),
-    description: (
-      <>
-        Hand heap snapshots to Claude Code, Cursor, or any MCP client and
-        investigate memory in plain English.
-      </>
-    ),
-  },
 ];
 
 const steps: StepItem[] = [
@@ -197,11 +355,11 @@ const steps: StepItem[] = [
     title: 'Define your test',
     docUrl: 'docs/api/core/src/interfaces/IScenario',
     description: 'Describe the interaction you want to check for leaks.',
+    file: 'test.js',
     body: (
       <CodeBlock
         language="typescript"
-        code={`// test.js
-function url() {
+        code={`function url() {
   return 'https://www.google.com/maps';
 }
 async function action(page) {
@@ -219,15 +377,13 @@ module.exports = {action, back, url};`}
     title: 'Run memlab in the CLI',
     docUrl: 'docs/cli/CLI-commands',
     description: 'One command drives the browser and reports leak traces.',
+    file: 'zsh',
     body: (
-      <>
-        <TerminalStatic
-          language="bash"
-          code={`$ memlab run --scenario test.js`}
-        />
-        <TerminalStatic
-          language="bash"
-          code={`# Analyze duplicated strings in the heap
+      <TerminalStatic
+        language="bash"
+        code={`$ memlab run --scenario test.js
+
+# Analyze duplicated strings in the heap
 $ memlab analyze string
 # Check unbound object growth
 $ memlab analyze unbound-object
@@ -235,24 +391,27 @@ $ memlab analyze unbound-object
 $ memlab analyze unbound-shape
 # Discover more memory analyses
 $ memlab analyze -h`}
-        />
-      </>
+      />
     ),
   },
   {
     title: 'Or use the API',
     docUrl: 'docs/api/',
     description: 'Take snapshots and find leaks programmatically.',
+    file: 'find-leaks.js',
     body: (
       <CodeBlock
         language="typescript"
-        code={`const {findLeaks, takeSnapshots} = require('@memlab/api');
+        code={`const {findLeaks, takeSnapshots} =
+  require('@memlab/api');
 
 async function test() {
   const scenario = {
     url: () => 'https://www.facebook.com',
   };
-  const result = await takeSnapshots({scenario});
+  const result = await takeSnapshots({
+    scenario,
+  });
   const leaks = findLeaks(result);
   // ...
 }`}
@@ -261,38 +420,90 @@ async function test() {
   },
 ];
 
-function Feature({description, docUrl, icon, title}: FeatureItem) {
-  const url = useBaseUrl(docUrl);
-  const content = (
-    <>
-      <span className={styles.featureIconWrapper}>{icon}</span>
-      <h3 className={styles.featureTitle}>{title}</h3>
-      <p className={styles.featureText}>{description}</p>
-    </>
-  );
-  return docUrl != null ? (
-    <Link className={clsx(styles.featureCard, styles.featureLink)} to={url}>
-      {content}
-    </Link>
-  ) : (
-    <div className={styles.featureCard}>{content}</div>
+function WindowFrame({
+  children,
+  className,
+  title,
+}: {
+  children: ReactNode;
+  className?: string;
+  title: string;
+}): React.ReactElement {
+  return (
+    <div className={clsx(styles.window, className)}>
+      <div className={styles.windowBar}>
+        <span className={styles.windowDots} aria-hidden={true}>
+          <span />
+          <span />
+          <span />
+        </span>
+        <span className={styles.windowTitle}>{title}</span>
+      </div>
+      <div className={styles.windowBody}>{children}</div>
+    </div>
   );
 }
 
-function Step({body, description, docUrl, index, title}) {
-  const url = useBaseUrl(docUrl);
+// tracks the pointer so the card can paint a spotlight under it
+function onSpotlightMove(event: React.MouseEvent<HTMLElement>) {
+  const card = event.currentTarget;
+  const rect = card.getBoundingClientRect();
+  card.style.setProperty('--mx', `${event.clientX - rect.left}px`);
+  card.style.setProperty('--my', `${event.clientY - rect.top}px`);
+}
+
+function Feature({
+  badge,
+  description,
+  docUrl,
+  icon,
+  title,
+  visual,
+  wide,
+}: FeatureItem) {
   return (
-    <div className={styles.stepCard}>
+    <Link
+      className={clsx(
+        styles.featureCard,
+        visual != null && styles.featureLarge,
+        wide && styles.featureWide,
+        badge != null && styles.featureHighlight,
+      )}
+      onMouseMove={onSpotlightMove}
+      to={useBaseUrl(docUrl)}>
+      <div className={styles.featureCopy}>
+        <div className={styles.featureHead}>
+          <span className={styles.featureIconWrapper}>{icon}</span>
+          {badge != null && (
+            <span className={styles.featureBadge}>{badge}</span>
+          )}
+        </div>
+        <h3 className={styles.featureTitle}>{title}</h3>
+        <p className={styles.featureText}>{description}</p>
+      </div>
+      {visual != null && <div className={styles.featureVisual}>{visual}</div>}
+      <span aria-hidden={true} className={styles.featureArrow}>
+        →
+      </span>
+    </Link>
+  );
+}
+
+function Step({body, description, docUrl, file, index, title}) {
+  return (
+    <div className={styles.step}>
       <div className={styles.stepHeader}>
         <span className={styles.stepNumber}>{index}</span>
         <div>
           <h3 className={styles.stepTitle}>
-            {docUrl != null ? <Link to={url}>{title}</Link> : title}
+            <Link to={useBaseUrl(docUrl)}>{title}</Link>
           </h3>
           <p className={styles.stepText}>{description}</p>
         </div>
       </div>
-      <div className={styles.stepBody}>{body}</div>
+      <WindowFrame className={styles.stepWindow} title={file}>
+        {body}
+      </WindowFrame>
     </div>
   );
 }
@@ -347,31 +558,30 @@ function CopyableCommand({
           <svg
             aria-hidden={true}
             fill="none"
-            height="16"
+            height="15"
             stroke="currentColor"
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth="2"
             viewBox="0 0 24 24"
-            width="16">
+            width="15">
             <path d="m5 12.5 4.5 4.5L19 7" />
           </svg>
         ) : (
           <svg
             aria-hidden={true}
             fill="none"
-            height="16"
+            height="15"
             stroke="currentColor"
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth="1.8"
             viewBox="0 0 24 24"
-            width="16">
+            width="15">
             <rect height="13" rx="2" width="11" x="9" y="8" />
             <path d="M5.5 16H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v.5" />
           </svg>
         )}
-        <span className={styles.copyLabel}>{copied ? 'Copied' : 'Copy'}</span>
       </button>
     </div>
   );
@@ -390,72 +600,64 @@ function GitHubIcon(): React.ReactElement {
   );
 }
 
+function SectionHead({
+  eyebrow,
+  subtitle,
+  title,
+}: {
+  eyebrow: string;
+  subtitle: ReactNode;
+  title: ReactNode;
+}): React.ReactElement {
+  return (
+    <div className={styles.sectionHead}>
+      <p className={styles.eyebrow}>{eyebrow}</p>
+      <h2 className={styles.sectionTitle}>{title}</h2>
+      <p className={styles.sectionSubtitle}>{subtitle}</p>
+    </div>
+  );
+}
+
 export default function Home(): React.ReactElement {
-  const {siteConfig} = useDocusaurusContext();
-  const heroRef = useRef(null);
   const [mounted, setMounted] = useState(false);
   const {width} = useWindowSize();
-  const showAnimation = mounted && width >= VANTA_MIN_WIDTH;
   const showTerminalReplay = mounted && width >= TERMINAL_REPLAY_MIN_WIDTH;
 
   useEffect(() => setMounted(true), []);
 
-  useEffect(() => {
-    if (!showAnimation) {
-      return;
-    }
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      return;
-    }
-    const effect = NET({
-      el: heroRef.current,
-      THREE: Three,
-      mouseControls: true,
-      touchControls: false,
-      gyroControls: false,
-      minHeight: 170.0,
-      minWidth: 170.0,
-      scale: 0.9,
-      scaleMobile: 0.4,
-      color: 0xf0db4f,
-      backgroundColor: 0x0a0c11,
-      // read the width here rather than from the render scope so that a resize
-      // does not tear down and rebuild the WebGL scene on every frame
-      points: Math.min(
-        Math.max(Math.floor((12.0 * window.innerWidth) / 1800), MIN_POINTS),
-        MAX_POINTS,
-      ),
-      maxDistance: 26,
-      spacing: 22.0,
-    });
-    return () => effect.destroy();
-  }, [showAnimation]);
-
   return (
     <Layout description="memlab is an E2E testing, memory leak detection, and heap analysis framework for front-end JavaScript.">
-      <header className={styles.hero} ref={heroRef}>
-        <div className={styles.heroOverlay} />
-        <div className={styles.heroInner}>
-          <div className={styles.heroCopy}>
-            <a
+      <div className={styles.page}>
+        <header className={styles.hero}>
+          <div aria-hidden={true} className={styles.heroAurora} />
+          <div aria-hidden={true} className={styles.heroGrid} />
+          <div className={styles.heroInner}>
+            <Link
               className={styles.heroBadge}
-              href="https://engineering.fb.com/2022/09/12/open-source/memlab/"
-              rel="noreferrer noopener"
-              target="_blank">
-              <span className={styles.heroBadgeDot} />
-              Built and battle-tested at Meta
+              to={useBaseUrl('docs/mcp-server')}>
+              <span className={styles.heroBadgeTag}>New</span>
+              Investigate heaps with your AI agent
               <span className={styles.heroBadgeArrow}>→</span>
-            </a>
+            </Link>
             <h1 className={styles.heroTitle}>
-              Find <span className={styles.gradientText}>memory leaks</span> in
-              JavaScript
+              Find <span className={styles.gradientText}>memory leaks</span>
+              <br />
+              in JavaScript
             </h1>
-            <p className={styles.heroSubtitle}>{siteConfig.tagline}</p>
+            <p className={styles.heroSubtitle}>
+              memlab drives your app in a real browser, diffs the heap
+              snapshots, and shows you the exact reference chain keeping leaked
+              objects alive. Works with heaps from Chromium, Node.js, Electron,
+              and Hermes.
+            </p>
             <div className={styles.heroActions}>
               <Link
                 className={styles.buttonPrimary}
                 to={useBaseUrl('docs/getting-started')}>
                 Get started
+                <span aria-hidden={true} className={styles.buttonArrow}>
+                  →
+                </span>
               </Link>
               <a
                 className={styles.buttonGhost}
@@ -470,130 +672,135 @@ export default function Home(): React.ReactElement {
           </div>
 
           <div className={styles.heroVisual}>
-            <div className={styles.terminalCard}>
-              <div className={styles.terminalBar}>
-                <span className={clsx(styles.terminalDot, styles.dotRed)} />
-                <span className={clsx(styles.terminalDot, styles.dotYellow)} />
-                <span className={clsx(styles.terminalDot, styles.dotGreen)} />
-                <span className={styles.terminalTitle}>memlab run</span>
-              </div>
-              <div className={styles.terminalBody}>
-                {showTerminalReplay ? (
-                  <TerminalReplay stdouts={stdouts} />
-                ) : (
-                  <pre className={styles.terminalStaticOutput}>
-                    {SAMPLE_OUTPUT.map((line, i) => (
-                      <div
-                        className={line.tone != null ? styles[line.tone] : null}
-                        key={i}>
-                        {line.text === '' ? ' ' : line.text}
-                      </div>
-                    ))}
-                  </pre>
-                )}
-              </div>
-            </div>
+            <div aria-hidden={true} className={styles.heroGlow} />
+            <WindowFrame className={styles.terminalWindow} title="memlab run">
+              {showTerminalReplay ? (
+                <TerminalReplay stdouts={stdouts} />
+              ) : (
+                <pre className={styles.terminalStaticOutput}>
+                  {SAMPLE_OUTPUT.map((line, i) => (
+                    <div
+                      className={line.tone != null ? styles[line.tone] : null}
+                      key={i}>
+                      {line.text === '' ? ' ' : line.text}
+                    </div>
+                  ))}
+                </pre>
+              )}
+            </WindowFrame>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main className={styles.main}>
-        <Showcase />
+        <main className={styles.main}>
+          <Showcase />
 
-        <section className={styles.section}>
-          <div className={styles.sectionHead}>
-            <p className={styles.eyebrow}>Features</p>
-            <h2 className={styles.sectionTitle}>
-              Everything you need to chase down memory
-            </h2>
-            <p className={styles.sectionSubtitle}>
-              From automated end-to-end leak detection to low-level heap
-              analysis — in the browser, in Node.js, and in CI.
-            </p>
-          </div>
-          <div className={styles.featureGrid}>
-            {features.map((feature) => (
-              <Feature key={feature.title} {...feature} />
-            ))}
-          </div>
-        </section>
-
-        <section className={clsx(styles.section, styles.sectionAlt)}>
-          <div className={styles.sectionHead}>
-            <p className={styles.eyebrow}>How it works</p>
-            <h2 className={styles.sectionTitle}>Three steps to a leak trace</h2>
-            <p className={styles.sectionSubtitle}>
-              Write a scenario, run it, and read the reference chain that keeps
-              your objects alive.
-            </p>
-          </div>
-          <div className={styles.stepGrid}>
-            {steps.map((step, i) => (
-              <Step key={step.title} index={i + 1} {...step} />
-            ))}
-          </div>
-        </section>
-
-        <section className={styles.section}>
-          <div className={styles.split}>
-            <div className={styles.splitCopy}>
-              <p className={styles.eyebrow}>Retainer traces</p>
-              <h2 className={styles.sectionTitle}>
-                See exactly what is holding memory
-              </h2>
-              <p className={styles.sectionSubtitle}>
-                memlab walks the reference chain from the GC root down to the
-                leaked object, so you know which reference to break instead of
-                guessing. Similar leaks are clustered, so 46 leaked objects
-                become a handful of real bugs to fix.
-              </p>
-              <Link
-                className={styles.textLink}
-                to={useBaseUrl('docs/guides/guides-find-leaks')}>
-                Read the debugging guide →
-              </Link>
-            </div>
-            <div className={styles.splitMedia}>
-              <img
-                alt="memlab comparing heap snapshots to surface a leak trace"
-                className={styles.splitImage}
-                height={982}
-                loading="lazy"
-                src={useBaseUrl('img/heap-diff.gif')}
-                width={2030}
-              />
-            </div>
-          </div>
-        </section>
-
-        <section className={styles.ctaSection}>
-          <div className={styles.cta}>
-            <h2 className={styles.ctaTitle}>Start finding leaks in minutes</h2>
-            <p className={styles.ctaText}>
-              Install the CLI, point it at a page, and let memlab do the
-              snapshot diffing for you.
-            </p>
-            <CopyableCommand
-              className={styles.ctaInstall}
-              command={INSTALL_COMMAND}
+          <section className={styles.section}>
+            <SectionHead
+              eyebrow="Features"
+              title={
+                <>
+                  Everything you need to{' '}
+                  <span className={styles.gradientText}>chase down memory</span>
+                </>
+              }
+              subtitle="From automated end-to-end leak detection to low-level heap analysis — in the browser, in Node.js, and in CI."
             />
-            <div className={styles.ctaLinks}>
-              <Link
-                className={styles.buttonPrimary}
-                to={useBaseUrl('docs/intro')}>
-                Read the docs
-              </Link>
-              <a
-                className={styles.buttonGhost}
-                href={NPM_URL}
-                rel="noreferrer noopener"
-                target="_blank">
-                View on npm
-              </a>
+            <div className={styles.bento}>
+              {features.map((feature) => (
+                <Feature key={feature.title} {...feature} />
+              ))}
             </div>
-          </div>
-        </section>
-      </main>
+          </section>
+
+          <section className={styles.section}>
+            <SectionHead
+              eyebrow="How it works"
+              title="Three steps to a leak trace"
+              subtitle="Write a scenario, run it, and read the reference chain that keeps your objects alive."
+            />
+            <div className={styles.steps}>
+              {steps.map((step, i) => (
+                <Step key={step.title} index={i + 1} {...step} />
+              ))}
+            </div>
+          </section>
+
+          <section className={styles.section}>
+            <div className={styles.split}>
+              <div className={styles.splitCopy}>
+                <p className={styles.eyebrow}>Retainer traces</p>
+                <h2 className={styles.sectionTitle}>
+                  See exactly what is holding memory
+                </h2>
+                <p className={styles.sectionSubtitle}>
+                  memlab walks the reference chain from the GC root down to the
+                  leaked object, so you know which reference to break instead of
+                  guessing. Similar leaks are clustered, so 46 leaked objects
+                  become a handful of real bugs to fix.
+                </p>
+                <ul className={styles.checklist}>
+                  <li>Detached DOM and unmounted React fibers, flagged</li>
+                  <li>Leaks clustered by retainer trace similarity</li>
+                  <li>Retained sizes, so you fix the biggest first</li>
+                </ul>
+                <Link
+                  className={styles.textLink}
+                  to={useBaseUrl('docs/guides/guides-find-leaks')}>
+                  Read the debugging guide →
+                </Link>
+              </div>
+              <div className={styles.splitMedia}>
+                <div aria-hidden={true} className={styles.splitGlow} />
+                <WindowFrame title="memlab — heap diff">
+                  <img
+                    alt="memlab comparing heap snapshots to surface a leak trace"
+                    className={styles.splitImage}
+                    height={982}
+                    loading="lazy"
+                    src={useBaseUrl('img/heap-diff.gif')}
+                    width={2030}
+                  />
+                </WindowFrame>
+              </div>
+            </div>
+          </section>
+
+          <section className={styles.ctaSection}>
+            <div className={styles.cta}>
+              <div aria-hidden={true} className={styles.ctaGrid} />
+              <h2 className={styles.ctaTitle}>
+                Start finding leaks{' '}
+                <span className={styles.gradientText}>in minutes</span>
+              </h2>
+              <p className={styles.ctaText}>
+                Install the CLI, point it at a page, and let memlab do the
+                snapshot diffing for you.
+              </p>
+              <CopyableCommand
+                className={styles.ctaInstall}
+                command={INSTALL_COMMAND}
+              />
+              <div className={styles.ctaLinks}>
+                <Link
+                  className={styles.buttonPrimary}
+                  to={useBaseUrl('docs/intro')}>
+                  Read the docs
+                  <span aria-hidden={true} className={styles.buttonArrow}>
+                    →
+                  </span>
+                </Link>
+                <a
+                  className={styles.buttonGhost}
+                  href={NPM_URL}
+                  rel="noreferrer noopener"
+                  target="_blank">
+                  View on npm
+                </a>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
     </Layout>
   );
 }
