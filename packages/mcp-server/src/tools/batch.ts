@@ -12,6 +12,7 @@ import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {getRegisteredTool, listToolNames} from '../tool-registry.js';
 import {errorResult, toolResult} from '../utils.js';
+import {runWithReadScope} from '../read-scope.js';
 
 interface StepResult {
   tool: string;
@@ -239,7 +240,9 @@ export function registerBatch(server: McpServer): void {
             continue;
           }
           try {
-            const res = await entry.handler(parsed, {});
+            const res = await runWithReadScope(async () =>
+              entry.handler(parsed, {}),
+            );
             const ok = !isErrorResult(res);
             results.push({tool, ok, text: renderToolText(res)});
             if (!ok && stop_on_error) break;

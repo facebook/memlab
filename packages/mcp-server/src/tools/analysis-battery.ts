@@ -44,6 +44,7 @@ import {getRegisteredTool} from '../tool-registry.js';
 import {makeProgressReporter} from '../progress.js';
 import {snapshotExists} from '../snapshot-index.js';
 import {errorResult, formatBytes, formatNumber, toolResult} from '../utils.js';
+import {runWithReadScope} from '../read-scope.js';
 
 /**
  * A battery started with `async: true`, tracked so `memlab_battery_status` can
@@ -1048,7 +1049,9 @@ export function registerAnalysisBattery(server: McpServer): void {
                 entry.shape != null
                   ? z.object(entry.shape as never).parse(step.args)
                   : step.args;
-              text = textOf(await entry.handler(parsed, {}));
+              text = textOf(
+                await runWithReadScope(async () => entry.handler(parsed, {})),
+              );
             } catch (err: unknown) {
               text = `ERROR: ${err instanceof Error ? err.message : String(err)}`;
               failures.push(`${step.tool}: ${text.slice(0, 160)}`);

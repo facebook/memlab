@@ -20,6 +20,7 @@ import {recordCall} from './perf-stats.js';
 import {toolAnnotations} from './tool-annotations.js';
 import {isTerse, shouldEmitNote} from './heap-state.js';
 import {makeProgressReporter, runWithProgress} from './progress.js';
+import {runWithReadScope} from './read-scope.js';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   beginAnalysisBudget,
@@ -316,10 +317,12 @@ export function installAnalysisGuardrail(server: McpServer): void {
               : null;
           const result = await runWithProgress(
             makeProgressReporter(extra, name.replace(/^memlab_/, '')),
-            async () =>
-              ref != null
-                ? withSnapshotRef(ref, () => inner(...hArgs))
-                : inner(...hArgs),
+            () =>
+              runWithReadScope(async () =>
+                ref != null
+                  ? withSnapshotRef(ref, () => inner(...hArgs))
+                  : inner(...hArgs),
+              ),
           );
           return trimStandingNotes(result);
         } catch (e) {

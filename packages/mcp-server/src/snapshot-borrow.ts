@@ -32,6 +32,7 @@ import {
   resolveMaxFileSizeMB,
   resolveSnapshotPath,
 } from './tools/load-snapshot.js';
+import {noteSnapshotRead} from './read-scope.js';
 
 /**
  * Run `fn` against the snapshot at `localPath`, loading it only if it is not
@@ -92,6 +93,8 @@ export async function withSnapshotAt<T>(
     } else if (resident != null) {
       setCurrentSnapshot(resident.handle);
     }
+    // Only once the rung is loaded: a failed load was not read.
+    noteSnapshotRead(localPath);
     return await fn(snapshot);
   } finally {
     if (temporaryHandle != null) {

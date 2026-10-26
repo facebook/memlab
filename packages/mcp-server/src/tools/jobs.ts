@@ -28,6 +28,7 @@ import {z} from 'zod';
 import {runWithProgress, type ProgressReporter} from '../progress.js';
 import {getRegisteredTool, listToolNames} from '../tool-registry.js';
 import {errorResult, markdownTable, toolResult} from '../utils.js';
+import {runWithReadScope} from '../read-scope.js';
 
 export interface Job {
   id: string;
@@ -181,7 +182,9 @@ export function registerJobs(server: McpServer): void {
           entry.shape != null
             ? z.object(entry.shape as never).parse(args)
             : args;
-        const job = startJob(tool, extra => entry.handler(parsed, extra));
+        const job = startJob(tool, extra =>
+          runWithReadScope(async () => entry.handler(parsed, extra)),
+        );
         if (typeof job === 'string') return errorResult(new Error(job));
         return toolResult(
           `Started \`${tool}\` as job \`${job.id}\`. Poll with ` +

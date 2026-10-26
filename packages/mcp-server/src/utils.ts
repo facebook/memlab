@@ -29,6 +29,7 @@ import {
   makeScanBudget,
   tickAnalysis,
 } from './analysis-budget.js';
+import {snapshotsReadInScope} from './read-scope.js';
 export {ScanTimeoutError, makeScanBudget};
 
 export interface NodeSummary {
@@ -2047,12 +2048,18 @@ export function textResult(text: string) {
  * correct only for tools that genuinely act on the active snapshot.
  */
 export function toolResult(text: string, headerOverride?: string | null) {
+  // A call that loaded rungs by path is described by those files, not by the
+  // resident snapshot (see read-scope.ts). Not subject to `quietHeader`: which
+  // files a call read is per-call provenance, not a repeated session header.
+  const read = snapshotsReadInScope();
   const header =
     headerOverride !== undefined
       ? (headerOverride ?? '')
-      : shouldEmitHeader()
-        ? snapshotHeader()
-        : '';
+      : read.length > 0
+        ? pathsHeader(read)
+        : shouldEmitHeader()
+          ? snapshotHeader()
+          : '';
   const notice = takeActiveNotice();
   const body = [notice, header, text].filter(Boolean).join('\n\n');
   return {content: [{type: 'text' as const, text: body}]};
