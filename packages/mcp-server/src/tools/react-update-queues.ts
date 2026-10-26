@@ -20,7 +20,7 @@ import {
   armScanBudgetFor,
   scaledTimeoutMs,
 } from '../snapshot-borrow.js';
-import {resolveLadderInputs, SEGMENT_ARG_DESCRIPTION} from '../run-manifest.js';
+import {resolveLadderInputs, segmentArg} from '../run-manifest.js';
 import {
   nearestFiber,
   fiberComponentName,
@@ -466,10 +466,7 @@ export function registerReactUpdateQueues(server: McpServer): void {
         .describe(
           'Ordered snapshot paths (oldest first), as an alternative to `run_dir`. Ignored when `run_dir` is given.',
         ),
-      segment: z
-        .union([z.number().int().min(0), z.literal('all')])
-        .optional()
-        .describe(SEGMENT_ARG_DESCRIPTION),
+      segment: segmentArg(),
     },
     async ({max_chain, limit, max_hops, paths, run_dir, segment}) => {
       try {

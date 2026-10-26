@@ -35,6 +35,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import {z} from 'zod';
 
 /** How the per-rung cycle axis was obtained, for disclosure in the report. */
 export type CycleAxisSource =
@@ -466,6 +467,34 @@ export const SEGMENT_ARG_DESCRIPTION =
   'differencing across one produced a 3.6 MB "shrink" where the valid segment read +2.1 MB. ' +
   'Only meaningful with `run_dir`, and only when run.json records a split: then this is REQUIRED, ' +
   'and the error lists the segments. Pass `"all"` to override and treat the whole ladder as one heap.';
+
+/**
+ * The `segment` argument's schema, shared by every ladder tool. A segment index
+ * sent as a numeric string (`"0"`) is accepted as that number: some MCP clients
+ * serialize an `anyOf` integer that way, and the bare union rejected it with
+ * an "Invalid input at segment" error that named neither the cause nor a fix.
+ */
+export function segmentArg(description: string = SEGMENT_ARG_DESCRIPTION) {
+  return z
+    .preprocess(
+      numericStringToNumber,
+      z.union([z.number().int().nonnegative(), z.literal('all')]),
+    )
+    .optional()
+    .describe(description);
+}
+
+/** {@link segmentArg} for a tool that measures exactly one segment (no `"all"`). */
+export function segmentIndexArg(description: string) {
+  return z
+    .preprocess(numericStringToNumber, z.number().int().nonnegative())
+    .optional()
+    .describe(description);
+}
+
+function numericStringToNumber(v: unknown): unknown {
+  return typeof v === 'string' && /^\s*\d+\s*$/.test(v) ? Number(v) : v;
+}
 
 /** The `segment:` menu, for an error message or a report header. */
 export function describeSegments(segments: LadderSegment[]): string {

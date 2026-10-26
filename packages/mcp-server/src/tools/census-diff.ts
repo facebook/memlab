@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 
-import {resolveLadderInputs, SEGMENT_ARG_DESCRIPTION} from '../run-manifest.js';
+import {resolveLadderInputs, segmentArg} from '../run-manifest.js';
 import {detectEnv} from './load-snapshot.js';
 import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -229,10 +229,7 @@ export function registerCensusDiff(server: McpServer): void {
         .describe(
           "A leak-hunt round's output directory. Uses the FIRST and LAST rungs from run.json as baseline and target, so the pair cannot be transposed or drawn from the wrong round.",
         ),
-      segment: z
-        .union([z.number().int().nonnegative(), z.literal('all')])
-        .optional()
-        .describe(SEGMENT_ARG_DESCRIPTION),
+      segment: segmentArg(),
       baseline: z
         .string()
         .optional()

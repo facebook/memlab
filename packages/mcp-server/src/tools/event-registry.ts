@@ -20,7 +20,7 @@ import {ladderShape} from '../ladder-shape.js';
 import {
   describeSegmentSelection,
   resolveLadderInputs,
-  SEGMENT_ARG_DESCRIPTION,
+  segmentArg,
 } from '../run-manifest.js';
 import {
   armScanBudgetFor,
@@ -223,10 +223,7 @@ export function registerEventRegistry(server: McpServer): void {
         .describe(
           "A leak-hunt round's output directory. Switches to LADDER mode: listener records per `event -> callback` at every rung, with Δ/cycle and a shape verdict (STEP / STEP+LINEAR / LINEAR / ONSET / SATURATING / DRAINS) per row.",
         ),
-      segment: z
-        .union([z.number().int().nonnegative(), z.literal('all')])
-        .optional()
-        .describe(SEGMENT_ARG_DESCRIPTION),
+      segment: segmentArg(),
       timeout_ms: z
         .number()
         .optional()

@@ -32,7 +32,7 @@ import {
   ladderSpanSeconds,
   resolveLadderInputs,
   describeSegmentSelection,
-  SEGMENT_ARG_DESCRIPTION,
+  segmentArg,
   retentionWindowCaveat,
   isSettleRungFilename,
 } from '../run-manifest.js';
@@ -762,10 +762,7 @@ export function registerLadderProbe(server: McpServer): void {
         .describe(
           "A leak-hunt round's output directory (the one holding run.json and snapshots/). PREFERRED over `paths`: the rung paths, the exact per-rung cycle counts and the total cycles driven are all read from run.json, so the x-axis is measured rather than assumed. Rungs are placed on a schedule, so a real ladder is unevenly spaced (e.g. 0/200/375/450) and an assumed-even axis silently reports wrong rates.",
         ),
-      segment: z
-        .union([z.number().int().nonnegative(), z.literal('all')])
-        .optional()
-        .describe(SEGMENT_ARG_DESCRIPTION),
+      segment: segmentArg(),
       paths: z
         .array(z.string())
         .optional()

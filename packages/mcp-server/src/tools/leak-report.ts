@@ -12,7 +12,7 @@ import {
   ladderSpanSeconds,
   resolveLadderInputs,
   describeSegmentSelection,
-  SEGMENT_ARG_DESCRIPTION,
+  segmentArg,
   retentionWindowCaveat,
 } from '../run-manifest.js';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -323,10 +323,7 @@ export function registerLeakReport(server: McpServer): void {
         .describe(
           "A leak-hunt round's output directory (the one holding run.json and snapshots/). PREFERRED over `paths`: the rung paths and the exact cycles driven are read from run.json, so the per-cycle axis is measured rather than assumed. Rungs are placed on a schedule, so a real ladder is unevenly spaced (e.g. 0/200/375/450).",
         ),
-      segment: z
-        .union([z.number().int().nonnegative(), z.literal('all')])
-        .optional()
-        .describe(SEGMENT_ARG_DESCRIPTION),
+      segment: segmentArg(),
       paths: z
         .array(z.string())
         .optional()

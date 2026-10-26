@@ -44,7 +44,7 @@ import {
   describeSegmentSelection,
   isSettleRungFilename,
   resolveLadderInputs,
-  SEGMENT_ARG_DESCRIPTION,
+  segmentArg,
 } from '../run-manifest.js';
 import {resolveRungs, withSnapshotAt} from '../snapshot-borrow.js';
 import {linearFit} from './ladder-probe.js';
@@ -147,10 +147,7 @@ export function registerShapeCensusDiff(server: McpServer): void {
         .describe(
           "A leak-hunt round's output directory (the one holding run.json and snapshots/). PREFERRED over `paths`: the rung paths, the exact per-rung cycle counts and the settle rung are all read from run.json.",
         ),
-      segment: z
-        .union([z.number(), z.literal('all')])
-        .optional()
-        .describe(SEGMENT_ARG_DESCRIPTION),
+      segment: segmentArg(),
       paths: z
         .array(z.string())
         .optional()

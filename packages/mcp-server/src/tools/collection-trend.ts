@@ -23,7 +23,7 @@ import {
   toolResult,
 } from '../utils.js';
 import {resolveRunOrPaths} from './ladder.js';
-import {SEGMENT_ARG_DESCRIPTION} from '../run-manifest.js';
+import {segmentArg} from '../run-manifest.js';
 import {resolveMaxFileSizeMB, resolveSnapshotPath} from './load-snapshot.js';
 
 const {utils: memlabUtils} = memlabCore;
@@ -262,10 +262,7 @@ export function registerCollectionTrend(server: McpServer): void {
         .describe(
           "A leak-hunt round's output directory. Supplies the rungs and the cycle axis from run.json, instead of `paths` and `cycles`.",
         ),
-      segment: z
-        .union([z.number().int().nonnegative(), z.literal('all')])
-        .optional()
-        .describe(SEGMENT_ARG_DESCRIPTION),
+      segment: segmentArg(),
       paths: z
         .array(z.string())
         .optional()

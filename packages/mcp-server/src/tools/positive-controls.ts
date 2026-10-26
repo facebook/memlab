@@ -28,6 +28,7 @@ import {
   ladderSegments,
   loadRunManifest,
   type PositiveControl,
+  segmentIndexArg,
 } from '../run-manifest.js';
 import {
   armScanBudgetFor,
@@ -95,14 +96,9 @@ export function registerPositiveControls(server: McpServer): void {
     'Measure the round\'s POSITIVE CONTROLS (run.json `positive_controls`, written by the leak-hunt runner from the app preset): known accumulators that should grow with interaction. PASS means the measurement can see growth, so a flat result elsewhere is a clean surface; FAIL means a probe or the drive is blind, and every flat result in the round is suspect. An idle round (a combo, or the round directory, named "idle") reports n/a.',
     {
       run_dir: z.string().describe("A leak-hunt round's output directory."),
-      segment: z
-        .number()
-        .int()
-        .nonnegative()
-        .optional()
-        .describe(
-          'Which isolate segment to measure when the page reloaded mid-round (an A/B round reloads between its arms). Defaults to the LAST segment.',
-        ),
+      segment: segmentIndexArg(
+        'Which isolate segment to measure when the page reloaded mid-round (an A/B round reloads between its arms). Defaults to the LAST segment.',
+      ),
     },
     async ({run_dir, segment}) => {
       try {

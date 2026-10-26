@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 
-import {resolveLadderInputs, SEGMENT_ARG_DESCRIPTION} from '../run-manifest.js';
+import {resolveLadderInputs, segmentArg} from '../run-manifest.js';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {
@@ -96,10 +96,7 @@ export function registerRateModel(server: McpServer): void {
         .describe(
           "A leak-hunt round's output directory. Supplies `cycles_per_rung` from run.json (so the axis is measured, not assumed) and the ladder's wall-clock span, which is what decides whether an implied window is even observable on this data.",
         ),
-      segment: z
-        .union([z.number().int().nonnegative(), z.literal('all')])
-        .optional()
-        .describe(SEGMENT_ARG_DESCRIPTION),
+      segment: segmentArg(),
       values: z
         .array(z.number())
         .min(3)

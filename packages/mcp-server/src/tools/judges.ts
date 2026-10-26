@@ -36,6 +36,7 @@ import {
   ladderSegments,
   loadRunManifest,
   type LadderSegment,
+  segmentArg,
 } from '../run-manifest.js';
 import {snapshotExists} from '../snapshot-index.js';
 import {
@@ -80,12 +81,9 @@ export function registerJudges(server: McpServer): void {
         .describe(
           "Source run before every probe, for shared helpers. Overrides the spec file's `prelude`.",
         ),
-      segment: z
-        .union([z.number().int().nonnegative(), z.literal('all')])
-        .optional()
-        .describe(
-          'Which isolate segment to judge when the page reloaded mid-round (an A/B round reloads between its arms). Defaults to the LAST segment, which holds any settle rung. `"all"` judges the whole ladder as one heap.',
-        ),
+      segment: segmentArg(
+        'Which isolate segment to judge when the page reloaded mid-round (an A/B round reloads between its arms). Defaults to the LAST segment, which holds any settle rung. `"all"` judges the whole ladder as one heap.',
+      ),
       timeout_ms: z
         .number()
         .optional()

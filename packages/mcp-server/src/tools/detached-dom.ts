@@ -43,7 +43,7 @@ import {
 import {
   describeSegmentSelection,
   resolveLadderInputs,
-  SEGMENT_ARG_DESCRIPTION,
+  segmentArg,
 } from '../run-manifest.js';
 const {NumericSet} = memlabCore;
 
@@ -591,10 +591,7 @@ export function registerDetachedDom(server: McpServer): void {
         .describe(
           'Ordered snapshot paths (oldest first), as an alternative to `run_dir`. Ignored when `run_dir` is given.',
         ),
-      segment: z
-        .union([z.number().int().min(0), z.literal('all')])
-        .optional()
-        .describe(SEGMENT_ARG_DESCRIPTION),
+      segment: segmentArg(),
       only_with_retainer_path: z
         .boolean()
         .optional()
