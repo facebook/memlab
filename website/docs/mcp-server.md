@@ -199,7 +199,7 @@ The server ships about 150 tools, organized by the question they answer:
 | Who owns the growth / why is X retained? | `memlab_retainer_trace`, `memlab_retainer_summary`, `memlab_trace_all`, `memlab_react_owners`, `memlab_dominator_chain`, `memlab_pinch_points`, `memlab_explain_delta`, `memlab_dead_context_variables`, `memlab_scope_chains`, `memlab_retained_by`, `memlab_allocation_sites` |
 | Is it real, or a measurement artifact? | `memlab_artifact_budget`, `memlab_dev_artifacts`, `memlab_replicate`, `memlab_check_health`, `memlab_module_source` (the module's served source, dev compile vs prod compile) |
 | Detached DOM and event listeners | `memlab_detached_dom`, `memlab_dom_audit`, `memlab_event_listener_leaks`, `memlab_event_registry` |
-| Collections and caches | `memlab_cache_analysis`, `memlab_stale_collections`, `memlab_map_entries`, `memlab_weakref_census`, `memlab_property_distribution` |
+| Collections and caches | `memlab_cache_analysis`, `memlab_stale_collections`, `memlab_map_entries`, `memlab_weakref_census`, `memlab_property_distribution`, `memlab_model_duplicates` (records that share an id: copies of a one-per-id model) |
 | Strings and duplication | `memlab_intern_opportunities`, `memlab_duplicated_strings`, `memlab_string_patterns`, `memlab_sliced_strings`, `memlab_duplicate_objects` |
 | Inspect or find specific objects | `memlab_query_objects`, `memlab_get_node`, `memlab_object_shape`, `memlab_get_references`, `memlab_get_referrers`, `memlab_find_nodes_by_class`, `memlab_find_by_shape`, `memlab_closure_inspection` |
 | None of the above | `memlab_eval`, `memlab_eval_across`, `memlab_auto_investigate` |

@@ -408,6 +408,10 @@ const GROUPS: Group[] = [
         'Captured variables no live code can read, heap-wide: a value kept alive only because it shares a closure Context with a sibling closure that is still alive. Needs a V8 15.6+ (Chrome 156+) capture.',
       ],
       [
+        'memlab_model_duplicates',
+        'Records that share an identity value (`identity_path`, e.g. `__x_id._serialized`): copies of a one-per-id model, where the extras are held and what they retain; per-rung counts with `run_dir`.',
+      ],
+      [
         'memlab_scope_chains',
         "Chains of contexts of one function, each call pinning the previous call's scope through a captured closure: invisible to class counts. Flags the React Compiler dev hook-guard artifact (links only through `t0`..`tN`); per-rung lengths with `run_dir`.",
       ],
