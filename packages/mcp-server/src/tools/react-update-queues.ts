@@ -12,6 +12,7 @@ import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import {describeQueue, dispatchSetter} from '../react-shapes.js';
 import {sourceOfNode} from './module-attribution.js';
+import {findModuleSpans} from './module-source.js';
 import {z} from 'zod';
 import {getSnapshot} from '../heap-state.js';
 import {
@@ -432,10 +433,97 @@ async function ladderReport(args: {
   return toolResult(lines.join('\n'));
 }
 
+/** One statement around `at`, on one line, at most `max` characters. */
+function statementAt(text: string, at: number, len: number, max = 140): string {
+  let from = at;
+  while (from > 0 && from > at - 80 && !';{}\n'.includes(text[from - 1])) {
+    from--;
+  }
+  let to = at + len;
+  while (to < text.length && to < at + len + 100 && !';\n'.includes(text[to])) {
+    to++;
+  }
+  const flat = text.slice(from, to).replace(/\s+/g, ' ').trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+interface HookSource {
+  declaration: string | null;
+  /** The declaration is the Nth `useState`/`useReducer` in the module, not a match on the setter. */
+  approximate: boolean;
+  calls: number;
+  shown: string[];
+}
+
+/**
+ * The served source behind one hook: its `[x, setX] = useState(…)` line and
+ * the setter's call sites, read from `module`'s `__d` span. Without a setter
+ * match, the `ordinal`-th stateful hook call in the module stands in, marked
+ * approximate: a module can hold several components.
+ */
+export function hookSource(
+  snapshot: IHeapSnapshot,
+  module: string,
+  setter: string | null,
+  ordinal: number | null,
+): HookSource | null {
+  // Module scopes name `Foo.react` as `Foo_react`; the bundle registers the
+  // former.
+  let spans = findModuleSpans(snapshot, module);
+  if (spans.length === 0 && /_[a-z]+$/.test(module)) {
+    spans = findModuleSpans(snapshot, module.replace(/_([a-z]+)$/, '.$1'));
+  }
+  if (spans.length === 0) return null;
+  const text = spans.map(sp => sp.text).join('\n');
+  const esc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let declaration: string | null = null;
+  let approximate = false;
+  if (setter != null) {
+    const m = new RegExp(
+      `\\[\\s*[\\w$]+\\s*,\\s*${esc(setter)}\\s*\\]\\s*=\\s*(?:[\\w$.]+\\.)?use(?:State|Reducer)\\s*\\(`,
+    ).exec(text);
+    if (m != null) declaration = statementAt(text, m.index, m[0].length);
+    // Transpiled: `_useState = useState(x), …, setX = _useState[1]`.
+    const tuple = new RegExp(
+      `(?<![\\w$.])${esc(setter)}\\s*=\\s*([\\w$]+)\\[1\\]`,
+    ).exec(text);
+    if (declaration == null && tuple != null) {
+      const call = new RegExp(
+        `(?<![\\w$.])${esc(tuple[1])}\\s*=\\s*(?:[\\w$.]+\\.)?use(?:State|Reducer)\\s*\\(`,
+      ).exec(text);
+      if (call != null) {
+        declaration = statementAt(text, call.index, call[0].length);
+      }
+    }
+  }
+  if (declaration == null && ordinal != null) {
+    const re = /\buse(?:State|Reducer)\s*\(/g;
+    let n = 0;
+    for (let m = re.exec(text); m != null; m = re.exec(text)) {
+      if (++n === ordinal) {
+        declaration = statementAt(text, m.index, m[0].length);
+        approximate = true;
+        break;
+      }
+    }
+  }
+  const shown: string[] = [];
+  let calls = 0;
+  if (setter != null) {
+    const re = new RegExp(`(?<![\\w$.])${esc(setter)}\\s*\\(`, 'g');
+    for (let m = re.exec(text); m != null; m = re.exec(text)) {
+      calls++;
+      if (shown.length < 3)
+        shown.push(statementAt(text, m.index, m[0].length, 90));
+    }
+  }
+  return {declaration, approximate, calls, shown};
+}
+
 export function registerReactUpdateQueues(server: McpServer): void {
   server.tool(
     'memlab_react_update_queues',
-    'The React eager-bailout leak family as one report. A `useState` update whose eager comparison bails out still leaves its record on `queue.pending`, which then never drains — four separate findings in this workstream have been that same shape, and each round re-derived the same three things by hand. This returns: how many queues hold a pending chain (BREADTH), how long each chain is (LENGTH), and which component owns it. The breadth-vs-length split is the part that decides the finding — a flat queue count with growing records is accumulation in existing queues, which is the leak; a rising queue count with one record each is just more hooks mounted, which is not. Getting that backwards is the difference between a filing and a retraction. Pass `run_dir` (or `paths`) to read a WHOLE LADDER in one call: breadth and length per rung, the per-cycle rate for each component, and the breadth-vs-length verdict — otherwise that comparison has to be assembled by hand from N single-snapshot calls. The ladder table also reports `Δ/cycle/queue`, the PER-INSTANCE rate: that is the number that transfers between surfaces and predicts production cost, since `Δ/cycle` alone scales with however many instances this round happened to mount. A quotient landing on a whole number is the mechanism ("one record per instance per event") and is flagged inline.',
+    'The React eager-bailout leak family as one report. A `useState` update whose eager comparison bails out still leaves its record on `queue.pending`, which then never drains — four separate findings in this workstream have been that same shape, and each round re-derived the same three things by hand. This returns: how many queues hold a pending chain (BREADTH), how long each chain is (LENGTH), and which component owns it. The breadth-vs-length split is the part that decides the finding — a flat queue count with growing records is accumulation in existing queues, which is the leak; a rising queue count with one record each is just more hooks mounted, which is not. Getting that backwards is the difference between a filing and a retraction. Pass `run_dir` (or `paths`) to read a WHOLE LADDER in one call: breadth and length per rung, the per-cycle rate for each component, and the breadth-vs-length verdict — otherwise that comparison has to be assembled by hand from N single-snapshot calls. The ladder table also reports `Δ/cycle/queue`, the PER-INSTANCE rate: that is the number that transfers between surfaces and predicts production cost, since `Δ/cycle` alone scales with however many instances this round happened to mount. A quotient landing on a whole number is the mechanism ("one record per instance per event") and is flagged inline. Single-snapshot mode maps each hook to its served source when the snapshot keeps script source: the `useState` declaration (also in transpiled `_useState[1]` form) and the setter\'s call sites, with a guard hint when every pending action equals the rendered state.',
     {
       max_chain: z
         .number()
@@ -585,6 +673,54 @@ export function registerReactUpdateQueues(server: McpServer): void {
             "_**Setter** is the variable the setter was destructured into, and the module whose scope holds it — for a custom hook, the hook's own file. **Stateful #** counts only hooks with a queue (useState/useReducer), so `Stateful # 3` is the third such call in the component source. **Bailout? yes** means every pending action is the very value last rendered — the eager-bailout shape, where a no-op `setState(sameValue)` leaves its record on the queue forever. `smi` = an inline small integer, which the snapshot does not record._",
             '',
           );
+          const sourceLines: string[] = [];
+          const seenSetters = new Set<string>();
+          for (const {b, d} of details) {
+            const queue = snapshot.getNodeById(b.example);
+            const setter = queue != null ? dispatchSetter(queue) : null;
+            const module =
+              setter?.context != null
+                ? sourceOfNode(snapshot, setter.context).module
+                : null;
+            if (module == null) continue;
+            // One entry per setter: several rows can share a custom hook's.
+            const key = `${module}\u0000${setter?.variable ?? b.component}`;
+            if (seenSetters.has(key)) continue;
+            seenSetters.add(key);
+            const src = hookSource(
+              snapshot,
+              module,
+              setter?.variable ?? null,
+              d.hook?.statefulOrdinal ?? null,
+            );
+            if (src == null || (src.declaration == null && src.calls === 0)) {
+              continue;
+            }
+            sourceLines.push(
+              `- **${b.component}** (\`${module}\`): ` +
+                (src.declaration != null
+                  ? `\`${src.declaration.replace(/`/g, "'")}\`${src.approximate ? ` _(stateful hook call #${d.hook?.statefulOrdinal} in the module; no line names the setter)_` : ''}`
+                  : 'declaration not found'),
+            );
+            if (src.calls > 0) {
+              sourceLines.push(
+                `  - ${formatNumber(src.calls)} call site(s) of \`${setter?.variable}\`: ${src.shown.map(c => `\`${c.replace(/`/g, "'")}\``).join(', ')}${src.calls > src.shown.length ? ', …' : ''}`,
+              );
+            }
+            if (d.bailout === true) {
+              sourceLines.push(
+                `  - **eager-bailout: the setter is called with an unchanged value.** Each such call still queues a record. Guard the call (\`if (next !== current) ${setter?.variable ?? 'setX'}(next)\`) or keep the value in a ref.`,
+              );
+            }
+          }
+          if (sourceLines.length > 0) {
+            lines.push(
+              '### Hook → source (served code)',
+              '',
+              ...sourceLines,
+              '',
+            );
+          }
         }
         if (anyCapped) {
           lines.push(

@@ -321,7 +321,7 @@ The main list and lookup tools (`memlab_query_objects`, `memlab_class_histogram`
 | `memlab_sequence_analysis` | Per-class trend across a ladder, with artifact families flagged. |
 | `memlab_collection_trend` | Entry counts of NAMED collections across a ladder, with growth per interaction cycle. |
 | `memlab_population_diff` | Whether two snapshots hold the same POPULATION or just the same count — equal totals are not identity. |
-| `memlab_react_update_queues` | The React eager-bailout family in one call: queue BREADTH vs chain LENGTH vs owning component. The breadth/length split is what separates a leak from "more hooks mounted". |
+| `memlab_react_update_queues` | The React eager-bailout family in one call: queue BREADTH vs chain LENGTH vs owning component. The breadth/length split is what separates a leak from "more hooks mounted". Maps each hook to its `useState` line and setter call sites in the served source. |
 | `memlab_settle_check` | Backlog or leak? Compares a busy rung against one captured after idle + GC — growth that comes back was work in flight. |
 | `memlab_growth_signals` | Single-snapshot signals that something is accumulating. |
 | `memlab_diff_snapshots` | Per-class deltas between two snapshots. For two captures of one tab session (same V8 isolate, detected automatically) it also matches objects by id: per class, how many are new and still alive, how many were freed, and their bytes, so churn no longer reads as zero. `class_name` + `detail` ("added" or "deleted") lists those objects, paged. |

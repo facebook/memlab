@@ -315,7 +315,7 @@ const GROUPS: Group[] = [
       ],
       [
         'memlab_react_update_queues',
-        'The React eager-bailout family in one call: queue BREADTH vs chain LENGTH vs owning component. The breadth/length split is what separates a leak from "more hooks mounted".',
+        'The React eager-bailout family in one call: queue BREADTH vs chain LENGTH vs owning component. The breadth/length split is what separates a leak from "more hooks mounted". Maps each hook to its `useState` line and setter call sites in the served source.',
       ],
       [
         'memlab_settle_check',
