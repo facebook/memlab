@@ -68,6 +68,7 @@ import {beginAnalysisBudget} from '../analysis-budget.js';
 import {currentProgress} from '../progress.js';
 import {startJob} from './jobs.js';
 import {formatEvalHints, hintsForEval} from '../eval-hints.js';
+import {findModuleSpans} from './module-source.js';
 import {
   abbreviateBlinkTypeName,
   errorResult,
@@ -1060,7 +1061,7 @@ function editDistanceWithin(a: string, b: string, max: number): boolean {
  */
 const EVAL_RECIPES = `## memlab_eval recipes
 
-Ten general idioms, then six hunt recipes. Copy, adjust, run.
+Ten general idioms, then seven hunt recipes. Copy, adjust, run.
 Use \`mode: "describe_env"\` for the full helper surface and its gotchas, and
 \`mode: "lint"\` on anything you edit — it names any helper that does not exist
 before a snapshot load is spent on it.
@@ -1285,6 +1286,22 @@ as a string.
     }
     result = Object.entries(byStatus).sort((a, b) => b[1] - a[1]).slice(0, 15);
 
+### 17. Read a module's served source next to a heap query
+
+The code that actually ran is in the snapshot: every script keeps its source
+text, and a Haste bundle defines each module in a \`__d("<name>", …)\` span.
+\`moduleSource\` returns those spans (\`memlab_module_source\` is the same read
+as a tool, with \`grep\` and a prod/dev comparison). Use it to print the line
+behind a finding, e.g. the Nth \`useState\` of a component whose queue grows.
+
+    const spans = helpers.moduleSource('MyComponent.react');
+    const src = spans.length > 0 ? spans[0].source : '';
+    const hits = [];
+    for (let i = src.indexOf('useState('); i >= 0 && hits.length < 5; i = src.indexOf('useState(', i + 1)) {
+      hits.push(src.slice(Math.max(0, i - 80), i + 60));
+    }
+    result = spans.length === 0 ? 'module source not in this snapshot' : hits;
+
 ## Cost, before you run something exploratory
 
 A full-graph walk on a multi-million-node heap is the expensive case, and it is
@@ -1363,6 +1380,7 @@ export function registerEval(server: McpServer): void {
             'stableKey(nodeOrId)->string|null & byStableKey(key)->id|null (`<Module>.<edge>…` from the module scope down to the node — the same key at every rung, so `eval_across`/`ladder_probe` can track one named collection: `result = helpers.entries(helpers.byStableKey("InteractionTracingMetricsCore.tracedInteractions")).length`), ' +
             'sourceOf(nodeOrId)->{module, via, hops, script, location} (the Haste module whose code the node belongs to, read through its closure scope chain), ' +
             "module(name)->{id, exports, defaultExport, scope:[{variable,id,name,type}]}|null (a module's record, exports and top-level variables, found through the module registry's records by their `id` string — works on a MINIFIED build, where class and variable names are mangled; scope variable names are mangled there too), " +
+            'moduleSource(name, {maxLen?})->[{script, offset, kind, length, source}] (the module\'s served source: the `__d("<name>"` span of every script that defines it, or a script whose URL names it; `source` is capped at maxLen, default 20000 — the in-eval form of memlab_module_source, for reading a declaration or a call site next to a heap query), ' +
             "moduleExportProp(moduleName, prop, {class?})->id|null (an export property, else a top-level variable named prop, else — with class, e.g. {class:'Map'} — the module's ONLY top-level variable of that class: the minification-safe way to reach a module-level cache), " +
             'minified()->{minified, shortNameShare, namedClosures} (is this a minified bundle? name-based lookups read 0 there), ' +
             'stringsWithPrefix(prefix, {limit?})->ids[] (string nodes whose value starts with prefix, e.g. "blob:"; bucketed once per snapshot, so repeated prefix questions do not re-walk the heap — for a per-rung COUNT across a ladder, `memlab_string_prefix_census` answers from the sidecar index without loading at all), ' +
@@ -2036,6 +2054,16 @@ export async function runEval({
             type: v.node.type,
           })),
       };
+    };
+    const moduleSourceHelper = (name: string, opts?: {maxLen?: number}) => {
+      const maxLen = opts?.maxLen ?? 20000;
+      return findModuleSpans(snapshot, name).map(span => ({
+        script: span.script,
+        offset: span.offset,
+        kind: span.kind,
+        length: span.text.length,
+        source: span.text.slice(0, maxLen),
+      }));
     };
     const moduleExportPropHelper = (
       name: string,
@@ -4270,6 +4298,7 @@ export async function runEval({
       fiberHooks,
       rootPathAvoidingDev,
       module: moduleHelper,
+      moduleSource: moduleSourceHelper,
       moduleExportProp: moduleExportPropHelper,
       minified,
       promiseReactions: promiseReactionsHelper,
@@ -5126,6 +5155,14 @@ function describeEnvLines(): string[] {
     '- `helpers.contextSlotCensus({minCount, limit}) -> [{slot, scopes, closures}]` — every captured variable name in the heap ranked by how many scopes hold it. Use it to FIND the name to pass to `byContextSlot` when the leak is a closure capture and the class names are minified.',
     '- `helpers.contextOf(nodeOrId) -> node | null` — the scope a closure captured, e.g. `system / Context / scope @767271`. **Do not hand-roll this**: the hop is an `internal` edge NAMED `context`, not a `context`-TYPED edge, so the reflexive filter returns null on every closure in the heap (see the edge-type section below). Returns null for a non-closure — note `helpers.byClass`/`nodesByClass` also match the class-NAME STRING node, so filter on `type === "closure"` before asking for a scope.',
     '- `helpers.closureCensus({minCount?, pattern?}) -> [{name, count, withScope}]` — closure classes with how many instances captured a scope. `count` alone cannot separate "1,000 copies of a function" from "1,000 copies each pinning a distinct scope", and only the second is a retention story. Cached.',
+    '',
+    '## Modules and their source',
+    "A bundled app keeps its module registry and every script's source text in the heap. These reach both by module NAME, which survives minification.",
+    "- `helpers.module(name) -> {id, exports, defaultExport, scope: [{variable, id, name, type}]} | null` — a module's registry record, exports and top-level variables (variable names are mangled on a minified build).",
+    '- `helpers.moduleExportProp(name, prop, {class?}) -> id | null` — an export property, else a top-level variable named `prop`, else (with `class`, e.g. `{class: "Map"}`) the module\'s only top-level variable of that class.',
+    '- `helpers.moduleSource(name, {maxLen = 20000}) -> [{script, offset, kind, length, source}]` — the module\'s served source: the `__d("<name>", …)` span of every script that defines it (`kind: "haste"`), or a script whose URL names it (`kind: "script"`). The same read as `memlab_module_source`, inside an eval. See recipe 17.',
+    "- `helpers.sourceOf(nodeOrId) -> {module, via, hops, script, location}` — the module whose code a node belongs to, read through its closure's scope chain.",
+    '- `helpers.stableKey(nodeOrId) -> string | null` and `helpers.byStableKey(key) -> id | null` — `<Module>.<edge>…` from the module scope down to the node, the same at every rung of a ladder.',
     '',
     '## Named result sets (multi-step exploration)',
     'Keep intermediate sets SERVER-SIDE instead of round-tripping them through the transcript — the ids never have to be printed, so a long investigation costs a fraction of the tokens.',

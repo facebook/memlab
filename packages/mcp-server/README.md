@@ -528,6 +528,7 @@ The escape hatch when no fixed-shape tool matches the question. It runs JavaScri
 - **`save_as`:** keeps a result set server-side, and `helpers.load(name)` reads it back in a later call.
 - **`max_nodes`:** bounds a full-heap walk.
 - **`async: true`:** runs the eval as a background job.
+- **Module source:** `helpers.moduleSource(name)` returns a module's served source spans, and `helpers.module(name)` its registry record, so a query can print the code behind a finding. `mode: "recipes"` shows worked examples.
 
 > [!WARNING]
 > `memlab_eval` executes arbitrary code with the full privileges of the server process. See [Tools that execute JavaScript](#tools-that-execute-javascript).

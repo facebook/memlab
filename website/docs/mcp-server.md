@@ -260,6 +260,15 @@ temporaries is labelled as this artifact. A production compile calls the hook
 directly and does not create it: read the module from a production capture
 with `memlab_module_source` and `compare_to` to confirm.
 
+### Served source
+
+A snapshot keeps the source text of every script it loaded, so the code that
+actually ran can be read back next to the objects it created.
+`memlab_module_source` prints a module's source, or the lines matching `grep`.
+Inside `memlab_eval`, `helpers.moduleSource(name)` returns the same spans, so a
+query can print the declaration behind a finding; `mode: "recipes"` has a worked
+example.
+
 ### Saved probes
 
 A hunt on one app measures the same few populations every round. Save each
