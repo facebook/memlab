@@ -13,6 +13,7 @@ import type {IHeapEdge, IHeapNode, IHeapSnapshot} from '@memlab/core';
 import memlabCore from '@memlab/core';
 const {utils, NumericSet} = memlabCore;
 import {z} from 'zod';
+import {scopeChains} from './scope-chains.js';
 import {sizeInput, withSizeHint} from '../byte-size.js';
 import {getSnapshot, getSnapshotMetadata} from '../heap-state.js';
 import {
@@ -780,6 +781,71 @@ function explainCoverage(devRoots: DevRoots): string {
   return lines.join('\n');
 }
 
+/**
+ * Dev-build patterns with a stable tag each, so a round can say "this is
+ * `react-compiler-hook-guard`" instead of re-deriving it: each of these cost
+ * at least one round to rule out by hand.
+ */
+function namedDevPatterns(
+  snapshot: IHeapSnapshot,
+  devRoots: DevRoots,
+  totals: DevOnlyTotals,
+): string[] {
+  const out: string[] = [];
+  const guard = scopeChains(snapshot, 3).filter(g => g.devHookGuard);
+  if (guard.length > 0) {
+    const contexts = guard.reduce((n, g) => n + g.contexts, 0);
+    const longest = Math.max(...guard.map(g => g.maxLength));
+    const retained = guard.reduce((n, g) => n + g.retained, 0);
+    const modules = [...new Set(guard.map(g => g.module ?? '(no module)'))]
+      .slice(0, 3)
+      .join(', ');
+    out.push(
+      `\`react-compiler-hook-guard\` — ${formatNumber(guard.length)} scope(s) chained only through compiler temporaries \`t0\`..\`tN\` (${formatNumber(contexts)} contexts, longest ${formatNumber(longest)}, longest chains retain ${formatBytes(retained)}; ${modules}). The dev compile's \`_sN_$0\` hook guards context-allocate them; a prod compile cannot form these chains. \`memlab_scope_chains\` for detail.`,
+    );
+  }
+  let eventPaths = 0;
+  let eventPathBytes = 0;
+  snapshot.nodes.forEach((node: IHeapNode) => {
+    if (!node.name.includes('EventPath')) return;
+    let viaDebug = false;
+    let viaEvent = false;
+    let cur: IHeapNode = node;
+    for (let hop = 0; hop < 40 && cur.pathEdge != null; hop++) {
+      const name = String(cur.pathEdge.name_or_index);
+      if (name === 'nativeEvent') viaEvent = true;
+      if (REACT_DEBUG_STACK_EDGE_NAMES.has(name)) viaDebug = true;
+      cur = cur.pathEdge.fromNode;
+    }
+    if (viaDebug && viaEvent) {
+      eventPaths++;
+      eventPathBytes += node.retainedSize;
+    }
+  });
+  if (eventPaths > 0) {
+    out.push(
+      `\`owner-stack-event-path\` — ${formatNumber(eventPaths)} event path(s) retaining ${formatBytes(eventPathBytes)}, held through a React \`_debugStack\` → stack-frame closure → \`nativeEvent\`: the last handled event's DOM path (often a detached menu) pinned by the DEV owner stack.`,
+    );
+  }
+  const count = (cat: DevRootCategory) =>
+    [...devRoots.categoryById.values()].filter(c => c === cat).length;
+  const consoleRoots = count('console');
+  if (consoleRoots > 0) {
+    const bytes = totals.byCategory.get('console')?.selfBytes ?? 0;
+    out.push(
+      `\`devtools-console\` — ${formatNumber(consoleRoots)} object(s) held by the attached DevTools console (\`(Global handles)\`), ${formatBytes(bytes)} self only through it: logged messages and objects a session with DevTools closed would free. \`memlab_console_retention\` for what they are.`,
+    );
+  }
+  const refreshRoots = count('reactFastRefresh');
+  if (refreshRoots > 0) {
+    const bytes = totals.byCategory.get('reactFastRefresh')?.selfBytes ?? 0;
+    out.push(
+      `\`fast-refresh-registry\` — ${formatBytes(bytes)} self held only through the Fast Refresh registries (\`allSignaturesByType\`, \`allFamiliesByID\`, …; ${formatNumber(refreshRoots)} roots counting per-component signature records), tables listed above.`,
+    );
+  }
+  return out;
+}
+
 export function registerDevArtifacts(server: McpServer): void {
   server.tool(
     'memlab_dev_artifacts',
@@ -842,9 +908,19 @@ export function registerDevArtifacts(server: McpServer): void {
         const devRoots = collectDevRoots(snapshot);
 
         if (devRoots.byId.size === 0) {
+          // The hook-guard pattern needs no dev root, so it is still checked.
+          const patterns = namedDevPatterns(snapshot, devRoots, {
+            nodes: 0,
+            retained: 0,
+            byCategory: new Map(),
+          });
           return toolResult(
             'No dev/extension globals (__REACT_DEVTOOLS_GLOBAL_HOOK__, __REDUX_DEVTOOLS_EXTENSION__, window.Debug, …) or accessibility caches (AXObjectCacheImpl, …) found in this snapshot. ' +
               'Either this is a production/clean capture, or none were installed — large retainers here are NOT dev/automation artifacts.' +
+              (patterns.length > 0
+                ? '\n\n**Named dev-build patterns** (tag — what it is):\n' +
+                  patterns.map(p => `- ${p}`).join('\n')
+                : '') +
               (explain ? '\n\n' + explainCoverage(devRoots) : ''),
           );
         }
@@ -984,6 +1060,15 @@ export function registerDevArtifacts(server: McpServer): void {
             '',
             '**React Fast Refresh registries (dev-only) — including backing stores:**',
             ...refreshTables.map(t => `- ${t}`),
+          );
+        }
+        const patterns = namedDevPatterns(snapshot, devRoots, totals);
+        if (patterns.length > 0) {
+          lines.push(
+            '',
+            '**Named dev-build patterns** (tag — what it is):',
+            ...patterns.map(p => `- ${p}`),
+            '',
           );
         }
         lines.push(

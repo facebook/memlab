@@ -304,6 +304,11 @@ figures are defined or grouped differently:
   beside it. On a dev build a single dev-only hash table can double in size
   partway through a run, and the raw total then grows by megabytes with no
   change in the app.
+- **Named dev-build patterns.** `memlab_dev_artifacts` tags the known
+  development-build patterns it finds: `react-compiler-hook-guard`,
+  `owner-stack-event-path`, `devtools-console` and `fast-refresh-registry`.
+  Each tag comes with its size and the tool that shows it in detail, so a
+  round can name a pattern instead of tracing it again.
 
 ## Working with more than one snapshot
 
