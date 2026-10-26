@@ -302,7 +302,10 @@ attempting an oversized load.
 
 The growth tools work on a *ladder*: an ordered series of snapshots captured
 while one interaction repeats. Most of them load each rung transiently and
-release it, so a long ladder doesn't have to fit in memory at once. You can
+release it, so a long ladder doesn't have to fit in memory at once.
+`memlab_analysis_battery` runs several of them over the same rungs, so it
+keeps rungs parsed between its steps while memory allows
+(`MEMLAB_RETAIN_RUNGS` caps how many). You can
 give a ladder in three ways:
 
 - **`paths`:** an ordered list of snapshot files. Cycle counts are read from

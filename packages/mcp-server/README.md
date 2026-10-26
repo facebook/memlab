@@ -556,6 +556,7 @@ The server keeps a few small files so that work survives a restart:
 | `MEMLAB_CLI_VERBOSE` | `1` prints full tool output, with suggestions, from `memlab-cli script` |
 | `MEMLAB_REPEAT_NOTES` | `1` prints standing explanatory notes on every call instead of once per session |
 | `MEMLAB_PREWARM_CONCURRENCY` | Number of workers that build sidecar indexes for a ladder in parallel |
+| `MEMLAB_RETAIN_RUNGS` | Most rungs `memlab_analysis_battery` keeps parsed between its steps, so the next ladder tool reuses them instead of parsing again (default 8, fewer when memory is short; `0` turns it off) |
 | `MEMLAB_NO_INDEX_CACHE` | `1` disables the `.memlab-index.json` sidecar cache, for example for a cold measurement |
 | `MEMLAB_DEV_ARTIFACT_GLOBALS` | Comma-separated extra dev-only globals for `memlab_dev_artifacts`, for example `myDebugHook,__MY_DEVTOOLS__` |
 | `MEMLAB_DEV_ARTIFACT_NODE_PATTERN` | Regex of extra dev-only node names for `memlab_dev_artifacts` |

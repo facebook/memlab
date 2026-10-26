@@ -13,13 +13,16 @@ import {currentProgress} from './progress.js';
 import {releaseMemory} from './memory-release.js';
 import {detectEnv} from './tools/load-snapshot.js';
 import type {IHeapSnapshot} from '@memlab/core';
+import {AsyncLocalStorage} from 'node:async_hooks';
 import fs from 'fs';
+import os from 'os';
 import memlabHeapAnalysis from '@memlab/heap-analysis';
 const {getFullHeapFromFile} = memlabHeapAnalysis;
 import {
   findResidentByPath,
   getCurrentHandle,
   pinHandle,
+  getMetadataByHandle,
   getSnapshotByHandle,
   removeSnapshot,
   restoreCurrentHandle,
@@ -29,10 +32,115 @@ import {
 } from './heap-state.js';
 import {beginAnalysisBudget} from './analysis-budget.js';
 import {
+  estimateLoadHeapMB,
+  getHeapHeadroomMB,
   resolveMaxFileSizeMB,
   resolveSnapshotPath,
 } from './tools/load-snapshot.js';
 import {noteSnapshotRead} from './read-scope.js';
+
+/**
+ * Rungs borrowed inside a retention scope stay resident after the borrow, so
+ * the next tool that walks the same ladder reuses them instead of re-parsing.
+ * A battery ran 6+ ladder tools over the same 5 rungs, and each one parsed
+ * every rung again: about 30 parses of 400-500 MB files per round.
+ */
+interface RungRetention {
+  /** Retained handles, least recently borrowed first. */
+  handles: string[];
+  parses: number;
+  reuses: number;
+  evicted: number;
+}
+
+const retentionStore = new AsyncLocalStorage<RungRetention>();
+
+/** MEMLAB_RETAIN_RUNGS caps how many rungs a scope keeps (0 disables). */
+function retainCap(): number {
+  const raw = process.env.MEMLAB_RETAIN_RUNGS;
+  const n = raw == null || raw.trim() === '' ? NaN : Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 8;
+}
+
+/**
+ * Room to load and analyse one more rung of this size, in old space and in
+ * system memory (the graph's typed arrays live outside the V8 heap).
+ */
+function roomForAnother(snapshot: IHeapSnapshot): boolean {
+  const needMB =
+    2 *
+    estimateLoadHeapMB(
+      {
+        nodeCount: snapshot.nodes?.length ?? 0,
+        edgeCount: snapshot.edges?.length ?? 0,
+      },
+      false,
+    );
+  const heap = getHeapHeadroomMB();
+  const freeMB = os.freemem() / (1024 * 1024);
+  return (heap == null || heap >= needMB) && freeMB >= needMB;
+}
+
+export interface RungRetentionStats {
+  parses: number;
+  reuses: number;
+  evicted: number;
+}
+
+/**
+ * Run `fn` with borrowed rungs kept resident, within memory, until it ends.
+ * Every rung still retained is dropped afterwards, except the active snapshot.
+ */
+export async function runWithRungRetention<T>(
+  fn: () => Promise<T>,
+): Promise<{result: T; stats: RungRetentionStats}> {
+  const r: RungRetention = {handles: [], parses: 0, reuses: 0, evicted: 0};
+  try {
+    const result = await retentionStore.run(r, fn);
+    return {
+      result,
+      stats: {parses: r.parses, reuses: r.reuses, evicted: r.evicted},
+    };
+  } finally {
+    const current = getCurrentHandle();
+    let dropped = 0;
+    for (const h of r.handles) {
+      if (h !== current && removeSnapshot(h)) dropped++;
+    }
+    r.handles.length = 0;
+    if (dropped > 0) releaseMemory(1);
+  }
+}
+
+/**
+ * Keep a just-borrowed rung, evicting the oldest kept ones to make room.
+ * `callerHandle` (the snapshot active before the borrow) is never evicted:
+ * if it is a kept rung, the caller now owns it and it leaves the scope.
+ */
+function retain(
+  r: RungRetention,
+  handle: string,
+  snapshot: IHeapSnapshot,
+  callerHandle: string | null,
+): boolean {
+  const cap = retainCap();
+  if (cap === 0) return false;
+  // A replacing load elsewhere may have dropped kept rungs already.
+  r.handles = r.handles.filter(h => getMetadataByHandle(h) != null);
+  r.handles.push(handle);
+  while (
+    r.handles.length > 0 &&
+    (r.handles.length > cap || !roomForAnother(snapshot))
+  ) {
+    const victim = r.handles.shift() as string;
+    if (victim === callerHandle) continue;
+    removeSnapshot(victim);
+    r.evicted++;
+    releaseMemory(1);
+    if (victim === handle) return true;
+  }
+  return true;
+}
 
 /**
  * Run `fn` against the snapshot at `localPath`, loading it only if it is not
@@ -62,8 +170,22 @@ export async function withSnapshotAt<T>(
   let temporaryHandle: string | null = null;
   pinHandle(previousHandle);
 
+  const retention = retentionStore.getStore();
+  if (
+    retention != null &&
+    resident != null &&
+    retention.handles.includes(resident.handle)
+  ) {
+    retention.reuses++;
+    // Most recently borrowed last, so eviction takes the coldest rung.
+    retention.handles = [
+      ...retention.handles.filter(h => h !== resident.handle),
+      resident.handle,
+    ];
+  }
   try {
     if (snapshot == null) {
+      if (retention != null) retention.parses++;
       const name = localPath.replace(/^.*\//, '');
       const started = Date.now();
       currentProgress().note?.(
@@ -97,7 +219,13 @@ export async function withSnapshotAt<T>(
     noteSnapshotRead(localPath);
     return await fn(snapshot);
   } finally {
-    if (temporaryHandle != null) {
+    // Retained: removed later by its scope (or evicted for room) instead.
+    const kept =
+      temporaryHandle != null &&
+      retention != null &&
+      snapshot != null &&
+      retain(retention, temporaryHandle, snapshot, previousHandle);
+    if (temporaryHandle != null && !kept) {
       removeSnapshot(temporaryHandle);
       // Ladder tools borrow one rung after another; free each before the next.
       // This frame's own reference has to go first, or the GC keeps the rung.

@@ -45,6 +45,7 @@ import {makeProgressReporter} from '../progress.js';
 import {snapshotExists} from '../snapshot-index.js';
 import {errorResult, formatBytes, formatNumber, toolResult} from '../utils.js';
 import {runWithReadScope} from '../read-scope.js';
+import {runWithRungRetention} from '../snapshot-borrow.js';
 
 /**
  * A battery started with `async: true`, tracked so `memlab_battery_status` can
@@ -223,7 +224,15 @@ function buildPlan(
   const deep: Step[] = [
     {
       tool: 'memlab_load_snapshot',
-      args: {file_path: finalRung, quiet: true, suppress_suggestions: true},
+      // keep_previous: a replacing load would drop the rungs the ladder steps
+      // kept parsed, and `react_update_queues` below would parse them again.
+      // The retention scope drops the extras when the battery ends.
+      args: {
+        file_path: finalRung,
+        quiet: true,
+        suppress_suggestions: true,
+        keep_previous: true,
+      },
     },
     {tool: 'memlab_app_heap', args: {}},
     {tool: 'memlab_dev_artifacts', args: {}},
@@ -1010,88 +1019,91 @@ export function registerAnalysisBattery(server: McpServer): void {
           let finished = 0;
 
           const stems = outputStems(plan);
-          for (const [stepIndex, step] of plan.entries()) {
-            const stem = stems[stepIndex];
-            finished++;
-            // A load that never RAN leaves the previous round's snapshot resident,
-            // which is the same wrong answer as a load that ran and failed — so
-            // the two skip paths below have to set `loadFailed` as well.
-            const isLoad = step.tool === 'memlab_load_snapshot';
-            if (deadline != null && Date.now() > deadline) {
-              skipped++;
-              if (isLoad) loadFailed = true;
+          // Ladder steps share rungs: keep each parsed rung for the next step.
+          const {stats: rungStats} = await runWithRungRetention(async () => {
+            for (const [stepIndex, step] of plan.entries()) {
+              const stem = stems[stepIndex];
+              finished++;
+              // A load that never RAN leaves the previous round's snapshot resident,
+              // which is the same wrong answer as a load that ran and failed — so
+              // the two skip paths below have to set `loadFailed` as well.
+              const isLoad = step.tool === 'memlab_load_snapshot';
+              if (deadline != null && Date.now() > deadline) {
+                skipped++;
+                if (isLoad) loadFailed = true;
+                tracked.doneSteps = finished;
+                continue;
+              }
+              if (loadFailed && needsResidentSnapshot(step)) {
+                skipped++;
+                failures.push(
+                  `${step.tool}: skipped — the snapshot load it depends on did not succeed`,
+                );
+                tracked.doneSteps = finished;
+                continue;
+              }
+              const entry = getRegisteredTool(step.tool);
+              if (entry == null) {
+                // A profile naming a tool this build does not have is a bug in the
+                // profile, not a reason to abandon the round.
+                failures.push(`${step.tool}: not registered in this build`);
+                if (isLoad) loadFailed = true;
+                tracked.doneSteps = finished;
+                continue;
+              }
+              const started = Date.now();
+              tracked.currentTool = step.tool;
+              progress.phase(finished, plan.length, step.tool);
+              let text: string;
+              try {
+                const parsed =
+                  entry.shape != null
+                    ? z.object(entry.shape as never).parse(step.args)
+                    : step.args;
+                text = textOf(
+                  await runWithReadScope(async () => entry.handler(parsed, {})),
+                );
+              } catch (err: unknown) {
+                text = `ERROR: ${err instanceof Error ? err.message : String(err)}`;
+                failures.push(`${step.tool}: ${text.slice(0, 160)}`);
+              }
+              // Both spellings of failure: a thrown error and an error RESULT,
+              // which `errorResult` returns as text rather than throwing.
+              if (
+                step.tool === 'memlab_load_snapshot' &&
+                /^(ERROR|❌|Error:)/.test(text.trimStart())
+              ) {
+                loadFailed = true;
+              }
+              const ms = Date.now() - started;
+              const file = path.join(outDir, `${stem}.txt`);
+              // Recorded BEFORE the write: the app_delta headline is lifted
+              // from this map, and a failed disk write is no reason to lose it.
+              // Keyed by stem, which is the tool name for a tool run once.
+              perToolText.set(stem, text);
+              try {
+                fs.writeFileSync(file, text, 'utf8');
+                written.push({tool: stem, bytes: text.length, ms});
+              } catch (err: unknown) {
+                // Inside the per-step boundary, like the tool call above it. A
+                // write failure — a full disk being the realistic one, and this
+                // battery is what fills disks — used to reject the whole
+                // detached promise, so `memlab_battery_status` reported FAILED
+                // with only that message and discarded every digest line
+                // already accumulated. That is the opposite of the per-step
+                // isolation the rest of this loop implements.
+                failures.push(
+                  `${step.tool}: output not written — ${err instanceof Error ? err.message : String(err)}`,
+                );
+              }
               tracked.doneSteps = finished;
-              continue;
-            }
-            if (loadFailed && needsResidentSnapshot(step)) {
-              skipped++;
-              failures.push(
-                `${step.tool}: skipped — the snapshot load it depends on did not succeed`,
-              );
-              tracked.doneSteps = finished;
-              continue;
-            }
-            const entry = getRegisteredTool(step.tool);
-            if (entry == null) {
-              // A profile naming a tool this build does not have is a bug in the
-              // profile, not a reason to abandon the round.
-              failures.push(`${step.tool}: not registered in this build`);
-              if (isLoad) loadFailed = true;
-              tracked.doneSteps = finished;
-              continue;
-            }
-            const started = Date.now();
-            tracked.currentTool = step.tool;
-            progress.phase(finished, plan.length, step.tool);
-            let text: string;
-            try {
-              const parsed =
-                entry.shape != null
-                  ? z.object(entry.shape as never).parse(step.args)
-                  : step.args;
-              text = textOf(
-                await runWithReadScope(async () => entry.handler(parsed, {})),
-              );
-            } catch (err: unknown) {
-              text = `ERROR: ${err instanceof Error ? err.message : String(err)}`;
-              failures.push(`${step.tool}: ${text.slice(0, 160)}`);
-            }
-            // Both spellings of failure: a thrown error and an error RESULT,
-            // which `errorResult` returns as text rather than throwing.
-            if (
-              step.tool === 'memlab_load_snapshot' &&
-              /^(ERROR|❌|Error:)/.test(text.trimStart())
-            ) {
-              loadFailed = true;
-            }
-            const ms = Date.now() - started;
-            const file = path.join(outDir, `${stem}.txt`);
-            // Recorded BEFORE the write: the app_delta headline is lifted
-            // from this map, and a failed disk write is no reason to lose it.
-            // Keyed by stem, which is the tool name for a tool run once.
-            perToolText.set(stem, text);
-            try {
-              fs.writeFileSync(file, text, 'utf8');
-              written.push({tool: stem, bytes: text.length, ms});
-            } catch (err: unknown) {
-              // Inside the per-step boundary, like the tool call above it. A
-              // write failure — a full disk being the realistic one, and this
-              // battery is what fills disks — used to reject the whole
-              // detached promise, so `memlab_battery_status` reported FAILED
-              // with only that message and discarded every digest line
-              // already accumulated. That is the opposite of the per-step
-              // isolation the rest of this loop implements.
-              failures.push(
-                `${step.tool}: output not written — ${err instanceof Error ? err.message : String(err)}`,
-              );
-            }
-            tracked.doneSteps = finished;
 
-            const d = digestFor(step.tool, text, digest_rows, stem);
-            if (d.length > 0) {
-              digestLines.push(`### ${stem}`, ...d, '');
+              const d = digestFor(step.tool, text, digest_rows, stem);
+              if (d.length > 0) {
+                digestLines.push(`### ${stem}`, ...d, '');
+              }
             }
-          }
+          });
 
           // The one number every other number is read against, lifted out of
           // `artifact_budget` and put ABOVE the digest. A figure that has to
@@ -1150,7 +1162,14 @@ export function registerAnalysisBattery(server: McpServer): void {
             `**${written.length} tool(s) run**, output written to \`${outDir}/\`` +
               (skipped > 0 ? `; ${skipped} skipped for budget` : '') +
               (failures.length > 0 ? `; ${failures.length} failed` : '') +
-              '.',
+              '.' +
+              (rungStats.parses + rungStats.reuses > 0
+                ? ` Rungs: ${rungStats.parses} parsed, ${rungStats.reuses} reused from memory` +
+                  (rungStats.evicted > 0
+                    ? ` (${rungStats.evicted} dropped for room)`
+                    : '') +
+                  '.'
+                : ''),
             '',
           ];
 
