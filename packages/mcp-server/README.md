@@ -525,7 +525,7 @@ Input:  memlab_start_job { tool, args }    memlab_job_status { job_id? }
 
 The escape hatch when no fixed-shape tool matches the question. It runs JavaScript against the loaded snapshot with access to `snapshot`, `utils` and `helpers`; assign the answer to `result`. The helpers are indexed and memoized per snapshot, for example `helpers.byClass`, `helpers.hasShape`, `helpers.rootPath`, `helpers.mapEntries` and `helpers.retainedSize`. `mode: "describe_env"` prints the full helper surface and its gotchas.
 
-- **`save_as`:** keeps a result set server-side, and `helpers.load(name)` reads it back in a later call.
+- **`save_as`:** keeps a result set server-side, and `helpers.load(name)` reads it back in a later call. To compare two snapshots, save counts keyed by `helpers.stableKey` rather than node ids, and read them back with `{allowCrossSnapshot: true}`.
 - **`max_nodes`:** bounds a full-heap walk.
 - **`async: true`:** runs the eval as a background job.
 - **Module source:** `helpers.moduleSource(name)` returns a module's served source spans, and `helpers.module(name)` its registry record, so a query can print the code behind a finding. `mode: "recipes"` shows worked examples.

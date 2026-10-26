@@ -1061,7 +1061,7 @@ function editDistanceWithin(a: string, b: string, max: number): boolean {
  */
 const EVAL_RECIPES = `## memlab_eval recipes
 
-Ten general idioms, then seven hunt recipes. Copy, adjust, run.
+Ten general idioms, then eight hunt recipes. Copy, adjust, run.
 Use \`mode: "describe_env"\` for the full helper surface and its gotchas, and
 \`mode: "lint"\` on anything you edit — it names any helper that does not exist
 before a snapshot load is spent on it.
@@ -1301,6 +1301,40 @@ behind a finding, e.g. the Nth \`useState\` of a component whose queue grows.
       hits.push(src.slice(Math.max(0, i - 80), i + 60));
     }
     result = spans.length === 0 ? 'module source not in this snapshot' : hits;
+
+### 18. Compare named collections across two snapshots
+
+Node ids mean nothing in another capture, but a stable key
+(\`<Module>.<edge>…\` from the module scope) names the same collection in
+both. Save a \`{stableKey → entries}\` map on the first snapshot:
+
+    const counts = {};
+    for (const cls of ['Map', 'Set']) {
+      for (const node of helpers.nodesByClass(cls, {type: 'object'})) {
+        const n = helpers.entries(node).length;
+        if (n < 20) continue;
+        const key = helpers.stableKey(node);
+        if (key != null) counts[key] = n;
+      }
+    }
+    helpers.save('keyed_counts', counts);
+    result = Object.keys(counts).length;
+
+Load the next snapshot, build the same map as \`after\`, and diff. The saved
+value holds counts, not ids, so the cross-snapshot read is safe:
+
+    const before = helpers.load('keyed_counts', {allowCrossSnapshot: true});
+    // ... the same loop as above, filling \`after\` instead of \`counts\` ...
+    result = Object.keys({...before, ...after})
+      .map(key => ({key, before: before[key] || 0, after: after[key] || 0}))
+      .map(r => ({...r, delta: r.after - r.before}))
+      .filter(r => r.delta !== 0)
+      .sort((a, b) => b.delta - a.delta)
+      .slice(0, 20);
+
+For one collection across a whole ladder, \`memlab_ladder_probe\` with
+\`helpers.entries(helpers.byStableKey(key)).length\` gives the series and the
+rate in one call.
 
 ## Cost, before you run something exploratory
 
@@ -5144,7 +5178,7 @@ function describeEnvLines(): string[] {
     '- `helpers.sample(items, n) -> items[]` — evenly-spaced sample, NOT random: two calls over the same population return the same members, so a follow-up question lands on the objects the first answer described.',
     '- `helpers.histogram(ids, keyFn, {limit?}) -> [{key, count}]` — group-and-count over ids, sorted by count; a null/undefined key becomes `(none)` rather than being dropped.',
     '- `helpers.pathBetween(fromId, toId, {maxNodes?}) -> {found, exhausted, path[]}` — BFS over outgoing edges; `exhausted:true` means the budget ran out, which is NOT the same as "no path".',
-    '- `helpers.save(name, value)` / `helpers.load(name, {allowCrossSnapshot?})` / `helpers.listSaved()` — named result sets, SESSION-scoped: they survive loading another snapshot, which is what makes a baseline-vs-final comparison possible. The snapshot each was saved against is recorded, and a cross-snapshot read is refused unless you opt in — node ids are per-capture and mean nothing in another snapshot.',
+    '- `helpers.save(name, value)` / `helpers.load(name, {allowCrossSnapshot?})` / `helpers.listSaved()` — named result sets, SESSION-scoped: they survive loading another snapshot, which is what makes a baseline-vs-final comparison possible. The snapshot each was saved against is recorded, and a cross-snapshot read is refused unless you opt in — node ids are per-capture and mean nothing in another snapshot. To compare collections across snapshots, save `{stableKey → count}` instead of ids (recipe 18).',
     '- `helpers.aggregateRetained(ids[]) -> {retained, exact}` — dominator-deduped retained size for a SET of ids (does not double-count when one id dominates another); `exact:false` means the bounded walk was truncated (upper bound).',
     '',
     '## Populations that get hand-rolled every round (use these instead)',

@@ -366,6 +366,13 @@ listing the objects allocated between two captures that are still alive; for
 captures of different isolates, switch to the right handle before reusing an
 id.
 
+Ids never carry across isolates, but a *stable key* does: `helpers.stableKey`
+in `memlab_eval` names a collection by its path from a module scope
+(`Store.pendingById`), which is the same in every capture. Save a
+`{stableKey → entries}` map with `helpers.save` on one snapshot, read it back
+on the next with `helpers.load(name, {allowCrossSnapshot: true})`, and diff;
+`memlab_eval({mode: "recipes"})` has the full example.
+
 Every resident snapshot holds its full graph in memory. Watch the server's
 footprint with `memlab_server_status` and unload snapshots you no longer need.
 
