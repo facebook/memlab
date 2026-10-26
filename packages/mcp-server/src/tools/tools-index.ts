@@ -595,7 +595,7 @@ const GROUPS: Group[] = [
       ],
       [
         'memlab_eval_across',
-        'The same eval program run against several snapshots at once — comparative questions without the switch-and-diff.',
+        'The same eval program run against several snapshots at once — resident ones, or files and round rungs it loads one at a time — comparative questions without the switch-and-diff.',
       ],
       [
         'memlab_auto_investigate',

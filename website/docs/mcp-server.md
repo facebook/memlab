@@ -316,6 +316,9 @@ give a ladder in three ways:
   GC. The settle rung is what tells a leak apart from work still in flight.
 - **`ladder:<name>`:** a name registered once with `memlab_ladder`.
 
+`memlab_eval_across` takes `paths`, or `run_dir` with `rungs: [0, -1]`, to run
+one eval program over chosen rungs the same way, without loading them first.
+
 Ladder tools can run longer than an assistant's tool timeout. Start them with
 `memlab_start_job` and collect the result with `memlab_job_status`. A large
 snapshot can be loaded the same way with `memlab_load_snapshot({async: true})`. Every call

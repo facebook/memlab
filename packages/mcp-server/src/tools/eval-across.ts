@@ -18,6 +18,42 @@ import {
 } from '../heap-state.js';
 import {errorResult, toolResult} from '../utils.js';
 import {runEval} from './eval.js';
+import {loadRunManifest} from '../run-manifest.js';
+import {
+  armScanBudgetFor,
+  resolveRungs,
+  scaledTimeoutMs,
+  withSnapshotAt,
+} from '../snapshot-borrow.js';
+
+/** One snapshot to run against: its report label and how to make it active. */
+interface Target {
+  label: string;
+  /** Runs `fn` with this snapshot active; false when it cannot be. */
+  run: <T>(fn: () => Promise<T>) => Promise<{ok: true; value: T} | {ok: false}>;
+}
+
+/**
+ * `run_dir` rung indices to file paths. Negative indices count from the end,
+ * so `[0, -1]` is the baseline and the last driven rung.
+ */
+export function rungPaths(
+  runDir: string,
+  rungs: number[] | undefined,
+): string[] {
+  const all = loadRunManifest(runDir).paths;
+  if (rungs == null || rungs.length === 0) return all;
+  return rungs.map(i => {
+    const at = i < 0 ? all.length + i : i;
+    const p = all[at];
+    if (p == null) {
+      throw new Error(
+        `${runDir} has ${all.length} rung(s) (0-${all.length - 1}); there is no rung ${i}.`,
+      );
+    }
+    return p;
+  });
+}
 
 // The tool result shape the MCP SDK expects; runEval returns exactly this.
 type TextResult = {content: Array<{type: 'text'; text: string}>};
@@ -34,7 +70,7 @@ function textOf(result: unknown): string {
 export function registerEvalAcross(server: McpServer): void {
   server.tool(
     'memlab_eval_across',
-    'Run ONE `memlab_eval` program against SEVERAL resident snapshots and return the results side by side. ' +
+    'Run ONE `memlab_eval` program against SEVERAL snapshots and return the results side by side: resident ones by `handles`, or files by `paths` or `run_dir` + `rungs`, which are loaded one at a time and released after (a resident one is reused). ' +
       'Exists because the interesting questions in a leak hunt are comparative — "how many of these were there at each rung?", ' +
       '"did this collection grow?", "is the new population retained the same way as the old one?" — and answering them with ' +
       '`memlab_eval` alone costs one switch + one paste + one manual diff per rung, which is enough friction that the question ' +
@@ -55,6 +91,24 @@ export function registerEvalAcross(server: McpServer): void {
         .optional()
         .describe(
           'Snapshot handles to run against, in the order you want them reported (oldest rung first reads best). Defaults to every resident snapshot in load order.',
+        ),
+      paths: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Snapshot files to run against instead of resident handles, in report order. Each is loaded for its run and released after, so two 500 MB rungs need not be resident together.',
+        ),
+      run_dir: z
+        .string()
+        .optional()
+        .describe(
+          "A leak-hunt round's directory: run against its rungs (run.json), loaded one at a time like `paths`.",
+        ),
+      rungs: z
+        .array(z.number().int())
+        .optional()
+        .describe(
+          'With `run_dir`: which rungs, by index into run.json, in report order. Negative counts from the end (`[0, -1]` = baseline and last). Default: every rung.',
         ),
       timeout_ms: z
         .number()
@@ -79,28 +133,78 @@ export function registerEvalAcross(server: McpServer): void {
           'Stop at the first snapshot whose code throws (default false: record the error for that rung and continue, so one bad rung does not discard the others).',
         ),
     },
-    async ({code, handles, timeout_ms, max_nodes, stop_on_error}) => {
+    async ({
+      code,
+      handles,
+      paths,
+      run_dir,
+      rungs,
+      timeout_ms,
+      max_nodes,
+      stop_on_error,
+    }) => {
       const originalHandle = getCurrentHandle();
       try {
-        const resident = listSnapshots().map(m => m.handle);
-        if (resident.length === 0) {
+        const given = [
+          handles != null && handles.length > 0,
+          paths != null && paths.length > 0,
+          run_dir != null && run_dir !== '',
+        ].filter(Boolean).length;
+        if (given > 1) {
           return errorResult(
-            new Error(
-              'No snapshots are loaded. Load them with memlab_load_snapshot({keep_previous: true}) first — this tool compares snapshots that are already resident, it does not open files.',
-            ),
+            new Error('Pass one of `handles`, `paths` or `run_dir`.'),
           );
         }
-        const targets =
-          handles != null && handles.length > 0 ? handles : resident;
-
-        const unknown = targets.filter(h => getMetadataByHandle(h) == null);
-        if (unknown.length > 0) {
-          return errorResult(
-            new Error(
-              `Unknown snapshot handle(s): ${unknown.join(', ')}. Resident: ${resident.join(', ')}. ` +
-                'Handles come from memlab_snapshots or the alias passed to memlab_load_snapshot.',
-            ),
-          );
+        if (rungs != null && (run_dir == null || run_dir === '')) {
+          return errorResult(new Error('`rungs` needs `run_dir`.'));
+        }
+        let targets: Target[];
+        const files =
+          run_dir != null && run_dir !== ''
+            ? rungPaths(run_dir, rungs)
+            : (paths ?? []);
+        if (files.length > 0) {
+          const {rungs: resolved} = resolveRungs(files);
+          targets = resolved.map(rung => ({
+            label: rung.label,
+            run: async fn => {
+              armScanBudgetFor(scaledTimeoutMs(rung.sizeMB, timeout_ms));
+              return {
+                ok: true as const,
+                value: await withSnapshotAt(rung.localPath, () => fn()),
+              };
+            },
+          }));
+        } else {
+          const resident = listSnapshots().map(m => m.handle);
+          if (resident.length === 0) {
+            return errorResult(
+              new Error(
+                'No snapshots are loaded. Pass `paths` or `run_dir` to load rungs for the run, or load them with memlab_load_snapshot({keep_previous: true}) first.',
+              ),
+            );
+          }
+          const chosen =
+            handles != null && handles.length > 0 ? handles : resident;
+          const unknown = chosen.filter(h => getMetadataByHandle(h) == null);
+          if (unknown.length > 0) {
+            return errorResult(
+              new Error(
+                `Unknown snapshot handle(s): ${unknown.join(', ')}. Resident: ${resident.join(', ')}. ` +
+                  'Handles come from memlab_snapshots or the alias passed to memlab_load_snapshot.',
+              ),
+            );
+          }
+          targets = chosen.map(handle => {
+            const meta = getMetadataByHandle(handle);
+            return {
+              label: `${handle}${meta ? ` — ${meta.fileName}` : ''}`,
+              run: async fn =>
+                setCurrentSnapshot(handle)
+                  ? {ok: true as const, value: await fn()}
+                  : {ok: false as const},
+            };
+          });
         }
         if (targets.length < 2) {
           // Not an error — a single-handle run is a legitimate way to script
@@ -111,19 +215,20 @@ export function registerEvalAcross(server: McpServer): void {
 
         const sections: string[] = [];
         let failures = 0;
-        for (const handle of targets) {
-          if (!setCurrentSnapshot(handle)) {
-            sections.push(
-              `### ${handle}\n\n(could not switch to this snapshot)`,
-            );
-            failures++;
-            continue;
-          }
-          const meta = getMetadataByHandle(handle);
-          const header = `### ${handle}${meta ? ` — ${meta.fileName}` : ''}`;
+        for (const target of targets) {
+          const header = `### ${target.label}`;
           try {
-            const res = await runEval({code, timeout_ms, max_nodes});
-            const body = textOf(res);
+            const ran = await target.run(() =>
+              runEval({code, timeout_ms, max_nodes}),
+            );
+            if (!ran.ok) {
+              sections.push(`${header}\n\n(could not switch to this snapshot)`);
+              failures++;
+              continue;
+            }
+            // The section title names the snapshot; runEval's own header would
+            // list every rung this call has read so far.
+            const body = textOf(ran.value).replace(/^> Snapshots?: .*\n+/, '');
             if (/^Error:/m.test(body)) failures++;
             sections.push(`${header}\n\n${body}`);
             if (stop_on_error && /^Error:/m.test(body)) {
@@ -148,11 +253,11 @@ export function registerEvalAcross(server: McpServer): void {
         const lines = [
           `## eval across ${targets.length} snapshot(s)`,
           '',
-          `Order: ${targets.join(' → ')}${failures > 0 ? ` · ${failures} rung(s) reported an error` : ''}`,
+          `Order: ${targets.map(t => t.label.replace(/ — .*$/, '')).join(' → ')}${failures > 0 ? ` · ${failures} rung(s) reported an error` : ''}`,
           '',
           ...(targets.length < 2
             ? [
-                '_Only one snapshot targeted — this tool exists for the comparison; load a second rung with `keep_previous: true` to get one._',
+                '_Only one snapshot targeted — this tool exists for the comparison; pass a second path or rung, or load one with `keep_previous: true`._',
                 '',
               ]
             : []),
