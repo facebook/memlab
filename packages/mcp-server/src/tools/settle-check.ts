@@ -25,6 +25,7 @@ import {
   clipTableColumn,
 } from '../utils.js';
 import {normalizeClassName, splitClassKey} from './sequence-analysis.js';
+import {loadRunManifest} from '../run-manifest.js';
 
 interface ClassStats {
   count: number;
@@ -290,6 +291,53 @@ async function traceHeldClasses(
   return out;
 }
 
+/** One instance kept per cycle: a population that grows with the interaction. */
+const HELD_RATE_FLOOR = 1;
+
+/**
+ * Survivors ranked by HELD growth per cycle (Δ/cycle × held share), with how
+ * many clear the floor. The raw survivor count ran 119-233 per round of one
+ * sweep, almost all classes that grew by a handful and kept it; this names the
+ * few that grew with the interaction and stayed.
+ */
+function heldPerCycleLine(
+  held: Array<{key: string; base: number; busy: number; idle: number}>,
+  cycles: number,
+): string[] {
+  const ranked = held
+    .map(r => ({
+      key: r.key,
+      rate: (r.idle - r.base) / cycles,
+      share: r.busy > r.base ? (r.idle - r.base) / (r.busy - r.base) : 1,
+    }))
+    .filter(r => r.rate > 0)
+    .sort((a, b) => b.rate - a.rate);
+  const material = ranked.filter(r => r.rate >= HELD_RATE_FLOOR);
+  if (material.length === 0) {
+    return [
+      '',
+      `**Held per cycle:** none of the ${held.length} survivors kept ${HELD_RATE_FLOOR} or more per cycle over ${formatNumber(cycles)} cycles — the survivors are standing populations that moved by a handful, not growth that stayed.`,
+    ];
+  }
+  const top = material
+    .slice(0, 5)
+    .map(r => {
+      const {type, name} = splitClassKey(r.key);
+      const label = name.length > 40 ? `${name.slice(0, 39)}…` : name;
+      // Above 1 the population kept growing after the interaction stopped.
+      const held =
+        r.share > 1
+          ? 'grew further at rest'
+          : `${Math.round(r.share * 100)}% held`;
+      return `${label} (${type}) +${r.rate.toFixed(2)} (${held})`;
+    })
+    .join(' · ');
+  return [
+    '',
+    `**Held per cycle:** ${top} — ${material.length} of ${held.length} survivors kept ≥${HELD_RATE_FLOOR}/cycle over ${formatNumber(cycles)} cycles${material.length < held.length ? '; the rest moved by a handful' : ''}.`,
+  ];
+}
+
 export function registerSettleCheck(server: McpServer): void {
   server.tool(
     'memlab_settle_check',
@@ -382,6 +430,8 @@ export function registerSettleCheck(server: McpServer): void {
         // therefore cannot trace, and says so rather than tracing the wrong
         // graph.
         let settledPathForTrace: string | null = null;
+        // Cycles driven, to rank survivors by rate (run_dir only).
+        let cycles: number | null = null;
 
         if (run_dir != null) {
           const pair = resolveSettlePair(run_dir);
@@ -403,13 +453,22 @@ export function registerSettleCheck(server: McpServer): void {
             );
           }
           settledPathForTrace = pair.settledPath;
+          let cyclesNote = '';
+          try {
+            const driven = loadRunManifest(run_dir).cycles;
+            cycles = driven > 0 ? driven : null;
+          } catch (err: unknown) {
+            cycles = null;
+            cyclesNote = `\ncycles : unknown (${err instanceof Error ? err.message : String(err)}), so survivors are not ranked per cycle`;
+          }
           source =
             `run_dir ${run_dir}\n` +
             `busy   : ${path.basename(pair.busyPath)}\n` +
             `settled: ${path.basename(pair.settledPath)}` +
             (pair.baselinePath != null
               ? `\nbaseline: ${path.basename(pair.baselinePath)}`
-              : '');
+              : '') +
+            cyclesNote;
         } else {
           if (busy_handle == null || settled_handle == null) {
             return errorResult(
@@ -503,6 +562,9 @@ export function registerSettleCheck(server: McpServer): void {
             : held.length === 0
               ? '**Everything that grew came back.** No class survived idle + GC, so the growth in this round was in-flight work, not retention. There is nothing here to fix.'
               : `**${held.length} class(es) survived idle + GC** and ${drained.length} drained. Only the survivors are leak candidates — the drained ones were backlog and should not be reported as findings.`,
+          ...(hasBaseline && cycles != null && held.length > 0
+            ? heldPerCycleLine(held, cycles)
+            : []),
           '',
         ];
 

@@ -359,7 +359,11 @@ const DIGEST_PATTERNS: ReadonlyArray<{tool: RegExp; re: RegExp; max: number}> =
     // tells a reader whether the round's leak list means anything.
     {
       tool: /settle_check/,
-      re: /^\*\*\d+ class\(es\) survived|^\*\*Everything that grew came back|^\*\*No baseline given|^No settle rung/,
+      // The survivor count and, when cycles are known, the rate-ranked line:
+      // the raw count alone (119-233 per round) is nearly all standing
+      // populations that moved by a handful, but without cycles it is all
+      // there is.
+      re: /^\*\*\d+ class\(es\) survived|^\*\*Held per cycle:|^\*\*Everything that grew came back|^\*\*No baseline given|^No settle rung/,
       max: 2,
     },
     {tool: /census_diff/, re: /^Totals:/, max: 4},
