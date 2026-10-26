@@ -1694,9 +1694,15 @@ export function registerFindingIndex(server: McpServer): void {
             return errorResult('action "cover" requires a round or run_dir.');
           }
           const driven = combos.length > 0 ? combos : (fromRun?.combos ?? []);
+          // A re-cover without a revision or preset hash keeps the round's earlier ones.
+          const prev = index.cover_meta?.[coverRound];
           const meta: CoverMeta = {
-            served_revision: served_revision ?? fromRun?.served_revision,
-            preset_hash: preset_hash ?? fromRun?.preset_hash,
+            served_revision:
+              served_revision ??
+              fromRun?.served_revision ??
+              prev?.served_revision,
+            preset_hash:
+              preset_hash ?? fromRun?.preset_hash ?? prev?.preset_hash,
             covered_at: new Date().toISOString(),
           };
           index.combos_driven[coverRound] = driven;
