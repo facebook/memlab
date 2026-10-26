@@ -346,7 +346,10 @@ keeps rungs parsed between its steps while memory allows
 output directory last, so a script can wait on that one file;
 `memlab_battery_status({battery_id, wait_ms})` waits for it from the assistant
 side, and `wait_for_rungs: "all"` queues a battery until the round's
-`round.done` marker appears. You can
+`round.done` marker appears. On an A/B round (run.json has an `ab` section
+and the ladder splits between the arms), the battery runs each ladder step
+once per arm, writes `<tool>.off.txt` and `<tool>.on.txt`, and adds one
+`memlab_ab_compare` verdict table. You can
 give a ladder in three ways:
 
 - **`paths`:** an ordered list of snapshot files. Cycle counts are read from

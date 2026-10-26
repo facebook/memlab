@@ -42,7 +42,7 @@ import {
  * hand-built per-arm path lists and a hand-made table.
  */
 
-interface Arm {
+export interface Arm {
   name: 'off' | 'on';
   prop: string | null;
   value: unknown;
@@ -50,7 +50,7 @@ interface Arm {
   cycles: number[];
 }
 
-function readArms(runDir: string): Arm[] {
+export function readArms(runDir: string): Arm[] {
   const raw = JSON.parse(
     fs.readFileSync(path.join(runDir, 'run.json'), 'utf8'),
   ) as {

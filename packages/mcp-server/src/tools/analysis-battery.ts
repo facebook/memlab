@@ -38,7 +38,9 @@ import os from 'os';
 import path from 'path';
 import {z} from 'zod';
 import type {RunManifest} from '../run-manifest.js';
-import {loadRunManifest} from '../run-manifest.js';
+import {ladderSegments, loadRunManifest} from '../run-manifest.js';
+import {readArms} from './ab-compare.js';
+import type {Arm} from './ab-compare.js';
 import {hasInvariants} from '../judges.js';
 import {resolveProbeSet} from '../probe-sets.js';
 import {getRegisteredTool} from '../tool-registry.js';
@@ -150,6 +152,8 @@ function trackBattery(run: BatteryRun): void {
 interface Step {
   tool: string;
   args: Record<string, unknown>;
+  /** Output file stem, when the tool's name alone would not tell runs apart. */
+  stem?: string;
 }
 
 /**
@@ -300,8 +304,8 @@ export function outputStems(plan: readonly Step[]): string[] {
   for (const st of plan) count.set(st.tool, (count.get(st.tool) ?? 0) + 1);
   const used = new Set<string>();
   return plan.map(st => {
-    let stem = st.tool;
-    if ((count.get(st.tool) ?? 0) > 1) {
+    let stem = st.stem ?? st.tool;
+    if (st.stem == null && (count.get(st.tool) ?? 0) > 1) {
       const a = st.args;
       const variant =
         a.run_dir != null
@@ -316,6 +320,121 @@ export function outputStems(plan: readonly Step[]): string[] {
     used.add(stem);
     return stem;
   });
+}
+
+/** The two arms of an A/B round as ladder segments, with their end rungs. */
+export interface AbSegments {
+  prop: string | null;
+  off: {segment: number; first: string; last: string};
+  on: {segment: number; first: string; last: string};
+}
+
+/**
+ * The arms of an A/B round (`ab` in run.json on a ladder split between them),
+ * or null for any other round.
+ */
+export function abSegments(
+  runDir: string,
+  manifest: RunManifest,
+): AbSegments | null {
+  // Only a run.json without both arms is "not an A/B round". Anything else
+  // readArms rejects is a broken A/B round, and is reported, not hidden.
+  const ab = (
+    JSON.parse(fs.readFileSync(path.join(runDir, 'run.json'), 'utf8')) as {
+      ab?: {off?: unknown; on?: unknown} | null;
+    }
+  ).ab;
+  if (ab?.off == null || ab?.on == null) return null;
+  const arms: Arm[] = readArms(runDir);
+  const segments = ladderSegments(manifest);
+  if (segments.length < 2) return null;
+  // By file name: run.json may record a rung relative to the round while the
+  // manifest resolves it.
+  const base = (p: string) => path.basename(p);
+  const side = (arm: Arm) => {
+    if (arm.paths.length === 0) return null;
+    const firstBase = base(arm.paths[0]);
+    const lastBase = base(arm.paths[arm.paths.length - 1]);
+    const seg = segments.find(sg => sg.paths.some(p => base(p) === firstBase));
+    if (seg == null) return null;
+    return {
+      segment: seg.index,
+      first: seg.paths.find(p => base(p) === firstBase) as string,
+      last:
+        seg.paths.find(p => base(p) === lastBase) ??
+        seg.paths[seg.paths.length - 1],
+    };
+  };
+  const off = side(arms[0]);
+  const on = side(arms[1]);
+  if (off == null || on == null || off.segment === on.segment) return null;
+  return {prop: arms[0].prop, off, on};
+}
+
+// Ladder tools that take `segment`, and two-snapshot tools whose ends must sit
+// in one arm.
+const SEGMENTED_TOOLS = new Set([
+  'memlab_leak_report',
+  'memlab_detached_dom',
+  'memlab_event_registry',
+  'memlab_react_update_queues',
+  'memlab_sequence_analysis',
+  'memlab_positive_controls',
+  'memlab_judges',
+]);
+const PAIRED_TOOLS = new Set(['memlab_artifact_budget', 'memlab_census_diff']);
+
+/**
+ * An A/B round's plan: every ladder step once per arm (`.off` / `.on`), the
+ * two-snapshot steps between each arm's own first and last rung, and one
+ * `memlab_ab_compare` for the verdict. Run on the whole round, the ladder
+ * steps refuse (the arms are different isolates) and a two-snapshot step
+ * compares one arm's first rung with the other's last.
+ */
+export function perArmPlan(
+  plan: readonly Step[],
+  ab: AbSegments,
+  runDir: string,
+  probeSet: string | null,
+): Step[] {
+  const out: Step[] = [];
+  const compare: Step = {
+    tool: 'memlab_ab_compare',
+    args: {run_dir: runDir, ...(probeSet != null ? {probes: probeSet} : {})},
+  };
+  let placed = false;
+  for (const st of plan) {
+    const a = st.args;
+    if (SEGMENTED_TOOLS.has(st.tool) && a.run_dir != null) {
+      for (const arm of ['off', 'on'] as const) {
+        out.push({
+          tool: st.tool,
+          args: {...a, segment: ab[arm].segment},
+          stem: `${st.tool}.${arm}`,
+        });
+      }
+    } else if (
+      PAIRED_TOOLS.has(st.tool) &&
+      a.target != null &&
+      a.baseline != null
+    ) {
+      for (const arm of ['off', 'on'] as const) {
+        out.push({
+          tool: st.tool,
+          args: {...a, baseline: ab[arm].first, target: ab[arm].last},
+          stem: `${st.tool}.${arm}`,
+        });
+      }
+    } else {
+      out.push(st);
+    }
+    if (st.tool === 'memlab_round_audit' && !placed) {
+      out.push(compare);
+      placed = true;
+    }
+  }
+  if (!placed) out.unshift(compare);
+  return out;
 }
 
 /**
@@ -379,6 +498,11 @@ const DIGEST_PATTERNS: ReadonlyArray<{tool: RegExp; re: RegExp; max: number}> =
       max: 6,
     },
     {tool: /positive_controls/, re: /PASS|FAIL|n\/a/, max: 4},
+    {
+      tool: /ab_compare/,
+      re: /^## A\/B|^_Probe set|^\| (?!Metric)/,
+      max: 14,
+    },
     {
       tool: /ladder_probe/,
       re: /^_Probe set|^### `|^\*\*Rate:|^\*\*Expectation:|^\*\*UNMEASURED|^\*\*-?[\d,.]+ → /,
@@ -1094,7 +1218,8 @@ export function registerAnalysisBattery(server: McpServer): void {
           manifest.positiveControls.length > 0,
           hasInvariants(run_dir),
         );
-        if (probeSet != null) {
+        const ab = abSegments(run_dir, manifest);
+        if (ab == null && probeSet != null) {
           // With the ladder steps, before the deep dive's load: the rungs
           // they kept parsed are reused.
           const at = basePlan.findIndex(
@@ -1109,7 +1234,12 @@ export function registerAnalysisBattery(server: McpServer): void {
           plan,
           skipped: skippedTools,
           refused: refusedSkips,
-        } = applySkip(basePlan, skip);
+        } = applySkip(
+          ab != null
+            ? perArmPlan(basePlan, ab, run_dir, probeSet?.name ?? null)
+            : basePlan,
+          skip,
+        );
 
         const progress = makeProgressReporter(extra, 'battery');
         const tracked: BatteryRun = {
@@ -1234,6 +1364,9 @@ export function registerAnalysisBattery(server: McpServer): void {
               // from this map, and a failed disk write is no reason to lose it.
               // Keyed by stem, which is the tool name for a tool run once.
               perToolText.set(stem, text);
+              // A per-arm stem (`.off` / `.on`) also answers to the tool name,
+              // which then holds the later arm, the one the deep dive reads.
+              if (stem !== step.tool) perToolText.set(step.tool, text);
               try {
                 fs.writeFileSync(file, text, 'utf8');
                 written.push({tool: stem, bytes: text.length, ms});
@@ -1263,11 +1396,26 @@ export function registerAnalysisBattery(server: McpServer): void {
           // be found in section four is a figure that gets skipped, and then
           // a +44 MB app_delta hides behind a +1.5 MB post-GC total (or the
           // reverse).
-          const appDeltaLine = (() => {
-            const text = perToolText.get('memlab_artifact_budget');
+          const appDeltaOf = (key: string): string | null => {
+            const text = perToolText.get(key);
             if (text == null) return null;
             const m = /^\*\*app_delta:.*$/m.exec(text);
             return m ? m[0] : null;
+          };
+          // An A/B round has one per arm, and either alone misdescribes it.
+          const appDeltaLine = (() => {
+            if (ab == null) return appDeltaOf('memlab_artifact_budget');
+            const off = appDeltaOf('memlab_artifact_budget.off');
+            const on = appDeltaOf('memlab_artifact_budget.on');
+            if (off == null && on == null) return null;
+            const strip = (l: string | null) =>
+              l == null
+                ? 'n/a'
+                : l
+                    .replace(/^\*\*app_delta:\s*/, '')
+                    .replace(/\*\*/g, '')
+                    .replace(/\.$/, '');
+            return `**app_delta: OFF ${strip(off)}; ON ${strip(on)}**`;
           })();
 
           const lines: string[] = [
@@ -1342,7 +1490,12 @@ export function registerAnalysisBattery(server: McpServer): void {
             }
             lines.push('');
           }
-          if (manifest.splitAfterRung.length > 0) {
+          if (ab != null) {
+            lines.push(
+              `**A/B round** (\`${ab.prop ?? '?'}\`): each ladder step ran once per arm — \`.off\` on segment ${ab.off.segment}, \`.on\` on segment ${ab.on.segment} — and the verdict per metric is \`memlab_ab_compare\`. The deep dive reads the last rung, in the ON arm.`,
+              '',
+            );
+          } else if (manifest.splitAfterRung.length > 0) {
             lines.push(
               `> ⚠️ **LADDER SPLIT after rung ${manifest.splitAfterRung.join(', ')}** — rungs across that ` +
                 'boundary are different V8 isolates and must not be compared. Analyze each segment on its own.',
