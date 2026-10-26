@@ -51,6 +51,47 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+export interface ScriptSource {
+  /** The Script (Chrome) or `code` node (Node.js). */
+  id: number;
+  url: string;
+  sourceId: number;
+  text: string;
+}
+
+/**
+ * Every script with its source text. Chrome names a Script `system / Script`;
+ * Node's V8 emits a `code` node named by its URL. Both hold the text on a
+ * `source` edge. One source string can back several Script objects (a
+ * re-evaluated bundle); each is listed, and its text is read once.
+ */
+export function scriptSources(snapshot: IHeapSnapshot): ScriptSource[] {
+  const out: ScriptSource[] = [];
+  const textOf = new Map<number, string>();
+  snapshot.nodes.forEach((node: IHeapNode) => {
+    if (!node.name.startsWith('system / Script') && node.type !== 'code') {
+      return;
+    }
+    let sourceNode: IHeapNode | null = null;
+    for (const e of node.references) {
+      if (String(e.name_or_index) === 'source') sourceNode = e.toNode;
+    }
+    if (sourceNode == null || !sourceNode.isString) return;
+    let text = textOf.get(sourceNode.id);
+    if (text == null) {
+      text = sourceNode.toStringNode()?.stringValue ?? sourceNode.name;
+      textOf.set(sourceNode.id, text);
+    }
+    out.push({
+      id: node.id,
+      url: edgeString(node, 'name') ?? '(no url)',
+      sourceId: sourceNode.id,
+      text,
+    });
+  });
+  return out;
+}
+
 /** Every span of `module` in the snapshot's script sources. */
 export function findModuleSpans(
   snapshot: IHeapSnapshot,
@@ -60,23 +101,10 @@ export function findModuleSpans(
   const spans: ModuleSpan[] = [];
   const byUrl: ModuleSpan[] = [];
   const seenSources = new Set<number>();
-  snapshot.nodes.forEach((node: IHeapNode) => {
-    // Chrome names a Script `system / Script`; Node's V8 emits a `code` node
-    // named by its URL. Both hold the text on a `source` edge.
-    if (!node.name.startsWith('system / Script') && node.type !== 'code') {
-      return;
-    }
-    let sourceNode: IHeapNode | null = null;
-    for (const e of node.references) {
-      if (String(e.name_or_index) === 'source') sourceNode = e.toNode;
-    }
-    if (sourceNode == null || !sourceNode.isString) return;
-    // One source string can back several Script objects (a re-evaluated
-    // bundle); its spans are the same, so read it once.
-    if (seenSources.has(sourceNode.id)) return;
-    seenSources.add(sourceNode.id);
-    const text = sourceNode.toStringNode()?.stringValue ?? sourceNode.name;
-    const url = edgeString(node, 'name') ?? '(no url)';
+  for (const {url, sourceId, text} of scriptSources(snapshot)) {
+    // Several Scripts sharing one source have the same spans.
+    if (seenSources.has(sourceId)) continue;
+    seenSources.add(sourceId);
     marker.lastIndex = 0;
     for (let m = marker.exec(text); m != null; m = marker.exec(text)) {
       const end = text.indexOf('__d(', m.index + m[0].length);
@@ -91,7 +119,7 @@ export function findModuleSpans(
     if (base === module || base.replace(/\.[cm]?[jt]sx?$/, '') === module) {
       byUrl.push({script: url, offset: 0, text, kind: 'script'});
     }
-  });
+  }
   return spans.length > 0 ? spans : byUrl;
 }
 

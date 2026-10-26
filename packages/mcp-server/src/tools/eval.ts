@@ -68,7 +68,7 @@ import {beginAnalysisBudget} from '../analysis-budget.js';
 import {currentProgress} from '../progress.js';
 import {startJob} from './jobs.js';
 import {formatEvalHints, hintsForEval} from '../eval-hints.js';
-import {findModuleSpans} from './module-source.js';
+import {findModuleSpans, scriptSources} from './module-source.js';
 import {
   abbreviateBlinkTypeName,
   errorResult,
@@ -1417,6 +1417,8 @@ export function registerEval(server: McpServer): void {
             'moduleSource(name, {maxLen?})->[{script, offset, kind, length, source}] (the module\'s served source: the `__d("<name>"` span of every script that defines it, or a script whose URL names it; `source` is capped at maxLen, default 20000 — the in-eval form of memlab_module_source, for reading a declaration or a call site next to a heap query), ' +
             "moduleExportProp(moduleName, prop, {class?})->id|null (an export property, else a top-level variable named prop, else — with class, e.g. {class:'Map'} — the module's ONLY top-level variable of that class: the minification-safe way to reach a module-level cache), " +
             'minified()->{minified, shortNameShare, namedClosures} (is this a minified bundle? name-based lookups read 0 there), ' +
+            'stringsBySize({minLen=1000, limit=1000})->[{id, length}] (flat string nodes longest first, from an index built once per snapshot; Node.js snapshots truncate string contents at 1024 characters), ' +
+            'scripts({match?})->[{id, url, sourceId, length}] (every script and its source string, longest first; read one with stringValue(sourceId, {maxLen}) — a source search over these does not scan every string node), ' +
             'stringsWithPrefix(prefix, {limit?})->ids[] (string nodes whose value starts with prefix, e.g. "blob:"; bucketed once per snapshot, so repeated prefix questions do not re-walk the heap — for a per-rung COUNT across a ladder, `memlab_string_prefix_census` answers from the sidecar index without loading at all), ' +
             'promiseReactions(promiseOrId, {cap?})->{count, ids, truncated}|null (the `.then` reactions attached to an UNSETTLED promise, walked by node type — count 0 means it settled), ' +
             'pathTree()->{subtreeBytes(id), parent(id), children(id, {minBytes?, limit?})->[{id,name,edge,bytes}], roots()} (the shortest-path tree with app bytes per subtree — it partitions the heap, so shared caches keep their size; built ONCE per snapshot and kept across calls), ' +
@@ -2105,6 +2107,62 @@ export async function runEval({
       opts?: {class?: string},
     ) => moduleExportProp(snapshot, name, prop, opts?.class)?.node.id ?? null;
     const minified = () => minifiedSignal(snapshot);
+    // Scripts and flat strings by length, each built once per snapshot, so a
+    // source search or a "largest strings" question does not walk every node.
+    const scriptsHelper = (opts?: {match?: string}) => {
+      const scratch = getEvalScratch();
+      let rows = scratch.__memlabScripts as
+        | Array<{id: number; url: string; sourceId: number; length: number}>
+        | undefined;
+      if (rows == null) {
+        rows = scriptSources(snapshot)
+          .map(({id, url, sourceId, text}) => ({
+            id,
+            url,
+            sourceId,
+            length: text.length,
+          }))
+          .sort((a, b) => b.length - a.length);
+        scratch.__memlabScripts = rows;
+      }
+      const match = opts?.match;
+      return match == null || match === ''
+        ? rows.slice()
+        : rows.filter(r => r.url.includes(match));
+    };
+    const SIZE_INDEX_MIN_LEN = 32;
+    const stringsBySize = (opts?: {minLen?: number; limit?: number}) => {
+      const minLen = opts?.minLen ?? 1000;
+      const limit = opts?.limit ?? 1000;
+      const lengthOf = (node: IHeapNode) =>
+        node.type === 'string' ? node.name.length : -1;
+      if (minLen < SIZE_INDEX_MIN_LEN) {
+        const rows: Array<{id: number; length: number}> = [];
+        snapshot.nodes.forEach(node => {
+          const length = lengthOf(node);
+          if (length >= minLen) rows.push({id: node.id, length});
+        });
+        return rows.sort((a, b) => b.length - a.length).slice(0, limit);
+      }
+      const scratch = getEvalScratch();
+      let ranked = scratch.__memlabStringsBySize as
+        Array<{id: number; length: number}> | undefined;
+      if (ranked == null) {
+        const rows: Array<{id: number; length: number}> = [];
+        snapshot.nodes.forEach(node => {
+          const length = lengthOf(node);
+          if (length >= SIZE_INDEX_MIN_LEN) rows.push({id: node.id, length});
+        });
+        ranked = rows.sort((a, b) => b.length - a.length);
+        scratch.__memlabStringsBySize = ranked;
+      }
+      const out: Array<{id: number; length: number}> = [];
+      for (const row of ranked) {
+        if (row.length < minLen || out.length >= limit) break;
+        out.push(row);
+      }
+      return out;
+    };
     // String nodes bucketed by their first characters, built once per
     // snapshot: a prefix question is then a bucket scan, not another walk of
     // every node.
@@ -4341,6 +4399,8 @@ export async function runEval({
       pathLabel: pathLabelHelper,
       shapeFamily: shapeFamilyHelper,
       stringsWithPrefix,
+      stringsBySize,
+      scripts: scriptsHelper,
       sourceOf,
       stableKey,
       byStableKey,
@@ -5195,6 +5255,8 @@ function describeEnvLines(): string[] {
     "- `helpers.module(name) -> {id, exports, defaultExport, scope: [{variable, id, name, type}]} | null` — a module's registry record, exports and top-level variables (variable names are mangled on a minified build).",
     '- `helpers.moduleExportProp(name, prop, {class?}) -> id | null` — an export property, else a top-level variable named `prop`, else (with `class`, e.g. `{class: "Map"}`) the module\'s only top-level variable of that class.',
     '- `helpers.moduleSource(name, {maxLen = 20000}) -> [{script, offset, kind, length, source}]` — the module\'s served source: the `__d("<name>", …)` span of every script that defines it (`kind: "haste"`), or a script whose URL names it (`kind: "script"`). The same read as `memlab_module_source`, inside an eval. See recipe 17.',
+    '- `helpers.scripts({match?}) -> [{id, url, sourceId, length}]` — every script and its source string, longest first (`match` is a URL substring). Read a source with `helpers.stringValue(sourceId, {maxLen})`; searching these is far cheaper than scanning every string node.',
+    '- `helpers.stringsBySize({minLen = 1000, limit = 1000}) -> [{id, length}]` — flat string nodes, longest first, from an index built once per snapshot (strings of 32+ characters; a smaller `minLen` walks the heap). Node.js snapshots truncate string contents at 1024 characters, so lengths cap there.',
     "- `helpers.sourceOf(nodeOrId) -> {module, via, hops, script, location}` — the module whose code a node belongs to, read through its closure's scope chain.",
     '- `helpers.stableKey(nodeOrId) -> string | null` and `helpers.byStableKey(key) -> id | null` — `<Module>.<edge>…` from the module scope down to the node, the same at every rung of a ladder.',
     '',

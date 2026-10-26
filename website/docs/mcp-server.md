@@ -267,7 +267,9 @@ actually ran can be read back next to the objects it created.
 `memlab_module_source` prints a module's source, or the lines matching `grep`.
 Inside `memlab_eval`, `helpers.moduleSource(name)` returns the same spans, so a
 query can print the declaration behind a finding; `mode: "recipes"` has a worked
-example.
+example. `helpers.scripts()` lists every script with its source string and
+`helpers.stringsBySize({minLen})` the longest strings, so a search over source
+text reads a hundred scripts instead of every string node.
 
 ### Saved probes
 
