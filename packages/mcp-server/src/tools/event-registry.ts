@@ -68,14 +68,17 @@ function realContext(snap: IHeapSnapshot, contextId: number): IHeapNode | null {
     : ctx;
 }
 
-/** One listener's group key; `\u0000` joins the parts. */
+/**
+ * One listener's group key; `\u0000` joins the parts. `ctx` is the caller's
+ * `realContext` result, so each listener's context is looked up once.
+ */
 function groupKeyOf(
   snap: IHeapSnapshot,
   groupBy: GroupKey[],
   event: string,
   emitter: string,
   callbackId: number,
-  contextId: number,
+  ctx: IHeapNode | null,
 ): string {
   return groupBy
     .map(k => {
@@ -84,7 +87,7 @@ function groupKeyOf(
       if (k === 'callback') {
         return snap.getNodeById(callbackId)?.name || '(anonymous)';
       }
-      return realContext(snap, contextId)?.name ?? '(no context)';
+      return ctx?.name ?? '(no context)';
     })
     .join('\u0000');
 }
@@ -142,6 +145,7 @@ function listenerRecordsByGroup(
       if (local == null) return;
       const counts: Array<[string, number]> = [];
       const emitter = groupBy.includes('emitter') ? emitterOf(node) : '';
+      const byContext = groupBy.includes('context');
       for (const {name: event, listeners} of local) {
         for (const l of listeners) {
           // The full event name: a 40-char prefix merged distinct events.
@@ -152,7 +156,7 @@ function listenerRecordsByGroup(
               event,
               emitter,
               l.callbackId,
-              l.contextId,
+              byContext ? realContext(snap, l.contextId) : null,
             ),
             1,
           ]);
@@ -375,13 +379,14 @@ export function registerEventRegistry(server: McpServer): void {
                 : '';
               for (const ev of localEvents) {
                 for (const l of ev.listeners) {
+                  const ctx = realContext(snapshot, l.contextId);
                   const key = groupKeyOf(
                     snapshot,
                     group_by,
                     ev.name,
                     emitter,
                     l.callbackId,
-                    l.contextId,
+                    ctx,
                   );
                   let g = groups.get(key);
                   if (g == null) {
@@ -389,9 +394,7 @@ export function registerEventRegistry(server: McpServer): void {
                     groups.set(key, g);
                   }
                   g.records++;
-                  if (realContext(snapshot, l.contextId) != null) {
-                    g.contexts.add(l.contextId);
-                  }
+                  if (ctx != null) g.contexts.add(l.contextId);
                   g.emitters.add(node.id);
                 }
               }
