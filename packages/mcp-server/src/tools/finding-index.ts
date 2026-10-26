@@ -141,12 +141,44 @@ interface Finding {
   title?: string;
   note?: string;
   seen_count: number;
+  /** Absent for a retainer-path finding; otherwise `keys` is its identity. */
+  kind?: FindingKind;
+  keys?: Record<string, string>;
+  /** A retainer path seen for a structured finding; not part of its identity. */
+  example_path?: string;
+}
+
+/**
+ * Populations a retainer path does not identify well. An update queue is a
+ * component, hook and setter; a temp collection is a class and the probe that
+ * counts it. Their paths differ run to run while the population is the same.
+ */
+const FINDING_KINDS = [
+  'retainer-path',
+  'update-queue',
+  'collection',
+  'probe',
+] as const;
+type FindingKind = (typeof FINDING_KINDS)[number];
+
+/** Per kind, the keys it needs: one key from each group. */
+const KIND_KEYS: Record<Exclude<FindingKind, 'retainer-path'>, string[][]> = {
+  'update-queue': [['component'], ['hook_ordinal', 'setter']],
+  collection: [['class']],
+  probe: [['probe']],
+};
+
+interface CoverMeta {
+  served_revision?: string;
+  preset_hash?: string;
+  covered_at: string;
 }
 
 interface FindingIndex {
   version: number;
   findings: Record<string, Finding>;
   combos_driven: Record<string, string[]>;
+  cover_meta?: Record<string, CoverMeta>;
 }
 
 /**
@@ -203,6 +235,7 @@ function loadIndex(indexPath: string): FindingIndex {
           version: idx.version ?? 1,
           findings: normalizeFindings(idx.findings),
           combos_driven: idx.combos_driven ?? {},
+          ...(idx.cover_meta != null ? {cover_meta: idx.cover_meta} : {}),
         };
       }
     }
@@ -269,6 +302,11 @@ const IMPORTED_FINDING_SCHEMA = z.object({
   // Accepted as an alias so the same JSON object works in `import` and
   // `record`; a team doc that writes `notes` lost them silently before.
   notes: z.string().optional(),
+  kind: z.enum(FINDING_KINDS).optional(),
+  keys: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
+  example_path: z.string().optional(),
+  first_seen_round: z.string().optional(),
+  last_seen_round: z.string().optional(),
 });
 
 type ImportedFinding = z.infer<typeof IMPORTED_FINDING_SCHEMA>;
@@ -282,31 +320,28 @@ export function importFindings(
   const skipped: string[] = [];
 
   incoming.forEach((raw, i) => {
-    const source = raw.retainer_path ?? raw.signature;
-    if (source == null || source === '') {
-      skipped.push(`entry ${i}: neither retainer_path nor signature`);
-      return;
-    }
     // Bulk seeding is the easiest way to pollute a shared index, because
     // nobody reads 40 entries before importing them. Skip the bad one and
     // name it; importing the other 39 is the useful outcome.
-    const problem = retainerPathProblem(source);
-    if (problem != null) {
-      skipped.push(`entry ${i}: not a retainer path — ${problem}`);
-      return;
-    }
     // A `signature` is already normalized by definition; normalizing again is a
     // no-op on well-formed input and repairs a hand-written one.
-    const signature = normalizeRetainerPath(source);
+    const id = identityOf(raw);
+    if ('problem' in id) {
+      skipped.push(`entry ${i}: ${id.problem}`);
+      return;
+    }
+    const {signature} = id;
     const classes = raw.growing_classes ?? [];
     const fingerprint = fingerprintOf(signature, classes);
     const existing = index.findings[fingerprint];
-    const round = raw.round ?? 'imported';
+    // An exported row carries its rounds as first/last_seen_round.
+    const round = raw.round ?? raw.last_seen_round ?? 'imported';
     index.findings[fingerprint] = {
       fingerprint,
       signature,
       growing_classes: classes,
-      first_seen_round: existing?.first_seen_round ?? round,
+      first_seen_round:
+        existing?.first_seen_round ?? raw.first_seen_round ?? round,
       last_seen_round: round,
       // `new` is a check VERDICT, not a state a finding can be stored in —
       // an entry that exists in the index is by definition not new, and
@@ -324,6 +359,7 @@ export function importFindings(
       // An import is history, not a sighting: it must not inflate seen_count
       // for a finding this operator has never actually observed.
       seen_count: existing?.seen_count ?? 1,
+      ...identityFields(id, existing),
     };
     if (existing) updated++;
     else imported++;
@@ -404,6 +440,74 @@ export function fingerprintOf(signature: string, classes: string[]): string {
   return crypto.createHash('sha1').update(material).digest('hex').slice(0, 12);
 }
 
+interface IdentityInput {
+  retainer_path?: string;
+  signature?: string;
+  example_path?: string;
+  kind?: FindingKind;
+  keys?: Record<string, string | number>;
+}
+
+interface ResolvedIdentity {
+  signature: string;
+  kind?: FindingKind;
+  keys?: Record<string, string>;
+  example_path?: string;
+}
+
+type Identity = ResolvedIdentity | {problem: string};
+
+/**
+ * The signature a finding is keyed by: its structured keys for a kind other
+ * than `retainer-path`, else its normalized retainer path. A structured
+ * signature is passed through `normalizeRetainerPath` too, so normalizing a
+ * stored signature again on load leaves it unchanged.
+ */
+export function identityOf(input: IdentityInput): Identity {
+  const kind = input.kind ?? 'retainer-path';
+  if (kind === 'retainer-path') {
+    const source = input.retainer_path ?? input.signature;
+    if (source == null || source === '') {
+      return {problem: 'neither retainer_path nor signature'};
+    }
+    const problem = retainerPathProblem(source);
+    if (problem != null) return {problem: `not a retainer path — ${problem}`};
+    return {signature: normalizeRetainerPath(source)};
+  }
+  const keys: Record<string, string> = {};
+  for (const [k, v] of Object.entries(input.keys ?? {})) {
+    const text = String(v).trim();
+    if (text !== '') keys[k] = text;
+  }
+  const missing = KIND_KEYS[kind].filter(group =>
+    group.every(k => keys[k] == null),
+  );
+  if (missing.length > 0) {
+    return {
+      problem: `kind "${kind}" needs keys ${KIND_KEYS[kind].map(g => g.join(' or ')).join(' and ')}; missing ${missing.map(g => g.join(' or ')).join(', ')}`,
+    };
+  }
+  const raw = `${kind}: ${Object.keys(keys)
+    .sort()
+    // Encoded, so a space or `=` inside a value cannot make two key sets
+    // read as one.
+    .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(keys[k])}`)
+    .join(' ')}`;
+  const problem = retainerPathProblem(raw);
+  if (problem != null) return {problem: `bad keys — ${problem}`};
+  const example = input.retainer_path ?? input.example_path;
+  return {
+    signature: normalizeRetainerPath(raw),
+    kind,
+    keys,
+    ...(example != null &&
+    example !== '' &&
+    retainerPathProblem(example) == null
+      ? {example_path: example.trim()}
+      : {}),
+  };
+}
+
 /**
  * Artifact families every hunt re-derives, seeded into a fresh index.
  *
@@ -431,7 +535,7 @@ function storableStatus(s?: Finding['status'] | 'lead'): Finding['status'] {
 }
 
 interface RecordInput {
-  retainer_path: string;
+  identity: ResolvedIdentity;
   growing_classes: string[];
   round?: string;
   status?: Finding['status'] | 'lead';
@@ -450,9 +554,23 @@ interface RecordOutcome {
   requested: Finding['status'] | undefined;
 }
 
+/** The structured-identity fields of an entry, keeping an earlier example path. */
+function identityFields(
+  id: ResolvedIdentity,
+  existing: Finding | undefined,
+): Pick<Finding, 'kind' | 'keys' | 'example_path'> {
+  if (id.kind == null) return {};
+  const example = id.example_path ?? existing?.example_path;
+  return {
+    kind: id.kind,
+    keys: id.keys,
+    ...(example != null ? {example_path: example} : {}),
+  };
+}
+
 /** One sighting: add or update the entry and count it. Does not save. */
 function recordFinding(index: FindingIndex, r: RecordInput): RecordOutcome {
-  const signature = normalizeRetainerPath(r.retainer_path);
+  const {signature} = r.identity;
   const fingerprint = fingerprintOf(signature, r.growing_classes);
   const existing = index.findings[fingerprint];
   const roundId = r.round ?? 'unknown';
@@ -472,6 +590,7 @@ function recordFinding(index: FindingIndex, r: RecordInput): RecordOutcome {
     title: r.title ?? existing?.title,
     note: r.note ?? existing?.note,
     seen_count: (existing?.seen_count ?? 0) + 1,
+    ...identityFields(r.identity, existing),
   };
   return {
     finding: index.findings[fingerprint],
@@ -913,6 +1032,68 @@ export function findingIndexEmptyBanner(indexPath: string): string {
   );
 }
 
+/** JSON with object keys sorted at every level, for hashing. */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value != null && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    return `{${Object.keys(obj)
+      .sort()
+      .map(k => `${JSON.stringify(k)}:${stableJson(obj[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+/**
+ * What `cover` can read from a round's run.json: the round name, the combos,
+ * the last served revision, and a hash of the in-page gating values, so two
+ * rounds that drove the same combos under different gating are told apart.
+ */
+export function coverFromRun(runDir: string): {
+  round: string;
+  combos: string[];
+  served_revision?: string;
+  preset_hash?: string;
+} {
+  const file = path.join(runDir, 'run.json');
+  if (!fs.existsSync(file)) throw new Error(`No run.json in ${runDir}.`);
+  let run: {
+    config?: {combos?: unknown};
+    served_revisions?: Array<{rev?: unknown}> | null;
+    gating_verified?: Record<string, unknown> | null;
+  };
+  try {
+    run = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    throw new Error(
+      `run.json in ${runDir} is not valid JSON: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+  const combos = Array.isArray(run.config?.combos)
+    ? run.config.combos.filter((c): c is string => typeof c === 'string')
+    : [];
+  const revs = (run.served_revisions ?? [])
+    .map(r => r?.rev)
+    .filter((r): r is string => typeof r === 'string' && r !== '');
+  const gating = run.gating_verified ?? {};
+  const names = Object.keys(gating).sort();
+  return {
+    round: path.basename(path.resolve(runDir)),
+    combos,
+    ...(revs.length > 0 ? {served_revision: revs[revs.length - 1]} : {}),
+    ...(names.length > 0
+      ? {
+          preset_hash: crypto
+            .createHash('sha1')
+            .update(stableJson(names.map(n => [n, gating[n]])))
+            .digest('hex')
+            .slice(0, 12),
+        }
+      : {}),
+  };
+}
+
 export function registerFindingIndex(server: McpServer): void {
   server.tool(
     'memlab_finding_index',
@@ -939,7 +1120,19 @@ export function registerFindingIndex(server: McpServer): void {
         .string()
         .optional()
         .describe(
-          "The finding's retainer path, as printed by memlab_retainer_summary / memlab_retainer_trace. Required for check and record. VALIDATED: one line, at most 400 characters, no tool-call/XML markup — the index is shared, and a malformed path is fingerprinted into it permanently.",
+          "The finding's retainer path, as printed by memlab_retainer_summary / memlab_retainer_trace. Required for check and record unless `kind` + `keys` identify the finding (then it is stored as an example only). VALIDATED: one line, at most 400 characters, no tool-call/XML markup — the index is shared, and a malformed path is fingerprinted into it permanently.",
+        ),
+      kind: z
+        .enum(FINDING_KINDS)
+        .optional()
+        .describe(
+          'What identifies the finding (default "retainer-path"). For populations whose path changes run to run, key by `keys` instead: "update-queue" needs `component` and `hook_ordinal` or `setter`; "collection" needs `class` (add `probe` for the probe that counts it); "probe" needs `probe` (add `set`). Works with check, record, import, amend and delete.',
+        ),
+      keys: z
+        .record(z.string(), z.union([z.string(), z.number()]))
+        .optional()
+        .describe(
+          'With a structured `kind`: its identifying keys, e.g. {component: "ChatList", hook_ordinal: 3, setter: "setContextMenuOpened"}. Key order does not matter.',
         ),
       fingerprint: z
         .string()
@@ -958,7 +1151,7 @@ export function registerFindingIndex(server: McpServer): void {
         .string()
         .optional()
         .describe(
-          'Round identifier (e.g. "r59"), recorded as first/last seen.',
+          'Round identifier (e.g. "r59"), recorded as first/last seen. With `list`: only findings first or last seen in this round.',
         ),
       status: z
         // NO `.default('known')`. `record` applies that default itself; a
@@ -1017,7 +1210,7 @@ export function registerFindingIndex(server: McpServer): void {
         .string()
         .optional()
         .describe(
-          'Short human name for the finding, shown by `check` and `list`.',
+          'Short human name for the finding, shown by `check` and `list`. With `list`: only findings whose title, signature or note contains this (case-insensitive).',
         ),
       note: z
         .string()
@@ -1028,7 +1221,27 @@ export function registerFindingIndex(server: McpServer): void {
         .array(z.string())
         .optional()
         .default([])
-        .describe('For action "cover": combo names driven in this round.'),
+        .describe(
+          'For action "cover": combo names driven in this round. Default with `run_dir`: run.json `config.combos`.',
+        ),
+      served_revision: z
+        .string()
+        .optional()
+        .describe(
+          'For action "cover": the revision the app was served from. Default with `run_dir`: the last of run.json `served_revisions`.',
+        ),
+      preset_hash: z
+        .string()
+        .optional()
+        .describe(
+          'For action "cover": identifies the gating the round ran with. Default with `run_dir`: a hash of run.json `gating_verified`.',
+        ),
+      run_dir: z
+        .string()
+        .optional()
+        .describe(
+          'For action "cover": a leak-hunt round. Fills `round` (the directory name), `combos`, `served_revision` and `preset_hash` from its run.json when not given.',
+        ),
       workstream: z
         .string()
         .optional()
@@ -1057,6 +1270,8 @@ export function registerFindingIndex(server: McpServer): void {
     async ({
       action,
       retainer_path,
+      kind,
+      keys,
       fingerprint: fingerprintArg,
       growing_classes,
       round,
@@ -1071,6 +1286,9 @@ export function registerFindingIndex(server: McpServer): void {
       note,
       notes,
       combos,
+      served_revision,
+      preset_hash,
+      run_dir,
       workstream,
       from,
       to,
@@ -1155,6 +1373,7 @@ export function registerFindingIndex(server: McpServer): void {
             exported_at: new Date().toISOString(),
             findings: Object.values(idx.findings ?? {}),
             combos_driven: idx.combos_driven ?? {},
+            ...(idx.cover_meta != null ? {cover_meta: idx.cover_meta} : {}),
           };
           fs.writeFileSync(
             dest,
@@ -1216,6 +1435,19 @@ export function registerFindingIndex(server: McpServer): void {
                 // carries nothing anyway.
                 if (merged.length > 0) index.combos_driven[round] = merged;
               }
+            }
+            const incomingMeta = Array.isArray(parsed)
+              ? null
+              : ((parsed as {cover_meta?: Record<string, CoverMeta>})
+                  ?.cover_meta ?? null);
+            if (incomingMeta != null && typeof incomingMeta === 'object') {
+              // Per round and per field: what this index already records
+              // wins, and the import fills what it lacks.
+              const merged = {...index.cover_meta};
+              for (const [r, meta] of Object.entries(incomingMeta)) {
+                merged[r] = {...meta, ...merged[r]};
+              }
+              index.cover_meta = merged;
             }
             const fromFile = Array.isArray(parsed)
               ? parsed
@@ -1350,7 +1582,53 @@ export function registerFindingIndex(server: McpServer): void {
               detail: `- \`${f.fingerprint}\` fixed behind: ${behind}`,
             };
           };
-          const listed = all
+          const needle = title?.toLowerCase();
+          const matching = all.filter(
+            f =>
+              (round == null ||
+                f.first_seen_round === round ||
+                f.last_seen_round === round) &&
+              (kind == null || (f.kind ?? 'retainer-path') === kind) &&
+              (needle == null ||
+                [f.title, f.signature, f.note].some(
+                  t => t?.toLowerCase().includes(needle) === true,
+                )),
+          );
+          const filters = [
+            round != null ? `round \`${round}\`` : null,
+            kind != null ? `kind \`${kind}\`` : null,
+            title != null ? `title contains "${title}"` : null,
+          ].filter((x): x is string => x != null);
+          // Sort by round id rather than trusting object insertion order: a
+          // re-recorded round moves in the object and "the last 8" silently
+          // stops meaning the most recent ones.
+          const covered = Object.entries(index.combos_driven)
+            .sort((a, b) =>
+              a[0].localeCompare(b[0], undefined, {numeric: true}),
+            )
+            .filter(([r]) => round == null || r === round)
+            .slice(-8)
+            .map(([r, c]) => {
+              const meta = index.cover_meta?.[r];
+              const extra = [
+                meta?.served_revision != null
+                  ? `rev \`${meta.served_revision}\``
+                  : null,
+                meta?.preset_hash != null
+                  ? `preset \`${meta.preset_hash}\``
+                  : null,
+              ].filter((x): x is string => x != null);
+              return `${r}: ${c.join(', ')}${extra.length > 0 ? ` (${extra.join(', ')})` : ''}`;
+            });
+          if (filters.length > 0 && matching.length === 0) {
+            return result(
+              `No finding matches ${filters.join(', ')} among the ${formatNumber(all.length)} in \`${indexPath}\`.` +
+                (covered.length > 0
+                  ? `\n\nCombo coverage: ${covered.join('; ')}.`
+                  : ''),
+            );
+          }
+          const listed = matching
             .sort((a, b) => b.seen_count - a.seen_count)
             .slice(0, 40)
             .map(f => ({finding: f, status: statusCell(f)}));
@@ -1368,19 +1646,18 @@ export function registerFindingIndex(server: McpServer): void {
               return label.length > 60 ? label.slice(0, 57) + '…' : label;
             })(),
           ]);
-          // Sort by round id rather than trusting object insertion order: a
-          // re-recorded round moves in the object and "the last 8" silently
-          // stops meaning the most recent ones.
-          const covered = Object.entries(index.combos_driven)
-            .sort((a, b) =>
-              a[0].localeCompare(b[0], undefined, {numeric: true}),
-            )
-            .slice(-8)
-            .map(([r, c]) => `${r}: ${c.join(', ')}`);
           return result(
             [
-              `## Findings index (${formatNumber(all.length)}) — \`${indexPath}\``,
+              filters.length > 0
+                ? `## Findings index — ${formatNumber(matching.length)} of ${formatNumber(all.length)} match ${filters.join(', ')} — \`${indexPath}\``
+                : `## Findings index (${formatNumber(all.length)}) — \`${indexPath}\``,
               '',
+              ...(listed.length < matching.length
+                ? [
+                    `_Showing the ${formatNumber(listed.length)} most-seen of ${formatNumber(matching.length)}; narrow with \`round\`, \`title\` or \`kind\`._`,
+                    '',
+                  ]
+                : []),
               markdownTable(
                 [
                   'Fingerprint',
@@ -1410,11 +1687,28 @@ export function registerFindingIndex(server: McpServer): void {
         }
 
         if (action === 'cover') {
-          if (!round) return errorResult('action "cover" requires a round.');
-          index.combos_driven[round] = combos;
+          const fromRun =
+            run_dir != null && run_dir !== '' ? coverFromRun(run_dir) : null;
+          const coverRound = round ?? fromRun?.round;
+          if (!coverRound) {
+            return errorResult('action "cover" requires a round or run_dir.');
+          }
+          const driven = combos.length > 0 ? combos : (fromRun?.combos ?? []);
+          const meta: CoverMeta = {
+            served_revision: served_revision ?? fromRun?.served_revision,
+            preset_hash: preset_hash ?? fromRun?.preset_hash,
+            covered_at: new Date().toISOString(),
+          };
+          index.combos_driven[coverRound] = driven;
+          index.cover_meta = {...index.cover_meta, [coverRound]: meta};
           saveIndex(indexPath, index);
           return result(
-            `Recorded ${combos.length} combo(s) driven in ${round}: ${combos.join(', ') || '(none)'}.`,
+            `Recorded ${driven.length} combo(s) driven in ${coverRound}: ${driven.join(', ') || '(none)'}. ` +
+              `Served revision: ${meta.served_revision != null ? `\`${meta.served_revision}\`` : 'not recorded'}; ` +
+              `preset hash: ${meta.preset_hash != null ? `\`${meta.preset_hash}\`` : 'not recorded'}.` +
+              (meta.served_revision == null || meta.preset_hash == null
+                ? ' Without both, a later round cannot tell whether these combos were driven against the same code and gating.'
+                : ''),
           );
         }
 
@@ -1426,18 +1720,18 @@ export function registerFindingIndex(server: McpServer): void {
           let target = fingerprintArg;
           let resolvedBySignature = false;
           if (target == null || target === '') {
-            if (!retainer_path) {
+            if (!retainer_path && kind == null) {
               return errorResult(
-                `action "${action}" needs a \`fingerprint\` (printed by check/record/list) or a \`retainer_path\` to derive one from.`,
+                `action "${action}" needs a \`fingerprint\` (printed by check/record/list), a \`retainer_path\` or \`kind\` + \`keys\` to derive one from.`,
               );
             }
-            const problem = retainerPathProblem(retainer_path);
-            if (problem != null) {
+            const id = identityOf({retainer_path, kind, keys});
+            if ('problem' in id) {
               return errorResult(
-                `\`retainer_path\` is not a retainer path: ${problem}.\n\nPass the \`fingerprint\` instead — \`memlab_finding_index({action: "list"})\` prints one per entry, and it is the only way to reach an entry whose recorded signature is itself malformed.`,
+                `Cannot derive a fingerprint: ${id.problem}.\n\nPass the \`fingerprint\` instead — \`memlab_finding_index({action: "list"})\` prints one per entry, and it is the only way to reach an entry whose recorded signature is itself malformed.`,
               );
             }
-            const signature = normalizeRetainerPath(retainer_path);
+            const {signature} = id;
             target = fingerprintOf(signature, growing_classes);
             if (index.findings[target] == null) {
               // The fingerprint folds in `growing_classes`, which defaults to
@@ -1560,13 +1854,9 @@ export function registerFindingIndex(server: McpServer): void {
           const lines: string[] = [];
           const skipped: string[] = [];
           findings.forEach((f, i) => {
-            const source = f.retainer_path ?? f.signature;
-            const problem =
-              source == null || source === ''
-                ? 'neither retainer_path nor signature'
-                : retainerPathProblem(source);
-            if (problem != null || source == null) {
-              skipped.push(`entry ${i}: ${problem ?? 'no path'}`);
+            const id = identityOf(f);
+            if ('problem' in id) {
+              skipped.push(`entry ${i}: ${id.problem}`);
               return;
             }
             lines.push(
@@ -1574,7 +1864,7 @@ export function registerFindingIndex(server: McpServer): void {
                 describeRecorded(
                   recordFinding(index, {
                     ...f,
-                    retainer_path: source,
+                    identity: id,
                     growing_classes: f.growing_classes ?? [],
                     round: f.round ?? round,
                     status: f.status ?? status,
@@ -1606,9 +1896,9 @@ export function registerFindingIndex(server: McpServer): void {
           );
         }
 
-        if (!retainer_path) {
+        if (!retainer_path && kind == null) {
           return errorResult(
-            `action "${action}" requires a retainer_path` +
+            `action "${action}" requires a retainer_path or \`kind\` + \`keys\`` +
               (action === 'record' ? ' (or a `findings` batch).' : '.'),
           );
         }
@@ -1616,16 +1906,17 @@ export function registerFindingIndex(server: McpServer): void {
         // fails on `record` still produces a confident NEW from `check`, and
         // "NEW" on a path that is not a path is the verdict that sends a round
         // off to investigate nothing.
-        const pathProblem = retainerPathProblem(retainer_path);
-        if (pathProblem != null) {
+        const identity = identityOf({retainer_path, kind, keys});
+        if ('problem' in identity) {
           return errorResult(
-            `\`retainer_path\` is not a retainer path: ${pathProblem}.\n\n` +
+            `Cannot fingerprint this finding: ${identity.problem}.\n\n` +
               'Refusing rather than fingerprinting it. The index is SHARED — later rounds `check` against it — ' +
               'so a malformed entry is permanent pollution that cannot be addressed by re-deriving the path. ' +
-              'Pass the path exactly as `memlab_retainer_trace` / `memlab_retainer_summary` printed it, on one line.',
+              'Pass the path exactly as `memlab_retainer_trace` / `memlab_retainer_summary` printed it, on one line, ' +
+              'or identify the finding with `kind` + `keys`.',
           );
         }
-        const signature = normalizeRetainerPath(retainer_path);
+        const {signature} = identity;
         const fingerprint = fingerprintOf(signature, growing_classes);
         const existing = index.findings[fingerprint];
 
@@ -1690,7 +1981,7 @@ export function registerFindingIndex(server: McpServer): void {
                 ...unreliable,
                 '',
                 `No previous round in this index (${formatNumber(indexSize)} finding(s)) recorded this ` +
-                  'retainer path with this class set. Confirm it, then `action: "record"` so the next ' +
+                  `${identity.kind != null ? `${identity.kind} key` : 'retainer path'} with this class set. Confirm it, then \`action: "record"\` so the next ` +
                   'round recognizes it.',
                 '',
                 indexPathLine,
@@ -1730,6 +2021,9 @@ export function registerFindingIndex(server: McpServer): void {
               '',
               ...(existing.title ? [`Title: ${existing.title}`] : []),
               `Signature: \`${signature}\``,
+              ...(existing.example_path != null
+                ? [`Example path: \`${existing.example_path}\``]
+                : []),
               `First seen: ${existing.first_seen_round}; last seen: ${existing.last_seen_round}; seen ${existing.seen_count}×.`,
               indexPathLine,
               existing.note ? `Note: ${existing.note}` : '',
@@ -1763,7 +2057,7 @@ export function registerFindingIndex(server: McpServer): void {
 
         // record
         const recorded = recordFinding(index, {
-          retainer_path,
+          identity,
           growing_classes,
           round,
           status,

@@ -460,7 +460,7 @@ The main list and lookup tools (`memlab_query_objects`, `memlab_class_histogram`
 | `memlab_batch` | Several tools against ONE load — the load is the expensive part. |
 | `memlab_snapshot_header` | Node/edge counts WITHOUT loading the snapshot. |
 | `memlab_server_status` | Confirm the server is alive (returns instantly), and see what large snapshots cost it: peak RSS, recent loads with time and RSS before/after, evictions, and the slowest tools this session. |
-| `memlab_finding_index` | Record findings as you go so the write-up is not reconstructed from memory. |
+| `memlab_finding_index` | Record findings as you go so the write-up is not reconstructed from memory. Keyed by retainer path, or by `kind` + `keys` for update queues, collections and probes; `list` filters by round, title and kind; `cover` stores the served revision and gating hash. |
 | `memlab_reports` | Render the findings. |
 | `memlab_hunt_report` | Render a leak-hunt run. |
 | `memlab_analyze_run` | Point at a run.json and get the WHOLE analysis protocol — trend, owner attribution, population diff, artifact classification, caveats — in one call. |

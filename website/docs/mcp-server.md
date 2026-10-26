@@ -277,6 +277,30 @@ memlab_probes({mode: 'save', set: 'myapp', match: 'myapp.example.com',
   expect: 'flat'})
 ```
 
+### Findings index
+
+`memlab_finding_index` keeps the findings of earlier rounds so a new round can
+`check` a candidate before investigating it. A finding is keyed by its
+normalized retainer path. Some populations have no stable path, so pass a
+`kind` and its `keys` instead:
+
+| `kind` | Keys |
+|---|---|
+| `update-queue` | `component`, and `hook_ordinal` or `setter` |
+| `collection` | `class` (optionally `probe`) |
+| `probe` | `probe` (optionally `set`) |
+
+```js
+memlab_finding_index({action: 'record', kind: 'update-queue', round: 'r12',
+  keys: {component: 'ChatList', hook_ordinal: 3, setter: 'setMenuOpen'}})
+```
+
+`list` takes `round`, `title` (matches title, signature and note) and `kind`
+as filters. `cover` records the combos a round drove; with `run_dir` it also
+reads the served revision and a hash of the gating values from run.json, so
+two rounds that drove the same combos against different code or gating can
+be told apart.
+
 ## Reading the numbers
 
 memlab and the browser's own heap profiler read the same snapshot, but a few
