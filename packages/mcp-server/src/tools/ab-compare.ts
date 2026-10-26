@@ -21,6 +21,11 @@ import {
 import {linearFit, probeRung} from './ladder-probe.js';
 import {BUILTIN, countOne} from './census.js';
 import {
+  collectDevRoots,
+  computeReachableWithoutDevRoots,
+} from './dev-artifacts.js';
+import type {IHeapSnapshot} from '@memlab/core';
+import {
   errorResult,
   formatNumber,
   markdownTable,
@@ -79,6 +84,35 @@ function readArms(runDir: string): Arm[] {
 }
 
 type MetricSpec = string | {code: string; cap?: number};
+
+const RAW_TOTAL = 'heap self KB (raw)';
+const PROD_TOTAL = 'heap self KB (production-only)';
+
+/**
+ * Total self size in KB (MB would sit under the verdict's 0.01/cycle noise
+ * floor for any realistic leak), and the part a production build would also hold
+ * (null when the snapshot has no dev roots). A dev-only backing store that
+ * doubles in one arm moves the raw total by megabytes and the production
+ * total not at all.
+ */
+function heapTotals(snap: IHeapSnapshot): {raw: number; prod: number | null} {
+  const devRoots = collectDevRoots(snap);
+  const reached =
+    devRoots.byId.size > 0
+      ? computeReachableWithoutDevRoots(snap, devRoots)
+      : null;
+  let raw = 0;
+  let prod = 0;
+  snap.nodes.forEach(node => {
+    if (node.id <= 3) return;
+    raw += node.self_size;
+    if (reached == null || reached[node.nodeIndex] === 1) {
+      prod += node.self_size;
+    }
+  });
+  const kb = (b: number) => Math.round(b / 1024);
+  return {raw: kb(raw), prod: reached == null ? null : kb(prod)};
+}
 
 function rateOf(cycles: number[], ys: Array<number | null>) {
   const pts = cycles
@@ -153,7 +187,7 @@ export function abVerdict(
 export function registerAbCompare(server: McpServer): void {
   server.tool(
     'memlab_ab_compare',
-    'Judge an A/B round (`hunt_runner --ab`) in one call: run the same probes on the OFF arm and the ON arm, fit each arm against its own cycles, and print one table with per-cycle rates, the ON/OFF ratio and a verdict per metric — FIX EFFECTIVE / PARTIAL / NO EFFECT / CANNOT JUDGE. ' +
+    "Judge an A/B round (`hunt_runner --ab`) in one call: run the same probes on the OFF arm and the ON arm, fit each arm against its own cycles, and print one table with per-cycle rates, the ON/OFF ratio and a verdict per metric — FIX EFFECTIVE / PARTIAL / NO EFFECT / CANNOT JUDGE. Each arm's heap total is a row too, production-only beside raw, so a dev-only resize in one arm is not read as that arm growing more. " +
       'Reads the arms from run.json `ab`. Probes are `memlab_eval` code assigning a number to `result` (as in `memlab_ladder_probe`); `census` adds built-in `memlab_census` populations. Give a metric a `cap` when the fix bounds a population at a size: a round whose OFF arm never reached the cap cannot show the fix working, and is reported CANNOT JUDGE rather than NO EFFECT.',
     {
       run_dir: z.string().describe('The A/B round directory (holds run.json).'),
@@ -191,8 +225,23 @@ export function registerAbCompare(server: McpServer): void {
         .optional()
         .default(20000000)
         .describe('Per-rung node-visit budget for full-heap walks.'),
+      totals: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          `Add rows for each arm's heap total: "${PROD_TOTAL}" (memory only a dev build holds removed; shown when the build has dev roots) and "${RAW_TOTAL}". Judge an arm by the production row: a dev-only hash table that resizes in one arm moves only the raw one.`,
+        ),
     },
-    async ({run_dir, metrics, census, prelude, timeout_ms, max_nodes}) => {
+    async ({
+      run_dir,
+      metrics,
+      census,
+      prelude,
+      timeout_ms,
+      max_nodes,
+      totals,
+    }) => {
       try {
         const specs = Object.entries(
           (metrics ?? {}) as Record<string, MetricSpec>,
@@ -208,10 +257,10 @@ export function registerAbCompare(server: McpServer): void {
             ),
           );
         }
-        if (specs.length === 0 && builtins.length === 0) {
+        if (specs.length === 0 && builtins.length === 0 && !totals) {
           return errorResult(
             new Error(
-              'Pass `metrics` (probe code) and/or `census` populations.',
+              'Pass `metrics` (probe code) and/or `census` populations, or leave `totals` on.',
             ),
           );
         }
@@ -229,6 +278,7 @@ export function registerAbCompare(server: McpServer): void {
         const names = [
           ...probes.map(p => p.name),
           ...builtins.map(b => b.name),
+          ...(totals ? [PROD_TOTAL, RAW_TOTAL] : []),
         ];
         // Series are keyed by name; two metrics sharing one would interleave.
         const dup = names.find((n, i) => names.indexOf(n) !== i);
@@ -279,6 +329,7 @@ export function registerAbCompare(server: McpServer): void {
             let measured: {
               out: Awaited<ReturnType<typeof probeRung>>;
               counts: Map<string, number> | null;
+              heap: {raw: number; prod: number | null} | null;
             } | null = null;
             try {
               measured = await withSnapshotAt(rung.localPath, async snap => {
@@ -304,7 +355,7 @@ export function registerAbCompare(server: McpServer): void {
                     }
                   }
                 }
-                return {out, counts};
+                return {out, counts, heap: totals ? heapTotals(snap) : null};
               });
             } catch (err) {
               const msg = err instanceof Error ? err.message : String(err);
@@ -325,6 +376,10 @@ export function registerAbCompare(server: McpServer): void {
               perMetric
                 .get(b.name)
                 ?.push(measured?.counts?.get(b.name) ?? null);
+            }
+            if (totals) {
+              perMetric.get(PROD_TOTAL)?.push(measured?.heap?.prod ?? null);
+              perMetric.get(RAW_TOTAL)?.push(measured?.heap?.raw ?? null);
             }
           }
           values.set(arm.name, perMetric);
@@ -357,7 +412,16 @@ export function registerAbCompare(server: McpServer): void {
           }
           return null;
         };
-        const rows = names.map(name => {
+        // No dev roots on either arm: the production row would repeat the raw
+        // one as "did not measure".
+        const shown = names.filter(
+          name =>
+            name !== PROD_TOTAL ||
+            arms.some(arm =>
+              (values.get(arm.name)?.get(name) ?? []).some(v => v != null),
+            ),
+        );
+        const rows = shown.map(name => {
           const offYs = values.get('off')?.get(name) ?? [];
           const onYs = values.get('on')?.get(name) ?? [];
           const offFit = rateOf(off.cycles, offYs);
@@ -412,6 +476,12 @@ export function registerAbCompare(server: McpServer): void {
         ];
         if (errors.length > 0) {
           lines.push('Probe errors:', ...errors.map(e => `- ${e}`), '');
+        }
+        if (shown.includes(PROD_TOTAL)) {
+          lines.push(
+            '_Judge the arm totals by the production-only row. Where the raw row disagrees, the difference is memory only a dev build holds (a Fast Refresh or `_debug*` table resizing in one arm, for example)._',
+            '',
+          );
         }
         lines.push(
           '_FIX EFFECTIVE = the ON rate is at most 20% of the OFF rate; NO EFFECT = at least 80%. A verdict is about the RATE: a first-mount step shows up in the series but not in the rate. Confirm an effective fix on a second round before filing it — one A/B is one sample._',

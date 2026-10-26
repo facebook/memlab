@@ -337,11 +337,11 @@ The main list and lookup tools (`memlab_query_objects`, `memlab_class_histogram`
 | `memlab_chain_walk` | Walk a repeated linked structure (`.next` update queues, `.prev` closure chains, LRU lists) and report how deep it goes — use this instead of a hand-written loop, which cannot tell a cycle from a hop cap. |
 | `memlab_module_attribution` | Attribute bytes to the MODULE that owns them, by walking dominators up to the nearest module-registry export. |
 | `memlab_census` | Count several named populations (detached DOM, listener records, LRU cache nodes, React fibers, timers, …) across every rung in ONE pass each, with per-cycle rates and a settle verdict. |
-| `memlab_ab_compare` | Judge an A/B round in one call: the same probes on the OFF and ON arms, per-cycle rates, ON/OFF ratio and a FIX EFFECTIVE / NO EFFECT / CANNOT JUDGE verdict per metric. |
+| `memlab_ab_compare` | Judge an A/B round in one call: the same probes on the OFF and ON arms, per-cycle rates, ON/OFF ratio and a FIX EFFECTIVE / NO EFFECT / CANNOT JUDGE verdict per metric, plus each arm's heap total with dev-only memory removed. |
 | `memlab_object_urls` | Unrevoked `blob:` object URLs per rung — their Blobs are pinned OFF the V8 heap, so this leak never shows in heap size. |
 | `memlab_rate_table` | Rank several rounds by the per-cycle rate of ONE population, labelled by the surface each round drove — the "which surface do I fix first" table. Carries settle-drain and isolate-age columns, because a rate is not comparable without them. |
 | `memlab_external_strings` | Attribute `system / ExternalStringData` — usually the largest class in a browser heap, and the one a retainer trace cannot explain. Names the source chunks by reading their content. |
-| `memlab_explain_delta` | WHERE a heap grew, attributed to the object that owns the new bytes rather than to what they are. |
+| `memlab_explain_delta` | WHERE a heap grew, attributed to the object that owns the new bytes rather than to what they are. Production-only by default; flags a backing store that grew by a one-time capacity step. |
 | `memlab_dominator_chain` | From one node up to the accountable application object. |
 | `memlab_dominator_attribution` | Given several candidate retainers, how much each one actually dominates — a zero refutes a hypothesis. |
 | `memlab_allocation_sites` | WHO allocated these objects: live objects grouped by the JavaScript stack that allocated them (needs a capture recorded with allocation tracking, e.g. a `.heaptimeline`). |

@@ -365,7 +365,7 @@ const GROUPS: Group[] = [
       ],
       [
         'memlab_ab_compare',
-        'Judge an A/B round in one call: the same probes on the OFF and ON arms, per-cycle rates, ON/OFF ratio and a FIX EFFECTIVE / NO EFFECT / CANNOT JUDGE verdict per metric.',
+        "Judge an A/B round in one call: the same probes on the OFF and ON arms, per-cycle rates, ON/OFF ratio and a FIX EFFECTIVE / NO EFFECT / CANNOT JUDGE verdict per metric, plus each arm's heap total with dev-only memory removed.",
       ],
       [
         'memlab_object_urls',
@@ -381,7 +381,7 @@ const GROUPS: Group[] = [
       ],
       [
         'memlab_explain_delta',
-        'WHERE a heap grew, attributed to the object that owns the new bytes rather than to what they are.',
+        'WHERE a heap grew, attributed to the object that owns the new bytes rather than to what they are. Production-only by default; flags a backing store that grew by a one-time capacity step.',
       ],
       [
         'memlab_dominator_chain',

@@ -260,6 +260,13 @@ figures are defined or grouped differently:
   unknown.
 - **Default lists** in memlab leave out engine-internal node types (arrays,
   code, native, synthetic) unless you ask for them by `node_type`.
+- **Production-only totals** leave out memory a development build holds only
+  through a dev root or dev edge (React Fast Refresh registries, React
+  `_debug*` fields, devtools globals). `memlab_explain_delta` and
+  `memlab_ab_compare` report growth this way by default, with the raw figure
+  beside it. On a dev build a single dev-only hash table can double in size
+  partway through a run, and the raw total then grows by megabytes with no
+  change in the app.
 
 ## Working with more than one snapshot
 

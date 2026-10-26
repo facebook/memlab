@@ -8,7 +8,7 @@
  * @oncall memory_lab
  */
 
-import type {IHeapSnapshot} from '@memlab/core';
+import type {IHeapNode, IHeapSnapshot} from '@memlab/core';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 import {
@@ -31,10 +31,32 @@ import {
 } from '../utils.js';
 import {classifyArtifact} from '../artifact-classes.js';
 import {normalizeClassName} from './sequence-analysis.js';
+import {
+  collectDevRoots,
+  computeReachableWithoutDevRoots,
+} from './dev-artifacts.js';
 
 interface OwnerStats {
   selfBytes: number;
   nodes: number;
+  /** The owner's largest single node, to tell a capacity step from growth. */
+  maxNode: {bytes: number; name: string};
+}
+
+/** A backing store has no name; its type is the useful label. */
+function nodeLabel(node: IHeapNode): string {
+  return node.name.length > 0 ? node.name : `(${node.type})`;
+}
+
+/**
+ * Per node, 1 when a production build would hold it too, or null when the
+ * snapshot has no dev roots (everything counts).
+ */
+function productionReach(snapshot: IHeapSnapshot): Uint8Array | null {
+  const devRoots = collectDevRoots(snapshot);
+  return devRoots.byId.size > 0
+    ? computeReachableWithoutDevRoots(snapshot, devRoots)
+    : null;
 }
 
 /**
@@ -51,15 +73,22 @@ interface OwnerStats {
  * memory. The immediate dominator is already the accountable parent for the
  * bytes hanging off it, and it is one field read per node.
  */
-function attributeByOwner(snapshot: IHeapSnapshot): {
+function attributeByOwner(
+  snapshot: IHeapSnapshot,
+  reached: Uint8Array | null,
+): {
   byOwner: Map<string, OwnerStats>;
   totalSelf: number;
+  countedSelf: number;
 } {
   const byOwner = new Map<string, OwnerStats>();
   let totalSelf = 0;
+  let countedSelf = 0;
   snapshot.nodes.forEach(node => {
     if (node.id <= 3) return;
     totalSelf += node.self_size;
+    if (reached != null && reached[node.nodeIndex] === 0) return;
+    countedSelf += node.self_size;
     const dom = node.dominatorNode;
     // Normalize the per-instance node id V8 appends to Context/scope names
     // ("system / Context / scope @706909"). Those ids differ per capture, so
@@ -75,11 +104,39 @@ function attributeByOwner(snapshot: IHeapSnapshot): {
     if (e) {
       e.selfBytes += node.self_size;
       e.nodes++;
+      if (node.self_size > e.maxNode.bytes) {
+        e.maxNode = {bytes: node.self_size, name: nodeLabel(node)};
+      }
     } else {
-      byOwner.set(key, {selfBytes: node.self_size, nodes: 1});
+      byOwner.set(key, {
+        selfBytes: node.self_size,
+        nodes: 1,
+        maxNode: {bytes: node.self_size, name: nodeLabel(node)},
+      });
     }
   });
-  return {byOwner, totalSelf};
+  return {byOwner, totalSelf, countedSelf};
+}
+
+/**
+ * The owner's delta is mostly ONE node of the same class that roughly doubled
+ * (a hash table or array backing store reallocating), or null. That is a
+ * one-time resize: an A/B arm that happened to cross the threshold "grows
+ * more" by megabytes without any per-cycle difference.
+ */
+export function capacityStep(
+  before: OwnerStats | undefined,
+  after: OwnerStats | undefined,
+  delta: number,
+): {name: string; from: number; to: number} | null {
+  if (before == null || after == null || delta <= 0) return null;
+  const a = before.maxNode;
+  const b = after.maxNode;
+  if (a.name !== b.name || a.bytes <= 0 || b.bytes < 1024 * 1024) return null;
+  const ratio = b.bytes / a.bytes;
+  return ratio >= 1.4 && ratio <= 2.6 && b.bytes - a.bytes >= 0.5 * delta
+    ? {name: b.name, from: a.bytes, to: b.bytes}
+    : null;
 }
 
 /**
@@ -166,6 +223,13 @@ export function registerExplainDelta(server: McpServer): void {
         .describe(
           'Include owners that are known measurement artifacts (default false: counted in a one-line summary instead).',
         ),
+      include_dev: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'Count memory only a dev build holds (reachable solely through a dev root or dev edge: Fast Refresh, React `_debug*`, devtools). Default false: the owners and the headline delta are production-only, with the raw total beside it.',
+        ),
     },
     async ({
       baseline_handle,
@@ -175,6 +239,7 @@ export function registerExplainDelta(server: McpServer): void {
       limit,
       min_delta_bytes,
       include_artifacts,
+      include_dev,
     }) => {
       try {
         // `??` alone keeps an empty string, which then fails as "snapshot not
@@ -291,8 +356,16 @@ export function registerExplainDelta(server: McpServer): void {
           }
         }
 
-        const a = attributeByOwner(baselineSnapshot);
-        const b = attributeByOwner(target);
+        const reachA = include_dev ? null : productionReach(baselineSnapshot);
+        const reachB = include_dev ? null : productionReach(target);
+        // Both or neither: a production-only side against a raw side would
+        // report the dev share as growth or shrinkage.
+        const devSubtracted = reachA != null && reachB != null;
+        const a = attributeByOwner(
+          baselineSnapshot,
+          devSubtracted ? reachA : null,
+        );
+        const b = attributeByOwner(target, devSubtracted ? reachB : null);
 
         interface Row {
           owner: string;
@@ -301,6 +374,7 @@ export function registerExplainDelta(server: McpServer): void {
           after: number;
           nodesDelta: number;
           artifact: boolean;
+          step: ReturnType<typeof capacityStep>;
         }
         const rows: Row[] = [];
         const owners = new Set([...a.byOwner.keys(), ...b.byOwner.keys()]);
@@ -316,14 +390,20 @@ export function registerExplainDelta(server: McpServer): void {
             after: after?.selfBytes ?? 0,
             nodesDelta: (after?.nodes ?? 0) - (before?.nodes ?? 0),
             artifact: classifyArtifact(owner) != null,
+            step: capacityStep(before, after, delta),
           });
         }
 
+        const signed = (n: number) =>
+          `${n >= 0 ? 'grew' : 'shrank'} by **${formatBytes(Math.abs(n))}**`;
         const totalDelta = b.totalSelf - a.totalSelf;
+        const countedDelta = b.countedSelf - a.countedSelf;
         const lines: string[] = [
           `## Heap delta by owner: "${baselineRef}" → "${targetHandle}"`,
           '',
-          `Total self size ${totalDelta >= 0 ? 'grew' : 'shrank'} by **${formatBytes(Math.abs(totalDelta))}** (${formatBytes(a.totalSelf)} → ${formatBytes(b.totalSelf)}).`,
+          devSubtracted
+            ? `Production-only self size ${signed(countedDelta)} (${formatBytes(a.countedSelf)} → ${formatBytes(b.countedSelf)}); the raw total ${signed(totalDelta)}, of which ${formatBytes(totalDelta - countedDelta)} is memory only a dev build holds. Owners below are production-only (\`include_dev: true\` for raw).`
+            : `Total self size ${signed(totalDelta)} (${formatBytes(a.totalSelf)} → ${formatBytes(b.totalSelf)}).`,
           '',
         ];
 
@@ -349,7 +429,8 @@ export function registerExplainDelta(server: McpServer): void {
           markdownTable(
             ['Owner (dominator class)', 'Δ self', 'Before', 'After', 'Δ nodes'],
             rs.map(r => [
-              r.owner.length > 44 ? r.owner.slice(0, 41) + '…' : r.owner,
+              (r.owner.length > 44 ? r.owner.slice(0, 41) + '…' : r.owner) +
+                (r.step != null ? ' ⚠ capacity step' : ''),
               `${r.delta >= 0 ? '+' : '−'}${formatBytes(Math.abs(r.delta))}`,
               formatBytes(r.before),
               formatBytes(r.after),
@@ -363,6 +444,23 @@ export function registerExplainDelta(server: McpServer): void {
         }
         if (shrank.length > 0) {
           lines.push('### Owners that shrank', '', render(shrank), '');
+        }
+        const steps = grew.flatMap(r =>
+          r.step != null ? [{owner: r.owner, ...r.step}] : [],
+        );
+        if (steps.length > 0) {
+          const bytes = steps.reduce((sum, r) => sum + (r.to - r.from), 0);
+          const examples = steps
+            .slice(0, 3)
+            .map(
+              r =>
+                `\`${r.name.slice(0, 40)}\` under ${r.owner.slice(0, 40)} ${formatBytes(r.from)} → ${formatBytes(r.to)}`,
+            )
+            .join('; ');
+          lines.push(
+            `> ⚠ **${steps.length} owner(s) grew by a capacity step** (${formatBytes(bytes)} in total): one backing store reallocated to ~2x — ${examples}. A resize happens once, when a threshold is crossed; it is not a per-cycle rate. Do not judge an A/B by a total that includes one.`,
+            '',
+          );
         }
         if (!include_artifacts && artifactRows.length > 0) {
           const bytes = artifactRows.reduce((s, r) => s + r.delta, 0);
