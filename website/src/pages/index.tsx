@@ -16,7 +16,6 @@ import React, {
   useState,
 } from 'react';
 import clsx from 'clsx';
-import '@fontsource-variable/geist';
 import Layout from '@theme/Layout';
 import Link from '@docusaurus/Link';
 import CodeBlock from '../components/CodeBlock';

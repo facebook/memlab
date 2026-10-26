@@ -136,14 +136,11 @@ html {
   margin-right: 0.6rem;
 }
 
-.navbar__logo img {
-  border-radius: 7px;
-}
-
 .navbar__title {
-  font-size: 1.08rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-family: 'Geist Variable', var(--ifm-font-family-base);
+  font-size: 1.12rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
 }
 
 .navbar__item.navbar__link {

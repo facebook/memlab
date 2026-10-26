@@ -21,11 +21,12 @@ const config = {
   projectName: 'memlab',
   onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',
-  favicon: 'img/meta-favicon.png',
+  favicon: 'img/logo.svg',
   i18n: {
     defaultLocale: 'en',
     locales: ['en'],
   },
+  clientModules: [require.resolve('@fontsource-variable/geist')],
   plugins: [
     [
       'docusaurus-plugin-typedoc',
@@ -91,7 +92,7 @@ const config = {
         title: 'memlab',
         logo: {
           alt: 'memlab logo',
-          src: 'img/logo.png',
+          src: 'img/logo.svg',
         },
         items: [
           {
