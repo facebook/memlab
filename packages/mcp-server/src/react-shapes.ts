@@ -165,12 +165,34 @@ export function nearestFiber(
   return null;
 }
 
+const ODDBALLS = ['true', 'false', 'null', 'undefined'];
+
+/**
+ * The primitive an oddball node stands for, or null for any other node.
+ *
+ * Browser snapshots name it by value, and a shared oddball can be flagged
+ * detached ("Detached false"). Node snapshots name every one
+ * "system / Oddball"; its first hidden edge is the `to_string` value.
+ */
+export function oddballValue(node: IHeapNode): string | null {
+  const name = node.name.replace(/^Detached /, '');
+  if (ODDBALLS.includes(name)) return name;
+  if (!name.endsWith('Oddball')) return null;
+  // Any hidden string edge may be the `to_string` one; check them all.
+  for (const e of node.references) {
+    if (e.type === 'hidden' && e.toNode.isString) {
+      const value = e.toNode.toStringNode()?.stringValue ?? e.toNode.name;
+      if (ODDBALLS.includes(value)) return value;
+    }
+  }
+  return null;
+}
+
 /** A value as a short label: oddballs and strings inline, objects by class. */
 export function describeValue(node: IHeapNode | null): string {
   if (node == null) return 'smi'; // an inline small integer emits no edge
-  if (['true', 'false', 'null', 'undefined'].includes(node.name)) {
-    return node.name;
-  }
+  const oddball = oddballValue(node);
+  if (oddball != null) return oddball;
   if (node.isString) {
     const s = node.toStringNode()?.stringValue ?? node.name;
     return JSON.stringify(s.length > 24 ? `${s.slice(0, 24)}…` : s);
@@ -209,7 +231,13 @@ export function hooksOfFiber(fiber: IHeapNode, maxHooks = 200): HookInfo[] {
   let hook = edgeTo(fiber, 'memoizedState');
   let stateful = 0;
   const seen = new Set<number>();
-  while (hook != null && out.length < maxHooks && !seen.has(hook.id)) {
+  // The list ends at a `null` next, which is an oddball node, not a hook.
+  while (
+    hook != null &&
+    hook.type === 'object' &&
+    out.length < maxHooks &&
+    !seen.has(hook.id)
+  ) {
     seen.add(hook.id);
     // A class component's memoizedState is its state object, not a hook.
     if (!propertyNames(hook).has('next') && out.length === 0) break;

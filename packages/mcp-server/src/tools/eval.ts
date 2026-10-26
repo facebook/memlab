@@ -1340,7 +1340,7 @@ export function registerEval(server: McpServer): void {
             'pathTree()->{subtreeBytes(id), parent(id), children(id, {minBytes?, limit?})->[{id,name,edge,bytes}], roots()} (the shortest-path tree with app bytes per subtree — it partitions the heap, so shared caches keep their size; built ONCE per snapshot and kept across calls), ' +
             "familyOf(nodeOrId)->family|null (nearest framework family on the dominator chain, as memlab_memory_partition counts it), pathLabel(nodeOrId)->`module:<Name>.<export>`|`global:<name>`|… (first owner on the shortest path; minification-safe), shapeFamily(nodeOrId)->family|null (the node's own record family by property names) — all memoized per snapshot, " +
             'rootPathAvoidingDev(nodeOrId)->[{id,name,type,edge}]|null (shortest GC-root path using no React DEV/Fast Refresh/devtools edge; null = the node does not exist in a production build; throws if the analysis budget runs out first), ' +
-            "fiberHooks(componentName, {limit?})->[{fiber, hooks:[{index, statefulOrdinal, kind, memoizedState, pending, lastRenderedState, bailout}]}] (a component's hook list in order; statefulOrdinal counts only useState/useReducer, so it maps to the Nth such call in source), " +
+            "fiberHooks(componentName, {limit?})->[{fiber, hooks:[{index, statefulOrdinal, kind, memoizedState, pending, lastRenderedState, bailout}]}] (a component's hook list in order; statefulOrdinal counts only useState/useReducer, so it maps to the Nth such call in source; `pending` is null when nothing is queued, else [{value, count}]), " +
             'stringValue(nodeOrId, {maxLen?, slices?: "parent"|"marker"})->string (text of a flat, `(concatenated string)` or `(sliced string)` node; a slice is returned as its whole parent because the snapshot records no offset, or as `‹slice›` with slices:"marker"), ' +
             'props(nodeOrId)->{prop: scalar | {ref,name,type}} & getProp(nodeOrId, name) & shapeSignature(nodeOrId, {maxStringLen?}) (content signature for dedup checks), ' +
             'shapeKeys(nodeOrId)->Set<string> & ownProps(nodeOrId) & hasShape(nodeOrId, [names], {exact?,exclude?}) (own JS properties ONLY — USE THESE FOR SHAPE MATCHING; props() falls back to an internal-edge walk and injects length/map/__via/__note, which makes a props()-based shape test silently return zero matches), ' +
@@ -2162,7 +2162,9 @@ export async function runEval({
               statefulOrdinal: h.statefulOrdinal,
               kind: h.kind,
               memoizedState: describeValue(edgeTo(h.hook, 'memoizedState')),
-              pending: d?.actions ?? [],
+              // null, not [], when nothing is queued: an empty array is truthy,
+              // so `if (h.pending)` selected every hook.
+              pending: d != null && d.actions.length > 0 ? d.actions : null,
               lastRenderedState: d?.lastRenderedState ?? null,
               bailout: d?.bailout ?? null,
             };
