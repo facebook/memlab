@@ -466,12 +466,6 @@ Terminal.prototype.initGlobal = function() {
   }
   Terminal._boundDocs.push(document);
 
-  Terminal.bindPaste(document);
-
-  Terminal.bindKeys(document);
-
-  Terminal.bindCopy(document);
-
   if (this.isIpad) {
     Terminal.fixIpad(document);
   }
@@ -767,12 +761,6 @@ Terminal.prototype.open = function(parent) {
   }
 
   // this.emit('open');
-
-  // This can be useful for pasting,
-  // as well as the iPad fix.
-  setTimeout(function() {
-    self.element.focus();
-  }, 100);
 };
 
 // XTerm mouse events
@@ -1096,19 +1084,6 @@ Terminal.prototype.bindMouse = function() {
         || self.vt300Mouse
         || self.decLocator) return;
     sendButton(ev);
-    return cancel(ev);
-  });
-
-  // allow mousewheel scrolling in
-  // the shell for example
-  on(el, wheelEvent, function(ev) {
-    if (self.mouseEvents) return;
-    if (self.applicationKeypad) return;
-    if (ev.type === 'DOMMouseScroll') {
-      self.scrollDisp(ev.detail < 0 ? -5 : 5);
-    } else {
-      self.scrollDisp(ev.wheelDeltaY > 0 ? -5 : 5);
-    }
     return cancel(ev);
   });
 };

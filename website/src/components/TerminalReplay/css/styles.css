@@ -38,6 +38,11 @@ span.terminal-cursor {
   width: 780px;
 }
 
+.terminal-inner.terminal-scrollable {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
 .terminal-content {
   line-height: 16px;
   margin: 20px auto;

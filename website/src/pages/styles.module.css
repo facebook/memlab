@@ -82,7 +82,7 @@
 /* ---------------------------------------------------------------- hero -- */
 
 .hero {
-  padding: 6.5rem 1.5rem 0;
+  padding: 5rem 1.5rem 0;
   position: relative;
   text-align: center;
 }
@@ -441,7 +441,7 @@
 /* ------------------------------------------------------------ terminal -- */
 
 .heroVisual {
-  margin: 4.5rem auto 0;
+  margin: 3.5rem auto 0;
   max-width: 880px;
   position: relative;
   z-index: 2;
@@ -489,13 +489,20 @@
 }
 
 .terminalWindow :global(.terminal-content) {
-  margin: 0 auto;
+  margin: 0 -0.875rem 0 1.75rem;
+  width: auto;
 }
 
 .terminalWindow :global(.terminal-inner) {
   background: transparent;
   min-height: 420px;
   padding: 0;
+  width: 100%;
+}
+
+.terminalWindow :global(.terminal-scrollable) {
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  scrollbar-width: thin;
 }
 
 .terminalStaticOutput {
@@ -1268,11 +1275,11 @@
 
 @media screen and (max-width: 996px) {
   .hero {
-    padding-top: 4.5rem;
+    padding-top: 3.75rem;
   }
 
   .heroVisual {
-    margin-top: 3.25rem;
+    margin-top: 2.75rem;
   }
 
   .section {
