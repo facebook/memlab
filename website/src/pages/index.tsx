@@ -31,7 +31,6 @@ import homePageStdouts from '../data/HomePageMainTerminal';
 
 const INSTALL_COMMAND = 'npm install -g memlab';
 const GITHUB_URL = 'https://github.com/facebook/memlab';
-const NPM_URL = 'https://www.npmjs.com/package/memlab';
 
 // the animated terminal is rendered at a fixed 780px width, so it is only
 // mounted when the viewport has room for it
@@ -766,19 +765,13 @@ export default function Home(): React.ReactElement {
 
           <section className={styles.ctaSection}>
             <div className={styles.cta}>
-              <div aria-hidden={true} className={styles.ctaGrid} />
               <h2 className={styles.ctaTitle}>
-                Start finding leaks{' '}
-                <span className={styles.gradientText}>in minutes</span>
+                Catch the leak
+                <br />
+                <span className={styles.ctaTitleMuted}>
+                  before your users do.
+                </span>
               </h2>
-              <p className={styles.ctaText}>
-                Install the CLI, point it at a page, and let memlab do the
-                snapshot diffing for you.
-              </p>
-              <CopyableCommand
-                className={styles.ctaInstall}
-                command={INSTALL_COMMAND}
-              />
               <div className={styles.ctaLinks}>
                 <Link
                   className={styles.buttonPrimary}
@@ -788,13 +781,11 @@ export default function Home(): React.ReactElement {
                     →
                   </span>
                 </Link>
-                <a
+                <Link
                   className={styles.buttonGhost}
-                  href={NPM_URL}
-                  rel="noreferrer noopener"
-                  target="_blank">
-                  View on npm
-                </a>
+                  to={useBaseUrl('docs/mcp-server')}>
+                  Set up with your AI agent
+                </Link>
               </div>
             </div>
           </section>

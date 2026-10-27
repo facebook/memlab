@@ -39,8 +39,7 @@
   overflow: hidden;
 }
 
-[data-theme='dark'] .page,
-.cta {
+[data-theme='dark'] .page {
   --ml-bg: #08090c;
   --ml-fg: #f4f6fa;
   --ml-muted: rgba(220, 226, 236, 0.62);
@@ -1136,74 +1135,35 @@
 }
 
 .cta {
-  background:
-    radial-gradient(
-      700px 320px at 15% 0%,
-      rgba(247, 223, 30, 0.16),
-      transparent 65%
-    ),
-    radial-gradient(
-      700px 360px at 90% 100%,
-      rgba(50, 172, 205, 0.24),
-      transparent 65%
-    ),
-    #0b0d12;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 28px;
-  color: var(--ml-fg);
+  align-items: flex-end;
+  border-top: 1px solid var(--ml-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem 3rem;
+  justify-content: space-between;
   margin: 0 auto;
   max-width: 1200px;
-  overflow: hidden;
-  padding: 5rem 1.5rem;
-  position: relative;
-  text-align: center;
-}
-
-.ctaGrid {
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
-  background-size: 48px 48px;
-  inset: 0;
-  mask-image: radial-gradient(ellipse 50% 70% at 50% 50%, #000, transparent);
-  -webkit-mask-image: radial-gradient(
-    ellipse 50% 70% at 50% 50%,
-    #000,
-    transparent
-  );
-  pointer-events: none;
-  position: absolute;
-}
-
-.cta > :not(.ctaGrid) {
-  position: relative;
+  padding-top: 5rem;
 }
 
 .ctaTitle {
-  font-size: clamp(2rem, 4.6vw, 3.4rem);
-  font-weight: 740;
-  letter-spacing: -0.04em;
-  line-height: 1.08;
+  color: var(--ml-fg);
+  font-family: 'Geist Variable', var(--ifm-font-family-base);
+  font-size: clamp(2.2rem, 4.8vw, 3.8rem);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1.05;
   margin: 0;
 }
 
-.ctaText {
-  color: var(--ml-muted);
-  font-size: 1.08rem;
-  margin: 1.1rem auto 0;
-  max-width: 32rem;
-}
-
-.ctaInstall {
-  margin-top: 2rem;
+.ctaTitleMuted {
+  color: var(--ml-faint);
 }
 
 .ctaLinks {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  justify-content: center;
-  margin-top: 1.5rem;
 }
 
 /* ------------------------------------------------------------ showcase -- */
@@ -1321,8 +1281,7 @@
   }
 
   .cta {
-    border-radius: 22px;
-    padding: 3.5rem 1.25rem;
+    padding-top: 3.5rem;
   }
 
   .showcase {
