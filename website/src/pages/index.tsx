@@ -645,8 +645,8 @@ export default function Home(): React.ReactElement {
             <p className={styles.heroSubtitle}>
               memlab drives your app in a real browser, diffs the heap
               snapshots, and shows you the exact reference chain keeping leaked
-              objects alive. Works with heaps from Chromium, Node.js, Electron,
-              and Hermes.
+              objects alive. Works with heap snapshots from Chromium, Node.js,
+              Electron, and Hermes.
             </p>
             <div className={styles.heroActions}>
               <Link
