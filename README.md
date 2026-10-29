@@ -1,17 +1,17 @@
 <h1 align="center">
-  <a href="https://facebook.github.io/memlab/">MemLab</a>
+  <a href="https://meta.github.io/memlab/">MemLab</a>
 </h1>
 
 <p align="center">
-  <a href="https://github.com/facebook/memlab/blob/main/LICENSE"><img alt="Licensed under the MIT License" src="https://img.shields.io/badge/License-MIT-blue.svg"/></a>
-  <a href="https://github.com/facebook/memlab/blob/main/CONTRIBUTING.md"><img alt="PR's Welcome" src="https://img.shields.io/badge/PRs%20-welcome-brightgreen.svg"/></a>
+  <a href="https://github.com/meta/memlab/blob/main/LICENSE"><img alt="Licensed under the MIT License" src="https://img.shields.io/badge/License-MIT-blue.svg"/></a>
+  <a href="https://github.com/meta/memlab/blob/main/CONTRIBUTING.md"><img alt="PR's Welcome" src="https://img.shields.io/badge/PRs%20-welcome-brightgreen.svg"/></a>
   <a href="https://www.npmjs.com/package/memlab?activeTab=readme"><img alt="npm version" src="https://img.shields.io/npm/v/memlab.svg?style=flat"/></a>
 </p>
 
 memlab is an end-to-end testing and analysis framework for identifying
 JavaScript memory leaks and optimization opportunities.
 
-**Online Resources:** [[Website](https://facebook.github.io/memlab)] | [[Doc](https://facebook.github.io/memlab/docs/intro)] | [[Meta Eng Blog Post](https://engineering.fb.com/2022/09/12/open-source/memlab/)] | [[Tech Talk](https://gitnation.com/contents/memlab-automating-memory-leak-detection-and-heap-analysis)] | [[AI Assistant Guide](./AI.md)]
+**Online Resources:** [[Website](https://meta.github.io/memlab)] | [[Doc](https://meta.github.io/memlab/docs/intro)] | [[Meta Eng Blog Post](https://engineering.fb.com/2022/09/12/open-source/memlab/)] | [[Tech Talk](https://gitnation.com/contents/memlab-automating-memory-leak-detection-and-heap-analysis)] | [[AI Assistant Guide](./AI.md)]
 
 Features:
 
@@ -46,7 +46,7 @@ npm install -g memlab
 ### Find Memory Leaks
 
 To find memory leaks in Google Maps, you can create a
-[scenario file](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IScenario) defining how
+[scenario file](https://meta.github.io/memlab/docs/api/core/src/interfaces/IScenario) defining how
 to interact with Google Maps. Let's call it `test-google-maps.js`:
 
 ```javascript
@@ -81,7 +81,7 @@ memlab will print memory leak results showing one representative
 retainer trace for each cluster of leaked objects.
 
 **Retainer traces**: This is the result from
-[an example website](https://facebook.github.io/memlab/docs/guides/guides-find-leaks),
+[an example website](https://meta.github.io/memlab/docs/guides/guides-find-leaks),
 the retainer trace is an object reference chain from the GC root to a leaked
 object. The trace shows why and how a leaked object is still kept alive in
 memory. Breaking the reference chain means the leaked object will no longer
@@ -126,7 +126,7 @@ You can optionally specify a specific heap object with the object's id: `--node-
 ![heap-view](./website/static/img/heap-view.png)
 
 **Custom leak detector**: If you want to use a custom leak detector, add a `leakFilter` callback
-([doc](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IScenario/#leakfilter))
+([doc](https://meta.github.io/memlab/docs/api/core/src/interfaces/IScenario/#leakfilter))
 in the scenario file. `leakFilter` will be called for every unreleased heap
 object (`node`) allocated by the target interaction.
 
@@ -139,7 +139,7 @@ function leakFilter(node, heap) {
 
 `heap` is the graph representation of the final JavaScript heap snapshot.
 For more details, view the
-[doc site](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IHeapSnapshot).
+[doc site](https://meta.github.io/memlab/docs/api/core/src/interfaces/IHeapSnapshot).
 
 ### Heap Analysis and Investigation
 
@@ -156,7 +156,7 @@ memlab analyze unbound-object --snapshot-dir <DIR_OF_SNAPSHOT_FILES>
 ```
 
 Use `memlab analyze` to view all built-in memory analyses.
-For extension, view the [doc site](https://facebook.github.io/memlab).
+For extension, view the [doc site](https://meta.github.io/memlab).
 
 View retainer trace of a particular object:
 
@@ -250,7 +250,7 @@ using the MCP tools.
 
 ## Visual Debugging for Memory Leaks in Browser
 
-Please check out this [tutorial page](https://facebook.github.io/memlab/docs/guides/visually-debug-memory-leaks-with-memlens)
+Please check out this [tutorial page](https://meta.github.io/memlab/docs/guides/visually-debug-memory-leaks-with-memlens)
 on how to use MemLens (a debugging utility) to
 visualize memory leaks in the browser for easier memory debugging.
 
@@ -292,7 +292,7 @@ test('memory test with heap assertion', async () => {
 ```
 
 For other APIs check out the
-[API documentation](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IHeapSnapshot#hasobjectwithclassname).
+[API documentation](https://meta.github.io/memlab/docs/api/core/src/interfaces/IHeapSnapshot#hasobjectwithclassname).
 
 ## AI Assistant Guide
 

@@ -4,5 +4,5 @@ This is the memlab CLI library. It contains all memlab commands, command-line op
 The library supports adding new commands.
 
 ## Online Resources
-* [Official Website and Demo](https://facebook.github.io/memlab)
-* [Documentation](https://facebook.github.io/memlab/docs/intro)
+* [Official Website and Demo](https://meta.github.io/memlab)
+* [Documentation](https://meta.github.io/memlab/docs/intro)

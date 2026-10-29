@@ -58,7 +58,7 @@ Code, or `.mcp.json` for Cursor/Windsurf):
 ### Option 3: From source
 
 ```bash
-git clone https://github.com/facebook/memlab.git
+git clone https://github.com/meta/memlab.git
 cd memlab
 npm install
 npm run build
@@ -495,14 +495,14 @@ put the list in `~/.claude/settings.json` (user-level) or `.claude/settings.json
 
 ## Further reading
 
-- [MCP server README](https://github.com/facebook/memlab/blob/main/packages/mcp-server/README.md)
+- [MCP server README](https://github.com/meta/memlab/blob/main/packages/mcp-server/README.md)
   — the full tool reference (every tool, grouped by the question it answers),
   plus the `memlab-cli` commands, the state files the server writes, and all
   `MEMLAB_*` environment variables.
-- [MCP investigation skill](https://github.com/facebook/memlab/blob/main/packages/mcp-server/MCP_SKILL.md)
+- [MCP investigation skill](https://github.com/meta/memlab/blob/main/packages/mcp-server/MCP_SKILL.md)
   — a structured methodology for assistants: step-by-step triage, guided
   investigation paths for string waste, DOM leaks, object accumulation, closure
   leaks and listener accumulation, plus token-efficiency tips.
-- [AI assistant guide](https://github.com/facebook/memlab/blob/main/AI.md) —
+- [AI assistant guide](https://github.com/meta/memlab/blob/main/AI.md) —
   guidance for AI assistants using memlab more broadly, including writing test
   scenarios and reading retainer traces.

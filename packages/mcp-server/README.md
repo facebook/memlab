@@ -1,6 +1,6 @@
 # @memlab/mcp-server
 
-An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that wraps [MemLab](https://facebook.github.io/memlab/)'s heap analysis APIs, giving AI coding assistants (Claude Code, Cursor, etc.) interactive tools to explore JavaScript heap snapshots, find memory leaks, and identify optimization opportunities.
+An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that wraps [MemLab](https://meta.github.io/memlab/)'s heap analysis APIs, giving AI coding assistants (Claude Code, Cursor, etc.) interactive tools to explore JavaScript heap snapshots, find memory leaks, and identify optimization opportunities.
 
 It registers about 150 `memlab_*` tools, covering:
 
@@ -76,7 +76,7 @@ Add to your Claude Code MCP config (`~/.claude.json` for Claude Code, or `.mcp.j
 ### Option 3: From source
 
 ```bash
-git clone https://github.com/facebook/memlab.git
+git clone https://github.com/meta/memlab.git
 cd memlab
 npm install
 npm run build

@@ -152,7 +152,7 @@ npm run test:e2e
 ### Learn more
 
 Please check out this
-[tutorial page](https://facebook.github.io/memlab/docs/guides/visually-debug-memory-leaks-with-memlens)
+[tutorial page](https://meta.github.io/memlab/docs/guides/visually-debug-memory-leaks-with-memlens)
 on how to use MemLens (a debugging utility) to visualize memory leaks in the
 browser for easier memory debugging.
 

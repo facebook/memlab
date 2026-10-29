@@ -10,7 +10,7 @@ npm install -g memlab
 - [Npm](https://docs.npmjs.com/)
 
 :::note
-To build from the [Git repository](https://github.com/facebook/memlab) on
+To build from the [Git repository](https://github.com/meta/memlab) on
 Windows, please use Git Bash.
 :::
 

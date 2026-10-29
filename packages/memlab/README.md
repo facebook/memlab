@@ -5,8 +5,8 @@ JavaScript memory leaks and optimization opportunities.
 
 Online Resources:
 
-- [Official Website and Demo](https://facebook.github.io/memlab)
-- [Documentation](https://facebook.github.io/memlab/docs/intro)
+- [Official Website and Demo](https://meta.github.io/memlab)
+- [Documentation](https://meta.github.io/memlab/docs/intro)
 - [Meta Engineering Blog Post](https://engineering.fb.com/2022/09/12/open-source/memlab/)
 
 Features:
@@ -34,7 +34,7 @@ npm install -g memlab
 ### Find Memory Leaks
 
 To find memory leaks in Google Maps, you can create a
-[scenario file](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IScenario) defining how
+[scenario file](https://meta.github.io/memlab/docs/api/core/src/interfaces/IScenario) defining how
 to interact with Google Maps. Let's call it `test-google-maps.js`:
 
 ```javascript
@@ -69,7 +69,7 @@ memlab will print memory leak results showing one representative
 retainer trace for each cluster of leaked objects.
 
 **Retainer traces**: This is the result from
-[an example website](https://facebook.github.io/memlab/docs/guides/guides-find-leaks),
+[an example website](https://meta.github.io/memlab/docs/guides/guides-find-leaks),
 the retainer trace is an object reference chain from the GC root to a leaked
 object. The trace shows why and how a leaked object is still kept alive in
 memory. Breaking the reference chain means the leaked object will no longer
@@ -112,7 +112,7 @@ memlab view-heap --snapshot <PATH TO .heapsnapshot FILE>
 You can optionally specify a specific heap object with the object's id: `--node-id @28173` to pinpoint a specific object.
 
 **Custom leak detector**: If you want to use a custom leak detector, add a `leakFilter` callback
-([doc](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IScenario/#leakfilter))
+([doc](https://meta.github.io/memlab/docs/api/core/src/interfaces/IScenario/#leakfilter))
 in the scenario file. `leakFilter` will be called for every unreleased heap
 object (`node`) allocated by the target interaction.
 
@@ -125,7 +125,7 @@ function leakFilter(node, heap) {
 
 `heap` is the graph representation of the final JavaScript heap snapshot.
 For more details, view the
-[doc site](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IHeapSnapshot).
+[doc site](https://meta.github.io/memlab/docs/api/core/src/interfaces/IHeapSnapshot).
 
 ### Heap Analysis and Investigation
 
@@ -142,7 +142,7 @@ memlab analyze unbound-object --snapshot-dir <DIR_OF_SNAPSHOT_FILES>
 ```
 
 Use `memlab analyze` to view all built-in memory analyses.
-For extension, view the [doc site](https://facebook.github.io/memlab).
+For extension, view the [doc site](https://meta.github.io/memlab).
 
 View retainer trace of a particular object:
 
@@ -208,4 +208,4 @@ test('memory test with heap assertion', async () => {
 ```
 
 For other APIs check out the
-[API documentation](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IHeapSnapshot#hasobjectwithclassname).
+[API documentation](https://meta.github.io/memlab/docs/api/core/src/interfaces/IHeapSnapshot#hasobjectwithclassname).

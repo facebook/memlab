@@ -38,7 +38,7 @@ const Showcase = () => {
         <div className={styles.showcaseButton}>
           <Link
             className={classnames('button button--outline button--primary')}
-            href="https://github.com/facebook/memlab/edit/main/website/docusaurus.config.js">
+            href="https://github.com/meta/memlab/edit/main/website/docusaurus.config.js">
             Add your company/project here
           </Link>
         </div>

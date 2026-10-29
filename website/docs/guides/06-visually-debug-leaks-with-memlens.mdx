@@ -20,7 +20,7 @@ The sections below explain how to use MemLens for browser memory leak debugging.
 
 ## Manually Running MemLens in a Browser
 
-1. Copy and paste the [MemLens bundle code](https://github.com/facebook/memlab/tree/main/packages/lens/dist/memlens.run.bundle.min.js)
+1. Copy and paste the [MemLens bundle code](https://github.com/meta/memlab/tree/main/packages/lens/dist/memlens.run.bundle.min.js)
 into your browser’s console (close DevTools to avoid leaks caused by
 Chrome DevTools).
 2. Interact with the page without triggering a full refresh, as a hard
@@ -29,7 +29,7 @@ refresh clears the entire JS heap and makes leak debugging unnecessary.
 search for the displayed memory IDs.
 
 To build the bundle yourself, clone the
-[MemLab repository](https://github.com/facebook/memlab),
+[MemLab repository](https://github.com/meta/memlab),
 run `npm run build`, and copy the MemLens bundle code from
 `packages/lens/dist/memlens.run.bundle.min.js` or
 `packages/lens/dist/memlens.run.bundle.js`.

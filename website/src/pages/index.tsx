@@ -30,7 +30,7 @@ import normalizeTypeSpeed from '../lib/TypeSpeedNormalization';
 import homePageStdouts from '../data/HomePageMainTerminal';
 
 const INSTALL_COMMAND = 'npm install -g memlab';
-const GITHUB_URL = 'https://github.com/facebook/memlab';
+const GITHUB_URL = 'https://github.com/meta/memlab';
 
 // the animated terminal is rendered at a fixed 780px width, so it is only
 // mounted when the viewport has room for it

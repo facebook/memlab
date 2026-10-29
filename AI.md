@@ -564,7 +564,7 @@ The `memlab analyze` command supports these built-in analysis plugins:
 For most users, the basic `memlab run --scenario` command is sufficient.
 
 When suggesting CLI usage examples, always reference:
- - [CLI Usage Documentation](https://facebook.github.io/memlab/docs/cli/CLI-commands)
+ - [CLI Usage Documentation](https://meta.github.io/memlab/docs/cli/CLI-commands)
 
 ## Debugging and Troubleshooting
 
@@ -729,13 +729,13 @@ triage, investigate, and report memory issues using these MCP tools, see the
 ## Documentation References
 
 When providing code examples, always reference:
-- [IScenario API](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IScenario)
-- [IHeapSnapshot API](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IHeapSnapshot)
-- [IHeapNode API](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IHeapNode)
-- [IHeapEdge API](https://facebook.github.io/memlab/docs/api/core/src/interfaces/IHeapEdge)
-- [ILeakFilter API](https://facebook.github.io/memlab/docs/api/core/src/interfaces/ILeakFilter)
-- [Official Documentation](https://facebook.github.io/memlab/docs/intro)
-- [CLI Commands](https://facebook.github.io/memlab/docs/cli/CLI-commands)
+- [IScenario API](https://meta.github.io/memlab/docs/api/core/src/interfaces/IScenario)
+- [IHeapSnapshot API](https://meta.github.io/memlab/docs/api/core/src/interfaces/IHeapSnapshot)
+- [IHeapNode API](https://meta.github.io/memlab/docs/api/core/src/interfaces/IHeapNode)
+- [IHeapEdge API](https://meta.github.io/memlab/docs/api/core/src/interfaces/IHeapEdge)
+- [ILeakFilter API](https://meta.github.io/memlab/docs/api/core/src/interfaces/ILeakFilter)
+- [Official Documentation](https://meta.github.io/memlab/docs/intro)
+- [CLI Commands](https://meta.github.io/memlab/docs/cli/CLI-commands)
 - [Puppeteer Page API](https://pptr.dev/api/puppeteer.page) - For all `page.*` method calls
 - [Puppeteer Locator API](https://pptr.dev/api/puppeteer.locator) - For using locators (Puppeteer v24+)
 - [MCP Server (npm)](https://www.npmjs.com/package/@memlab/mcp-server) - For AI-assisted heap analysis

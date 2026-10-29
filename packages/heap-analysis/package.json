@@ -44,7 +44,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/facebook/memlab.git",
+    "url": "git+https://github.com/meta/memlab.git",
     "directory": "packages/heap-analysis"
   },
   "scripts": {
@@ -54,7 +54,7 @@
     "clean-pkg": "rm -rf ./dist && rm -rf ./node_modules && rm -f ./tsconfig.tsbuildinfo"
   },
   "bugs": {
-    "url": "https://github.com/facebook/memlab/issues"
+    "url": "https://github.com/meta/memlab/issues"
   },
-  "homepage": "https://github.com/facebook/memlab#readme"
+  "homepage": "https://github.com/meta/memlab#readme"
 }
