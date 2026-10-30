@@ -111,7 +111,11 @@ async function runTool(
   const stepStart = Date.now();
   beginAnalysisBudget(budgetMs);
   try {
-    const res = await entry.handler(args, {});
+    // The raw handler expects SDK-validated arguments; parsing here is what
+    // applies the step tool's `.default()` values.
+    const parsed =
+      entry.shape != null ? z.object(entry.shape as never).parse(args) : args;
+    const res = await entry.handler(parsed, {});
     const content = (res as {content?: Array<{text?: string}>})?.content;
     const text = Array.isArray(content)
       ? content.map(c => c.text ?? '').join('\n')
@@ -209,8 +213,7 @@ export function registerAnalyzeRun(server: McpServer): void {
     'memlab_analyze_run',
     "Point at a leak hunt's `run.json` and get the whole analysis protocol executed in one call: ladder trend, owner attribution for the growth, a detached-DOM population comparison between the first and last rung, dev/automation-artifact classification, and a per-grower adjudication — plus the run's own caveats (gating, relink seams, stall) carried into the write-up. " +
       '`memlab_hunt_report` renders the run and `memlab_leak_report` analyses the ladder; nothing chained them, so how thorough a round got depended on how thorough the operator felt like being, which is the single largest source of variance between rounds. This runs the same sequence every time and states explicitly which steps did not run. ' +
-      'Cost: it loads the ladder transiently for the trend, then holds the FIRST and LAST rung resident together for the attribution and population steps — size `timeout_ms` accordingly (600000+ for a multi-hundred-MB ladder), and expect several minutes. ' +
-      'KNOWN LIMITATION, measured on two apps: the `dev_artifacts` step reliably exceeds a 200-240s step budget here (aborting at ~10.8M nodes scanned) while the same tool returns in 2-5s when called directly on the same snapshot. Unloading the baseline first does NOT change it, so residency is not the cause and the cause is not yet identified. The step is reported as UNANALYZED rather than waited out; run `memlab_dev_artifacts` yourself against the final rung, or raise `step_timeout_s`, to complete that part of the protocol.',
+      'Cost: it loads the ladder transiently for the trend, then holds the FIRST and LAST rung resident together for the attribution and population steps — size `timeout_ms` accordingly (600000+ for a multi-hundred-MB ladder), and expect several minutes.',
     {
       run_json: z
         .string()
