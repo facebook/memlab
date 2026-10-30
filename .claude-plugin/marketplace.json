@@ -1,0 +1,30 @@
+{
+  "name": "memlab",
+  "owner": {
+    "name": "Meta Platforms, Inc.",
+    "url": "https://github.com/meta/memlab"
+  },
+  "description": "memlab plugins for finding and fixing JavaScript memory leaks.",
+  "plugins": [
+    {
+      "name": "memlab",
+      "source": "./plugins/memlab",
+      "description": "Find and fix JavaScript memory leaks with memlab: analyze heap snapshots through the memlab MCP server, write and run browser leak scenarios, capture heap snapshots, and add memory leak tests.",
+      "category": "development",
+      "tags": ["memory-leak", "heap-snapshot", "javascript", "performance"],
+      "relevance": {
+        "topic": "JavaScript memory leaks",
+        "signals": {
+          "cli": ["memlab", "memlab-cli"],
+          "filesRead": ["**/*.heapsnapshot", "**/*.heaptimeline"],
+          "manifestDeps": [
+            {
+              "file": "[/\\\\]package\\.json$",
+              "pattern": "\"(memlab|@memlab/[a-z-]+)\"\\s*:"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

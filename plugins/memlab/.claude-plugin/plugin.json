@@ -1,0 +1,22 @@
+{
+  "name": "memlab",
+  "displayName": "MemLab",
+  "description": "Find and fix JavaScript memory leaks with memlab: analyze heap snapshots through the memlab MCP server, write and run browser leak scenarios, capture heap snapshots, and add memory leak tests.",
+  "author": {
+    "name": "Meta Platforms, Inc.",
+    "url": "https://github.com/meta/memlab"
+  },
+  "homepage": "https://meta.github.io/memlab",
+  "repository": "https://github.com/meta/memlab",
+  "license": "MIT",
+  "keywords": [
+    "memory-leak",
+    "heap-snapshot",
+    "javascript",
+    "nodejs",
+    "chrome",
+    "puppeteer",
+    "mcp",
+    "performance"
+  ]
+}

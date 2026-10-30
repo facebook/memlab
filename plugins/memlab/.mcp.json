@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "memlab": {
+      "command": "npx",
+      "args": ["-y", "@memlab/mcp-server"],
+      "env": {
+        "NODE_OPTIONS": "--max-old-space-size=8192"
+      }
+    }
+  }
+}
