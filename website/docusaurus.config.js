@@ -152,17 +152,20 @@ const config = {
             ],
           },
           {
-            title: 'Community',
+            title: 'npm packages',
             items: [
-              {
-                label: 'Stack Overflow',
-                href: 'https://stackoverflow.com/questions/tagged/memlab',
-              },
-              {
-                label: 'Twitter',
-                href: 'https://twitter.com/memlabjs',
-              },
-            ],
+              'memlab',
+              '@memlab/api',
+              '@memlab/core',
+              '@memlab/heap-analysis',
+              '@memlab/e2e',
+              '@memlab/cli',
+              '@memlab/lens',
+              '@memlab/mcp-server',
+            ].map((name) => ({
+              label: name,
+              href: `https://www.npmjs.com/package/${name}`,
+            })),
           },
           {
             title: 'More',
@@ -170,10 +173,6 @@ const config = {
               {
                 label: 'GitHub',
                 href: 'https://github.com/meta/memlab',
-              },
-              {
-                label: 'npm',
-                href: 'https://www.npmjs.com/package/memlab',
               },
               {
                 label: 'Engineering blog',
