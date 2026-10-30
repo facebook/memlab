@@ -213,7 +213,8 @@ export function registerAnalyzeRun(server: McpServer): void {
     'memlab_analyze_run',
     "Point at a leak hunt's `run.json` and get the whole analysis protocol executed in one call: ladder trend, owner attribution for the growth, a detached-DOM population comparison between the first and last rung, dev/automation-artifact classification, and a per-grower adjudication — plus the run's own caveats (gating, relink seams, stall) carried into the write-up. " +
       '`memlab_hunt_report` renders the run and `memlab_leak_report` analyses the ladder; nothing chained them, so how thorough a round got depended on how thorough the operator felt like being, which is the single largest source of variance between rounds. This runs the same sequence every time and states explicitly which steps did not run. ' +
-      'Cost: it loads the ladder transiently for the trend, then holds the FIRST and LAST rung resident together for the attribution and population steps — size `timeout_ms` accordingly (600000+ for a multi-hundred-MB ladder), and expect several minutes.',
+      'Cost: it loads the ladder transiently for the trend, then holds the FIRST and LAST rung resident together for the attribution and population steps — size `timeout_ms` accordingly (600000+ for a multi-hundred-MB ladder), and expect several minutes. ' +
+      'A full run unloads every snapshot already resident in the session before loading those two rungs, and lists what it unloaded at the end of the write-up; `skip_deep_dive` leaves resident snapshots alone.',
     {
       run_json: z
         .string()
@@ -481,6 +482,7 @@ export function registerAnalyzeRun(server: McpServer): void {
         }
 
         // ---- Step 2+: two rungs resident ----
+        let unloaded: Array<{handle: string; filePath: string}> = [];
         if (skip_deep_dive) {
           unanalyzed.push(
             'owner attribution, detached-DOM population diff and artifact classification (skip_deep_dive was set)',
@@ -489,6 +491,7 @@ export function registerAnalyzeRun(server: McpServer): void {
           // Start from a clean slate: the deep dive needs exactly two graphs
           // resident, and anything left over from an earlier call is both
           // memory pressure and a chance to attribute against the wrong pair.
+          unloaded = listSnapshots();
           clearAllSnapshots();
           let loaded = false;
           try {
@@ -595,6 +598,12 @@ export function registerAnalyzeRun(server: McpServer): void {
         } else {
           out.push(
             '_Every step of the protocol ran. "No leak candidates" from a complete run is a genuine no-leak result; the same words from a run with UNANALYZED steps are not._',
+            '',
+          );
+        }
+        if (unloaded.length > 0) {
+          out.push(
+            `_Unloaded ${unloaded.length} snapshot(s) that were resident before this call, to make room for the deep dive: ${unloaded.map(m => `\`${m.handle}\` (${m.filePath})`).join(', ')}. Reload with \`memlab_load_snapshot\` and \`keep_previous: true\`._`,
             '',
           );
         }
