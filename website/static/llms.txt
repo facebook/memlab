@@ -1,0 +1,47 @@
+# memlab
+
+> memlab is an open source framework from Meta for finding JavaScript memory leaks and memory optimization opportunities. It drives a web app in Chromium with Puppeteer, takes heap snapshots before and after an interaction, and reports the objects that should have been released, grouped by retainer trace. It also parses heap snapshots from Chromium, Node.js, Electron and Hermes for analysis from the CLI, a Node.js API, unit-test assertions, or AI coding agents through an MCP server.
+
+Main entry points:
+
+- `memlab run --scenario <file>` finds leaks caused by one UI interaction. A scenario is a JavaScript module exporting `url`, `action` and `back`, where `action` and `back` receive a Puppeteer `Page`.
+- `@memlab/api` runs the same flow from code (for example in CI), and `@memlab/core` provides `takeNodeMinimalHeap()` for memory assertions in Node.js tests.
+- `@memlab/mcp-server` is an MCP server with more than 150 tools for investigating `.heapsnapshot` files; `memlab-cli` from the same package runs those tools from a shell.
+
+## Docs
+
+- [Why memlab](https://meta.github.io/memlab/docs/intro): what memlab does and its main features
+- [Installation](https://meta.github.io/memlab/docs/installation): install the CLI and packages
+- [Getting Started](https://meta.github.io/memlab/docs/getting-started): write a scenario and run your first leak detection
+- [How memlab Works](https://meta.github.io/memlab/docs/how-memlab-works): baseline, target and final snapshots, and how leaks are detected and clustered
+- [Command Line Interface](https://meta.github.io/memlab/docs/cli/CLI-commands): every `memlab` command and option
+
+## Guides
+
+- [Detect Leaks in a Demo App](https://meta.github.io/memlab/docs/guides/guides-detached-dom): end-to-end tutorial on detached DOM leaks
+- [Detect Oversized Object](https://meta.github.io/memlab/docs/guides/guides-detect-oversized-object): write a custom `leakFilter`
+- [Find Memory Leaks Not Reported by Default](https://meta.github.io/memlab/docs/guides/guides-find-leaks): `--trace-all-objects` and size thresholds
+- [Set up Continuous Test](https://meta.github.io/memlab/docs/guides/integration-and-file-structure): run memlab in CI and read the results from disk
+- [Integrate with Test Frameworks](https://meta.github.io/memlab/docs/guides/integrate-with-e2e-frameworks): feed heap snapshots from Playwright, Cypress or other frameworks into memlab
+- [Visual Debugging for Memory Leaks](https://meta.github.io/memlab/docs/guides/visually-debug-memory-leaks-with-memlens): highlight leaked DOM and React components in the page with MemLens
+
+## API reference
+
+- [IScenario](https://meta.github.io/memlab/docs/api/core/src/interfaces/IScenario): every scenario callback (`url`, `action`, `back`, `setup`, `cookies`, `isPageLoaded`, `leakFilter`, ...)
+- [IHeapSnapshot](https://meta.github.io/memlab/docs/api/core/src/interfaces/IHeapSnapshot): query a parsed heap snapshot
+- [IHeapNode](https://meta.github.io/memlab/docs/api/core/src/interfaces/IHeapNode) and [IHeapEdge](https://meta.github.io/memlab/docs/api/core/src/interfaces/IHeapEdge): objects and references in the heap graph
+- [@memlab/api](https://meta.github.io/memlab/docs/api/api/src/): `run`, `takeSnapshots`, `findLeaks`, `findLeaksBySnapshotFilePaths`, `analyze`
+
+## AI coding agents
+
+- [MCP Server for AI Assistants](https://meta.github.io/memlab/docs/mcp-server): setup, getting a heap snapshot, a typical investigation, and tool safety
+- [MCP server README](https://github.com/meta/memlab/blob/main/packages/mcp-server/README.md): full tool reference, `memlab-cli`, environment variables
+- [MCP investigation method](https://github.com/meta/memlab/blob/main/packages/mcp-server/MCP_SKILL.md): triage and investigation paths by symptom
+- [Agent Skills](https://github.com/meta/memlab/tree/main/plugins/memlab/skills): analyze a heap snapshot, find leaks in a web app, capture heap snapshots, write memory leak tests
+- [Claude Code plugin](https://github.com/meta/memlab/tree/main/plugins/memlab): the MCP server and skills in one install
+- [AI assistant guide](https://github.com/meta/memlab/blob/main/AI.md): rules for writing correct scenarios and using memlab's APIs
+
+## Optional
+
+- [GitHub repository](https://github.com/meta/memlab): source, issues, and `AGENTS.md` for contributors
+- [npm: memlab](https://www.npmjs.com/package/memlab): the CLI package
