@@ -120,6 +120,16 @@ export const EDGES_PER_HEAP_MB = 6800;
 export const LOAD_BYTES_PER_NODE = 200;
 export const LOAD_BYTES_PER_EDGE = 40;
 
+// Share of the full-load projection charged to a light load. The parsed graph
+// is mostly typed arrays outside the V8 heap; what a light load skips (the
+// dominator / retained-size / shortest-path pass) is where most of the
+// old-space peak comes from. Measured as the smallest --max-old-space-size that
+// loads: a 16.1M-node / 44.2M-edge snapshot needed 761-1,012 MB light vs
+// 2,021-2,272 MB full (ratio at most 0.50), and a 48.1M-node one needed
+// 2,525-2,776 MB light vs 6,557-6,808 MB full. The old 0.85 refused a light load
+// of a 2.4 GB capture at a projected 7.3 GB on an 8 GB server.
+export const LIGHT_LOAD_FRACTION = 0.5;
+
 // Fraction of remaining old-space a single load may be projected to consume
 // before the guard fires. Well below 1.0 because the estimate is approximate,
 // the parse allocates in bursts the GC cannot always keep up with, and analysis
@@ -156,9 +166,8 @@ export function raiseHeapHint(currentHeapMB: number): string {
 }
 
 /**
- * Projected additional heap (MB) a full load of this graph will occupy.
- * Light loads skip the dominator/retained-size arrays; the parsed graph still
- * dominates, so the discount is modest and intentionally conservative.
+ * Projected additional heap (MB) a load of this graph will occupy; a light load
+ * is charged {@link LIGHT_LOAD_FRACTION} of the full projection.
  */
 export function estimateLoadHeapMB(
   counts: {nodeCount: number; edgeCount: number},
@@ -167,7 +176,9 @@ export function estimateLoadHeapMB(
   const bytes =
     counts.nodeCount * LOAD_BYTES_PER_NODE +
     counts.edgeCount * LOAD_BYTES_PER_EDGE;
-  return Math.round((bytes / (1024 * 1024)) * (light ? 0.85 : 1));
+  return Math.round(
+    (bytes / (1024 * 1024)) * (light ? LIGHT_LOAD_FRACTION : 1),
+  );
 }
 
 /**
@@ -1516,7 +1527,7 @@ export function registerLoadSnapshot(server: McpServer): void {
             return errorResult(
               new Error(
                 `Not enough memory headroom to load this snapshot: it projects to ~${formatNumber(estimateMB)} MB ` +
-                  `(${formatNumber(counts.nodeCount)} nodes × ${LOAD_BYTES_PER_NODE} B + ${formatNumber(counts.edgeCount)} edges × ${LOAD_BYTES_PER_EDGE} B), ` +
+                  `(${formatNumber(counts.nodeCount)} nodes × ${LOAD_BYTES_PER_NODE} B + ${formatNumber(counts.edgeCount)} edges × ${LOAD_BYTES_PER_EDGE} B${light ? `, × ${LIGHT_LOAD_FRACTION} for a light load` : ''}), ` +
                   `over the ~${formatNumber(Math.round((headroomMB ?? 0) * HEADROOM_SAFETY_FRACTION))} MB budget for one load ` +
                   `(${Math.round(HEADROOM_SAFETY_FRACTION * 100)}% of the ~${formatNumber(headroomMB ?? 0)} MB free of this server's ~${formatNumber(heapMB)} MB old-space limit; the rest is reserved because the estimate is approximate and the parse allocates in bursts)` +
                   (evicted.length > 0
