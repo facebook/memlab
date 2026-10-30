@@ -46,7 +46,7 @@ Code, or `.mcp.json` for Cursor/Windsurf):
     "memlab": {
       "type": "stdio",
       "command": "npx",
-      "args": ["@memlab/mcp-server"],
+      "args": ["-y", "-p", "@memlab/mcp-server", "memlab-mcp"],
       "env": {
         "NODE_OPTIONS": "--max-old-space-size=8192"
       }

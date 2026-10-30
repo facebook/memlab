@@ -213,8 +213,8 @@ below; JSON config in [Setup](#setup)), and copy the directories under
 directory.
 
 ```bash
-claude mcp add memlab -e NODE_OPTIONS=--max-old-space-size=8192 -- npx -y @memlab/mcp-server
-codex mcp add memlab --env NODE_OPTIONS=--max-old-space-size=8192 -- npx -y @memlab/mcp-server
+claude mcp add memlab -e NODE_OPTIONS=--max-old-space-size=8192 -- npx -y -p @memlab/mcp-server memlab-mcp
+codex mcp add memlab --env NODE_OPTIONS=--max-old-space-size=8192 -- npx -y -p @memlab/mcp-server memlab-mcp
 ```
 
 Agents changing memlab's own code should read [`AGENTS.md`](./AGENTS.md).
@@ -259,7 +259,7 @@ Or use npx without installing:
     "memlab": {
       "type": "stdio",
       "command": "npx",
-      "args": ["@memlab/mcp-server"],
+      "args": ["-y", "-p", "@memlab/mcp-server", "memlab-mcp"],
       "env": {
         "NODE_OPTIONS": "--max-old-space-size=8192"
       }

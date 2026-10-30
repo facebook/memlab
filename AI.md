@@ -694,7 +694,7 @@ Add the server to the MCP client's configuration:
     "memlab": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@memlab/mcp-server"],
+      "args": ["-y", "-p", "@memlab/mcp-server", "memlab-mcp"],
       "env": {
         "NODE_OPTIONS": "--max-old-space-size=8192"
       }
@@ -707,10 +707,10 @@ Or register it from the command line:
 
 ```bash
 # Claude Code
-claude mcp add memlab -e NODE_OPTIONS=--max-old-space-size=8192 -- npx -y @memlab/mcp-server
+claude mcp add memlab -e NODE_OPTIONS=--max-old-space-size=8192 -- npx -y -p @memlab/mcp-server memlab-mcp
 
 # Codex CLI
-codex mcp add memlab --env NODE_OPTIONS=--max-old-space-size=8192 -- npx -y @memlab/mcp-server
+codex mcp add memlab --env NODE_OPTIONS=--max-old-space-size=8192 -- npx -y -p @memlab/mcp-server memlab-mcp
 ```
 
 **Always keep `--max-old-space-size=8192` (or higher).** The server keeps the whole parsed heap graph in memory, which takes several times the snapshot's file size. With less memory, `memlab_load_snapshot` refuses large snapshots to avoid crashing the server.

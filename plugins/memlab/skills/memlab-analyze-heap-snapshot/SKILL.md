@@ -32,7 +32,7 @@ references keeps an object alive.
   investigation with many steps, keep one server running instead; see
   [references/memlab-cli.md](references/memlab-cli.md).
 - If the user wants the MCP server set up permanently, give them
-  `claude mcp add memlab -e NODE_OPTIONS=--max-old-space-size=8192 -- npx -y @memlab/mcp-server`
+  `claude mcp add memlab -e NODE_OPTIONS=--max-old-space-size=8192 -- npx -y -p @memlab/mcp-server memlab-mcp`
   (Claude Code) or the JSON config in the
   [MCP server docs](https://meta.github.io/memlab/docs/mcp-server). Keep
   `--max-old-space-size=8192` or higher: without it, large snapshots are refused.

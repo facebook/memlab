@@ -68,7 +68,7 @@ Add to your Claude Code MCP config (`~/.claude.json` for Claude Code, or `.mcp.j
     "memlab": {
       "type": "stdio",
       "command": "npx",
-      "args": ["@memlab/mcp-server"],
+      "args": ["-y", "-p", "@memlab/mcp-server", "memlab-mcp"],
       "env": {
         "NODE_OPTIONS": "--max-old-space-size=8192"
       }
