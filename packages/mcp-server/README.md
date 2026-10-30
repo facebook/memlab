@@ -32,6 +32,10 @@ By default `memlab-cli` uses 60% of physical RAM, rounded to the nearest GB. The
 
 ## Quick Start
 
+**Claude Code users**: the [memlab plugin](https://github.com/meta/memlab/tree/main/plugins/memlab)
+installs this server together with Agent Skills that teach the agent when and how to use it:
+`claude plugin marketplace add meta/memlab`, then `claude plugin install memlab@memlab`.
+
 ### Option 1: Global install
 
 ```bash

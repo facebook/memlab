@@ -3,8 +3,8 @@
 Instructions for AI coding agents working on the memlab source code.
 
 To *use* memlab rather than change it (write a leak test scenario, analyze a
-heap snapshot, set up the MCP server), read [AI.md](./AI.md) and the
-[MCP Investigation Skill](./packages/mcp-server/MCP_SKILL.md) instead.
+heap snapshot, set up the MCP server), read [AI.md](./AI.md) and the Agent
+Skills under [`plugins/memlab/skills/`](./plugins/memlab/skills) instead.
 
 ## Repository layout
 
@@ -78,6 +78,22 @@ npm run memlab -- help     # run the CLI built from this checkout
   "Tools that execute JavaScript".
 - [`.mcp.json`](./.mcp.json) runs the server from this checkout
   (`packages/mcp-server/bin/memlab-mcp.js`), so build first.
+
+### Agent Skills and the Claude Code plugin (`plugins/memlab`)
+
+- Each skill is a directory under `plugins/memlab/skills/` with a `SKILL.md`
+  that follows the [Agent Skills specification](https://agentskills.io/specification):
+  `name` matches the directory, `description` says what the skill does and
+  when to use it (at most 1024 characters), and the body stays under 500
+  lines. Skills are copied out of the repo when installed, so link only to
+  files inside the skill directory or to absolute URLs.
+- `skills/memlab-analyze-heap-snapshot/references/investigation-paths.md`
+  repeats the investigation paths in `packages/mcp-server/MCP_SKILL.md`.
+  Update both together.
+- When a CLI flag, API or MCP tool changes, update the skills that mention it.
+- Validate with `claude plugin validate plugins/memlab`,
+  `claude plugin validate --strict plugins/memlab/skills` and
+  `claude plugin validate .` (the marketplace in `.claude-plugin/`).
 
 ## Pull requests
 

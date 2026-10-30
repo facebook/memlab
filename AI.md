@@ -2,6 +2,8 @@
 
 This document provides guidance for AI assistants (like ChatGPT, GitHub Copilot, Cursor, etc.) on how to correctly use and explain MemLab, a JavaScript memory leak detection framework.
 
+Step-by-step workflows for the common tasks are also packaged as [Agent Skills](./plugins/memlab/skills): analyzing a heap snapshot, finding leaks in a web app, capturing heap snapshots, and writing memory leak tests. Claude Code users can install them together with the MCP server as the [memlab plugin](./plugins/memlab).
+
 ## Overview
 
 MemLab is an end-to-end testing and analysis framework for identifying JavaScript memory leaks and optimization opportunities. It works by:

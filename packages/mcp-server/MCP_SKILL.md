@@ -9,6 +9,11 @@ For MCP server setup and tool reference, see the
 [MCP server README](./README.md). For general MemLab usage (test scenarios,
 CLI, programmatic API), see the [AI Assistant Guide](../../AI.md).
 
+This method is also packaged as the
+[`memlab-analyze-heap-snapshot` Agent Skill](https://github.com/meta/memlab/tree/main/plugins/memlab/skills/memlab-analyze-heap-snapshot),
+which Claude Code users get with the
+[memlab plugin](https://github.com/meta/memlab/tree/main/plugins/memlab).
+
 ## Step 0: Obtain the Snapshot
 
 `memlab_load_snapshot` takes a **local absolute path** to a `.heapsnapshot`

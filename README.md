@@ -186,6 +186,39 @@ const scenario = {
 memlab.run({scenario});
 ```
 
+## Use memlab with AI Coding Agents
+
+memlab ships an [MCP server](#mcp-server-for-ai-coding-assistants) and four
+[Agent Skills](https://agentskills.io) that teach coding agents how to find and
+fix memory leaks:
+
+| Skill | What the agent does with it |
+| --- | --- |
+| [`memlab-analyze-heap-snapshot`](./plugins/memlab/skills/memlab-analyze-heap-snapshot/SKILL.md) | Investigates a `.heapsnapshot` file: what fills the heap, what grows, and why an object is still retained |
+| [`memlab-find-web-leaks`](./plugins/memlab/skills/memlab-find-web-leaks/SKILL.md) | Writes and runs a memlab scenario for a web UI interaction, then fixes the leaks it reports |
+| [`memlab-capture-heap-snapshots`](./plugins/memlab/skills/memlab-capture-heap-snapshots/SKILL.md) | Takes heap snapshots from Chrome, Puppeteer, Playwright, Node.js, Electron or Hermes |
+| [`memlab-memory-tests`](./plugins/memlab/skills/memlab-memory-tests/SKILL.md) | Adds memory leak regression tests to unit tests and CI |
+
+**Claude Code**: install the [memlab plugin](./plugins/memlab), which bundles
+the MCP server and the skills:
+
+```bash
+claude plugin marketplace add meta/memlab
+claude plugin install memlab@memlab
+```
+
+**Other agents**: add the MCP server (one-line setup for Claude Code and Codex
+below; JSON config in [Setup](#setup)), and copy the directories under
+[`plugins/memlab/skills/`](./plugins/memlab/skills) into your agent's skills
+directory.
+
+```bash
+claude mcp add memlab -e NODE_OPTIONS=--max-old-space-size=8192 -- npx -y @memlab/mcp-server
+codex mcp add memlab --env NODE_OPTIONS=--max-old-space-size=8192 -- npx -y @memlab/mcp-server
+```
+
+Agents changing memlab's own code should read [`AGENTS.md`](./AGENTS.md).
+
 ## MCP Server for AI Coding Assistants
 
 The [`@memlab/mcp-server`](./packages/mcp-server) package provides an
