@@ -88,8 +88,11 @@ npm install --save-dev @memlab/api
 
 - `run` returns `{leaks, runResult}`. `leaks` is the list of clustered leak
   traces; an empty list means no leaks were found. The work directory has the
-  snapshots and screenshots (`data/cur/`) and the readable traces
+  snapshots and browser console output (`data/cur/`) and the readable traces
   (`data/out/leaks.txt`). Upload it from CI so a failure can be investigated.
+- `CONTINUOUS_TEST` mode skips screenshots and waits an extra 10 seconds after
+  the initial page load. Leave `consoleMode` out when you want screenshots of
+  each step.
 - Create `workDir` before calling `run` (for example with
   `fs.mkdirSync(dir, {recursive: true})`).
 - `run` launches headless Chromium through Puppeteer. On Linux CI images,
