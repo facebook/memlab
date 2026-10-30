@@ -5,14 +5,15 @@ same server the MCP client would and calls its tools over stdio, so every
 `memlab_*` tool works the same way from a shell.
 
 Run it with npx, or install the package globally
-(`npm install -g @memlab/mcp-server`) and drop the `npx -y -p ...` prefix:
+(`npm install -g @memlab/mcp-server`) and call `memlab-cli` directly. The
+examples below use a shell function so they work in bash and zsh:
 
 ```bash
-MEMLAB="npx -y -p @memlab/mcp-server memlab-cli"
+memlab_cli() { npx -y -p @memlab/mcp-server memlab-cli "$@"; }
 
-$MEMLAB doctor                        # node version, server path, live handshake
-$MEMLAB list                          # every tool with a one-line description
-$MEMLAB schema memlab_retainer_trace  # one tool's input schema as JSON
+memlab_cli doctor                        # node version, server path, live handshake
+memlab_cli list                          # every tool with a one-line description
+memlab_cli schema memlab_retainer_trace  # one tool's input schema as JSON
 ```
 
 ## One session per command
@@ -21,7 +22,7 @@ $MEMLAB schema memlab_retainer_trace  # one tool's input schema as JSON
 session. Later calls see the snapshot loaded by an earlier one:
 
 ```bash
-$MEMLAB call \
+memlab_cli call \
   memlab_load_snapshot '{"file_path":"/abs/path/app.heapsnapshot","quiet":true}' \
   memlab_app_heap '{}' \
   memlab_retainer_trace '{"node_id":48231}'
@@ -37,7 +38,7 @@ starting with `#` are comments:
 ```
 
 ```bash
-$MEMLAB script steps.jsonl
+memlab_cli script steps.jsonl
 ```
 
 ## Keep snapshots loaded between commands
@@ -46,10 +47,12 @@ Loading a large snapshot can take minutes. To load it once and run many
 separate commands against it, keep one server running on a socket:
 
 ```bash
-$MEMLAB serve --socket /tmp/memlab.sock &
-$MEMLAB call --socket /tmp/memlab.sock memlab_load_snapshot '{"file_path":"/abs/path/app.heapsnapshot"}'
-$MEMLAB call --socket /tmp/memlab.sock memlab_quick_diagnosis '{}'
-$MEMLAB stop --socket /tmp/memlab.sock
+memlab_cli serve --socket /tmp/memlab.sock &
+# The socket appears once the server is up; calls before that fail.
+until [ -S /tmp/memlab.sock ]; do sleep 1; done
+memlab_cli call --socket /tmp/memlab.sock memlab_load_snapshot '{"file_path":"/abs/path/app.heapsnapshot"}'
+memlab_cli call --socket /tmp/memlab.sock memlab_quick_diagnosis '{}'
+memlab_cli stop --socket /tmp/memlab.sock
 ```
 
 ## Memory
