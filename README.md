@@ -11,7 +11,7 @@
 memlab is an end-to-end testing and analysis framework for identifying
 JavaScript memory leaks and optimization opportunities.
 
-**Online Resources:** [[Website](https://meta.github.io/memlab)] | [[Doc](https://meta.github.io/memlab/docs/intro)] | [[Meta Eng Blog Post](https://engineering.fb.com/2022/09/12/open-source/memlab/)] | [[Tech Talk](https://gitnation.com/contents/memlab-automating-memory-leak-detection-and-heap-analysis)] | [[AI Assistant Guide](./AI.md)]
+**Online Resources:** [[Website](https://meta.github.io/memlab)] | [[Documentation](https://meta.github.io/memlab/docs/intro)] | [[Meta Eng Blog Post](https://engineering.fb.com/2022/09/12/open-source/memlab/)] | [[Tech Talk](https://gitnation.com/contents/memlab-automating-memory-leak-detection-and-heap-analysis)] | [[AI Assistant Guide](./AI.md)]
 
 Features:
 
