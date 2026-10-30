@@ -32,9 +32,10 @@ By default `memlab-cli` uses 60% of physical RAM, rounded to the nearest GB. The
 
 ## Quick Start
 
-**Claude Code users**: the [memlab plugin](https://github.com/meta/memlab/tree/main/plugins/memlab)
-installs this server together with Agent Skills that teach the agent when and how to use it:
-`claude plugin marketplace add meta/memlab`, then `claude plugin install memlab@memlab`.
+**Claude Code and Codex users**: the [memlab plugin](https://github.com/meta/memlab/tree/main/plugins/memlab)
+installs this server together with Agent Skills that teach the agent when and how to use it.
+In Claude Code: `claude plugin marketplace add meta/memlab`, then `claude plugin install memlab@memlab`.
+In Codex: `codex plugin marketplace add meta/memlab`, then `codex plugin add memlab@memlab`.
 
 ### Option 1: Global install
 
@@ -76,6 +77,29 @@ Add to your Claude Code MCP config (`~/.claude.json` for Claude Code, or `.mcp.j
   }
 }
 ```
+
+### opencode
+
+opencode reads MCP servers from `opencode.json` in its own format:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "memlab": {
+      "type": "local",
+      "command": ["npx", "-y", "-p", "@memlab/mcp-server", "memlab-mcp"],
+      "environment": {
+        "NODE_OPTIONS": "--max-old-space-size=8192"
+      }
+    }
+  }
+}
+```
+
+To use the memlab Agent Skills with it too, copy the directories under
+[`plugins/memlab/skills/`](https://github.com/meta/memlab/tree/main/plugins/memlab/skills)
+into `.opencode/skills/` in your project, or into `~/.config/opencode/skills/`.
 
 ### Option 3: From source
 

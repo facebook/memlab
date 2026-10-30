@@ -199,23 +199,31 @@ fix memory leaks:
 | [`memlab-capture-heap-snapshots`](./plugins/memlab/skills/memlab-capture-heap-snapshots/SKILL.md) | Takes heap snapshots from Chrome, Puppeteer, Playwright, Node.js, Electron or Hermes |
 | [`memlab-memory-tests`](./plugins/memlab/skills/memlab-memory-tests/SKILL.md) | Adds memory leak regression tests to unit tests and CI |
 
-**Claude Code**: install the [memlab plugin](./plugins/memlab), which bundles
-the MCP server and the skills:
+**Claude Code and Codex**: install the [memlab plugin](./plugins/memlab), which
+bundles the MCP server and the skills:
 
 ```bash
+# Claude Code
 claude plugin marketplace add meta/memlab
 claude plugin install memlab@memlab
+
+# Codex
+codex plugin marketplace add meta/memlab
+codex plugin add memlab@memlab
 ```
 
-**Other agents**: add the MCP server (one-line setup for Claude Code and Codex
-below; JSON config in [Setup](#setup)), and copy the directories under
-[`plugins/memlab/skills/`](./plugins/memlab/skills) into your agent's skills
-directory.
+To add only the MCP server instead:
 
 ```bash
 claude mcp add memlab -e NODE_OPTIONS=--max-old-space-size=8192 -- npx -y -p @memlab/mcp-server memlab-mcp
 codex mcp add memlab --env NODE_OPTIONS=--max-old-space-size=8192 -- npx -y -p @memlab/mcp-server memlab-mcp
 ```
+
+**Other agents** (Cursor, opencode, and others): add the MCP server to the
+agent's MCP config (see [Setup](#setup); opencode uses its own format, shown in
+the [MCP server README](./packages/mcp-server/README.md#opencode)), and copy
+the directories under [`plugins/memlab/skills/`](./plugins/memlab/skills) into
+the agent's skills directory, such as `.opencode/skills/` for opencode.
 
 Agents changing memlab's own code should read [`AGENTS.md`](./AGENTS.md).
 

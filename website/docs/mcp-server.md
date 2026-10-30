@@ -3,7 +3,7 @@
 The [`@memlab/mcp-server`](https://www.npmjs.com/package/@memlab/mcp-server)
 package is an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/)
 server that wraps memlab's heap analysis APIs. It gives AI coding assistants
-(Claude Code, Cursor, Windsurf, and any other MCP client) interactive tools to
+(Claude Code, Codex, Cursor, Windsurf, opencode, and any other MCP client) interactive tools to
 load JavaScript heap snapshots, find memory leaks, and identify optimization
 opportunities through natural language conversation.
 
@@ -14,6 +14,23 @@ assistant at a `.heapsnapshot` file and ask questions:
 > retainer trace for the biggest offender.
 
 ## Setup
+
+### Claude Code and Codex plugin
+
+The [memlab plugin](https://github.com/meta/memlab/tree/main/plugins/memlab)
+installs this server together with
+[Agent Skills](https://github.com/meta/memlab/tree/main/plugins/memlab/skills)
+that teach the agent when and how to use it:
+
+```bash
+# Claude Code
+claude plugin marketplace add meta/memlab
+claude plugin install memlab@memlab
+
+# Codex
+codex plugin marketplace add meta/memlab
+codex plugin add memlab@memlab
+```
 
 ### Option 1: Global install
 
@@ -54,6 +71,29 @@ Code, or `.mcp.json` for Cursor/Windsurf):
   }
 }
 ```
+
+### opencode
+
+opencode reads MCP servers from `opencode.json` in its own format:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "memlab": {
+      "type": "local",
+      "command": ["npx", "-y", "-p", "@memlab/mcp-server", "memlab-mcp"],
+      "environment": {
+        "NODE_OPTIONS": "--max-old-space-size=8192"
+      }
+    }
+  }
+}
+```
+
+To use the memlab Agent Skills with it too, copy the directories under
+[`plugins/memlab/skills/`](https://github.com/meta/memlab/tree/main/plugins/memlab/skills)
+into `.opencode/skills/` in your project, or into `~/.config/opencode/skills/`.
 
 ### Option 3: From source
 

@@ -38,7 +38,7 @@ Main entry points:
 - [MCP server README](https://github.com/meta/memlab/blob/main/packages/mcp-server/README.md): full tool reference, `memlab-cli`, environment variables
 - [MCP investigation method](https://github.com/meta/memlab/blob/main/packages/mcp-server/MCP_SKILL.md): triage and investigation paths by symptom
 - [Agent Skills](https://github.com/meta/memlab/tree/main/plugins/memlab/skills): analyze a heap snapshot, find leaks in a web app, capture heap snapshots, write memory leak tests
-- [Claude Code plugin](https://github.com/meta/memlab/tree/main/plugins/memlab): the MCP server and skills in one install
+- [Claude Code and Codex plugin](https://github.com/meta/memlab/tree/main/plugins/memlab): the MCP server and skills in one install
 - [AI assistant guide](https://github.com/meta/memlab/blob/main/AI.md): rules for writing correct scenarios and using memlab's APIs
 
 ## Optional

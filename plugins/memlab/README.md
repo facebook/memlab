@@ -34,15 +34,27 @@ leaking" or "Check whether opening and closing the settings dialog leaks
 memory". Skills from the plugin also run as commands, such as
 `/memlab:memlab-find-web-leaks`.
 
+## Install in Codex
+
+Codex installs this plugin from the same marketplace:
+
+```bash
+codex plugin marketplace add meta/memlab
+codex plugin add memlab@memlab
+```
+
 ## Use the skills with other agents
 
 The skills follow the [Agent Skills](https://agentskills.io/specification)
 format, so any agent that supports it can load them. Copy the directories
-under [`skills/`](skills/) into your agent's skills directory.
+under [`skills/`](skills/) into your agent's skills directory, such as
+`.opencode/skills/` (or `~/.config/opencode/skills/`) for opencode.
 
 To give that agent the memlab MCP server too, add it to the agent's MCP
 configuration as described in the
-[MCP server README](../../packages/mcp-server/README.md). Without it, the
+[MCP server README](../../packages/mcp-server/README.md) (opencode uses its
+own format, shown [there](../../packages/mcp-server/README.md#opencode)).
+Without it, the
 skills fall back to `memlab-cli`, which runs the same tools from a shell.
 
 ## Requirements and safety

@@ -31,7 +31,11 @@ references keeps an object alive.
   Each `call` starts a new server and reloads the snapshot. For an
   investigation with many steps, keep one server running instead; see
   [references/memlab-cli.md](references/memlab-cli.md).
-- If the user wants the MCP server set up permanently, give them
+- If the user wants the MCP server set up permanently, suggest the memlab
+  plugin, which also installs these skills: `claude plugin marketplace add meta/memlab`
+  then `claude plugin install memlab@memlab` (Claude Code), or
+  `codex plugin marketplace add meta/memlab` then `codex plugin add memlab@memlab`
+  (Codex). For the server alone, give them
   `claude mcp add memlab -e NODE_OPTIONS=--max-old-space-size=8192 -- npx -y -p @memlab/mcp-server memlab-mcp`
   (Claude Code) or the JSON config in the
   [MCP server docs](https://meta.github.io/memlab/docs/mcp-server). Keep
