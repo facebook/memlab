@@ -76,7 +76,7 @@ module.exports = {
 - `page.evaluate(pageFunction, args)`
 - `page.$(selector)` and `page.$$(selector)`
 - `page.locator(selector)` (Puppeteer v24+) - See [Locator API documentation](https://pptr.dev/api/puppeteer.locator)
-- `page.goto(url, options)` - **BUT DO NOT USE IN SCENARIO CALLBACKS** (see rule #1 in DON'T section)
+- `page.goto(url, options)` - **BUT DO NOT USE IN `action()` OR `back()`** (see rule #1 in DON'T section)
 
 **Common Valid Puppeteer Locator APIs** (refer to [full documentation](https://pptr.dev/api/puppeteer.locator)):
 Locators are available in Puppeteer v24+ and provide a more robust way to interact with elements. They automatically retry actions and check preconditions.
@@ -177,8 +177,8 @@ action: async (page) => {
   await page.click('#open-modal');
 },
 back: async (page) => {
-  // Missing: doesn't close the modal
-  await page.goto('https://example.com'); // This creates a new baseline!
+  // Reloads the page instead of closing the modal; memlab stops the run
+  await page.goto('https://example.com');
 },
 ```
 
@@ -203,7 +203,7 @@ action: async (page) => {
 },
 ```
 
-**Alternative**: If cookies are not available, you can perform login in the `setup()` callback. The `setup()` callback executes after the initial page load (from `url()`) but before the `action()` callback. However, using `cookies()` is preferred when possible.
+**Alternative**: If cookies are not available, you can perform login in the `setup()` callback. The `setup()` callback executes after the initial page load (from `url()`) and before the baseline snapshot, so it may navigate, for example through a login redirect. However, using `cookies()` is preferred when possible.
 
 **5. Use `leakFilter` for custom detection:**
 ```javascript
@@ -297,25 +297,21 @@ module.exports = {
 
 ### ❌ DON'T: Common Mistakes
 
-**1. Don't use `page.goto()` or page refresh APIs in any callback:**
+**1. Don't reload or navigate away in `action()` or `back()`:**
 ```javascript
-// ❌ BAD: page.goto() or refresh APIs create a new JS runtime, breaking leak detection
-// This applies to ALL callbacks: url, setup, action, back, beforeInitialPageLoad, etc.
+// ❌ BAD: page.goto() and page.reload() load a new document with a fresh JS heap.
+// memlab detects the reload after the baseline snapshot and stops the run:
+// "The page is reloaded. MemLab cannot analyze heap across page reloads."
 
 // ❌ BAD in back()
 back: async (page) => {
-  await page.goto('https://different-page.com'); // Creates new runtime!
+  await page.goto('https://example.com'); // Reloads the page!
 },
 
 // ❌ BAD in action()
 action: async (page) => {
-  await page.goto('https://other-page.com'); // Creates new runtime!
-  await page.reload(); // Also bad - refreshes page!
-},
-
-// ❌ BAD in setup()
-setup: async (page) => {
-  await page.goto('https://login-page.com'); // Creates new runtime!
+  await page.goto('https://example.com/other'); // Reloads the page!
+  await page.reload(); // Also reloads the page!
 },
 
 // ✅ GOOD: Use in-page interactions only
@@ -328,17 +324,17 @@ action: async (page) => {
   await page.waitForSelector('#content'); // Wait for content to load
 },
 
-// ✅ GOOD: url() is the ONLY place that should navigate (initial load)
-url: () => 'https://example.com', // This is fine - it's the initial page load
+// ✅ GOOD: url() sets the page for the initial load
+url: () => 'https://example.com',
 ```
 
-**Important**: Any API that causes a page refresh or starts a new JavaScript runtime will break MemLab's heap snapshot comparison. Avoid:
-- `page.goto()` (except in special cases - see note below)
+**Important**: After the baseline snapshot, anything that loads a new document breaks the heap comparison. In `action()` and `back()`, avoid:
+- `page.goto()`
 - `page.reload()`
-- `page.evaluate(() => location.reload())`
-- Any navigation that resets the JavaScript context
+- `page.evaluate(() => location.reload())` or assigning `location.href`
+- Clicking a link or submitting a form that does a full page load
 
-**Note**: The only exception is if you're specifically testing page load leaks and intentionally want a new baseline, but this is an advanced use case and should be clearly documented.
+Client-side route changes in a single-page app (a click that updates the URL without reloading the page) are in-page interactions and are fine. `beforeInitialPageLoad()` and `setup()` run before the baseline snapshot, so navigating there doesn't break leak detection; the page `setup()` ends on becomes the baseline.
 
 **2. Don't forget to wait for async operations:**
 ```javascript
@@ -356,32 +352,31 @@ action: async (page) => {
 },
 ```
 
-**3. Don't create scenarios that test page load leaks without `action()`:**
+**3. Don't leave out `action()` when you want leak detection:**
 ```javascript
-// ⚠️ ADVANCED USE CASE ONLY: Testing initial page load leaks
-// This is an exception to the "no page.goto()" rule, but should be used sparingly
-// Only use this if you specifically want to test leaks from the initial page load itself
+// ❌ BAD: Without action(), memlab loads url() and takes a single heap
+// snapshot. There is no baseline or final snapshot to diff, so no leaks
+// are reported.
 module.exports = {
   url: () => 'https://example.com',
-  // No action() - memlab will detect leaks from initial page load
-  back: async (page) => {
-    // ⚠️ Exception: Using page.goto() here creates a new baseline
-    // This is intentional for page-load leak testing, but breaks normal leak detection
-    await page.goto('about:blank'); // Navigate away to final state
-  },
 };
 
-// ✅ BETTER: For most cases, use in-page interactions even for page load testing
+// ✅ GOOD: To test whether visiting a page leaks, make visiting it the
+// action() and leaving it the back(), using in-app navigation
 module.exports = {
   url: () => 'https://example.com',
   action: async (page) => {
-    // Test interaction that should clean up page load resources
+    await page.click('a[href="/settings"]'); // Client-side route change
+    await page.waitForSelector('#settings-page');
   },
   back: async (page) => {
-    await page.click('#reset'); // Use in-page interaction instead
+    await page.click('a[href="/"]');
+    await page.waitForSelector('#home-page');
   },
 };
 ```
+
+A `url()`-only scenario is still useful with `memlab snapshot` when you want one heap snapshot to inspect with `memlab analyze <plugin> --snapshot <file>` or the MCP server.
 
 **4. Don't use minified code without source maps:**
 - MemLab's retainer traces are much more readable with unminified code
@@ -807,7 +802,7 @@ When helping users with MemLab:
 - ✅ Use `node.referrers` and `node.references` (arrays of `IHeapEdge`) to traverse the heap graph
 - ✅ **Keep CLI commands simple**: Use basic `memlab run --scenario` by default. Only suggest `--debug` and `--headful` when users are debugging, troubleshooting, or need visual/step-by-step execution.
 - ✅ **Use the MCP server** (`@memlab/mcp-server`) for AI-assisted heap snapshot analysis
-- ❌ Never use `page.goto()`, `page.reload()`, or any page refresh APIs in any callback (url, setup, action, back, etc.) - they create new JS runtimes and break heap snapshot comparison
+- ❌ Never use `page.goto()`, `page.reload()`, or anything else that reloads the page in `action()` or `back()` - memlab stops the run because it can't compare heaps across a reload
 - ❌ Don't forget to await async Puppeteer operations
 - ❌ Don't pollute the baseline with setup code in `action()`
 - ❌ Don't use `node.getRetainedSize()` — use `node.retainedSize` (it's a property, not a method)
