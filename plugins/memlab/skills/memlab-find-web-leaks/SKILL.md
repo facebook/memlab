@@ -106,8 +106,10 @@ MemLab found 1 leak(s)
   when the UI closes.
 - Traces are much easier to read when the app serves unminified code or keeps
   readable names.
-- The text report is saved to `data/cur/leaks.txt` in the working directory,
-  with the three snapshots `s1`–`s3.heapsnapshot` next to it.
+- The text report is saved in the working directory as `data/out/leaks.txt`.
+  `memlab run` also copies it to `data/cur/leaks.txt`, next to the three
+  snapshots `s1`–`s3.heapsnapshot`. Runs through `@memlab/api` leave it only in
+  `data/out/`.
 
 ## 5. When the trace isn't enough
 
