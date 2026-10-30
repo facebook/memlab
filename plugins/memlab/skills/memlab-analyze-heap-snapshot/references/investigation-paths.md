@@ -237,8 +237,11 @@ captures?"
    (noisy)"** (GC/navigation). Lists classes new since baseline. Prefer this over
    chaining `diff_snapshots` pairwise.
 2. Load the last snapshot and localize with `cache_analysis` /
-   `event_listener_leaks` / `event_registry` / `growth_signals` (object-identity
-   matching across captures isn't possible — node ids differ per snapshot).
+   `event_listener_leaks` / `event_registry` / `growth_signals`. Object ids
+   match across captures only from the same isolate (one page or process, no
+   reload or restart). For those, `memlab_diff_snapshots` matches objects by id
+   and lists the ones allocated in between that are still alive; captures from
+   different isolates can only be compared by class counts and sizes.
 
 ## Path K: Browser — real leaks vs dev/extension artifacts
 
