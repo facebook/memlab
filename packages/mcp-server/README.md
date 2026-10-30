@@ -470,7 +470,7 @@ The main list and lookup tools (`memlab_query_objects`, `memlab_class_histogram`
 
 Load and parse a `.heapsnapshot` (or `.heapsnapshot.gz`) file. Builds indexes, computes the dominator tree and retained sizes, and returns a quick diagnosis.
 
-- **Snapshot resolution:** `file_path` is normally a local absolute path. Inside Meta it may also be a `manifold://bucket/key` URL or a bare server-snapshot filename, fetched with the `manifold` CLI.
+- **Snapshot resolution:** `file_path` is a local absolute path. If only `<file_path>.gz` exists, it is decompressed automatically.
 - **Multiple snapshots:** pass `keep_previous: true` to keep earlier snapshots resident for diffing. Each gets a handle (`alias`, defaulting to the file name).
 - **Size ceilings:** `max_file_size_mb`, `max_nodes` and `max_edges` override the defaults, and `force: true` bypasses the ceilings and the headroom guard (see [Prerequisites](#prerequisites)).
 - **Light loads:** `light: true` skips the dominator / retained-size / shortest-path pass.
@@ -552,7 +552,7 @@ The server keeps a few small files so that work survives a restart:
 | `~/.memlab/metrics.json`, `~/.memlab/eval-store.json` | `memlab_metric`, `helpers.remember` in `memlab_eval` | `MEMLAB_STATE_DIR` |
 | `~/.memlab/probes.json` | `memlab_probes`: saved probe sets, which `memlab_ladder_probe`, `memlab_ab_compare` and `memlab_analysis_battery` run | `MEMLAB_STATE_DIR` |
 | `~/.memlab/battery-caveats.json` | `memlab_analysis_battery`: run.json caveats already printed for a sweep (a round's parent directory), so later rounds print them as one "unchanged" line | `MEMLAB_STATE_DIR` |
-| `$TMPDIR/memlab-cache-<uid>/` | Decompressed `.gz` snapshots (and Manifold fetches), mode `0700` | — |
+| `$TMPDIR/memlab-cache-<uid>/` | Decompressed `.gz` snapshots, mode `0700` | — |
 
 ## Environment Variables
 

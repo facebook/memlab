@@ -11,16 +11,10 @@ CLI, programmatic API), see the [AI Assistant Guide](../../AI.md).
 
 ## Step 0: Obtain the Snapshot
 
-`memlab_load_snapshot` accepts three forms of `file_path`:
-
-- A **local absolute path** (e.g. `/tmp/snapshot.heapsnapshot`).
-- A **`manifold://bucket/key` URL** — fetched automatically into a temp dir.
-- A **bare snapshot filename** (no slashes) — resolved against the
-  `nest_server_nodejs_heap_snapshots` bucket (where Nest auto-capture and the
-  Manifold links in diffs live) and fetched automatically.
-
-So for Nest auto-captured snapshots you can pass the filename directly instead
-of shelling out to `manifold get`. For other remote URLs, download first:
+`memlab_load_snapshot` takes a **local absolute path** to a `.heapsnapshot`
+file (e.g. `/tmp/snapshot.heapsnapshot`). If only a gzipped copy exists
+(`/tmp/snapshot.heapsnapshot.gz`), pass the path without `.gz` and the server
+decompresses it. If the snapshot is on a remote server, download it first:
 
 ```bash
 curl -o /tmp/snapshot.heapsnapshot <URL>
@@ -408,7 +402,7 @@ indented tree inside a fenced code block:** the GC root on top, and **each node
 retained by the one directly above it** (one indent level = one hop further from
 the GC root). `memlab_retainer_trace` (with `show_sizes`, the default) and
 `memlab_auto_investigate` already emit exactly this shape — copy it straight
-through into your report and the Phabricator diff summary instead of
+through into your report, PR description or commit message instead of
 re-rendering it.
 
 **Never mix `←` (retained-by) and `→` (references) arrows on the same line.**
@@ -418,11 +412,11 @@ top→down means "retains".
 
 ```
 @1 Window (native)  — 605 MB   ← GC root
-  └─ .WAWebUploadManager → @5 WAWebUploadManager (object)  — 605 MB
-     └─ .table → @9 Map (object)  — 605 MB   (in-flight upload registry)
+  └─ .uploadManager → @5 UploadManager (object)  — 605 MB
+     └─ .pending → @9 Map (object)  — 605 MB   (in-flight upload registry)
         └─ [entry] → @14 Promise (object)  — 602 MB
            └─ … 2 internal node(s) …
-           └─ .n → @42 ArrayBuffer (object)  — 605 MB   ← retained object (ciphertextHmac)
+           └─ .n → @42 ArrayBuffer (object)  — 605 MB   ← retained object (upload payload)
 ```
 
 The edge the parent holds each node through is embedded in the connector
@@ -440,9 +434,9 @@ that flat form when you quote it — don't re-indent a deep chain back into a tr
 
 ```
 @1 Window (native)  — 605 MB   ← GC root
-  ↓ .WAWebUploadManager
-@5 WAWebUploadManager (object)  — 605 MB
-  ↓ .table
+  ↓ .uploadManager
+@5 UploadManager (object)  — 605 MB
+  ↓ .pending
 @9 Map (object)  — 605 MB
   ↓ … 2 internal node(s) … .n
 @42 ArrayBuffer (object)  — 605 MB   ← retained object
@@ -512,7 +506,6 @@ When analyzing large snapshots, use these options to reduce token usage:
 | Detect OTel metric cardinality / Relay / suspended-async | `memlab_auto_investigate` (framework detectors in "Known Leak Patterns") |
 | See a property's value cardinality + top values | `memlab_property_distribution` |
 | Guess what's growing from one snapshot | `memlab_growth_signals` |
-| Load from Manifold / bare filename | `memlab_load_snapshot` with `manifold://…` or a bare snapshot filename |
 | Check if a snapshot will load before loading it | `memlab_snapshot_header` — reads node/edge counts without the dominator pass; when over the ceiling it reports the max-loadable file size for that app so you pick a smaller capture in one step |
 | Keep multiple snapshots / switch between them | `memlab_load_snapshot` with `keep_previous: true`, then `memlab_snapshots` |
 | Decode a numeric property by name | `memlab_get_value` with `node_id` + `property_name` |
