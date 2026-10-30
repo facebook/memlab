@@ -24,7 +24,14 @@
     "leak",
     "detector",
     "heap",
-    "snapshot"
+    "snapshot",
+    "memory-leak",
+    "heap-snapshot",
+    "puppeteer",
+    "chrome",
+    "nodejs",
+    "e2e",
+    "testing"
   ],
   "dependencies": {
     "@memlab/api": "^2.0.7",
