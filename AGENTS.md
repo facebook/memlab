@@ -65,9 +65,12 @@ npm run memlab -- help     # run the CLI built from this checkout
 
 ### MCP server (`packages/mcp-server`)
 
-- Register every tool in `src/tools/tools-index.ts`. The tool tables in
-  `packages/mcp-server/README.md` are generated from it: run
-  `npm run sync-catalog` in the package after adding or renaming a tool.
+- A tool lives in its own file under `src/tools/` and is registered with the
+  server by a `register...(server)` call in `src/index.ts`. Also list it in a
+  group in `src/tools/tools-index.ts`, the catalog that `memlab_tools` serves.
+  The tool tables in `packages/mcp-server/README.md` are generated from that
+  catalog: run `npm run sync-catalog` in the package after adding or renaming
+  a tool.
 - `npm run test-pkg` in the package checks that every tool is in the index,
   that no tool description asks for a parameter its schema lacks, that the
   README tables are current, and that `src/server-version.ts` matches
