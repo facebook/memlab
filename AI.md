@@ -31,7 +31,7 @@ MemLab reads `.heapsnapshot` files from Chromium-based browsers, Node.js, Electr
 
 - **Chrome DevTools**: Memory tab → **Heap snapshot** → **Take snapshot**, then right-click the snapshot and choose **Save...**.
 - **memlab**: `memlab run` and `memlab snapshot` save their snapshots under `$(memlab get-default-work-dir)/data/cur/`.
-- **A running Chrome**: start Chrome with `--remote-debugging-port=9222` and call the MCP tool `memlab_capture`. It also snapshots the page's dedicated workers.
+- **A running Chrome**: start Chrome with `--remote-debugging-port=9222 --user-data-dir=<temp dir>` and call the MCP tool `memlab_capture`. Chrome 136 and later ignore the port flag on the default profile. It also snapshots the page's dedicated workers.
 - **Node.js**: call `require('v8').writeHeapSnapshot()` from the program, or start it with `node --heapsnapshot-signal=SIGUSR2 app.js` and run `kill -USR2 <pid>` when you want a snapshot.
 - **Electron**: use DevTools for renderer processes; the main process is Node.js, so use `v8.writeHeapSnapshot()`.
 - **React Native (Hermes)**: take a heap snapshot from the Memory panel of the debugger attached to the app.
@@ -741,7 +741,7 @@ Don't work from a fixed tool list; the set grows with each release. Call `memlab
 | Detached DOM elements | `memlab_detached_dom` |
 | Is it real, or a DevTools or dev-build artifact? | `memlab_dev_artifacts` |
 | Did the fix work? | `memlab_verify_fix` |
-| Capture snapshots from a running Chrome | `memlab_capture` (Chrome started with `--remote-debugging-port`) |
+| Capture snapshots from a running Chrome | `memlab_capture` (Chrome started with `--remote-debugging-port=9222 --user-data-dir=<temp dir>`) |
 
 ### A typical investigation
 

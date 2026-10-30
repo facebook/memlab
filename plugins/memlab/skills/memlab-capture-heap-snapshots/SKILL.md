@@ -32,8 +32,10 @@ before each snapshot. Use a profile without extensions (or a guest window):
 extensions add their own objects to the page's heap.
 
 **From an agent, with the memlab MCP server**: start the browser with
-`--remote-debugging-port=9222`, then call `memlab_capture` with `out_dir` and a
-`label`. It also captures the page's dedicated workers, which a page snapshot
+`--remote-debugging-port=9222 --user-data-dir=/tmp/chrome-memlab`, then call
+`memlab_capture` with `out_dir` and a `label`. Chrome 136 and later ignore
+`--remote-debugging-port` on the default profile, so the separate
+`--user-data-dir` is required; a fresh profile also has no extensions. It also captures the page's dedicated workers, which a page snapshot
 never includes. `list_targets: true` lists the pages it can attach to, and
 `url_filter` picks one. A saved capture can later be referred to as
 `checkpoint:<label>` wherever a snapshot path is accepted.

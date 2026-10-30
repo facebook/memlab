@@ -218,7 +218,7 @@ Both `.heapsnapshot` files and `.heaptimeline` files (snapshots recorded with al
 
 ### Live page and workers (`memlab_capture`)
 
-Start Chrome with `--remote-debugging-port=9222`, then call `memlab_capture` with an `out_dir`. It snapshots the page and its dedicated workers, which a page snapshot never contains. Load the resulting files with `memlab_load_snapshot`, or compare them with `memlab_realm_summary`.
+Start Chrome with `--remote-debugging-port=9222 --user-data-dir=<temp dir>` (Chrome 136 and later ignore the port flag on the default profile), then call `memlab_capture` with an `out_dir`. It snapshots the page and its dedicated workers, which a page snapshot never contains. Load the resulting files with `memlab_load_snapshot`, or compare them with `memlab_realm_summary`.
 
 `memlab_capture({list_targets: true})` lists the pages Chrome offers, to choose `url_filter`. Give each capture a `label` ("baseline", "after-10-opens") and it is recorded in `<out_dir>/checkpoints.json`. Any tool that takes a snapshot path then accepts `checkpoint:<label>` (or `checkpoint:<out_dir>#<label>`, and `checkpoint:<label>/<worker title>` for a worker), so "capture, interact, capture, compare" is `memlab_diff_snapshots({before: "checkpoint:baseline", after: "checkpoint:after-10-opens"})`, with each side's capture time in the report.
 

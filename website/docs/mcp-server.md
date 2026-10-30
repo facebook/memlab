@@ -143,7 +143,8 @@ the stack that allocated them in such a capture.
 
 ### From a live page and its workers
 
-Start Chrome with `--remote-debugging-port=9222` and ask the assistant to run
+Start Chrome with `--remote-debugging-port=9222 --user-data-dir=<temp dir>` (Chrome 136 and
+later ignore the port flag on the default profile) and ask the assistant to run
 `memlab_capture` with an output directory. It snapshots the page and its
 dedicated workers, which a page snapshot never contains. Compare the page and
 workers with `memlab_realm_summary`. `list_targets: true` lists the pages to
