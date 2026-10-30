@@ -652,71 +652,82 @@ When explaining MemLab to users:
 
 ## MCP Server for AI-Assisted Heap Analysis
 
-The `@memlab/mcp-server` package provides a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that enables AI assistants to interactively analyze heap snapshots. It exposes 36 tools for loading, querying, and analyzing heap snapshots.
+The `@memlab/mcp-server` package is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that lets AI assistants load JavaScript heap snapshots and investigate them in conversation. It has more than 150 tools and works with any MCP client (Claude Code, Codex, Cursor, Windsurf, VS Code, and others). Use it when the user already has a `.heapsnapshot` file, or when a `memlab run` report needs a deeper look than the leak trace gives.
 
-For a structured investigation methodology covering how to systematically
-triage, investigate, and report memory issues using these MCP tools, see the
-[MCP Investigation Skill](./packages/mcp-server/MCP_SKILL.md).
+For a step-by-step investigation method (triage, investigation paths by symptom, how to present retainer chains), see the [MCP Investigation Skill](./packages/mcp-server/MCP_SKILL.md). For every tool and option, see the [MCP server README](./packages/mcp-server/README.md).
 
 ### Setup
 
+Add the server to the MCP client's configuration:
+
 ```json
-// Add to your MCP client configuration (e.g., Claude Desktop)
 {
   "mcpServers": {
     "memlab": {
+      "type": "stdio",
       "command": "npx",
-      "args": ["@memlab/mcp-server"]
+      "args": ["-y", "@memlab/mcp-server"],
+      "env": {
+        "NODE_OPTIONS": "--max-old-space-size=8192"
+      }
     }
   }
 }
 ```
 
-### Available MCP Tools
+Or register it from the command line:
 
-**Snapshot Lifecycle:**
-- `memlab_load_snapshot` — Load and parse a `.heapsnapshot` file (must be called first)
-- `memlab_snapshot_summary` — Get overview stats: total nodes, edges, size, breakdown by type
+```bash
+# Claude Code
+claude mcp add memlab -e NODE_OPTIONS=--max-old-space-size=8192 -- npx -y @memlab/mcp-server
 
-**Search & Discovery:**
-- `memlab_search_nodes` — General-purpose search with filters (name pattern, type, size, detachment)
-- `memlab_find_nodes_by_class` — Find objects by constructor/class name
-- `memlab_find_by_property` — Find objects that have a specific property name
-- `memlab_largest_objects` — Top N objects by retained size
-- `memlab_class_histogram` — Instance count and size per class name
-- `memlab_global_variables` — Non-built-in global variables on Window
+# Codex CLI
+codex mcp add memlab --env NODE_OPTIONS=--max-old-space-size=8192 -- npx -y @memlab/mcp-server
+```
 
-**Node Inspection:**
-- `memlab_get_node` — Full details for a single node by ID
-- `memlab_get_property` — Follow a named property edge to its target node
-- `memlab_object_shape` — All properties of a node at a glance
-- `memlab_closure_inspection` — Captured variables in a closure/function node
+**Always keep `--max-old-space-size=8192` (or higher).** The server keeps the whole parsed heap graph in memory, which takes several times the snapshot's file size. With less memory, `memlab_load_snapshot` refuses large snapshots to avoid crashing the server.
 
-**Graph Traversal:**
-- `memlab_get_references` — Outgoing edges (what this node points to)
-- `memlab_get_referrers` — Incoming edges (what points to this node)
-- `memlab_retainer_trace` — Shortest path from GC root to a node
-- `memlab_dominator_subtree` — Children in the dominator tree
+### Without an MCP client: `memlab-cli`
 
-**Leak Detection:**
-- `memlab_detached_dom` — Find detached DOM elements still retained in memory
-- `memlab_duplicated_strings` — Find duplicated string instances
-- `memlab_stale_collections` — Find Map/Set/Array holding detached or stale objects
+The same package installs `memlab-cli`, which runs the same tools from a shell. Use it in scripts and CI, or when the assistant can't connect to the server:
 
-**Aggregation & Reports:**
-- `memlab_aggregate` — Group nodes by type, name, or name prefix with statistics
-- `memlab_reports` — Run curated analysis reports (like Chrome DevTools Memory panel)
+```bash
+npx -p @memlab/mcp-server memlab-cli doctor          # check node, the server, and a live handshake
+npx -p @memlab/mcp-server memlab-cli list            # every tool with a one-line description
+npx -p @memlab/mcp-server memlab-cli call \
+  memlab_load_snapshot '{"file_path":"/tmp/app.heapsnapshot"}' \
+  memlab_quick_diagnosis '{}'                        # several calls in one server session
+```
 
-**Programmable:**
-- `memlab_eval` — Execute arbitrary JS code against the loaded snapshot
-- `memlab_for_each` — Structured map/filter/reduce over all heap nodes
+### Finding the right tool
 
-### Typical MCP Workflow
+Don't work from a fixed tool list; the set grows with each release. Call `memlab_tools` (or run `memlab-cli list`) to get every tool grouped by the question it answers, with a one-line "use it when". Good entry points:
 
-1. Load a snapshot: `memlab_load_snapshot` with the file path
-2. Get an overview: `memlab_snapshot_summary` or `memlab_reports` with `full_analysis`
-3. Investigate: Use search, inspection, and traversal tools to drill down
-4. Diagnose: Use `memlab_retainer_trace` to understand why objects are retained
+| Question | Start with |
+|---|---|
+| What is in this heap? | `memlab_load_snapshot`, then `memlab_quick_diagnosis` and `memlab_auto_investigate` in parallel; `memlab_app_heap` to split app data from bundle source and engine internals |
+| Will this snapshot load? | `memlab_snapshot_header` (reads counts without parsing the graph) |
+| Why is this object alive? | `memlab_retainer_trace`, then `memlab_retainer_layers` to see every independent retainer before writing a fix |
+| What leaked between two snapshots? | `memlab_diff_snapshots` |
+| What grows across a series of snapshots? | `memlab_sequence_analysis`, `memlab_leak_report` |
+| Detached DOM elements | `memlab_detached_dom` |
+| Is it real, or a DevTools or dev-build artifact? | `memlab_dev_artifacts` |
+| Did the fix work? | `memlab_verify_fix` |
+| Capture snapshots from a running Chrome | `memlab_capture` (Chrome started with `--remote-debugging-port`) |
+
+### A typical investigation
+
+1. **Load** the snapshot with `memlab_load_snapshot` (a local absolute path).
+2. **Frame the heap**: what is it made of, and what are the biggest retainers?
+3. **Find what grows**, using a series of snapshots taken while one interaction repeats.
+4. **Leak or working set?** Check whether the growth plateaus or is given back after idle and GC. A bounded cache or work in flight can look like a leak in a short series.
+5. **Rule out noise**: memory retained only by DevTools, browser extensions or a development build is not a production leak.
+6. **Explain the retention** with a retainer trace, and name the reference to break.
+7. **Confirm the fix** with new snapshots and `memlab_verify_fix`.
+
+### Safety
+
+Most tools only read the snapshot. `memlab_eval`, `memlab_for_each` and a few others run JavaScript that the assistant writes, with the full privileges of the server process. Heap snapshot contents can carry a prompt injection, so never auto-approve those tools or allowlist `mcp__memlab__*` as a wildcard. Start the server with `MEMLAB_DISABLE_CODE_TOOLS=1` to remove them. The README lists [every tool that executes JavaScript](./packages/mcp-server/README.md#tools-that-execute-javascript).
 
 ## Documentation References
 
