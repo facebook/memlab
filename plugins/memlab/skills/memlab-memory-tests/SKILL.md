@@ -114,8 +114,11 @@ Playwright. Then:
 ```javascript
 const {findLeaksBySnapshotFilePaths} = require('@memlab/api');
 
-const leaks = await findLeaksBySnapshotFilePaths(baselineFile, targetFile, finalFile);
-expect(leaks.length).toBe(0);
+test('the flow under test does not leak', async () => {
+  // ...drive the flow and write the three snapshots...
+  const leaks = await findLeaksBySnapshotFilePaths(baselineFile, targetFile, finalFile);
+  expect(leaks.length).toBe(0);
+}, 5 * 60 * 1000);
 ```
 
 ## Keep the tests stable

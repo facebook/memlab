@@ -63,11 +63,13 @@ Take three snapshots in the test: before the interaction (baseline), after it
 ```javascript
 const {findLeaksBySnapshotFilePaths} = require('@memlab/api');
 
-const leaks = await findLeaksBySnapshotFilePaths(
-  '/tmp/baseline.heapsnapshot',
-  '/tmp/target.heapsnapshot',
-  '/tmp/final.heapsnapshot',
-);
+async function findLeaksInTestSnapshots() {
+  return findLeaksBySnapshotFilePaths(
+    '/tmp/baseline.heapsnapshot',
+    '/tmp/target.heapsnapshot',
+    '/tmp/final.heapsnapshot',
+  );
+}
 ```
 
 The command line equivalent is
@@ -94,6 +96,8 @@ writes that thread's heap.)
 const fs = require('fs');
 const {pipeline} = require('stream/promises');
 
-const stream = await worker.getHeapSnapshot();
-await pipeline(stream, fs.createWriteStream('/tmp/worker.heapsnapshot'));
+async function writeWorkerHeapSnapshot(worker, file) {
+  const stream = await worker.getHeapSnapshot();
+  await pipeline(stream, fs.createWriteStream(file));
+}
 ```
