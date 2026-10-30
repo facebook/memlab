@@ -10,6 +10,32 @@ MemLab is an end-to-end testing and analysis framework for identifying JavaScrip
 3. Taking JavaScript heap snapshots at different stages
 4. Analyzing and diffing heap snapshots to detect memory leaks
 
+## Choosing the Right MemLab Tool
+
+Pick the tool from what the user has and what they want to know:
+
+| The user wants to... | Use |
+|---|---|
+| Find leaks caused by an interaction in a web app | A [scenario file](#2-scenario-file-structure) and `memlab run --scenario <file>`, or `run()` from `@memlab/api` |
+| Understand a heap snapshot they already have | The [MCP server](#mcp-server-for-ai-assisted-heap-analysis), or `memlab view-heap --snapshot <file>` / `memlab analyze <plugin> --snapshot <file>` |
+| Find leaks in snapshots taken by another test framework (Playwright, Cypress, ...) | `memlab find-leaks --baseline <file> --target <file> --final <file>`, or `findLeaksBySnapshotFilePaths()` from `@memlab/api` |
+| Assert in a Node.js unit test that an object was released | `takeNodeMinimalHeap()` from `@memlab/core` (see [Memory Assertions in Node.js](#memory-assertions-in-nodejs)) |
+| Run leak detection in CI | `@memlab/api` in a test job (see [Programmatic API](#programmatic-api)) |
+| See leaked DOM elements and React components on the live page | [`@memlab/lens`](https://www.npmjs.com/package/@memlab/lens), an in-browser overlay |
+
+## Getting a Heap Snapshot
+
+MemLab reads `.heapsnapshot` files from Chromium-based browsers, Node.js, Electron and Hermes. Ways to get one:
+
+- **Chrome DevTools**: Memory tab → **Heap snapshot** → **Take snapshot**, then right-click the snapshot and choose **Save...**.
+- **memlab**: `memlab run` and `memlab snapshot` save their snapshots under `$(memlab get-default-work-dir)/data/cur/`.
+- **A running Chrome**: start Chrome with `--remote-debugging-port=9222` and call the MCP tool `memlab_capture`. It also snapshots the page's dedicated workers.
+- **Node.js**: call `require('v8').writeHeapSnapshot()` from the program, or start it with `node --heapsnapshot-signal=SIGUSR2 app.js` and run `kill -USR2 <pid>` when you want a snapshot.
+- **Electron**: use DevTools for renderer processes; the main process is Node.js, so use `v8.writeHeapSnapshot()`.
+- **React Native (Hermes)**: take a heap snapshot from the Memory panel of the debugger attached to the app.
+
+To find a leak, take snapshots before and after the interaction, or a series of snapshots while the interaction repeats. A single snapshot shows what is in memory, not what is growing.
+
 ## Core Principles
 
 ### 1. Three-Phase Testing Model
