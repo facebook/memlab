@@ -44,7 +44,7 @@ interface RunRung {
   index: number;
   path: string;
   cycles: number;
-  post_gc_heap_mb: number;
+  post_gc_heap_mb?: number;
   reason?: string;
   /**
    * The page reloaded before this rung, so it belongs to a NEW V8 isolate.
@@ -351,7 +351,9 @@ export function registerAnalyzeRun(server: McpServer): void {
               const row = [
                 String(r.index),
                 formatNumber(r.cycles),
-                `${r.post_gc_heap_mb.toFixed(1)} MB`,
+                typeof r.post_gc_heap_mb === 'number'
+                  ? `${r.post_gc_heap_mb.toFixed(1)} MB`
+                  : '—',
                 r.reason ?? '',
               ];
               if (ladderSplit) {
@@ -382,11 +384,22 @@ export function registerAnalyzeRun(server: McpServer): void {
           );
         }
 
-        const heapDelta = last.post_gc_heap_mb - first.post_gc_heap_mb;
-        out.push(
-          `Aggregate post-GC heap moved **${heapDelta >= 0 ? '+' : ''}${heapDelta.toFixed(1)} MB** across the run. Aggregate heap is the weakest signal here and is reported for completeness only: a measured round found a real leak (+6.25 undo entries/cycle, linear across five rungs) while aggregate heap FELL 8.9 MB. The per-class trend below is what decides.`,
-          '',
+        const noHeap = [first, last].filter(
+          r => typeof r.post_gc_heap_mb !== 'number',
         );
+        if (noHeap.length === 0) {
+          const heapDelta =
+            (last.post_gc_heap_mb ?? 0) - (first.post_gc_heap_mb ?? 0);
+          out.push(
+            `Aggregate post-GC heap moved **${heapDelta >= 0 ? '+' : ''}${heapDelta.toFixed(1)} MB** across the run. Aggregate heap is the weakest signal here and is reported for completeness only: a measured round found a real leak (+6.25 undo entries/cycle, linear across five rungs) while aggregate heap FELL 8.9 MB. The per-class trend below is what decides.`,
+            '',
+          );
+        } else {
+          out.push(
+            `Aggregate post-GC heap change not reported: the manifest has no \`post_gc_heap_mb\` for rung ${noHeap.map(r => r.index).join(' or ')}. The per-class trend below does not use it.`,
+            '',
+          );
+        }
 
         // ---- Step 1: ladder trend (transient loads, one graph at a time) ----
         out.push('## 1. Per-class trend across the ladder', '');
