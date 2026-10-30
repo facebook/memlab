@@ -43,7 +43,7 @@ module.exports = {
   leakFilter: (node, snapshot, leakedNodeIds) => boolean, // Custom leak detection
   beforeLeakFilter: (snapshot, leakedNodeIds) => {},      // One-time init before leakFilter
   retainerReferenceFilter: (edge, snapshot, isReferenceUsedByDefault) => boolean, // Filter retainer trace edges
-  repeat: () => number,       // Number of iterations (only for stress testing)
+  repeat: () => number,       // Extra action/back cycles (only for stress testing)
 };
 ```
 
@@ -121,14 +121,14 @@ if (await loc.count()) {  // ❌ .count() does NOT exist
 // ✅ GOOD: Use locator directly (it handles retries automatically)
 await page.locator(selector).setTimeout(1500).click();
 
-// ✅ GOOD: Use filter() to check if element exists
-const loc = page.locator(selector).setTimeout(1500);
-await loc.filter(() => true).click();  // Will retry until element exists
-
-// ✅ GOOD: Use waitHandle() to check existence
-const handle = await page.locator(selector).setTimeout(1500).waitHandle();
-if (handle) {
-  await handle.click();
+// ✅ GOOD: Optional click. Locator actions (click, fill, waitHandle, ...)
+// throw a TimeoutError if the element never appears; they never return null.
+try {
+  await page.locator(selector).setTimeout(1500).click();
+} catch (e) {
+  if (e.name !== 'TimeoutError') {
+    throw e;
+  }
 }
 
 // ✅ GOOD: Use page.$$() if you need to count elements
@@ -507,13 +507,13 @@ memlab find-leaks --baseline s1.heapsnapshot --target s2.heapsnapshot --final s3
 # Find leaks with custom leak filter file
 memlab find-leaks --leak-filter path/to/filter.js
 
-# Diff leaks between control and test snapshots
-memlab diff-leaks --control-snapshot ./control --treatment-snapshot ./treatment
+# Diff leaks between a control run and a treatment run (working dirs of two `memlab run`s)
+memlab diff-leaks --control-work-dir ./control --treatment-work-dir ./treatment
 
 # Run heap analysis plugins
 memlab analyze unbound-object --snapshot-dir ./snapshots
-memlab analyze string --snapshot-dir ./snapshots
-memlab analyze detached-DOM --snapshot-dir ./snapshots
+memlab analyze string --snapshot path/to/heap.heapsnapshot
+memlab analyze detached-DOM --snapshot path/to/heap.heapsnapshot
 
 # View/explore a heap snapshot interactively
 memlab view-heap --snapshot path/to/heap.heapsnapshot
@@ -521,9 +521,6 @@ memlab heap --snapshot path/to/heap.heapsnapshot
 
 # Get retainer trace for a specific node
 memlab trace --node-id 12345
-
-# Print summary of last run
-memlab summary
 
 # Other utilities
 memlab version        # Show installed versions
@@ -779,16 +776,16 @@ module.exports = {
 
 ### Detecting Event Listener Leaks
 ```javascript
-// Use leakFilter to detect objects retained by event listeners
+// Use leakFilter to report objects held directly by a DOM event listener
 module.exports = {
   url: () => 'https://example.com',
   action: async (page) => { /* ... */ },
   back: async (page) => { /* ... */ },
   leakFilter: (node, snapshot, leakedNodeIds) => {
-    // Check if this leaked node is retained via an event listener reference
+    // In Chromium heap snapshots, a listener callback is retained by a native
+    // node such as `V8EventListener` (the exact name varies by Chrome version)
     return node.referrers.some(
-      edge => edge.name_or_index === 'listener'
-        || edge.name_or_index === 'handleEvent',
+      edge => edge.fromNode.name.includes('EventListener'),
     );
   },
 };
